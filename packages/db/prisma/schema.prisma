@@ -233,6 +233,7 @@ model Message {
 
   @@unique([threadId, seq])
   @@index([threadId, seq])
+  @@index([createdAt])
   @@map("messages")
 }
 
@@ -253,6 +254,7 @@ model Event {
   @@index([workspaceId, createdAt])
   @@index([threadId, seq])
   @@index([runId, type, seq])
+  @@index([createdAt])
   @@map("events")
 }
 
@@ -433,6 +435,7 @@ model MemoryRevision {
   createdAt  DateTime @default(now())
 
   @@unique([documentId, revision])
+  @@index([createdAt])
   @@map("memory_revisions")
 }
 

@@ -22,7 +22,12 @@ import {
   ScriptedAgentRuntime,
 } from "@rakazo/adapters";
 import { resolveEncryptionKey } from "@rakazo/core";
-import { createDb, createThreadEvents } from "@rakazo/db";
+import {
+  createDataRetentionSweeper,
+  createDb,
+  createThreadEvents,
+  resolveDataRetentionDays,
+} from "@rakazo/db";
 import { MarkdownMemoryStore } from "@rakazo/memory";
 
 async function main() {
@@ -85,11 +90,16 @@ async function main() {
     leadership: createPostgresReconciliationLeadership(pool),
   });
   reconciler.start();
+  const retention = createDataRetentionSweeper(prisma, {
+    retentionDays: resolveDataRetentionDays(process.env.DATA_RETENTION_DAYS),
+  });
+  retention.start();
 
   let stopping = false;
   const stop = async () => {
     if (stopping) return;
     stopping = true;
+    await retention.stop();
     await reconciler.stop();
     await jobHost.stop();
     await jobs.close();
