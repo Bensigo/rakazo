@@ -11,13 +11,16 @@ import {
   CreateRoutineInput,
   DeploymentSettingsSchema,
   ExportManifestSchema,
+  MemoryContentInput,
   MemoryDocumentSchema,
   MeSchema,
   ModelCredentialSchema,
+  ModelInputText,
   RoutineSchema,
   ThreadMessagePageSchema,
   ThreadSnapshotSchema,
   UpdateBotInput,
+  UpdateRoutineInput,
   UsageRecordSchema,
 } from "./domain.js";
 import { ProductEventSchema } from "./events.js";
@@ -116,17 +119,17 @@ export const appContract = {
       .input(
         z.object({
           botId: Id,
-          text: z.string().min(1),
+          text: ModelInputText,
           clientNonce: z.string().optional(),
         }),
       )
       .output(z.object({ taskId: Id, runId: Id, seq: z.number().int() })),
     stop: oc.input(botId).output(z.object({ ok: z.literal(true) })),
     followUp: oc
-      .input(z.object({ botId: Id, text: z.string().min(1) }))
+      .input(z.object({ botId: Id, text: ModelInputText }))
       .output(z.object({ ok: z.literal(true) })),
     answer: oc
-      .input(z.object({ botId: Id, runId: Id, answer: z.string().min(1) }))
+      .input(z.object({ botId: Id, runId: Id, answer: ModelInputText }))
       .output(z.object({ ok: z.literal(true) })),
     markRead: oc.input(botId).output(z.object({ ok: z.literal(true) })),
     markUnread: oc.input(botId).output(z.object({ ok: z.literal(true) })),
@@ -162,26 +165,14 @@ export const appContract = {
       .input(z.object({ botId: Id.optional(), scope: z.enum(["bot", "user"]).optional() }))
       .output(z.array(MemoryDocumentSchema)),
     update: oc
-      .input(z.object({ documentId: Id, content: z.string() }))
+      .input(z.object({ documentId: Id, content: MemoryContentInput }))
       .output(MemoryDocumentSchema),
     exportMarkdown: oc.input(z.object({ botId: Id.optional() })).output(z.string()),
   },
   routines: {
     list: oc.input(botId).output(z.array(RoutineSchema)),
     create: oc.input(CreateRoutineInput).output(RoutineSchema),
-    update: oc
-      .input(
-        z.object({
-          routineId: Id,
-          name: z.string().optional(),
-          prompt: z.string().optional(),
-          cron: z.string().optional(),
-          timezone: z.string().optional(),
-          active: z.boolean().optional(),
-          notify: z.boolean().optional(),
-        }),
-      )
-      .output(RoutineSchema),
+    update: oc.input(UpdateRoutineInput).output(RoutineSchema),
     remove: oc.input(z.object({ routineId: Id })).output(z.object({ ok: z.literal(true) })),
     testRun: oc.input(z.object({ routineId: Id })).output(z.object({ runId: Id })),
   },

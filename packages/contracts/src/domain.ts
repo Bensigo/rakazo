@@ -2,6 +2,11 @@ import * as z from "zod";
 import { ThreadMessageSchema } from "./events.js";
 import { Id, MemoryScope, RunStatus, SandboxKind } from "./ids.js";
 
+export const MAX_MODEL_INPUT_CHARS = 20_000;
+export const ModelInputText = z.string().min(1).max(MAX_MODEL_INPUT_CHARS);
+export const MemoryContentInput = z.string().max(MAX_MODEL_INPUT_CHARS);
+const RoutineNameInput = z.string().min(1).max(80);
+
 export const BotSchema = z.object({
   id: Id,
   workspaceId: Id,
@@ -60,12 +65,22 @@ export type Routine = z.infer<typeof RoutineSchema>;
 
 export const CreateRoutineInput = z.object({
   botId: Id,
-  name: z.string().min(1).max(80),
-  prompt: z.string().min(1),
+  name: RoutineNameInput,
+  prompt: ModelInputText,
   cron: z.string().min(1),
   timezone: z.string().default("UTC"),
   notify: z.boolean().default(true),
   active: z.boolean().default(false),
+});
+
+export const UpdateRoutineInput = z.object({
+  routineId: Id,
+  name: RoutineNameInput.optional(),
+  prompt: ModelInputText.optional(),
+  cron: z.string().min(1).optional(),
+  timezone: z.string().optional(),
+  active: z.boolean().optional(),
+  notify: z.boolean().optional(),
 });
 
 export const MemoryDocumentSchema = z.object({
