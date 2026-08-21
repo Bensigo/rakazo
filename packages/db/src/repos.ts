@@ -92,23 +92,28 @@ export function createRepos(prisma: PrismaClient) {
         });
         if (!bot) throw new IsolationError();
 
-        let section = await tx.botSection.findFirst({
-          where: { workspaceId: actor.workspaceId, userId: actor.userId, name },
+        const aggregate = await tx.botSection.aggregate({
+          where: { workspaceId: actor.workspaceId, userId: actor.userId },
+          _max: { position: true },
         });
-        if (!section) {
-          const aggregate = await tx.botSection.aggregate({
-            where: { workspaceId: actor.workspaceId, userId: actor.userId },
-            _max: { position: true },
-          });
-          section = await tx.botSection.create({
-            data: {
+        await tx.botSection.createMany({
+          data: {
+            workspaceId: actor.workspaceId,
+            userId: actor.userId,
+            name,
+            position: (aggregate._max.position ?? -1) + 1,
+          },
+          skipDuplicates: true,
+        });
+        const section = await tx.botSection.findUniqueOrThrow({
+          where: {
+            workspaceId_userId_name: {
               workspaceId: actor.workspaceId,
               userId: actor.userId,
               name,
-              position: (aggregate._max.position ?? -1) + 1,
             },
-          });
-        }
+          },
+        });
         await tx.bot.update({ where: { id: bot.id }, data: { sectionId: section.id } });
         return {
           id: section.id,

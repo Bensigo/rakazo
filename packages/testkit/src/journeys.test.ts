@@ -122,16 +122,26 @@ describeJourneys("required product journeys", () => {
 
     const pinned = await rpc<Bot>(app, ada, "bots/update", { botId: coder.id, pinned: true });
     expect(pinned.pinned).toBe(true);
-    const section = await rpc<{ id: string; name: string }>(app, ada, "botSections/create", {
-      botId: chief.id,
-      name: "Planning",
-    });
+    const [section, concurrentSection] = await Promise.all([
+      rpc<{ id: string; name: string }>(app, ada, "botSections/create", {
+        botId: chief.id,
+        name: "Planning",
+      }),
+      rpc<{ id: string; name: string }>(app, ada, "botSections/create", {
+        botId: coder.id,
+        name: "Planning",
+      }),
+    ]);
     expect(section.name).toBe("Planning");
+    expect(concurrentSection.id).toBe(section.id);
     expect(await rpc<Array<{ id: string }>>(app, ada, "botSections/list")).toEqual([
       expect.objectContaining({ id: section.id }),
     ]);
     expect(
       (await rpc<Bot[]>(app, ada, "bots/list")).find((bot) => bot.id === chief.id)?.sectionId,
+    ).toBe(section.id);
+    expect(
+      (await rpc<Bot[]>(app, ada, "bots/list")).find((bot) => bot.id === coder.id)?.sectionId,
     ).toBe(section.id);
     const foreignSection = await raw(app, bob, "bots/update", {
       botId: bobBot.id,
