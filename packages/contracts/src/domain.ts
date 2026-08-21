@@ -15,6 +15,7 @@ export const BotSchema = z.object({
   color: z.string(),
   notifyOnFinish: z.boolean(),
   pinned: z.boolean(),
+  sectionId: Id.nullable(),
   archivedAt: z.string().nullable(),
   unread: z.boolean(),
   parentBotId: Id.nullable(),
@@ -28,6 +29,15 @@ export const BotSchema = z.object({
   autoSpeak: z.boolean(),
 });
 export type Bot = z.infer<typeof BotSchema>;
+
+export const BotSectionSchema = z.object({
+  id: Id,
+  name: z.string(),
+  position: z.number().int().nonnegative(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type BotSection = z.infer<typeof BotSectionSchema>;
 
 export const CreateBotInput = z.object({
   name: z.string().min(1).max(80),
@@ -49,6 +59,7 @@ export const UpdateBotInput = z.object({
   notifyOnFinish: z.boolean().optional(),
   color: z.string().optional(),
   pinned: z.boolean().optional(),
+  sectionId: Id.nullable().optional(),
   voiceId: z.string().max(120).nullable().optional(),
   autoSpeak: z.boolean().optional(),
 });
@@ -335,6 +346,7 @@ export type Me = z.infer<typeof MeSchema>;
 export const AppBootstrapSchema = z.object({
   me: MeSchema,
   bots: z.array(BotSchema),
+  botSections: z.array(BotSectionSchema),
   archivedBots: z.array(BotSchema),
   thread: ThreadSnapshotSchema.nullable(),
   routines: z.array(RoutineSchema),

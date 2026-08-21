@@ -6,6 +6,7 @@ import {
   ArtifactSchema,
   ArtifactWithContentSchema,
   BotSchema,
+  BotSectionSchema,
   CapabilityInstallSchema,
   ComputerModeSchema,
   ComputerStatusSchema,
@@ -113,6 +114,12 @@ export const appContract = {
     remove: oc
       .input(z.object({ botId: Id, deleteMemories: z.boolean().default(false) }))
       .output(z.object({ ok: z.literal(true) })),
+  },
+  botSections: {
+    list: oc.output(z.array(BotSectionSchema)),
+    create: oc
+      .input(z.object({ botId: Id, name: z.string().trim().min(1).max(60) }))
+      .output(BotSectionSchema),
   },
   threads: {
     get: oc.input(z.object({ botId: Id })).output(ThreadSnapshotSchema),

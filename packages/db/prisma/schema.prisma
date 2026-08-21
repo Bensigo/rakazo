@@ -22,6 +22,7 @@ model User {
   modelCredentials UserModelCredential[]
   voiceCredentials UserVoiceCredential[]
   secrets          Secret[]
+  botSections      BotSection[]
 
   @@unique([email])
   @@map("user")
@@ -86,6 +87,7 @@ model Organization {
   members     Member[]
   invitations Invitation[]
   bots        Bot[]
+  botSections BotSection[]
   botDeletions BotDeletion[]
   threads     Thread[]
   events      Event[]
@@ -199,6 +201,8 @@ model Bot {
   color          String
   notifyOnFinish Boolean  @default(true)
   pinned         Boolean  @default(false)
+  sectionId      String?
+  section        BotSection? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
   archivedAt     DateTime?
   parentBotId    String?
   spawnKey       String?
@@ -223,10 +227,28 @@ model Bot {
   runs           Run[]
 
   @@index([workspaceId, userId, archivedAt, pinned, updatedAt])
+  @@index([sectionId])
   @@index([computerId])
   @@index([parentBotId])
   @@unique([workspaceId, spawnKey])
   @@map("bots")
+}
+
+model BotSection {
+  id          String       @id @default(cuid())
+  workspaceId String
+  workspace   Organization @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  position    Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  bots        Bot[]
+
+  @@unique([workspaceId, userId, name])
+  @@index([workspaceId, userId, position, createdAt])
+  @@map("bot_sections")
 }
 
 model BotDeletion {

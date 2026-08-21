@@ -156,9 +156,10 @@ export function createRouter(deps: RouterDeps) {
     me: authed.me.handler(async ({ context }): Promise<Me> => meDto(deps, context.actor)),
     bootstrap: authed.bootstrap.handler(async ({ context, input }) => {
       const actor = context.actor;
-      const [me, bots, archivedBots] = await Promise.all([
+      const [me, bots, botSections, archivedBots] = await Promise.all([
         meDto(deps, actor),
         repos.listBots(actor),
+        repos.listBotSections(actor),
         repos.listBots(actor, { archived: true }),
       ]);
       const active = bots.find((bot) => bot.id === input.botId) ?? bots[0];
@@ -168,7 +169,7 @@ export function createRouter(deps: RouterDeps) {
             listRoutinesDto(deps, actor, active.id),
           ])
         : [null, []];
-      return { me, bots, archivedBots, thread, routines };
+      return { me, bots, botSections, archivedBots, thread, routines };
     }),
     deployment: {
       get: authed.deployment.get.handler(async ({ context }) => {
@@ -331,6 +332,17 @@ export function createRouter(deps: RouterDeps) {
       }),
       update: authed.bots.update.handler(async ({ context, input }) => {
         await repos.getBot(context.actor, input.botId);
+        if (input.sectionId) {
+          const section = await deps.prisma.botSection.findFirst({
+            where: {
+              id: input.sectionId,
+              workspaceId: context.actor.workspaceId,
+              userId: context.actor.userId,
+            },
+            select: { id: true },
+          });
+          if (!section) throw new IsolationError();
+        }
         await deps.prisma.bot.update({
           where: { id: input.botId },
           data: {
@@ -341,6 +353,7 @@ export function createRouter(deps: RouterDeps) {
             notifyOnFinish: input.notifyOnFinish,
             color: input.color,
             pinned: input.pinned,
+            sectionId: input.sectionId,
             voiceId: input.voiceId,
             autoSpeak: input.autoSpeak,
           },
@@ -449,6 +462,14 @@ export function createRouter(deps: RouterDeps) {
         );
         return { ok: true as const };
       }),
+    },
+    botSections: {
+      list: authed.botSections.list.handler(async ({ context }) =>
+        repos.listBotSections(context.actor),
+      ),
+      create: authed.botSections.create.handler(async ({ context, input }) =>
+        repos.createBotSection(context.actor, input),
+      ),
     },
     threads: {
       get: authed.threads.get.handler(async ({ context, input }) =>

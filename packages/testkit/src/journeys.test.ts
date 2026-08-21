@@ -122,6 +122,23 @@ describeJourneys("required product journeys", () => {
 
     const pinned = await rpc<Bot>(app, ada, "bots/update", { botId: coder.id, pinned: true });
     expect(pinned.pinned).toBe(true);
+    const section = await rpc<{ id: string; name: string }>(app, ada, "botSections/create", {
+      botId: chief.id,
+      name: "Planning",
+    });
+    expect(section.name).toBe("Planning");
+    expect(await rpc<Array<{ id: string }>>(app, ada, "botSections/list")).toEqual([
+      expect.objectContaining({ id: section.id }),
+    ]);
+    expect(
+      (await rpc<Bot[]>(app, ada, "bots/list")).find((bot) => bot.id === chief.id)?.sectionId,
+    ).toBe(section.id);
+    const foreignSection = await raw(app, bob, "bots/update", {
+      botId: bobBot.id,
+      sectionId: section.id,
+    });
+    expect(foreignSection.status).toBeGreaterThanOrEqual(400);
+    expect(await rpc<unknown[]>(app, bob, "botSections/list")).toEqual([]);
     const duplicate = await rpc<Bot>(app, ada, "bots/duplicate", { botId: chief.id });
     expect(duplicate).toMatchObject({
       name: "Chief copy",
@@ -131,6 +148,7 @@ describeJourneys("required product journeys", () => {
       notifyOnFinish: chief.notifyOnFinish,
       color: chief.color,
       pinned: false,
+      sectionId: null,
       unread: false,
     });
     expect(duplicate.id).not.toBe(chief.id);
@@ -1242,6 +1260,7 @@ type Bot = {
   notifyOnFinish: boolean;
   color: string;
   pinned: boolean;
+  sectionId: string | null;
   unread: boolean;
   computerMode: "team" | "dedicated";
   parentBotId?: string | null;
