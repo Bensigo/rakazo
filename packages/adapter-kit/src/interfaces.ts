@@ -35,6 +35,12 @@ import type {
   ScreenRequest,
   ScreenSession,
   SecretRecord,
+  SemanticMemoryCapabilities,
+  SemanticMemoryPurgeHistoryRequest,
+  SemanticMemoryRecallRequest,
+  SemanticMemoryResponse,
+  SemanticMemoryResult,
+  SemanticMemorySaveRequest,
   SnapshotRef,
   SpeechClip,
   VoiceCapabilities,
@@ -154,6 +160,23 @@ export interface MemoryStore {
     files: AsyncIterable<PortableFile>,
     context: AdapterContext,
   ): Promise<MemoryRevision>;
+}
+
+/** Optional semantic memory. Durable Markdown memory remains owned by MemoryStore. */
+export interface SemanticMemoryProvider {
+  describe(): AdapterDescriptor<SemanticMemoryCapabilities>;
+  recall(
+    request: SemanticMemoryRecallRequest,
+    context: AdapterContext,
+  ): Promise<SemanticMemoryResponse<SemanticMemoryResult[]>>;
+  save(
+    request: SemanticMemorySaveRequest,
+    context: AdapterContext,
+  ): Promise<SemanticMemoryResponse>;
+  purgeHistory(
+    request: SemanticMemoryPurgeHistoryRequest,
+    context: AdapterContext,
+  ): Promise<SemanticMemoryResponse>;
 }
 
 export interface AgentRuntime {

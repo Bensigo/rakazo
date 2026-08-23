@@ -21,6 +21,7 @@ import {
   GroupDetailSchema,
   GroupSchema,
   MemoryDocumentSchema,
+  MemoryScopeSchema,
   MeSchema,
   ModelCatalogEntrySchema,
   ModelCredentialSchema,
@@ -37,6 +38,7 @@ import {
   VoiceCredentialSchema,
   VoiceInfoSchema,
   VoiceStatusSchema,
+  WorkspaceMemoryConfigSchema,
 } from "./domain.js";
 import { ProductEventSchema } from "./events.js";
 import { Id } from "./ids.js";
@@ -248,6 +250,21 @@ export const appContract = {
       .input(z.object({ documentId: Id, content: z.string() }))
       .output(MemoryDocumentSchema),
     exportMarkdown: oc.input(z.object({ botId: Id.optional() })).output(z.string()),
+    providerConfig: oc.output(WorkspaceMemoryConfigSchema.nullable()),
+    connectProvider: oc
+      .input(
+        z.object({
+          provider: z.string().min(1),
+          settings: z.record(z.string(), z.string()),
+          credentials: z.record(z.string(), z.string()),
+          defaultMemoryScope: MemoryScopeSchema.default("isolated"),
+        }),
+      )
+      .output(WorkspaceMemoryConfigSchema),
+    setDefaultScope: oc
+      .input(z.object({ defaultMemoryScope: MemoryScopeSchema }))
+      .output(WorkspaceMemoryConfigSchema),
+    disconnectProvider: oc.output(z.object({ ok: z.literal(true) })),
   },
   routines: {
     list: oc.input(botId).output(z.array(RoutineSchema)),

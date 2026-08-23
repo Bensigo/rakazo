@@ -12,6 +12,7 @@ import type {
   NotificationMessage,
   NotificationProvider,
   SandboxProvider,
+  SemanticMemoryProvider,
 } from "@rakazo/adapter-kit";
 import { historyCompactJob, routineWakeupJob, runContinueJob } from "@rakazo/adapter-kit";
 import type { MessageBlock, RunStatus } from "@rakazo/contracts";
@@ -42,6 +43,7 @@ import {
 import {
   appendEventInTransaction,
   createThreadMessageInTransaction,
+  effectiveMemoryScope,
   findDefaultModelCredential,
   type PrismaClient,
   parseComputerMode,
@@ -84,10 +86,13 @@ import {
   HISTORY_WINDOW_SIZE,
   historyWindowSize,
   LEGACY_HISTORY_WINDOW_SIZE,
+  MAX_RECALLED_MEMORIES,
   selectCompactedHistory,
   shouldEnqueueCompaction,
 } from "./history-compaction.js";
 import { loadAgentMemoryContext } from "./memory-context.js";
+import type { MemoryProviderResolver } from "./memory-provider-factory.js";
+import { selectMemoryTools } from "./memory-tools.js";
 import { toOAuthCredential } from "./pi-credentials.js";
 import {
   parseModelSecret,
@@ -97,11 +102,6 @@ import {
 } from "./pi-oauth.js";
 import { inferScript } from "./scripted-runtime.js";
 import type { EncryptedSecretStore } from "./secrets.js";
-import {
-  isSupermemoryEnabled,
-  searchSupermemory,
-  supermemoryContainerTag,
-} from "./supermemory-client.js";
 import { getActiveTeachingSession, parsePlaybook } from "./teaching-session.js";
 import {
   attachWorkspaceFileToThread,
@@ -116,6 +116,7 @@ const READ_ONLY_AGENT_TOOLS = new Set([
   "read_file",
   "request_takeover",
   "run_subagent",
+  "recall_memory",
 ]);
 const MAX_MODEL_FILE_BYTES = 250_000;
 // Same tool, same arguments, this many times in a row means the agent is stuck, not paginating.
@@ -136,11 +137,12 @@ export interface ExecutorDeps {
   runtime: AgentRuntime;
   sandbox: SandboxProvider;
   memory: MemoryStore;
+  memoryProviders: MemoryProviderResolver;
   home: AgentHomeStore;
   artifacts?: ArtifactStore;
   connector?: ConnectorProvider;
   secrets: string[];
-  secretStore?: EncryptedSecretStore;
+  secretStore: EncryptedSecretStore;
   deploymentModelKey?: string;
   dataDir?: string;
   notifications?: NotificationProvider;
@@ -386,37 +388,47 @@ export function createRunExecutor(deps: ExecutorDeps) {
 
       const runSecrets = [...deps.secrets];
       try {
-        const [bot, thread, messages, task, storedConnections, credential, settings, savedSkills] =
-          await Promise.all([
-            deps.prisma.bot.findUniqueOrThrow({
-              where: { id: run.botId },
-              include: { computer: true },
-            }),
-            deps.prisma.thread.findUniqueOrThrow({ where: { id: run.threadId } }),
-            deps.prisma.message.findMany({
-              where: { threadId: run.threadId },
-              orderBy: { seq: "desc" },
-              take: LEGACY_HISTORY_WINDOW_SIZE,
-              select: { id: true, seq: true, role: true, runId: true, blocks: true },
-            }),
-            deps.prisma.task.findUniqueOrThrow({ where: { id: run.taskId } }),
-            deps.prisma.connection.findMany({
-              where: { userId: run.userId, workspaceId: run.workspaceId },
-              select: {
-                id: true,
-                connectorId: true,
-                provider: true,
-                providerRef: true,
-                displayName: true,
-                status: true,
-              },
-            }),
-            findDefaultModelCredential(deps.prisma, run),
-            deps.prisma.deploymentSettings.findUnique({ where: { id: "default" } }),
-            deps.prisma.taughtSkill.findMany({
-              where: { botId: run.botId, workspaceId: run.workspaceId, status: "saved" },
-            }),
-          ]);
+        const [
+          bot,
+          thread,
+          messages,
+          task,
+          storedConnections,
+          credential,
+          settings,
+          configuredMemory,
+          savedSkills,
+        ] = await Promise.all([
+          deps.prisma.bot.findUniqueOrThrow({
+            where: { id: run.botId },
+            include: { computer: true },
+          }),
+          deps.prisma.thread.findUniqueOrThrow({ where: { id: run.threadId } }),
+          deps.prisma.message.findMany({
+            where: { threadId: run.threadId },
+            orderBy: { seq: "desc" },
+            take: LEGACY_HISTORY_WINDOW_SIZE,
+            select: { id: true, seq: true, role: true, runId: true, blocks: true },
+          }),
+          deps.prisma.task.findUniqueOrThrow({ where: { id: run.taskId } }),
+          deps.prisma.connection.findMany({
+            where: { userId: run.userId, workspaceId: run.workspaceId },
+            select: {
+              id: true,
+              connectorId: true,
+              provider: true,
+              providerRef: true,
+              displayName: true,
+              status: true,
+            },
+          }),
+          findDefaultModelCredential(deps.prisma, run),
+          deps.prisma.deploymentSettings.findUnique({ where: { id: "default" } }),
+          deps.memoryProviders.resolve(run.workspaceId),
+          deps.prisma.taughtSkill.findMany({
+            where: { botId: run.botId, workspaceId: run.workspaceId, status: "saved" },
+          }),
+        ]);
         runAbortController = new AbortController();
         if (!leaseValid) runAbortController.abort();
         const composioRows = storedConnections.filter(
@@ -459,6 +471,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
           })),
           connectedProviders: connectedComposio.map((row) => row.provider),
         };
+        const memoryScope = configuredMemory
+          ? effectiveMemoryScope(bot.memoryScope, configuredMemory.defaultScope)
+          : null;
+        const semanticMemory: SemanticMemoryProvider | null = configuredMemory?.provider ?? null;
 
         await deps.events.append({
           workspaceId: run.workspaceId,
@@ -469,7 +485,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
           payload: { trigger: run.trigger },
         });
 
-        const discovered = deps.connector ? await deps.connector.discoverTools(context) : [];
+        const discoveredPromise = deps.connector
+          ? deps.connector.discoverTools(context)
+          : Promise.resolve([]);
         const visibleMessages = [...messages].reverse().map((m) => ({
           seq: m.seq,
           role: (m.role === "user" ? "user" : m.role === "system" ? "system" : "assistant") as
@@ -495,27 +513,40 @@ export function createRunExecutor(deps: ExecutorDeps) {
           })),
           run.sourceMessageId,
         );
-        const currentTurnImages = await loadCurrentTurnImages(deps, turnBlocks, context);
-        const memoryContext = await loadAgentMemoryContext(deps.memory, bot.id, context);
-        const supermemoryEnabled = isSupermemoryEnabled(process.env.SUPERMEMORY_API_KEY);
+        const recallPromise =
+          semanticMemory && memoryScope && thread.historyCompactedUpToSeq != null
+            ? semanticMemory.recall(
+                {
+                  query: task.prompt,
+                  scope: memoryScope,
+                  botId: bot.id,
+                  historyGeneration: thread.historyCompactionGeneration,
+                  limit: MAX_RECALLED_MEMORIES,
+                },
+                context,
+              )
+            : Promise.resolve(null);
+        const [discovered, currentTurnImages, memoryContext, recalled] = await Promise.all([
+          discoveredPromise,
+          loadCurrentTurnImages(deps, turnBlocks, context),
+          loadAgentMemoryContext(deps.memory, bot.id, context),
+          recallPromise,
+        ]);
+        const semanticMemoryEnabled = Boolean(semanticMemory);
         let recalledMemory = "";
         let recallSucceeded = false;
-        if (supermemoryEnabled && thread.historyCompactedUpToSeq != null) {
-          const recalled = await searchSupermemory(
-            task.prompt,
-            supermemoryContainerTag(bot.id, thread.historyCompactionGeneration),
-          );
-          if (recalled.ok && recalled.results.length > 0) {
+        if (recalled) {
+          if (recalled.ok && recalled.value.length > 0) {
             recallSucceeded = true;
-            recalledMemory = formatRecalledMemory(recalled.results);
+            recalledMemory = formatRecalledMemory(recalled.value);
           } else if (!recalled.ok) {
-            console.error("supermemory recall failed", recalled.error);
+            console.error("semantic memory recall failed", recalled.error);
           }
         }
         if (!compactedHistory.usedLocalSummary) {
           history = history.slice(
             -historyWindowSize({
-              supermemoryEnabled: supermemoryEnabled && !thread.historyCompactionSummary,
+              semanticMemoryEnabled: semanticMemoryEnabled && !thread.historyCompactionSummary,
               compacted: thread.historyCompactedUpToSeq != null,
               recallSucceeded,
             }),
@@ -548,11 +579,12 @@ export function createRunExecutor(deps: ExecutorDeps) {
         const groupContext = thread.groupId
           ? await loadGroupContext(deps.prisma, thread.groupId)
           : undefined;
-        const builtins = (
+        const availableBuiltins = (
           graphical
             ? builtinAgentTools
             : builtinAgentTools.filter((tool) => !GRAPHICAL_AGENT_TOOLS.has(tool.name))
         ).filter((tool) => thread.groupId || tool.name !== "handoff_to_bot");
+        const builtins = selectMemoryTools(availableBuiltins, semanticMemoryEnabled);
         const exposedConnectorTools = discovered.filter(
           (tool) => !builtinAgentTools.some((builtin) => builtin.name === tool.name),
         );
@@ -863,6 +895,33 @@ export function createRunExecutor(deps: ExecutorDeps) {
               context,
             );
             return finish({ ok: true });
+          }
+          if (name === "recall_memory") {
+            return semanticMemory!.recall(
+              {
+                query: String(args.query ?? ""),
+                scope: memoryScope!,
+                botId: bot.id,
+                ...(thread.historyCompactedUpToSeq == null
+                  ? {}
+                  : { historyGeneration: thread.historyCompactionGeneration }),
+                limit: MAX_RECALLED_MEMORIES,
+              },
+              context,
+            );
+          }
+          if (name === "save_memory") {
+            return finish(
+              await semanticMemory!.save(
+                {
+                  content: String(args.content ?? ""),
+                  scope: memoryScope!,
+                  botId: bot.id,
+                  source: { kind: "durable" },
+                },
+                context,
+              ),
+            );
           }
           if (name === "request_takeover") return { ok: true };
           if (name === "run_subagent") {
@@ -1677,14 +1736,14 @@ async function resolveModelKey(
   persistOAuth?: (credential: AgentModelOAuthCredential) => Promise<void>;
   redact: string[];
 }> {
-  if (credential && deps.secretStore) {
+  if (credential) {
     return withModelCredentialLock(credential.secretId, async () => {
       const row = await deps.prisma.secret.findUnique({ where: { id: credential.secretId } });
       if (!row) return { apiKey: deps.deploymentModelKey, redact: [] };
-      const plaintext = deps.secretStore!.load(row.ciphertext);
+      const plaintext = deps.secretStore.load(row.ciphertext);
       registerSecrets?.(secretValuesToRedact(parseModelSecret(plaintext)));
       const persist = async (next: string) => {
-        const stored = await deps.secretStore!.put(next, {
+        const stored = await deps.secretStore.put(next, {
           operationId: "cred",
           traceId: "cred-refresh",
           workspaceId,
@@ -1710,7 +1769,7 @@ async function resolveModelKey(
                   where: { id: credential.secretId },
                 });
                 if (!currentRow) return;
-                const current = parseModelSecret(deps.secretStore!.load(currentRow.ciphertext));
+                const current = parseModelSecret(deps.secretStore.load(currentRow.ciphertext));
                 if (current.kind === "oauth") {
                   const stored = current.credential;
                   if (stored.expires > next.expires) return;

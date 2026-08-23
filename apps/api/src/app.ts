@@ -33,6 +33,7 @@ import {
   pushTokenPath,
   type RemoteConnectorDependencies,
   ScriptedAgentRuntime,
+  WorkspaceMemoryProviderResolver,
 } from "@rakazo/adapters";
 import { blockedAuthPaths, createAuth } from "@rakazo/auth";
 import { createDb, createThreadEvents, type PrismaClient, requireMembership } from "@rakazo/db";
@@ -109,6 +110,7 @@ export async function createApp(
     prisma,
   });
   const secrets = new EncryptedSecretStore(env.encryptionKey);
+  const memoryProviders = new WorkspaceMemoryProviderResolver(prisma, secrets);
   const oauthLogins = new PiOAuthLogins();
   const home = new LocalAgentHomeStore(env.dataDir);
   const artifacts = new LocalArtifactStore(env.dataDir);
@@ -180,6 +182,7 @@ export async function createApp(
     runtime,
     sandbox,
     memory,
+    memoryProviders,
     home,
     artifacts,
     connector: stack.connector,
@@ -202,6 +205,8 @@ export async function createApp(
     events,
     workerId: "api",
     runtime,
+    secretStore: secrets,
+    memoryProviders,
     deploymentModelKey: env.openRouterKey,
   });
   if (inMemoryJobs) {
@@ -217,6 +222,7 @@ export async function createApp(
     jobs,
     sandbox,
     memory,
+    memoryProviders,
     home,
     secrets,
     oauthLogins,
