@@ -30,6 +30,7 @@ import {
   PiOAuthLogins,
   PipedreamConnector,
   PostgresRealtimeFanout,
+  pipedreamConfigFromEnv,
   pushTokenPath,
   type RemoteConnectorDependencies,
   ScriptedAgentRuntime,
@@ -115,13 +116,7 @@ export async function createApp(
   const home = new LocalAgentHomeStore(env.dataDir);
   const artifacts = new LocalArtifactStore(env.dataDir);
   const memory = new MarkdownMemoryStore(prisma);
-  const pipedreamConfig = {
-    clientId: env.pipedreamClientId ?? "",
-    clientSecret: env.pipedreamClientSecret ?? "",
-    projectId: env.pipedreamProjectId ?? "",
-    environment: env.pipedreamEnvironment,
-    identitySecret: env.encryptionKey,
-  };
+  const pipedreamConfig = pipedreamConfigFromEnv(env);
   const pipedream =
     pipedreamOverride ??
     (isPipedreamEnabled(pipedreamConfig) ? new PipedreamConnector(pipedreamConfig) : undefined);

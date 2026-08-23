@@ -24,6 +24,7 @@ function makeDeps(
       updatedAt: Date;
     };
     workspaceOwner?: boolean;
+    memberRole?: string;
   } = {},
 ) {
   const secretCreate = vi.fn().mockResolvedValue({ id: "secret-new" });
@@ -49,7 +50,9 @@ function makeDeps(
     member: {
       findFirst: vi
         .fn()
-        .mockResolvedValue(overrides.workspaceOwner === false ? null : { id: "m-1" }),
+        .mockResolvedValue(
+          overrides.workspaceOwner === false ? null : { role: overrides.memberRole ?? "owner" },
+        ),
     },
     workspaceMemoryConfig: { findUnique, update, upsert },
     secret: { create: secretCreate, deleteMany: secretDeleteMany },
@@ -192,6 +195,17 @@ describe("persistMemoryProviderConfig", () => {
 });
 
 describe("updateMemoryProviderDefaultScope", () => {
+  it("accepts owners with additional Better Auth roles", async () => {
+    const { deps, update } = makeDeps({
+      existing: { id: "cfg-1", secretId: "secret-existing" },
+      memberRole: "owner,admin",
+    });
+
+    await updateMemoryProviderDefaultScope(deps as never, actor, "shared");
+
+    expect(update).toHaveBeenCalled();
+  });
+
   it("updates only the generic scope setting and retains the provider secret", async () => {
     const { deps, update, secretCreate, secretDeleteMany } = makeDeps({
       existing: { id: "cfg-1", secretId: "secret-existing" },

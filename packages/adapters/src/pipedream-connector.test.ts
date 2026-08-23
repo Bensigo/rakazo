@@ -1,6 +1,6 @@
 import type { AdapterContext } from "@rakazo/adapter-kit";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PipedreamConnector } from "./pipedream-connector.js";
+import { PipedreamConnector, pipedreamConfigFromEnv } from "./pipedream-connector.js";
 import { ThirdPartyConnectorEmulator } from "./third-party-connector-emulator.js";
 
 const context: AdapterContext = {
@@ -10,6 +10,26 @@ const context: AdapterContext = {
   userId: "user-example",
   signal: new AbortController().signal,
 };
+
+describe("pipedreamConfigFromEnv", () => {
+  it("maps shared environment values and normalizes unsupported environments", () => {
+    expect(
+      pipedreamConfigFromEnv({
+        pipedreamClientId: "client-id",
+        pipedreamClientSecret: "client-secret",
+        pipedreamProjectId: "project-id",
+        pipedreamEnvironment: "staging",
+        encryptionKey: "identity-secret",
+      }),
+    ).toEqual({
+      clientId: "client-id",
+      clientSecret: "client-secret",
+      projectId: "project-id",
+      environment: "development",
+      identitySecret: "identity-secret",
+    });
+  });
+});
 
 describe("PipedreamConnector", () => {
   afterEach(() => vi.unstubAllGlobals());

@@ -23,6 +23,7 @@ import {
   PiAgentRuntime,
   PipedreamConnector,
   PostgresRealtimeFanout,
+  pipedreamConfigFromEnv,
   ScriptedAgentRuntime,
   WorkspaceMemoryProviderResolver,
 } from "@rakazo/adapters";
@@ -54,13 +55,13 @@ async function main() {
     prisma,
   });
   const secrets = new EncryptedSecretStore(resolveEncryptionKey(process.env));
-  const pipedreamConfig = {
-    clientId: process.env.PIPEDREAM_CLIENT_ID ?? "",
-    clientSecret: process.env.PIPEDREAM_CLIENT_SECRET ?? "",
-    projectId: process.env.PIPEDREAM_PROJECT_ID ?? "",
-    environment: process.env.PIPEDREAM_ENVIRONMENT === "production" ? "production" : "development",
-    identitySecret: resolveEncryptionKey(process.env),
-  } as const;
+  const pipedreamConfig = pipedreamConfigFromEnv({
+    pipedreamClientId: process.env.PIPEDREAM_CLIENT_ID,
+    pipedreamClientSecret: process.env.PIPEDREAM_CLIENT_SECRET,
+    pipedreamProjectId: process.env.PIPEDREAM_PROJECT_ID,
+    pipedreamEnvironment: process.env.PIPEDREAM_ENVIRONMENT,
+    encryptionKey: resolveEncryptionKey(process.env),
+  });
   const pipedream = isPipedreamEnabled(pipedreamConfig)
     ? new PipedreamConnector(pipedreamConfig)
     : undefined;

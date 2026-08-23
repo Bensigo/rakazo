@@ -32,6 +32,26 @@ export interface PipedreamConnectorConfig {
   identitySecret: string;
 }
 
+export interface PipedreamEnvironmentValues {
+  pipedreamClientId?: string;
+  pipedreamClientSecret?: string;
+  pipedreamProjectId?: string;
+  pipedreamEnvironment?: string;
+  encryptionKey: string;
+}
+
+export function pipedreamConfigFromEnv(
+  values: PipedreamEnvironmentValues,
+): PipedreamConnectorConfig {
+  return {
+    clientId: values.pipedreamClientId ?? "",
+    clientSecret: values.pipedreamClientSecret ?? "",
+    projectId: values.pipedreamProjectId ?? "",
+    environment: values.pipedreamEnvironment === "production" ? "production" : "development",
+    identitySecret: values.encryptionKey,
+  };
+}
+
 export type PipedreamConnectorDependencies = RemoteTransportDependencies;
 
 type PipedreamApp = {

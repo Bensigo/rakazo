@@ -2236,15 +2236,15 @@ async function persistModelCredential(
 }
 
 async function requireWorkspaceOwner(prisma: PrismaClient, actor: Actor): Promise<void> {
-  const owner = await prisma.member.findFirst({
+  const member = await prisma.member.findFirst({
     where: {
       organizationId: actor.workspaceId,
       userId: actor.userId,
-      role: "owner",
     },
-    select: { id: true },
+    select: { role: true },
   });
-  if (!owner) throw new ORPCError("FORBIDDEN");
+  const roles = member?.role.split(",").map((role) => role.trim());
+  if (!roles?.includes("owner")) throw new ORPCError("FORBIDDEN");
 }
 
 export async function persistMemoryProviderConfig(
