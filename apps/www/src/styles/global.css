@@ -96,6 +96,18 @@ input {
   font: inherit;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 button {
   cursor: pointer;
 }
@@ -572,6 +584,65 @@ button {
   gap: 12px;
   margin-top: auto;
   padding-top: 26px;
+}
+
+.waitlist-form {
+  position: relative;
+  display: grid;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.waitlist-form > input {
+  min-width: 0;
+  height: 42px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: #fff;
+  padding: 0 13px;
+  color: var(--ink);
+  font-size: 14px;
+  outline: none;
+}
+
+.waitlist-form > input::placeholder {
+  color: var(--muted);
+}
+
+.waitlist-form > input:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-soft-2);
+}
+
+.waitlist-form button:disabled {
+  cursor: default;
+  opacity: 0.7;
+  transform: none;
+}
+
+.waitlist-form__trap {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.waitlist-form__status {
+  grid-column: 1 / -1;
+  min-height: 18px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.waitlist-form__status.is-success {
+  color: var(--success);
+}
+
+.waitlist-form__status.is-error {
+  color: #b42318;
 }
 
 .comparison-kicker {
@@ -2016,6 +2087,10 @@ button {
   .comparison-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .waitlist-form {
+    grid-template-columns: 1fr;
   }
 
   .button,

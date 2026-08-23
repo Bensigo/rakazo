@@ -477,19 +477,13 @@ export function ProductDemo() {
   }
 
   function openRoutine(routine: DemoRoutine | null, index: number | null) {
-    const nextIndex = index === null ? active.routines.length : index;
-    if (index === null) {
-      patchActive({
-        routines: [...active.routines, { name: "", when: "Unscheduled", instruction: "" }],
-      });
-    }
     setPanelOpen(true);
     setPanelMode("routine");
     setRoutineDraft({
-      index: nextIndex,
+      index,
       name: routine?.name ?? "",
       instruction: routine?.instruction ?? "",
-      active: true,
+      active: routine?.active ?? true,
       triggers: routine ? [parseWhen(routine.when)] : [],
       runs: [],
     });
@@ -500,40 +494,16 @@ export function ProductDemo() {
   }
 
   function changeRoutine(patch: Partial<RoutineDraft>) {
-    setRoutineDraft((current) => {
-      if (!current) {
-        return current;
-      }
-      const next = { ...current, ...patch };
-      setBots((bots) =>
-        bots.map((bot) => {
-          if (bot.id !== activeId) {
-            return bot;
-          }
-          const routines = [...bot.routines];
-          const item: DemoRoutine = {
-            name: next.name.trim() || "Untitled routine",
-            when: whenLabel(next.triggers),
-            instruction: next.instruction,
-          };
-          if (next.index === null) {
-            next.index = routines.length;
-            routines.push(item);
-          } else {
-            routines[next.index] = item;
-          }
-          return { ...bot, routines };
-        }),
-      );
-      return next;
-    });
+    setRoutineDraft((current) => (current ? { ...current, ...patch } : current));
   }
 
   function persistRoutine(draftState: RoutineDraft) {
+    const index = draftState.index ?? active.routines.length;
     const next: DemoRoutine = {
       name: draftState.name.trim() || "Untitled routine",
       when: whenLabel(draftState.triggers),
       instruction: draftState.instruction,
+      active: draftState.active,
     };
     setBots((current) =>
       current.map((bot) => {
@@ -541,14 +511,15 @@ export function ProductDemo() {
           return bot;
         }
         const routines = [...bot.routines];
-        if (draftState.index === null) {
+        if (index === routines.length) {
           routines.push(next);
         } else {
-          routines[draftState.index] = next;
+          routines[index] = next;
         }
         return { ...bot, routines };
       }),
     );
+    return index;
   }
 
   function saveRoutine() {
@@ -570,7 +541,7 @@ export function ProductDemo() {
     const color = BOT_COLORS[bots.length % BOT_COLORS.length] ?? "#3EC5A8";
     const bot: LiveBot = {
       id: `bot-${Date.now()}`,
-      name: "",
+      name: "New bot",
       color,
       time: "Now",
       preview: "Say what you want this bot doing",
@@ -682,13 +653,19 @@ export function ProductDemo() {
     if (!routineDraft?.name.trim()) {
       return;
     }
-    persistRoutine(routineDraft);
-    changeRoutine({
-      runs: [
-        ...routineDraft.runs,
-        { mark: "●", color: "#4ECB71", text: "Completed", time: "Just now" },
-      ],
-    });
+    const index = persistRoutine(routineDraft);
+    setRoutineDraft((current) =>
+      current
+        ? {
+            ...current,
+            index,
+            runs: [
+              ...current.runs,
+              { mark: "●", color: "#4ECB71", text: "Completed", time: "Just now" },
+            ],
+          }
+        : current,
+    );
     appendMessage(active.id, { type: "meta", text: `Routine ran · ${routineDraft.name}` });
   }
 
@@ -699,6 +676,7 @@ export function ProductDemo() {
           id="product-demo-bots"
           className={`product-demo__sidebar${menuOpen ? " is-open" : ""}`}
           aria-hidden={compact && !menuOpen}
+          inert={compact && !menuOpen}
         >
           <div className="product-demo__chrome">
             <div className="product-demo__traffic" aria-hidden="true">

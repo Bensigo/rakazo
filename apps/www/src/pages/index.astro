@@ -4,6 +4,7 @@ import Footer from "../components/Footer.astro";
 import Header from "../components/Header.astro";
 import { ProductDemo } from "../components/ProductDemo";
 import RosterBotAvatar from "../components/RosterBotAvatar.astro";
+import WaitlistForm from "../components/WaitlistForm.astro";
 import { DEMO_ROSTER } from "../demo";
 import { fetchGithubStars, formatStarCount } from "../github";
 import BaseLayout from "../layouts/BaseLayout.astro";
@@ -14,7 +15,6 @@ import {
   SITE_DESCRIPTION,
   SITE_NAME,
   SITE_URL,
-  WAITLIST_HREF,
 } from "../site";
 
 const stars = await fetchGithubStars();
@@ -170,7 +170,7 @@ const structuredData = {
               <div>Same bots, same routines, no migration</div>
             </div>
             <div class="comparison-actions">
-              <Button href={WAITLIST_HREF} variant="secondary" size="sm">Join the waitlist</Button>
+              <WaitlistForm />
             </div>
           </article>
         </div>

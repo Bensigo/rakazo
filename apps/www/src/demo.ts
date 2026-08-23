@@ -15,6 +15,7 @@ export type DemoRoutine = {
   name: string;
   when: string;
   instruction?: string;
+  active?: boolean;
 };
 
 export type DemoScreen = {

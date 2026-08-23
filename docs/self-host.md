@@ -159,7 +159,7 @@ Pull the new source, rebuild with `GIT_SHA=$(git rev-parse HEAD)`, run `pnpm --f
 
 ## What “Rakazo Cloud” still needs
 
-`apps/www` (Astro, `output: "static"`, `site: https://rakazo.com`) can go live today on Vercel, Cloudflare Pages, or any static host. The waitlist link is `mailto:hello@rakazo.com`. That is the marketing site, not the product.
+`apps/www` owns the marketing site and its waitlist end to end. Astro builds the static pages, and the colocated Vercel function at `apps/www/api/waitlist.ts` records signups in the marketing PostHog project using its write-only `PUBLIC_POSTHOG_KEY`. It never calls the Rakazo product API. Another static host needs an equivalent same-origin function for `/api/waitlist`.
 
 The product cannot be “pushed live” as a Vercel serverless app. Graphile Worker, Postgres `LISTEN`, Pi runs, and Docker computers need durable processes and a sandbox host.
 
