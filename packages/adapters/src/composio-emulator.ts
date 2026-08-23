@@ -29,25 +29,29 @@ export class ComposioEmulator implements ComposioProvider {
 
   describe() {
     return {
-      id: "composio-emulator",
+      id: "composio",
       contractVersion: "1",
       adapterVersion: "0.1.0",
       capabilities: { discover: true, oauth: true, secretsBrokered: true },
     };
   }
 
-  async catalog(userId: string, query?: string): Promise<ComposioCatalogItem[]> {
-    const connected = this.connectedByUser.get(userId) ?? new Set<string>();
+  async catalog(context: AdapterContext, query?: string) {
+    const connected = this.connectedByUser.get(context.userId) ?? new Set<string>();
     return filterCatalog(
       this.directory.map((item) => ({ ...item, connected: connected.has(item.slug) })),
       query ?? "",
-    );
+    ).map((item) => ({ ...item, connectorId: "composio" }));
   }
 
   async warmDirectory(): Promise<void> {}
 
   async listConnectedSlugs(userId: string): Promise<string[]> {
     return [...(this.connectedByUser.get(userId) ?? [])];
+  }
+
+  async listConnectedExternalIds(context: AdapterContext): Promise<string[]> {
+    return this.listConnectedSlugs(context.userId);
   }
 
   async discoverTools(_context: AdapterContext): Promise<ConnectorTool[]> {
@@ -68,8 +72,8 @@ export class ComposioEmulator implements ComposioProvider {
     return { authorizationUrl: null, state: request.provider };
   }
 
-  async connectionReady(userId: string, slug: string): Promise<boolean> {
-    return this.connectedByUser.get(userId)?.has(slug) ?? false;
+  async connectionReady(context: AdapterContext, slug: string): Promise<boolean> {
+    return this.connectedByUser.get(context.userId)?.has(slug) ?? false;
   }
 
   async complete(

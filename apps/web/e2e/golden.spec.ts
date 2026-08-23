@@ -90,7 +90,7 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
   await expect(page.getByText("Monday briefing")).toBeVisible();
   await captureScreenshot(page, testInfo, "10-routine-created");
 
-  await page.getByText("Plugins").click();
+  await page.getByText("Integrations").click();
   await expect(page.getByPlaceholder("Search apps")).toBeVisible();
   await expect(page.getByText("Gmail", { exact: true })).toBeVisible();
   await expect(page.getByText("Slack", { exact: true })).toBeVisible();
@@ -110,10 +110,10 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
   await expect(page.getByText("Gmail", { exact: true })).toBeHidden();
   await captureScreenshot(page, testInfo, "11b-connected-plugins-empty");
 
-  await page.getByRole("tab", { name: "All", exact: true }).click();
+  await page.getByRole("tab", { name: "Apps", exact: true }).click();
   await expect(page.getByText("Gmail", { exact: true })).toBeVisible();
   await expect(gmailRow.getByRole("button", { name: "Connect", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Close plugins" }).click();
+  await page.getByRole("button", { name: "Close integrations" }).click();
 
   await page.getByText("Chief").first().click();
   const gear = page.getByRole("button", { name: "Bot settings" });

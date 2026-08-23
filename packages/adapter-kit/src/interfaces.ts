@@ -16,6 +16,7 @@ import type {
   ComputerRef,
   ConnectorCall,
   ConnectorCapabilities,
+  ConnectorCatalogItem,
   ConnectorEvent,
   ConnectorTool,
   ControlLeaseRef,
@@ -128,6 +129,16 @@ export interface ConnectionAuthProvider {
     context: AdapterContext,
   ): Promise<{ connectionRef: string }>;
   revoke(connectionRef: string, context: AdapterContext): Promise<void>;
+}
+
+/** A connector that also owns an end-user app catalog and connection lifecycle. */
+export interface ManagedConnectorProvider
+  extends ConnectorProvider,
+    Omit<ConnectionAuthProvider, "describe"> {
+  catalog(context: AdapterContext, query?: string): Promise<ConnectorCatalogItem[]>;
+  listConnectedExternalIds(context: AdapterContext): Promise<string[]>;
+  connectionReady(context: AdapterContext, externalId: string): Promise<boolean>;
+  warmDirectory?(): Promise<void>;
 }
 
 export interface MemoryStore {

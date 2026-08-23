@@ -1,9 +1,10 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { implement, ORPCError } from "@orpc/server";
 import {
   type AdapterContext,
   type AgentHomeStore,
   type ArtifactStore,
+  type ConnectorCatalogItem,
   computerControlExpireJobKey,
   type JobPublisher,
   type MemoryStore,
@@ -17,9 +18,9 @@ import {
   acquireComputerExecutionLease,
   applyTeachingDesktopInput,
   archiveBot,
-  type ComposioProvider,
   ComputerBusyError,
   type ComputerExecutionLease,
+  type ConnectorRegistry,
   checkpointAndRecordComputerWorkspace,
   createVoiceProvider,
   deleteSupermemoryContainer,
@@ -32,6 +33,7 @@ import {
   listPiCatalog,
   type PiOAuthLogins,
   planLiveConnectionSync,
+  prepareApiInstall,
   provisionComputer,
   releaseComputerExecutionLease,
   resolveBotWorkspacePath,
@@ -46,10 +48,16 @@ import {
   takeoverLeaseMs,
   toComputerRef,
   touchRunningComputer,
+  verifyMcpInstall,
 } from "@rakazo/adapters";
 import type { Auth } from "@rakazo/auth";
 import { type Actor, appContract, type ComputerStatus, type Me } from "@rakazo/contracts";
-import { ACTIVE_RUN_STATUSES, AttachmentValidationError, nextCronDate } from "@rakazo/core";
+import {
+  ACTIVE_RUN_STATUSES,
+  AttachmentValidationError,
+  containsSecret,
+  nextCronDate,
+} from "@rakazo/core";
 import {
   appendEventInTransaction,
   createGroupRepos,
@@ -96,15 +104,17 @@ const MAX_COMPUTER_TEXT_FILE_BYTES = 2 * 1024 * 1024;
 const THREAD_MESSAGE_PAGE_SIZE = 100;
 const EXPORT_MESSAGE_PAGE_SIZE = 500;
 
-async function reconcilePendingComposioConnections(
+async function reconcilePendingConnections(
   prisma: PrismaClient,
   owner: Pick<Actor, "workspaceId" | "userId">,
+  connectorId: string,
   connectedProviders: string[],
 ): Promise<void> {
   const rows = await prisma.connection.findMany({
     where: {
       workspaceId: owner.workspaceId,
       userId: owner.userId,
+      connectorId,
       provider: { in: connectedProviders },
       status: { in: ["pending", "connected"] },
     },
@@ -154,6 +164,20 @@ function computerContext(actor: Actor, botId: string, operationId: string): Adap
   };
 }
 
+function connectionContext(
+  actor: Pick<Actor, "workspaceId" | "userId">,
+  operationId: string,
+  signal?: AbortSignal,
+): AdapterContext {
+  return {
+    operationId,
+    traceId: operationId,
+    workspaceId: actor.workspaceId,
+    userId: actor.userId,
+    signal: signal ?? new AbortController().signal,
+  };
+}
+
 export interface RouterDeps {
   prisma: PrismaClient;
   events: ThreadEvents;
@@ -164,7 +188,7 @@ export interface RouterDeps {
   home: AgentHomeStore;
   secrets: EncryptedSecretStore;
   oauthLogins: PiOAuthLogins;
-  composio?: ComposioProvider;
+  connectors: ConnectorRegistry;
   artifacts: ArtifactStore;
   dataDir: string;
   env: {
@@ -1436,76 +1460,183 @@ export function createRouter(deps: RouterDeps) {
         });
         return rows.map((row) => ({
           id: row.id,
-          kind: row.kind as "skill" | "plugin" | "mcp" | "connection",
+          kind: row.kind as "skill" | "plugin" | "mcp" | "api" | "connection",
           name: row.name,
           source: row.source,
           version: row.version,
           digest: row.digest,
+          secretConfigured: Boolean(row.secretId),
           config: row.config as Record<string, unknown>,
           createdAt: row.createdAt.toISOString(),
         }));
       }),
       install: authed.capabilities.install.handler(async ({ context, input }) => {
-        const row = await deps.prisma.capabilityInstall.create({
-          data: {
-            workspaceId: context.actor.workspaceId,
-            userId: context.actor.userId,
-            kind: input.kind,
-            name: input.name,
-            source: input.source,
-            config: input.config as Prisma.InputJsonValue,
-            digest: "sha256:local",
-            version: "0.0.0",
-          },
+        let source = input.source.trim();
+        let config = input.config;
+        const credential = input.credential?.trim() || undefined;
+        if (
+          credential &&
+          credential.length >= 8 &&
+          (source.includes(credential) || containsSecret(config, [credential]))
+        ) {
+          throw new ORPCError("BAD_REQUEST", {
+            message: "Put credentials only in the encrypted credential field",
+          });
+        }
+        if (JSON.stringify(config).length > 2_000_000) {
+          throw new ORPCError("BAD_REQUEST", { message: "Capability configuration is too large" });
+        }
+        if (credential && input.kind !== "mcp" && input.kind !== "api") {
+          throw new ORPCError("BAD_REQUEST", {
+            message: "Credentials are only accepted for MCP and API tool sources",
+          });
+        }
+        try {
+          if (input.kind === "mcp") {
+            if (config.preset === "treg") {
+              source = "https://treg.to/mcp/";
+              config = { ...config, preset: "treg", auth: { type: "bearer" } };
+            }
+            const verified = await verifyMcpInstall({
+              source,
+              config,
+              credential,
+              signal: context.signal,
+            });
+            config = verified.config;
+          }
+          if (input.kind === "api") {
+            const prepared = await prepareApiInstall({
+              source,
+              config,
+              credential,
+              signal: context.signal,
+            });
+            source = prepared.source;
+            config = prepared.config;
+          }
+        } catch (error) {
+          const message = sanitizeComposioError(error);
+          throw new ORPCError("BAD_REQUEST", {
+            message: credential ? message.split(credential).join("[redacted]") : message,
+          });
+        }
+        const stored = credential
+          ? await deps.secrets.put(credential, {
+              operationId: "capabilities.install",
+              traceId: "capabilities.install",
+              workspaceId: context.actor.workspaceId,
+              userId: context.actor.userId,
+              signal: context.signal ?? new AbortController().signal,
+            })
+          : undefined;
+        const digest = `sha256:${createHash("sha256")
+          .update(JSON.stringify({ kind: input.kind, source, config }))
+          .digest("hex")}`;
+        const row = await deps.prisma.$transaction(async (tx) => {
+          if (stored) {
+            await tx.secret.create({
+              data: {
+                id: stored.id,
+                workspaceId: context.actor.workspaceId,
+                userId: context.actor.userId,
+                kind: "connector",
+                ciphertext: stored.ciphertext,
+              },
+            });
+          }
+          return tx.capabilityInstall.create({
+            data: {
+              workspaceId: context.actor.workspaceId,
+              userId: context.actor.userId,
+              kind: input.kind,
+              name: input.name.trim(),
+              source,
+              secretId: stored?.id,
+              config: config as Prisma.InputJsonValue,
+              digest,
+              version: "1.0.0",
+            },
+          });
         });
         return {
           id: row.id,
-          kind: row.kind as "skill" | "plugin" | "mcp" | "connection",
+          kind: row.kind as "skill" | "plugin" | "mcp" | "api" | "connection",
           name: row.name,
           source: row.source,
           version: row.version,
           digest: row.digest,
+          secretConfigured: Boolean(row.secretId),
           config: row.config as Record<string, unknown>,
           createdAt: row.createdAt.toISOString(),
         };
       }),
       remove: authed.capabilities.remove.handler(async ({ context, input }) => {
-        await deps.prisma.capabilityInstall.deleteMany({
-          where: {
-            id: input.id,
-            workspaceId: context.actor.workspaceId,
-            userId: context.actor.userId,
-          },
+        await deps.prisma.$transaction(async (tx) => {
+          const existing = await tx.capabilityInstall.findFirst({
+            where: {
+              id: input.id,
+              workspaceId: context.actor.workspaceId,
+              userId: context.actor.userId,
+            },
+          });
+          if (!existing) return;
+          await tx.capabilityInstall.delete({ where: { id: existing.id } });
+          if (existing.secretId) {
+            const shared = await tx.capabilityInstall.count({
+              where: { secretId: existing.secretId },
+            });
+            if (shared === 0) {
+              await tx.secret.deleteMany({
+                where: {
+                  id: existing.secretId,
+                  workspaceId: context.actor.workspaceId,
+                  userId: context.actor.userId,
+                },
+              });
+            }
+          }
         });
         return { ok: true as const };
       }),
     },
     connections: {
       catalog: authed.connections.catalog.handler(async ({ context, input }) => {
-        if (!deps.composio) return [];
-        try {
-          const items = await deps.composio.catalog(context.actor.userId, input.query);
-          const nowConnected = items.filter((item) => item.connected).map((item) => item.slug);
-          if (nowConnected.length > 0) {
-            // A connection can finish on Composio's side after our own completion check gave
-            // up (see PluginsOverlay's polling timeout) — reconcile stale "pending" rows here
-            // so callers like the run executor, which trust our local status, stay in sync.
-            // Reuse the executor's one-row-per-provider plan so duplicate auth attempts do not
-            // leave stale locally connected rows behind after a later revoke.
-            // Best effort: a failed reconciliation write shouldn't blank out an otherwise
-            // successful catalog fetch — the caller still gets accurate, if unreconciled, data.
-            await reconcilePendingComposioConnections(
-              deps.prisma,
-              context.actor,
-              nowConnected,
-            ).catch((error) => {
-              console.error("composio pending-connection reconciliation failed", error);
-            });
-          }
-          return items;
-        } catch {
-          return [];
-        }
+        const adapterContext = connectionContext(
+          context.actor,
+          "connections.catalog",
+          context.signal,
+        );
+        const providers = input.connectorId
+          ? [deps.connectors.managed(input.connectorId)].filter(
+              (provider): provider is NonNullable<typeof provider> => Boolean(provider),
+            )
+          : deps.connectors.managedProviders();
+        const catalogs = await Promise.all(
+          providers.map(async (provider): Promise<ConnectorCatalogItem[]> => {
+            try {
+              const items = await provider.catalog(adapterContext, input.query);
+              const nowConnected = items.filter((item) => item.connected).map((item) => item.slug);
+              if (nowConnected.length > 0) {
+                await reconcilePendingConnections(
+                  deps.prisma,
+                  context.actor,
+                  provider.describe().id,
+                  nowConnected,
+                ).catch((error) => {
+                  console.error(
+                    `${provider.describe().id} pending-connection reconciliation failed`,
+                    error,
+                  );
+                });
+              }
+              return items;
+            } catch {
+              return [];
+            }
+          }),
+        );
+        return catalogs.flat();
       }),
       list: authed.connections.list.handler(async ({ context }) => {
         const rows = await deps.prisma.connection.findMany({
@@ -1513,6 +1644,7 @@ export function createRouter(deps: RouterDeps) {
         });
         return rows.map((row) => ({
           id: row.id,
+          connectorId: row.connectorId,
           provider: row.provider,
           displayName: row.displayName,
           status: row.status as "pending" | "connected" | "revoked" | "error",
@@ -1521,28 +1653,26 @@ export function createRouter(deps: RouterDeps) {
         }));
       }),
       begin: authed.connections.begin.handler(async ({ context, input }) => {
+        const connector = deps.connectors.managed(input.connectorId);
+        if (!connector) {
+          throw new ORPCError("BAD_REQUEST", {
+            message: `Connector ${input.connectorId} is not configured`,
+          });
+        }
         const row = await deps.prisma.connection.create({
           data: {
             workspaceId: context.actor.workspaceId,
             userId: context.actor.userId,
+            connectorId: input.connectorId,
             provider: input.provider,
             displayName: input.displayName,
             status: "pending",
           },
         });
-        if (!deps.composio) {
-          return { connectionId: row.id, authorizationUrl: null };
-        }
         try {
-          const auth = await deps.composio.begin(
+          const auth = await connector.begin(
             { provider: input.provider, redirectUrl: `${deps.env.webOrigin}/app` },
-            {
-              operationId: "connections.begin",
-              traceId: "connections.begin",
-              workspaceId: context.actor.workspaceId,
-              userId: context.actor.userId,
-              signal: new AbortController().signal,
-            },
+            connectionContext(context.actor, "connections.begin", context.signal),
           );
           await deps.prisma.connection.update({
             where: { id: row.id },
@@ -1570,26 +1700,28 @@ export function createRouter(deps: RouterDeps) {
           },
         });
         if (!existing) throw new IsolationError();
-        if (deps.composio) {
-          const ready = await deps.composio.connectionReady(
-            context.actor.userId,
+        const connector = deps.connectors.managed(existing.connectorId);
+        if (!connector) {
+          throw new ORPCError("BAD_REQUEST", {
+            message: `Connector ${existing.connectorId} is not configured`,
+          });
+        }
+        let row = existing;
+        if (existing.status !== "connected") {
+          const ready = await connector.connectionReady(
+            connectionContext(context.actor, "connections.complete", context.signal),
             existing.provider,
           );
           if (ready) {
-            await deps.prisma.connection.update({
+            row = await deps.prisma.connection.update({
               where: { id: existing.id },
               data: { status: "connected" },
             });
           }
-        } else {
-          await deps.prisma.connection.update({
-            where: { id: existing.id },
-            data: { status: "connected" },
-          });
         }
-        const row = await deps.prisma.connection.findFirstOrThrow({ where: { id: existing.id } });
         return {
           id: row.id,
+          connectorId: row.connectorId,
           provider: row.provider,
           displayName: row.displayName,
           status: row.status as "pending" | "connected" | "revoked" | "error",
@@ -1605,17 +1737,19 @@ export function createRouter(deps: RouterDeps) {
             userId: context.actor.userId,
           },
         });
-        if (row && deps.composio) {
-          await deps.composio.revoke(row.provider, {
-            operationId: "connections.revoke",
-            traceId: "connections.revoke",
-            workspaceId: context.actor.workspaceId,
-            userId: context.actor.userId,
-            signal: new AbortController().signal,
-          });
+        const connector = row ? deps.connectors.managed(row.connectorId) : undefined;
+        if (row && connector) {
+          await connector.revoke(
+            row.provider,
+            connectionContext(context.actor, "connections.revoke", context.signal),
+          );
         }
         await deps.prisma.connection.updateMany({
-          where: { id: input.connectionId, workspaceId: context.actor.workspaceId },
+          where: {
+            id: input.connectionId,
+            workspaceId: context.actor.workspaceId,
+            userId: context.actor.userId,
+          },
           data: { status: "revoked" },
         });
         return { ok: true as const };

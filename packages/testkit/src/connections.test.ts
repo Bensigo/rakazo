@@ -1,7 +1,11 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ComposioEmulator } from "@rakazo/adapters";
+import {
+  ComposioEmulator,
+  EncryptedSecretStore,
+  InstalledConnectorProvider,
+} from "@rakazo/adapters";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { sessionCookieHeader } from "./index.js";
 
@@ -15,6 +19,7 @@ process.env.AGENT_RUNTIME = "scripted";
 
 const hasDb = process.env.VERIFY_DATABASE === "1" && Boolean(process.env.DATABASE_URL);
 const describeWithDatabase = hasDb ? describe : describe.skip;
+const TEST_ENCRYPTION_KEY = "offline-connector-test-encryption-key";
 
 describeWithDatabase("Composio catalog reconciliation", () => {
   let handles: AppHandles;
@@ -33,6 +38,7 @@ describeWithDatabase("Composio catalog reconciliation", () => {
       sandboxProvider: "fake",
       agentRuntime: "scripted",
       composio,
+      encryptionKey: TEST_ENCRYPTION_KEY,
       signupsEnabled: "true",
     });
     app = handles.app;
@@ -133,6 +139,104 @@ describeWithDatabase("Composio catalog reconciliation", () => {
     await expect(rpc(app, cookie, "connections/catalog")).resolves.toEqual([]);
     await expect(statuses([pending.id])).resolves.toEqual([{ id: pending.id, status: "pending" }]);
     failure.mockRestore();
+  });
+
+  it("imports an OpenAPI connector, keeps its credential encrypted, and routes calls", async () => {
+    const cookie = await signup(app, `api-connector-${stamp}@rakazo.test`, "API Connector");
+    const actor = await rpc<Actor>(app, cookie, "me");
+    const credential = "test-connector-secret-value";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/openapi.json")) {
+        return new Response(
+          JSON.stringify({
+            openapi: "3.1.0",
+            servers: [{ url: "https://93.184.216.34/v1" }],
+            paths: {
+              "/contacts/{contactId}": {
+                get: {
+                  operationId: "getContact",
+                  summary: "Get one contact",
+                  parameters: [
+                    {
+                      name: "contactId",
+                      in: "path",
+                      required: true,
+                      schema: { type: "string" },
+                    },
+                  ],
+                },
+              },
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      expect(url).toBe("https://93.184.216.34/v1/contacts/contact-1");
+      expect(new Headers(init?.headers).get("authorization")).toBe(`Bearer ${credential}`);
+      return new Response(JSON.stringify({ id: "contact-1", reflected: credential }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    const install = await rpc<{
+      id: string;
+      config: Record<string, unknown>;
+      secretConfigured: boolean;
+    }>(app, cookie, "capabilities/install", {
+      kind: "api",
+      name: "CRM API",
+      source: "https://93.184.216.34/openapi.json",
+      credential,
+      config: { openApi: true, auth: { type: "bearer" } },
+    });
+    expect(install.secretConfigured).toBe(true);
+    expect(JSON.stringify(install)).not.toContain(credential);
+
+    const storedInstall = await handles.prisma.capabilityInstall.findUniqueOrThrow({
+      where: { id: install.id },
+    });
+    const storedSecret = await handles.prisma.secret.findUniqueOrThrow({
+      where: { id: storedInstall.secretId! },
+    });
+    expect(storedSecret.ciphertext).not.toContain(credential);
+
+    const provider = new InstalledConnectorProvider(
+      handles.prisma,
+      new EncryptedSecretStore(TEST_ENCRYPTION_KEY),
+    );
+    const adapterContext = {
+      operationId: "api-connector-test",
+      traceId: "api-connector-test",
+      workspaceId: actor.workspaceId,
+      userId: actor.userId,
+      signal: new AbortController().signal,
+    };
+    const tools = await provider.discoverTools(adapterContext);
+    const tool = tools.find((candidate) => candidate.name === "getContact");
+    expect(tool).toMatchObject({ readOnly: true });
+
+    const events = [];
+    for await (const event of provider.execute(
+      {
+        tool: "getContact",
+        args: { contactId: "contact-1" },
+        executionId: "api-call-1",
+        route: tool!.route,
+      },
+      adapterContext,
+    )) {
+      events.push(event);
+    }
+    expect(JSON.stringify(events)).toContain("contact-1");
+    expect(JSON.stringify(events)).not.toContain(credential);
+
+    await rpc(app, cookie, "capabilities/remove", { id: install.id });
+    await expect(
+      handles.prisma.secret.findUnique({ where: { id: storedSecret.id } }),
+    ).resolves.toBeNull();
+    fetchMock.mockRestore();
   });
 
   async function createConnection(owner: Actor, provider: string) {

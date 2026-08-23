@@ -301,10 +301,11 @@ export const appContract = {
     install: oc
       .input(
         z.object({
-          kind: z.enum(["skill", "plugin", "mcp"]),
-          name: z.string(),
-          source: z.string(),
+          kind: z.enum(["skill", "plugin", "mcp", "api"]),
+          name: z.string().min(1).max(120),
+          source: z.string().min(1).max(2048),
           config: z.record(z.string(), z.unknown()).default({}),
+          credential: z.string().max(16_384).optional(),
         }),
       )
       .output(CapabilityInstallSchema),
@@ -312,11 +313,17 @@ export const appContract = {
   },
   connections: {
     catalog: oc
-      .input(z.object({ query: z.string().optional() }))
+      .input(z.object({ query: z.string().optional(), connectorId: z.string().optional() }))
       .output(z.array(ConnectionCatalogItemSchema)),
     list: oc.output(z.array(ConnectionSchema)),
     begin: oc
-      .input(z.object({ provider: z.string(), displayName: z.string() }))
+      .input(
+        z.object({
+          connectorId: z.string().default("composio"),
+          provider: z.string(),
+          displayName: z.string(),
+        }),
+      )
       .output(z.object({ connectionId: Id, authorizationUrl: z.string().nullable() })),
     complete: oc
       .input(z.object({ connectionId: Id, code: z.string().optional() }))

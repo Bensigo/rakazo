@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createConnectorStack } from "./composio-connector.js";
 import { ComposioEmulator } from "./composio-emulator.js";
 
 const context = {
@@ -10,11 +11,18 @@ const context = {
 };
 
 describe("ComposioEmulator", () => {
+  it("remains registered when explicitly supplied without a live Composio key", () => {
+    const emulator = new ComposioEmulator();
+    const stack = createConnectorStack(false, emulator);
+
+    expect(stack.connector.managed("composio")).toBe(emulator);
+  });
+
   it("serves and searches a deterministic catalog", async () => {
     const emulator = new ComposioEmulator();
 
-    await expect(emulator.catalog(context.userId)).resolves.toHaveLength(4);
-    await expect(emulator.catalog(context.userId, "git")).resolves.toEqual([
+    await expect(emulator.catalog(context)).resolves.toHaveLength(4);
+    await expect(emulator.catalog(context, "git")).resolves.toEqual([
       expect.objectContaining({ slug: "GITHUB", name: "GitHub", connected: false }),
     ]);
   });
@@ -23,14 +31,16 @@ describe("ComposioEmulator", () => {
     const emulator = new ComposioEmulator();
     await emulator.begin({ provider: "GMAIL", redirectUrl: "http://example.test" }, context);
 
-    await expect(emulator.connectionReady(context.userId, "GMAIL")).resolves.toBe(true);
+    await expect(emulator.connectionReady(context, "GMAIL")).resolves.toBe(true);
     await expect(emulator.listConnectedSlugs(context.userId)).resolves.toEqual(["GMAIL"]);
-    await expect(emulator.connectionReady("user-2", "GMAIL")).resolves.toBe(false);
-    await expect(emulator.catalog(context.userId, "gmail")).resolves.toEqual([
+    await expect(emulator.connectionReady({ ...context, userId: "user-2" }, "GMAIL")).resolves.toBe(
+      false,
+    );
+    await expect(emulator.catalog(context, "gmail")).resolves.toEqual([
       expect.objectContaining({ slug: "GMAIL", connected: true }),
     ]);
 
     await emulator.revoke("GMAIL", context);
-    await expect(emulator.connectionReady(context.userId, "GMAIL")).resolves.toBe(false);
+    await expect(emulator.connectionReady(context, "GMAIL")).resolves.toBe(false);
   });
 });

@@ -1429,7 +1429,7 @@ export function ShellPage() {
           <span className="grid h-[30px] w-[30px] place-items-center rounded-full bg-[#17171A] text-[#9A9AA0]">
             <Puzzle size={15} strokeWidth={1.7} />
           </span>
-          <span className="text-[14.5px] text-[#C9C9CE]">Plugins</span>
+          <span className="text-[14.5px] text-[#C9C9CE]">Integrations</span>
         </button>
         <div className="relative">
           {menuOpen ? (
