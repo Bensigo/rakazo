@@ -58,7 +58,7 @@ async function fetchWaitlist(request: Request) {
   }
 
   // A hidden field catches basic form spam without confirming the trap to bots.
-  if (body.company?.trim()) {
+  if (body.contactNote?.trim()) {
     return json(200, { ok: true });
   }
 

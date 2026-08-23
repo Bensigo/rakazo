@@ -17,7 +17,7 @@ describe("waitlist", () => {
   it("rejects malformed and oversized email addresses", () => {
     expect(normalizeWaitlistEmail("person@example")).toBeNull();
     expect(normalizeWaitlistEmail(`${"a".repeat(250)}@example.com`)).toBeNull();
-    expect(parseWaitlistBody({ email: "person@example.com", company: 42 })).toBeNull();
+    expect(parseWaitlistBody({ email: "person@example.com", contactNote: 42 })).toBeNull();
   });
 
   it("captures a deduplicated person in the marketing analytics project", async () => {
@@ -67,5 +67,18 @@ describe("waitlist", () => {
     const response = await waitlistFunction.fetch(request);
 
     expect(response.status).toBe(400);
+  });
+
+  it("silently accepts submissions that fill the bot trap", async () => {
+    const request = new Request("https://rakazo.com/api/waitlist", {
+      method: "POST",
+      body: JSON.stringify({ email: "person@example.com", contactNote: "filled by a bot" }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const response = await waitlistFunction.fetch(request);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true });
   });
 });

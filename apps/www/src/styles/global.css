@@ -645,6 +645,118 @@ button {
   color: #b42318;
 }
 
+.get-started-dialog {
+  width: min(520px, calc(100% - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  overflow: auto;
+  border: 1px solid var(--line-2);
+  border-radius: 24px;
+  background: var(--surface);
+  padding: 0;
+  color: var(--body);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.2);
+}
+
+.get-started-dialog::backdrop {
+  background: rgba(20, 20, 22, 0.48);
+  backdrop-filter: blur(4px);
+}
+
+.get-started-dialog__panel {
+  position: relative;
+  padding: 38px;
+}
+
+.get-started-dialog__close {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted-2);
+}
+
+.get-started-dialog__close:hover,
+.get-started-dialog__close:focus-visible {
+  background: var(--surface-soft);
+  color: var(--ink);
+}
+
+.get-started-dialog__close svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 1.8;
+}
+
+.get-started-dialog h2 {
+  max-width: 390px;
+  margin: 0;
+  color: var(--ink);
+  font-family: Aeonik, Geist, ui-sans-serif, system-ui, sans-serif;
+  font-size: 30px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.get-started-dialog__copy {
+  margin: 14px 0 0;
+  color: var(--muted-2);
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+.get-started-dialog__form {
+  margin-top: 26px;
+}
+
+.get-started-dialog__note {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.get-started-dialog__success-mark {
+  display: flex;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+  border-radius: 14px;
+  background: #edf9ef;
+  color: var(--success);
+}
+
+.get-started-dialog__success-mark svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.get-started-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 26px;
+}
+
 .comparison-kicker {
   display: flex;
   align-items: center;
@@ -2091,6 +2203,14 @@ button {
 
   .waitlist-form {
     grid-template-columns: 1fr;
+  }
+
+  .get-started-dialog__panel {
+    padding: 32px 24px 24px;
+  }
+
+  .get-started-dialog__actions {
+    flex-direction: column;
   }
 
   .button,

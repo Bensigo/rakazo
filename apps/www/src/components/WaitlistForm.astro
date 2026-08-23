@@ -1,7 +1,16 @@
+---
+type Props = {
+  emailId?: string;
+  submitLabel?: string;
+};
+
+const { emailId = "waitlist-email", submitLabel = "Continue" } = Astro.props;
+---
+
 <form class="waitlist-form" data-waitlist-form data-endpoint="/api/waitlist" novalidate>
-  <label class="sr-only" for="waitlist-email">Email address</label>
+  <label class="sr-only" for={emailId}>Email address</label>
   <input
-    id="waitlist-email"
+    id={emailId}
     name="email"
     type="email"
     inputmode="email"
@@ -12,24 +21,27 @@
     placeholder="you@company.com"
     required
   />
-  <label class="waitlist-form__trap" aria-hidden="true">
-    Company
-    <input name="company" type="text" autocomplete="off" tabindex="-1" />
-  </label>
-  <button class="button button--secondary button--small" type="submit">Join the waitlist</button>
+  <div class="waitlist-form__trap" hidden>
+    <input name="contact-note" type="text" autocomplete="off" tabindex="-1" />
+  </div>
+  <button class="button button--primary button--small" type="submit" data-submit-label={submitLabel}>
+    {submitLabel}
+  </button>
   <p class="waitlist-form__status" data-waitlist-status aria-live="polite"></p>
 </form>
 
 <script>
   document.querySelectorAll<HTMLFormElement>("[data-waitlist-form]").forEach((form) => {
     const email = form.elements.namedItem("email");
-    const company = form.elements.namedItem("company");
+    const contactNote = form.elements.namedItem("contact-note");
     const submit = form.querySelector<HTMLButtonElement>("button[type='submit']");
     const status = form.querySelector<HTMLElement>("[data-waitlist-status]");
 
-    if (!(email instanceof HTMLInputElement) || !(company instanceof HTMLInputElement) || !submit || !status) {
+    if (!(email instanceof HTMLInputElement) || !(contactNote instanceof HTMLInputElement) || !submit || !status) {
       return;
     }
+
+    const submitLabel = submit.dataset.submitLabel || "Continue";
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -50,20 +62,21 @@
         const response = await fetch(endpoint, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ email: email.value, company: company.value }),
+          body: JSON.stringify({ email: email.value, contactNote: contactNote.value }),
         });
 
         if (!response.ok) throw new Error("Waitlist request failed");
 
         form.reset();
-        status.textContent = "You’re on the list.";
+        status.textContent = "You’re in.";
         status.classList.add("is-success");
-        submit.textContent = "Joined";
+        submit.textContent = "Added";
+        form.dispatchEvent(new CustomEvent("waitlist:joined", { bubbles: true }));
       } catch {
-        status.textContent = "Couldn’t join. Try again.";
+        status.textContent = "Couldn’t add you. Try again.";
         status.classList.add("is-error");
         submit.disabled = false;
-        submit.textContent = "Join the waitlist";
+        submit.textContent = submitLabel;
       }
     });
   });

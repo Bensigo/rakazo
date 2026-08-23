@@ -6,7 +6,7 @@ const CAPTURE_TIMEOUT_MS = 5_000;
 
 export type WaitlistBody = {
   email: string;
-  company?: string;
+  contactNote?: string;
 };
 
 type CaptureEnv = {
@@ -26,10 +26,10 @@ export function parseWaitlistBody(value: unknown): WaitlistBody | null {
   if (!value || typeof value !== "object") return null;
   const body = value as Record<string, unknown>;
   const email = body.email;
-  const company = body.company;
+  const contactNote = body.contactNote;
   if (typeof email !== "string") return null;
-  if (company === undefined) return { email };
-  if (typeof company === "string") return { email, company };
+  if (contactNote === undefined) return { email };
+  if (typeof contactNote === "string") return { email, contactNote };
   return null;
 }
 
