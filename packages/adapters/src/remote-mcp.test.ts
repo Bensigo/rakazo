@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertSafeRemoteUrl } from "./remote-mcp.js";
+import { assertSafeRemoteUrl, createSafeLookup } from "./remote-mcp.js";
 
 const publicResolver = async () => [{ address: "203.0.113.10", family: 4 as const }];
 
@@ -36,5 +36,26 @@ describe("remote MCP URL policy", () => {
         { address: "10.1.2.3", family: 4 as const },
       ]),
     ).rejects.toThrow("private address");
+  });
+
+  it("rejects private addresses in the lookup used by the network connection", async () => {
+    const safeLookup = createSafeLookup(async () => [{ address: "10.1.2.3", family: 4 }]);
+    const error = await new Promise<Error | null>((resolve) => {
+      safeLookup("connectors.example.test", { family: 0, all: false }, (lookupError) => {
+        resolve(lookupError);
+      });
+    });
+    expect(error).toMatchObject({ message: "Connector URL resolves to a private address" });
+  });
+
+  it("returns the validated address directly to the network connection", async () => {
+    const safeLookup = createSafeLookup(publicResolver);
+    const result = await new Promise<{ address: string; family?: number }>((resolve, reject) => {
+      safeLookup("connectors.example.test", { family: 0, all: false }, (error, address, family) => {
+        if (error) reject(error);
+        else resolve({ address: String(address), family });
+      });
+    });
+    expect(result).toEqual({ address: "203.0.113.10", family: 4 });
   });
 });

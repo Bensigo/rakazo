@@ -1,8 +1,9 @@
 import { lookup } from "node:dns/promises";
-import { isIP } from "node:net";
+import { isIP, type LookupFunction } from "node:net";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { ConnectorTool } from "@rakazo/adapter-kit";
+import { Agent, fetch as undiciFetch } from "undici";
 
 const MAX_MCP_TOOLS = 250;
 const MAX_MCP_PAGES = 20;
@@ -15,6 +16,17 @@ export interface RemoteMcpOptions {
   signal?: AbortSignal;
   fetch?: typeof globalThis.fetch;
 }
+
+type ResolvedAddress = { address: string; family: number };
+type ResolveHostname = (hostname: string) => Promise<ResolvedAddress[]>;
+
+export interface SafeRemoteFetch {
+  (input: string | URL | Request, init?: RequestInit): Promise<Response>;
+  close(): Promise<void>;
+}
+
+const resolveHostname: ResolveHostname = (hostname) =>
+  lookup(hostname, { all: true, verbatim: true });
 
 export async function listRemoteMcpTools(options: RemoteMcpOptions): Promise<ConnectorTool[]> {
   return withRemoteMcpClient(options, async (client, signal) => {
@@ -81,13 +93,13 @@ async function withRemoteMcpClient<T>(
     return await run(client, signal);
   } finally {
     await client.close().catch(() => undefined);
+    await safeFetch.close().catch(() => undefined);
   }
 }
 
 export async function assertSafeRemoteUrl(
   value: string,
-  resolve: (hostname: string) => Promise<Array<{ address: string; family: number }>> = (hostname) =>
-    lookup(hostname, { all: true, verbatim: true }),
+  resolve: ResolveHostname = resolveHostname,
 ): Promise<URL> {
   let url: URL;
   try {
@@ -100,25 +112,54 @@ export async function assertSafeRemoteUrl(
   if (url.hash) throw new Error("Connector URL must not contain a fragment");
   const hostname = url.hostname.replace(/^\[|\]$/g, "");
   if (isPrivateHostname(hostname)) throw new Error("Connector URL targets a private host");
-  const addresses = await resolve(hostname);
-  if (addresses.length === 0 || addresses.some((entry) => isPrivateAddress(entry.address))) {
-    throw new Error("Connector URL resolves to a private address");
-  }
+  assertPublicAddresses(await resolve(hostname));
   return url;
 }
 
 export function createSafeRemoteFetch(
-  baseFetch: typeof globalThis.fetch = globalThis.fetch,
-): typeof globalThis.fetch {
-  return async (input, init) => {
+  baseFetch: typeof globalThis.fetch = undiciFetch as typeof globalThis.fetch,
+  resolve: ResolveHostname = resolveHostname,
+): SafeRemoteFetch {
+  const dispatcher = new Agent({ connect: { lookup: createSafeLookup(resolve) } });
+  const safeFetch = async (input: string | URL | Request, init?: RequestInit) => {
     const url = await assertSafeRemoteUrl(
       typeof input === "string" || input instanceof URL ? String(input) : input.url,
+      resolve,
     );
-    const response = await baseFetch(url, { ...init, redirect: "manual" });
+    const response = await baseFetch(url, {
+      ...init,
+      redirect: "manual",
+      dispatcher,
+    } as RequestInit & { dispatcher: Agent });
     if (response.status >= 300 && response.status < 400) {
       throw new Error("Connector redirects are not allowed");
     }
     return response;
+  };
+  const result = safeFetch as SafeRemoteFetch;
+  result.close = () => dispatcher.close();
+  return result;
+}
+
+export function createSafeLookup(resolve: ResolveHostname = resolveHostname): LookupFunction {
+  return (hostname, options, callback) => {
+    void resolve(hostname)
+      .then((addresses) => {
+        assertPublicAddresses(addresses);
+        if (options.all) {
+          callback(null, addresses);
+          return;
+        }
+        const requestedFamily = typeof options.family === "number" ? options.family : 0;
+        const selected =
+          addresses.find((entry) => requestedFamily === 0 || entry.family === requestedFamily) ??
+          addresses[0];
+        if (!selected) throw new Error("Connector URL did not resolve to an address");
+        callback(null, selected.address, selected.family);
+      })
+      .catch((error: unknown) =>
+        callback(error instanceof Error ? error : new Error(String(error)), "", 0),
+      );
   };
 }
 
@@ -137,6 +178,12 @@ function isPrivateHostname(hostname: string): boolean {
     normalized === "metadata.google.internal" ||
     (isIP(normalized) !== 0 && isPrivateAddress(normalized))
   );
+}
+
+function assertPublicAddresses(addresses: ResolvedAddress[]): void {
+  if (addresses.length === 0 || addresses.some((entry) => isPrivateAddress(entry.address))) {
+    throw new Error("Connector URL resolves to a private address");
+  }
 }
 
 function isPrivateAddress(address: string): boolean {

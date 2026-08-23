@@ -272,16 +272,7 @@ export async function prepareApiInstall(input: {
     const documentUrl = new URL(input.source);
     const documentHeaders: Record<string, string> = { accept: "application/json", ...headers };
     applyCredential(documentUrl, documentHeaders, auth, input.credential);
-    const response = await createSafeRemoteFetch()(documentUrl, {
-      headers: documentHeaders,
-      signal: combineSignals(input.signal, AbortSignal.timeout(15_000)),
-    });
-    if (!response.ok) throw new Error(`OpenAPI document returned HTTP ${response.status}`);
-    const size = Number(response.headers.get("content-length") ?? 0);
-    if (size > 2_000_000) throw new Error("OpenAPI document is too large");
-    const { text, truncated } = await readBoundedText(response, 2_000_000);
-    if (truncated) throw new Error("OpenAPI document is too large");
-    const document = JSON.parse(text) as Record<string, unknown>;
+    const document = await loadOpenApiDocument(documentUrl, documentHeaders, input.signal);
     const imported = importOpenApiDocument(document);
     source = imported.baseUrl;
     operationsValue = imported.operations;
@@ -293,6 +284,28 @@ export async function prepareApiInstall(input: {
     config,
     operationCount: config.operations.length,
   };
+}
+
+async function loadOpenApiDocument(
+  url: URL,
+  headers: Record<string, string>,
+  signal?: AbortSignal,
+): Promise<Record<string, unknown>> {
+  const safeFetch = createSafeRemoteFetch();
+  try {
+    const response = await safeFetch(url, {
+      headers,
+      signal: combineSignals(signal, AbortSignal.timeout(15_000)),
+    });
+    if (!response.ok) throw new Error(`OpenAPI document returned HTTP ${response.status}`);
+    const size = Number(response.headers.get("content-length") ?? 0);
+    if (size > 2_000_000) throw new Error("OpenAPI document is too large");
+    const { text, truncated } = await readBoundedText(response, 2_000_000);
+    if (truncated) throw new Error("OpenAPI document is too large");
+    return JSON.parse(text) as Record<string, unknown>;
+  } finally {
+    await safeFetch.close().catch(() => undefined);
+  }
 }
 
 export function importOpenApiDocument(document: Record<string, unknown>): {
@@ -441,28 +454,33 @@ async function executeApiOperation(
     body = JSON.stringify(payload);
     headers["content-type"] = "application/json";
   }
-  const response = await createSafeRemoteFetch()(url, {
-    method: operation.method,
-    headers,
-    body,
-    signal: combineSignals(signal, AbortSignal.timeout(30_000)),
-  });
-  const { text, truncated } = await readBoundedText(response, 1_000_000);
-  let data: unknown = text;
+  const safeFetch = createSafeRemoteFetch();
   try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    // Keep non-JSON API responses as bounded text.
+    const response = await safeFetch(url, {
+      method: operation.method,
+      headers,
+      body,
+      signal: combineSignals(signal, AbortSignal.timeout(30_000)),
+    });
+    const { text, truncated } = await readBoundedText(response, 1_000_000);
+    let data: unknown = text;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      // Keep non-JSON API responses as bounded text.
+    }
+    if (!response.ok) {
+      return {
+        error: true,
+        status: response.status,
+        data,
+        ...(truncated ? { truncated: true } : {}),
+      };
+    }
+    return { status: response.status, data, ...(truncated ? { truncated: true } : {}) };
+  } finally {
+    await safeFetch.close().catch(() => undefined);
   }
-  if (!response.ok) {
-    return {
-      error: true,
-      status: response.status,
-      data,
-      ...(truncated ? { truncated: true } : {}),
-    };
-  }
-  return { status: response.status, data, ...(truncated ? { truncated: true } : {}) };
 }
 
 function joinApiUrl(baseUrl: string, path: string): URL {
