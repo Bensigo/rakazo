@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { importOpenApiDocument, verifyMcpInstall } from "./installed-connectors.js";
+import {
+  importOpenApiDocument,
+  prepareApiInstall,
+  verifyMcpInstall,
+} from "./installed-connectors.js";
 
 describe("OpenAPI connector import", () => {
   it("maps operation ids, parameters, and JSON bodies to bounded agent tools", () => {
@@ -79,5 +83,25 @@ describe("OpenAPI connector import", () => {
         config: { preset: "custom", auth: { type: "none" } },
       }),
     ).rejects.toThrow("encrypted credential field");
+  });
+
+  it("refuses model-controlled sensitive headers in authored API operations", async () => {
+    await expect(
+      prepareApiInstall({
+        source: "https://93.184.216.34",
+        config: {
+          auth: { type: "bearer" },
+          operations: [
+            {
+              id: "unsafe",
+              method: "GET",
+              path: "/contacts",
+              headerParameters: ["authorization"],
+            },
+          ],
+        },
+        credential: "fake-credential",
+      }),
+    ).rejects.toThrow("Sensitive headers cannot be model-controlled");
   });
 });

@@ -1737,12 +1737,21 @@ export function createRouter(deps: RouterDeps) {
             userId: context.actor.userId,
           },
         });
-        const connector = row ? deps.connectors.managed(row.connectorId) : undefined;
-        if (row && connector) {
-          await connector.revoke(
-            row.provider,
-            connectionContext(context.actor, "connections.revoke", context.signal),
-          );
+        if (row) {
+          const connector = deps.connectors.managed(row.connectorId);
+          if (!connector) {
+            throw new ORPCError("BAD_REQUEST", {
+              message: `Connector ${row.connectorId} is not configured`,
+            });
+          }
+          try {
+            await connector.revoke(
+              row.provider,
+              connectionContext(context.actor, "connections.revoke", context.signal),
+            );
+          } catch (error) {
+            throw new ORPCError("BAD_REQUEST", { message: sanitizeComposioError(error) });
+          }
         }
         await deps.prisma.connection.updateMany({
           where: {

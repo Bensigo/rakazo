@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertSafeRemoteUrl, createSafeLookup } from "./remote-mcp.js";
+import { assertSafeRemoteUrl, createSafeLookup, createSafeRemoteFetch } from "./remote-mcp.js";
 
 const publicResolver = async () => [{ address: "203.0.113.10", family: 4 as const }];
 
@@ -57,5 +57,24 @@ describe("remote MCP URL policy", () => {
       });
     });
     expect(result).toEqual({ address: "203.0.113.10", family: 4 });
+  });
+
+  it("rejects Request inputs instead of silently dropping their method and body", async () => {
+    const safeFetch = createSafeRemoteFetch(
+      async () => new Response(null, { status: 204 }),
+      publicResolver,
+    );
+    try {
+      await expect(
+        safeFetch(
+          new Request("https://connectors.example.test/mcp", {
+            method: "POST",
+            body: "payload",
+          }),
+        ),
+      ).rejects.toThrow("requires a URL");
+    } finally {
+      await safeFetch.close();
+    }
   });
 });

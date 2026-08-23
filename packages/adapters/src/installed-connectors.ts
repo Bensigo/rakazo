@@ -5,9 +5,13 @@ import type {
   ConnectorProvider,
   ConnectorTool,
 } from "@rakazo/adapter-kit";
-import { redactSecrets } from "@rakazo/core";
 import type { PrismaClient } from "@rakazo/db";
 import { z } from "zod";
+import {
+  combineSignals,
+  redactConnectorPayload,
+  sanitizeConnectorError,
+} from "./connector-safety.js";
 import {
   assertSafeRemoteUrl,
   callRemoteMcpTool,
@@ -23,6 +27,10 @@ const HeaderName = z
   .max(120)
   .regex(/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/, "Invalid HTTP header name")
   .refine((name) => !isTransportHeader(name), "Transport-level headers cannot be customized");
+const ModelHeaderName = HeaderName.refine(
+  (name) => !isSensitiveHeader(name),
+  "Sensitive headers cannot be model-controlled",
+);
 const AuthSchema = z
   .object({
     type: z.enum(["none", "bearer", "header", "query"]).default("none"),
@@ -73,8 +81,8 @@ const ApiOperationSchema = z.object({
     properties: {},
   }),
   readOnly: z.boolean().default(false),
-  queryParameters: z.array(z.string()).default([]),
-  headerParameters: z.array(z.string()).default([]),
+  queryParameters: z.array(z.string().min(1).max(120)).default([]),
+  headerParameters: z.array(ModelHeaderName).default([]),
 });
 
 const ApiConfigSchema = z.object({
@@ -200,7 +208,10 @@ export class InstalledConnectorProvider implements ConnectorProvider {
           call.route?.toolName ?? call.tool,
           call.args,
         );
-        yield { type: "result", data: redactPayload(result, credential ? [credential] : []) };
+        yield {
+          type: "result",
+          data: redactConnectorPayload(result, credential ? [credential] : []),
+        };
         return;
       }
       const config = ApiConfigSchema.parse(install.config);
@@ -216,9 +227,15 @@ export class InstalledConnectorProvider implements ConnectorProvider {
         credential,
         context.signal,
       );
-      yield { type: "result", data: redactPayload(result, credential ? [credential] : []) };
+      yield {
+        type: "result",
+        data: redactConnectorPayload(result, credential ? [credential] : []),
+      };
     } catch (error) {
-      yield { type: "error", message: sanitizeConnectorError(error, credential) };
+      yield {
+        type: "error",
+        message: sanitizeConnectorError(error, credential ? [credential] : []),
+      };
     }
   }
 
@@ -422,7 +439,6 @@ async function executeApiOperation(
   });
   const url = joinApiUrl(baseUrl, path);
   const headers: Record<string, string> = { accept: "application/json", ...config.headers };
-  applyCredential(url, headers, config.auth, credential);
   let body: string | undefined;
   for (const key of operation.headerParameters) {
     const value = args[key];
@@ -454,6 +470,7 @@ async function executeApiOperation(
     body = JSON.stringify(payload);
     headers["content-type"] = "application/json";
   }
+  applyCredential(url, headers, config.auth, credential);
   const safeFetch = createSafeRemoteFetch();
   try {
     const response = await safeFetch(url, {
@@ -564,26 +581,4 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
-}
-
-function combineSignals(...signals: Array<AbortSignal | undefined>): AbortSignal {
-  return AbortSignal.any(signals.filter((signal): signal is AbortSignal => Boolean(signal)));
-}
-
-function sanitizeConnectorError(error: unknown, credential?: string): string {
-  const message = error instanceof Error ? error.message : String(error);
-  const sanitized = message
-    .replace(/Bearer\s+\S+/gi, "Bearer [redacted]")
-    .replace(/trg_(?:live|test)_[A-Za-z0-9_-]+/g, "[redacted]")
-    .slice(0, 2_000);
-  return credential ? redactSecrets(sanitized, [credential]) : sanitized;
-}
-
-function redactPayload(value: unknown, secrets: string[]): unknown {
-  if (secrets.length === 0) return value;
-  try {
-    return JSON.parse(redactSecrets(JSON.stringify(value), secrets));
-  } catch {
-    return { ok: true };
-  }
 }

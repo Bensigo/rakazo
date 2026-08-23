@@ -1,6 +1,7 @@
 import type { CapabilityInstall, ConnectionCatalogItem } from "@rakazo/contracts";
+import { abortableDelay } from "@rakazo/core";
 import { Button } from "@rakazo/ui-web";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { rpc } from "../lib/rpc";
 
 type CatalogView = "all" | "connected" | "sources";
@@ -35,6 +36,7 @@ export function PluginsOverlay({ onClose }: { onClose: () => void }) {
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const connectionAttempt = useRef<AbortController | null>(null);
 
   async function refresh() {
     const [items, installs] = await Promise.all([
@@ -52,6 +54,7 @@ export function PluginsOverlay({ onClose }: { onClose: () => void }) {
         setError(err instanceof Error ? err.message : "Could not load integrations"),
       )
       .finally(() => setLoading(false));
+    return () => connectionAttempt.current?.abort();
   }, []);
 
   const visible = useMemo(() => {
@@ -71,6 +74,9 @@ export function PluginsOverlay({ onClose }: { onClose: () => void }) {
   }
 
   async function connect(item: ConnectionCatalogItem) {
+    connectionAttempt.current?.abort();
+    const controller = new AbortController();
+    connectionAttempt.current = controller;
     setError(null);
     const key = itemKey(item);
     setPending(key);
@@ -83,24 +89,32 @@ export function PluginsOverlay({ onClose }: { onClose: () => void }) {
       if (started.authorizationUrl)
         window.open(started.authorizationUrl, "_blank", "noopener,noreferrer");
       if (item.noAuth && !started.authorizationUrl) {
+        if (controller.signal.aborted) return;
         setItemConnected(item, true);
         return;
       }
       for (let i = 0; i < 45; i += 1) {
+        if (controller.signal.aborted) return;
         const row = await rpc.connections
           .complete({ connectionId: started.connectionId })
           .catch(() => undefined);
         if (row?.status === "connected") {
+          if (controller.signal.aborted) return;
           setItemConnected(item, true);
           return;
         }
-        await new Promise((resolve) => setTimeout(resolve, 2_000));
+        await abortableDelay(2_000, controller.signal);
       }
+      if (controller.signal.aborted) return;
       setError(`Connection to ${item.name} is still pending. You can close this and check again.`);
     } catch (err) {
+      if (controller.signal.aborted) return;
       setError(err instanceof Error ? err.message : "Could not connect");
     } finally {
-      setPending(null);
+      if (connectionAttempt.current === controller) {
+        connectionAttempt.current = null;
+        setPending(null);
+      }
     }
   }
 

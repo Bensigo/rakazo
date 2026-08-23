@@ -4,6 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { ConnectorTool } from "@rakazo/adapter-kit";
 import { Agent, fetch as undiciFetch } from "undici";
+import { combineSignals } from "./connector-safety.js";
 
 const MAX_MCP_TOOLS = 250;
 const MAX_MCP_PAGES = 20;
@@ -78,7 +79,7 @@ async function withRemoteMcpClient<T>(
 ): Promise<T> {
   const endpoint = await assertSafeRemoteUrl(options.endpoint);
   const signal = combineSignals(options.signal, AbortSignal.timeout(MCP_TIMEOUT_MS));
-  const safeFetch = createSafeRemoteFetch(options.fetch ?? globalThis.fetch);
+  const safeFetch = options.fetch ? createSafeRemoteFetch(options.fetch) : createSafeRemoteFetch();
   const transport = new StreamableHTTPClientTransport(endpoint, {
     requestInit: {
       headers: options.headers,
@@ -122,10 +123,10 @@ export function createSafeRemoteFetch(
 ): SafeRemoteFetch {
   const dispatcher = new Agent({ connect: { lookup: createSafeLookup(resolve) } });
   const safeFetch = async (input: string | URL | Request, init?: RequestInit) => {
-    const url = await assertSafeRemoteUrl(
-      typeof input === "string" || input instanceof URL ? String(input) : input.url,
-      resolve,
-    );
+    if (typeof input !== "string" && !(input instanceof URL)) {
+      throw new Error("Connector fetch requires a URL, not a Request");
+    }
+    const url = await assertSafeRemoteUrl(String(input), resolve);
     const response = await baseFetch(url, {
       ...init,
       redirect: "manual",
@@ -161,11 +162,6 @@ export function createSafeLookup(resolve: ResolveHostname = resolveHostname): Lo
         callback(error instanceof Error ? error : new Error(String(error)), "", 0),
       );
   };
-}
-
-function combineSignals(...signals: Array<AbortSignal | undefined>): AbortSignal {
-  const present = signals.filter((signal): signal is AbortSignal => Boolean(signal));
-  return present.length === 1 ? present[0]! : AbortSignal.any(present);
 }
 
 function isPrivateHostname(hostname: string): boolean {

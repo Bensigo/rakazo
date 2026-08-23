@@ -7,8 +7,12 @@ import type {
   ConnectorTool,
   ManagedConnectorProvider,
 } from "@rakazo/adapter-kit";
-import { redactSecrets } from "@rakazo/core";
 import { collectPages, filterCatalog } from "./composio-connector.js";
+import {
+  combineSignals,
+  redactConnectorPayload,
+  sanitizeConnectorError,
+} from "./connector-safety.js";
 import { callRemoteMcpTool, listRemoteMcpTools } from "./remote-mcp.js";
 
 const API_BASE = "https://api.pipedream.com";
@@ -68,7 +72,7 @@ export class PipedreamConnector implements ManagedConnectorProvider {
 
   async catalog(context: AdapterContext, query?: string): Promise<ConnectorCatalogItem[]> {
     const [apps, connected] = await Promise.all([
-      this.apps(context.signal),
+      this.apps(),
       this.listConnectedExternalIds(context),
     ]);
     const connectedSet = new Set(connected);
@@ -107,7 +111,7 @@ export class PipedreamConnector implements ManagedConnectorProvider {
         ?.filter((connection) => connection.connectorId === "pipedream")
         .map((connection) => connection.externalId) ?? [];
     if (apps.length === 0) return [];
-    const token = await this.token(context.signal);
+    const token = await this.token();
     const groups = await Promise.all(
       [...new Set(apps)].slice(0, 20).map(async (app) => {
         const tools = await listRemoteMcpTools({
@@ -130,8 +134,9 @@ export class PipedreamConnector implements ManagedConnectorProvider {
       yield { type: "error", message: "Pipedream app route is missing" };
       return;
     }
+    let token: string | undefined;
     try {
-      const token = await this.token(context.signal);
+      token = await this.token();
       const result = await callRemoteMcpTool(
         {
           endpoint: MCP_ENDPOINT,
@@ -141,9 +146,12 @@ export class PipedreamConnector implements ManagedConnectorProvider {
         call.route?.toolName ?? call.tool,
         call.args,
       );
-      yield { type: "result", data: redactPipedreamPayload(result, [token]) };
+      yield { type: "result", data: redactConnectorPayload(result, [token]) };
     } catch (error) {
-      yield { type: "error", message: sanitizePipedreamError(error) };
+      yield {
+        type: "error",
+        message: sanitizeConnectorError(error, token ? [token] : []),
+      };
     }
   }
 
@@ -216,10 +224,10 @@ export class PipedreamConnector implements ManagedConnectorProvider {
     };
   }
 
-  private async apps(signal?: AbortSignal): Promise<PipedreamApp[]> {
+  private async apps(): Promise<PipedreamApp[]> {
     if (this.directory && this.directory.expiresAt > Date.now()) return this.directory.value;
     if (this.directoryRequest) return this.directoryRequest;
-    this.directoryRequest = this.loadApps(signal);
+    this.directoryRequest = this.loadApps();
     try {
       return await this.directoryRequest;
     } finally {
@@ -227,7 +235,7 @@ export class PipedreamConnector implements ManagedConnectorProvider {
     }
   }
 
-  private async loadApps(signal?: AbortSignal): Promise<PipedreamApp[]> {
+  private async loadApps(): Promise<PipedreamApp[]> {
     const apps: PipedreamApp[] = [];
     let after: string | undefined;
     for (let page = 0; page < 100; page += 1) {
@@ -236,7 +244,7 @@ export class PipedreamConnector implements ManagedConnectorProvider {
       const response = await this.request<{
         data?: PipedreamApp[];
         page_info?: { end_cursor?: string };
-      }>(`/v1/connect/apps?${query}`, {}, signal);
+      }>(`/v1/connect/apps?${query}`);
       apps.push(...(response.data ?? []));
       after = response.page_info?.end_cursor;
       if (!after || apps.length >= 5_000) break;
@@ -270,7 +278,7 @@ export class PipedreamConnector implements ManagedConnectorProvider {
     init: RequestInit = {},
     signal?: AbortSignal,
   ): Promise<T> {
-    const token = await this.token(signal);
+    const token = await this.token();
     const response = await fetch(`${API_BASE}${path}`, {
       ...init,
       headers: {
@@ -284,17 +292,19 @@ export class PipedreamConnector implements ManagedConnectorProvider {
     const body = await response.text();
     if (!response.ok) {
       if (response.status === 401) this.accessToken = undefined;
-      throw new Error(`Pipedream returned HTTP ${response.status}: ${body.slice(0, 500)}`);
+      throw new Error(
+        sanitizeConnectorError(`Pipedream returned HTTP ${response.status}: ${body}`, [token]),
+      );
     }
     return (body ? JSON.parse(body) : {}) as T;
   }
 
-  private async token(signal?: AbortSignal): Promise<string> {
+  private async token(): Promise<string> {
     if (this.accessToken && this.accessToken.expiresAt > Date.now() + 60_000) {
       return this.accessToken.value;
     }
     if (this.accessTokenRequest) return this.accessTokenRequest;
-    this.accessTokenRequest = this.fetchToken(signal);
+    this.accessTokenRequest = this.fetchToken();
     try {
       return await this.accessTokenRequest;
     } finally {
@@ -302,7 +312,7 @@ export class PipedreamConnector implements ManagedConnectorProvider {
     }
   }
 
-  private async fetchToken(signal?: AbortSignal): Promise<string> {
+  private async fetchToken(): Promise<string> {
     const response = await fetch(`${API_BASE}/v1/oauth/token`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -312,7 +322,7 @@ export class PipedreamConnector implements ManagedConnectorProvider {
         client_secret: this.config.clientSecret,
         scope: "connect:*",
       }),
-      signal: combineSignals(signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     const body = (await response.json()) as {
       access_token?: string;
@@ -327,23 +337,5 @@ export class PipedreamConnector implements ManagedConnectorProvider {
       expiresAt: Date.now() + (body.expires_in ?? 3_600) * 1_000,
     };
     return body.access_token;
-  }
-}
-
-function combineSignals(...signals: Array<AbortSignal | undefined>): AbortSignal {
-  const present = signals.filter((signal): signal is AbortSignal => Boolean(signal));
-  return present.length === 1 ? present[0]! : AbortSignal.any(present);
-}
-
-function sanitizePipedreamError(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.replace(/Bearer\s+\S+/gi, "Bearer [redacted]").slice(0, 2_000);
-}
-
-function redactPipedreamPayload(value: unknown, secrets: string[]): unknown {
-  try {
-    return JSON.parse(redactSecrets(JSON.stringify(value), secrets));
-  } catch {
-    return { ok: true };
   }
 }

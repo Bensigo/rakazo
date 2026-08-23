@@ -470,12 +470,6 @@ export function createRunExecutor(deps: ExecutorDeps) {
         });
 
         const discovered = deps.connector ? await deps.connector.discoverTools(context) : [];
-        const connectorRoutes = new Map(
-          discovered.filter((tool) => tool.route).map((tool) => [tool.name, tool.route!] as const),
-        );
-        const readOnlyConnectorTools = new Set(
-          discovered.filter((tool) => tool.readOnly).map((tool) => tool.name),
-        );
         const visibleMessages = [...messages].reverse().map((m) => ({
           seq: m.seq,
           role: (m.role === "user" ? "user" : m.role === "system" ? "system" : "assistant") as
@@ -559,12 +553,18 @@ export function createRunExecutor(deps: ExecutorDeps) {
             ? builtinAgentTools
             : builtinAgentTools.filter((tool) => !GRAPHICAL_AGENT_TOOLS.has(tool.name))
         ).filter((tool) => thread.groupId || tool.name !== "handoff_to_bot");
-        const tools = [
-          ...builtins,
-          ...discovered.filter(
-            (tool) => !builtinAgentTools.some((builtin) => builtin.name === tool.name),
-          ),
-        ];
+        const exposedConnectorTools = discovered.filter(
+          (tool) => !builtinAgentTools.some((builtin) => builtin.name === tool.name),
+        );
+        const connectorRoutes = new Map(
+          exposedConnectorTools
+            .filter((tool) => tool.route)
+            .map((tool) => [tool.name, tool.route!] as const),
+        );
+        const readOnlyConnectorTools = new Set(
+          exposedConnectorTools.filter((tool) => tool.readOnly).map((tool) => tool.name),
+        );
+        const tools = [...builtins, ...exposedConnectorTools];
         const computerInstruction = graphical
           ? "You have a persistent computer. Use computer_observe and computer_act for its visible desktop, including browsers and installed applications. Use open_path and launch_app to open graphical files, URLs, and applications. Use the file tools and shell for precise filesystem and terminal work. On a Team Computer you have your own screen; other Team bots may run at the same time on theirs. Another user may interact with your screen while you run, so re-observe when it may have changed."
           : "You have a persistent sandbox filesystem and shell. This backend does not provide model-visible graphical control, so use the file tools and shell.";

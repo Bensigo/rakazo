@@ -172,7 +172,12 @@ export default function Integrations() {
 
         <View style={styles.actions}>
           {(["treg", "mcp", "api"] as const).map((kind) => (
-            <Pressable key={kind} onPress={() => beginSource(kind)} style={styles.smallButton}>
+            <Pressable
+              key={kind}
+              accessibilityRole="button"
+              onPress={() => beginSource(kind)}
+              style={styles.smallButton}
+            >
               <Text style={styles.buttonLabel}>
                 {kind === "treg" ? "Add Treg" : kind === "mcp" ? "Add MCP" : "Add OpenAPI"}
               </Text>
@@ -213,6 +218,7 @@ export default function Integrations() {
             ) : null}
             {sourceKind !== "treg" ? (
               <Pressable
+                accessibilityRole="button"
                 onPress={() => setRequiresAuth((value) => !value)}
                 style={styles.authToggle}
               >
@@ -235,6 +241,7 @@ export default function Integrations() {
             ) : null}
             <View style={styles.actions}>
               <Pressable
+                accessibilityRole="button"
                 disabled={pending === "source"}
                 onPress={() => void addSource()}
                 style={styles.smallButton}
@@ -245,7 +252,11 @@ export default function Integrations() {
                   <Text style={styles.buttonLabel}>Verify and add</Text>
                 )}
               </Pressable>
-              <Pressable onPress={() => setSourceKind(null)} style={styles.smallButton}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setSourceKind(null)}
+                style={styles.smallButton}
+              >
                 <Text style={styles.buttonLabel}>Cancel</Text>
               </Pressable>
             </View>
@@ -266,7 +277,7 @@ export default function Integrations() {
                 {source.kind.toUpperCase()} · {source.source}
               </Text>
             </View>
-            <Pressable onPress={() => void removeSource(source)}>
+            <Pressable accessibilityRole="button" onPress={() => void removeSource(source)}>
               <Text style={styles.remove}>{pending === source.id ? "Removing…" : "Remove"}</Text>
             </Pressable>
           </View>
@@ -287,6 +298,7 @@ export default function Integrations() {
                 </Text>
               </View>
               <Pressable
+                accessibilityRole="button"
                 disabled={pending === key}
                 onPress={() => void (item.connected ? revoke(item) : connect(item))}
               >
