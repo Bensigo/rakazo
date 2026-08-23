@@ -3,7 +3,7 @@ import { isIP, type LookupFunction } from "node:net";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { ConnectorTool } from "@rakazo/adapter-kit";
-import { Agent, fetch as undiciFetch } from "undici";
+import { Agent } from "undici";
 import { combineSignals } from "./connector-safety.js";
 
 const MAX_MCP_TOOLS = 250;
@@ -118,7 +118,7 @@ export async function assertSafeRemoteUrl(
 }
 
 export function createSafeRemoteFetch(
-  baseFetch: typeof globalThis.fetch = undiciFetch as typeof globalThis.fetch,
+  baseFetch: typeof globalThis.fetch = globalThis.fetch,
   resolve: ResolveHostname = resolveHostname,
 ): SafeRemoteFetch {
   const dispatcher = new Agent({ connect: { lookup: createSafeLookup(resolve) } });
