@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 const MAX_EMAIL_LENGTH = 254;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const CAPTURE_TIMEOUT_MS = 5_000;
 
 export type WaitlistBody = {
   email: string;
@@ -49,21 +50,29 @@ export async function captureWaitlistSignup(
   const host = env.PUBLIC_POSTHOG_HOST?.trim() || "https://us.i.posthog.com";
   const joinedAt = new Date().toISOString();
   const distinctId = `waitlist:${createHash("sha256").update(email).digest("hex")}`;
-  const response = await fetchImpl(new URL("/i/v0/e/", host), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      api_key: apiKey,
-      event: "waitlist_joined",
-      distinct_id: distinctId,
-      properties: {
-        $process_person_profile: true,
-        $set: { email, waitlist_status: "joined" },
-        $set_once: { waitlist_joined_at: joinedAt, waitlist_source: "rakazo.com" },
-      },
-      timestamp: joinedAt,
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), CAPTURE_TIMEOUT_MS);
 
-  return response.ok;
+  try {
+    const response = await fetchImpl(new URL("/i/v0/e/", host), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        api_key: apiKey,
+        event: "waitlist_joined",
+        distinct_id: distinctId,
+        properties: {
+          $process_person_profile: true,
+          $set: { email, waitlist_status: "joined" },
+          $set_once: { waitlist_joined_at: joinedAt, waitlist_source: "rakazo.com" },
+        },
+        timestamp: joinedAt,
+      }),
+      signal: controller.signal,
+    });
+
+    return response.ok;
+  } finally {
+    clearTimeout(timeout);
+  }
 }

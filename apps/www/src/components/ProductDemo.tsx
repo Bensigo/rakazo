@@ -5,6 +5,7 @@ import {
   type DemoBot,
   type DemoMessage,
   type DemoRoutine,
+  type DemoRoutineRun,
   type DemoScreen,
 } from "../demo";
 import { LandingBotAvatar } from "./LandingBotAvatar";
@@ -73,20 +74,22 @@ type LiveBot = DemoBot & {
   answers: string[];
 };
 type Trigger = { freq: string; n: number; unit: string; time: string; cron: string };
-type Run = { mark: string; color: string; text: string; time: string };
 type RoutineDraft = {
   index: number | null;
   name: string;
   instruction: string;
   active: boolean;
   triggers: Trigger[];
-  runs: Run[];
+  runs: DemoRoutineRun[];
 };
 
 function cloneBots(): LiveBot[] {
   return DEMO_BOTS.map((bot) => ({
     ...bot,
-    routines: bot.routines.map((routine) => ({ ...routine })),
+    routines: bot.routines.map((routine) => ({
+      ...routine,
+      runs: routine.runs?.map((run) => ({ ...run })),
+    })),
     title: "",
     description: "",
     onboarding: false,
@@ -485,7 +488,7 @@ export function ProductDemo() {
       instruction: routine?.instruction ?? "",
       active: routine?.active ?? true,
       triggers: routine ? [parseWhen(routine.when)] : [],
-      runs: [],
+      runs: routine?.runs?.map((run) => ({ ...run })) ?? [],
     });
   }
 
@@ -504,6 +507,7 @@ export function ProductDemo() {
       when: whenLabel(draftState.triggers),
       instruction: draftState.instruction,
       active: draftState.active,
+      runs: draftState.runs,
     };
     setBots((current) =>
       current.map((bot) => {
@@ -653,16 +657,22 @@ export function ProductDemo() {
     if (!routineDraft?.name.trim()) {
       return;
     }
-    const index = persistRoutine(routineDraft);
+    const completedRun: DemoRoutineRun = {
+      mark: "●",
+      color: "#4ECB71",
+      text: "Completed",
+      time: "Just now",
+    };
+    const index = persistRoutine({
+      ...routineDraft,
+      runs: [...routineDraft.runs, completedRun],
+    });
     setRoutineDraft((current) =>
       current
         ? {
             ...current,
             index,
-            runs: [
-              ...current.runs,
-              { mark: "●", color: "#4ECB71", text: "Completed", time: "Just now" },
-            ],
+            runs: [...current.runs, completedRun],
           }
         : current,
     );

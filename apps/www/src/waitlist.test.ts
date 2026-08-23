@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import waitlistFunction from "../api/waitlist";
 import {
   captureWaitlistSignup,
   normalizeWaitlistEmail,
@@ -36,6 +37,7 @@ describe("waitlist", () => {
     expect(call).toBeDefined();
     const [url, init] = call!;
     expect(String(url)).toBe("https://us.i.posthog.com/i/v0/e/");
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
     const payload = JSON.parse(String(init?.body));
     expect(payload).toMatchObject({
       api_key: "public-project-token",
@@ -53,5 +55,17 @@ describe("waitlist", () => {
     const fetchImpl = vi.fn();
     await expect(captureWaitlistSignup("person@example.com", {}, fetchImpl)).resolves.toBe(false);
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("rejects an oversized body when content-length is missing", async () => {
+    const request = new Request("https://rakazo.com/api/waitlist", {
+      method: "POST",
+      body: JSON.stringify({ email: `${"a".repeat(2_048)}@example.com` }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const response = await waitlistFunction.fetch(request);
+
+    expect(response.status).toBe(400);
   });
 });

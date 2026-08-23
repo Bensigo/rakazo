@@ -6,50 +6,73 @@ import {
 
 const MAX_BODY_BYTES = 2_048;
 
-type WaitlistRequest = {
-  body?: unknown;
-  headers: Record<string, string | string[] | undefined>;
-  method?: string;
-};
+function json(status: number, body: unknown) {
+  return Response.json(body, {
+    status,
+    headers: { Allow: "POST", "Cache-Control": "no-store" },
+  });
+}
 
-type WaitlistResponse = {
-  json: (body: unknown) => WaitlistResponse;
-  setHeader: (name: string, value: string) => void;
-  status: (code: number) => WaitlistResponse;
-};
+async function readBody(request: Request): Promise<string | null> {
+  if (!request.body) return "";
 
-export default async function handler(request: WaitlistRequest, response: WaitlistResponse) {
-  response.setHeader("Cache-Control", "no-store");
-  response.setHeader("Allow", "POST");
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let bytes = 0;
+  let body = "";
 
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > MAX_BODY_BYTES) {
+        await reader.cancel();
+        return null;
+      }
+      body += decoder.decode(value, { stream: true });
+    }
+    return body + decoder.decode();
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+async function fetchWaitlist(request: Request) {
   if (request.method !== "POST") {
-    return response.status(405).json({ error: "Method not allowed" });
+    return json(405, { error: "Method not allowed" });
   }
 
-  const contentLength = Number(request.headers["content-length"] ?? 0);
-  if (contentLength > MAX_BODY_BYTES) {
-    return response.status(400).json({ error: "Invalid request" });
+  const contentLengthHeader = request.headers.get("content-length");
+  if (contentLengthHeader !== null) {
+    const contentLength = Number(contentLengthHeader);
+    if (!Number.isFinite(contentLength) || contentLength < 0 || contentLength > MAX_BODY_BYTES) {
+      return json(400, { error: "Invalid request" });
+    }
   }
 
-  const body = parseWaitlistBody(request.body);
+  const rawBody = await readBody(request).catch(() => null);
+  const body = rawBody === null ? null : parseWaitlistBody(rawBody);
   if (!body) {
-    return response.status(400).json({ error: "Enter a valid email address" });
+    return json(400, { error: "Enter a valid email address" });
   }
 
   // A hidden field catches basic form spam without confirming the trap to bots.
   if (body.company?.trim()) {
-    return response.status(200).json({ ok: true });
+    return json(200, { ok: true });
   }
 
   const email = normalizeWaitlistEmail(body.email);
   if (!email) {
-    return response.status(400).json({ error: "Enter a valid email address" });
+    return json(400, { error: "Enter a valid email address" });
   }
 
   const captured = await captureWaitlistSignup(email, process.env).catch(() => false);
   if (!captured) {
-    return response.status(503).json({ error: "Waitlist is temporarily unavailable" });
+    return json(503, { error: "Waitlist is temporarily unavailable" });
   }
 
-  return response.status(200).json({ ok: true });
+  return json(200, { ok: true });
 }
+
+export default { fetch: fetchWaitlist };
