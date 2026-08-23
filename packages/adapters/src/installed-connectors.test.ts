@@ -60,6 +60,15 @@ describe("OpenAPI connector import", () => {
     ).toThrow("operationId");
   });
 
+  it("refuses credentials embedded in an imported OpenAPI server URL", () => {
+    expect(() =>
+      importOpenApiDocument({
+        servers: [{ url: "https://api.example.test?token=fake-secret" }],
+        paths: { "/contacts": { get: { operationId: "listContacts" } } },
+      }),
+    ).toThrow("encrypted credential field");
+  });
+
   it("refuses sensitive headers that would become model-controlled inputs", () => {
     expect(() =>
       importOpenApiDocument({

@@ -335,6 +335,7 @@ export function importOpenApiDocument(document: Record<string, unknown>): {
       ? String((server as { url: string }).url)
       : "";
   if (!baseUrl) throw new Error("OpenAPI document must define servers[0].url");
+  assertNoSensitiveQuery(baseUrl);
   const paths = document.paths;
   if (!paths || typeof paths !== "object" || Array.isArray(paths)) {
     throw new Error("OpenAPI document has no paths");
