@@ -1,6 +1,7 @@
 import type { AdapterContext } from "@rakazo/adapter-kit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PipedreamConnector } from "./pipedream-connector.js";
+import { ThirdPartyConnectorEmulator } from "./third-party-connector-emulator.js";
 
 const context: AdapterContext = {
   operationId: "pipedream-test",
@@ -81,5 +82,77 @@ describe("PipedreamConnector", () => {
     expect(JSON.parse(String(connectRequest?.init?.body))).toEqual(
       expect.objectContaining({ external_user_id: externalId }),
     );
+  });
+
+  it("runs catalog, connection, discovery, execution, and revoke against the protocol emulator", async () => {
+    const emulator = new ThirdPartyConnectorEmulator();
+    const connector = new PipedreamConnector(
+      {
+        clientId: "fake-client-id",
+        clientSecret: "fake-client-secret",
+        projectId: "fake-project-id",
+        environment: "development",
+        identitySecret: "fake-identity-secret",
+      },
+      { fetch: emulator.fetch, resolveHostname: emulator.resolveHostname },
+    );
+
+    await expect(connector.catalog(context)).resolves.toContainEqual(
+      expect.objectContaining({ connectorId: "pipedream", slug: "linear", connected: false }),
+    );
+    await expect(
+      connector.begin(
+        { provider: "linear", redirectUrl: "https://rakazo.example.test/app" },
+        context,
+      ),
+    ).resolves.toEqual({ authorizationUrl: "about:blank?app=linear", state: "linear" });
+    await expect(connector.connectionReady(context, "linear")).resolves.toBe(true);
+
+    const connectedContext = {
+      ...context,
+      connectedConnections: [
+        {
+          id: "connection-linear",
+          connectorId: "pipedream",
+          externalId: "linear",
+          displayName: "Linear",
+        },
+      ],
+    };
+    const tools = await connector.discoverTools(connectedContext);
+    expect(tools).toContainEqual(
+      expect.objectContaining({
+        name: "notes.write",
+        route: expect.objectContaining({ connectorId: "pipedream", resourceId: "linear" }),
+      }),
+    );
+    const events = [];
+    for await (const event of connector.execute(
+      {
+        tool: "notes.write",
+        args: { text: "emulated-pipedream-ok" },
+        executionId: "pipedream-emulated-execution",
+        route: tools[0]?.route,
+      },
+      connectedContext,
+    )) {
+      events.push(event);
+    }
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "result",
+        data: expect.objectContaining({ isError: false }),
+      }),
+    );
+    expect(emulator.records).toContainEqual(
+      expect.objectContaining({
+        provider: "mcp",
+        operation: "notes.write",
+        args: { text: "emulated-pipedream-ok" },
+      }),
+    );
+
+    await connector.revoke("linear", context);
+    await expect(connector.connectionReady(context, "linear")).resolves.toBe(false);
   });
 });

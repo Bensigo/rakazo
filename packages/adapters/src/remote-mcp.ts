@@ -11,15 +11,19 @@ const MAX_MCP_PAGES = 20;
 const MCP_TIMEOUT_MS = 30_000;
 const MAX_RESULT_BYTES = 1_000_000;
 
-export interface RemoteMcpOptions {
+type ResolvedAddress = { address: string; family: number };
+export type ResolveHostname = (hostname: string) => Promise<ResolvedAddress[]>;
+
+export interface RemoteTransportDependencies {
+  fetch?: typeof globalThis.fetch;
+  resolveHostname?: ResolveHostname;
+}
+
+export interface RemoteMcpOptions extends RemoteTransportDependencies {
   endpoint: string;
   headers?: Record<string, string>;
   signal?: AbortSignal;
-  fetch?: typeof globalThis.fetch;
 }
-
-type ResolvedAddress = { address: string; family: number };
-type ResolveHostname = (hostname: string) => Promise<ResolvedAddress[]>;
 
 export interface SafeRemoteFetch {
   (input: string | URL | Request, init?: RequestInit): Promise<Response>;
@@ -77,9 +81,15 @@ async function withRemoteMcpClient<T>(
   options: RemoteMcpOptions,
   run: (client: Client, signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
-  const endpoint = await assertSafeRemoteUrl(options.endpoint);
+  const endpoint = await assertSafeRemoteUrl(
+    options.endpoint,
+    options.resolveHostname ?? resolveHostname,
+  );
   const signal = combineSignals(options.signal, AbortSignal.timeout(MCP_TIMEOUT_MS));
-  const safeFetch = options.fetch ? createSafeRemoteFetch(options.fetch) : createSafeRemoteFetch();
+  const safeFetch = createSafeRemoteFetch(
+    options.fetch ?? globalThis.fetch,
+    options.resolveHostname ?? resolveHostname,
+  );
   const transport = new StreamableHTTPClientTransport(endpoint, {
     requestInit: {
       headers: options.headers,

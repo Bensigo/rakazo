@@ -20,6 +20,11 @@ const DEFAULT_CATALOG: ReadonlyArray<Omit<ComposioCatalogItem, "connected">> = [
 /** Deterministic, offline Composio catalog and connection emulator for product tests. */
 export class ComposioEmulator implements ComposioProvider {
   private readonly connectedByUser = new Map<string, Set<string>>();
+  readonly executions: Array<{
+    userId: string;
+    tool: string;
+    args: Record<string, unknown>;
+  }> = [];
 
   constructor(
     private readonly directory: ReadonlyArray<
@@ -54,12 +59,26 @@ export class ComposioEmulator implements ComposioProvider {
     return this.listConnectedSlugs(context.userId);
   }
 
-  async discoverTools(_context: AdapterContext): Promise<ConnectorTool[]> {
-    return [];
+  async discoverTools(context: AdapterContext): Promise<ConnectorTool[]> {
+    const connected =
+      context.connectedConnections
+        ?.filter((connection) => connection.connectorId === "composio")
+        .map((connection) => connection.externalId) ??
+      context.connectedProviders ??
+      [];
+    return [...new Set(connected)].map((slug) => ({
+      name: `${slug}_EMULATED_ACTION`,
+      description: `Run a deterministic ${slug} action`,
+      inputSchema: {
+        type: "object",
+        properties: { value: { type: "string" } },
+      },
+    }));
   }
 
-  async *execute(call: ConnectorCall, _context: AdapterContext): AsyncIterable<ConnectorEvent> {
-    yield { type: "error", message: `Composio emulator cannot execute ${call.tool}` };
+  async *execute(call: ConnectorCall, context: AdapterContext): AsyncIterable<ConnectorEvent> {
+    this.executions.push({ userId: context.userId, tool: call.tool, args: call.args });
+    yield { type: "result", data: { ok: true, tool: call.tool, args: call.args } };
   }
 
   async begin(

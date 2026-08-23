@@ -113,6 +113,40 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
   await page.getByRole("tab", { name: "Apps", exact: true }).click();
   await expect(page.getByText("Gmail", { exact: true })).toBeVisible();
   await expect(gmailRow.getByRole("button", { name: "Connect", exact: true })).toBeVisible();
+
+  const linearRow = page.getByText("Linear", { exact: true }).locator("..").locator("..");
+  const connectPopup = page.waitForEvent("popup");
+  await linearRow.getByRole("button", { name: "Connect", exact: true }).click();
+  const popup = await connectPopup;
+  await popup.close();
+  await expect(linearRow.getByRole("button", { name: "Revoke", exact: true })).toBeVisible();
+  await linearRow.getByRole("button", { name: "Revoke", exact: true }).click();
+  await expect(linearRow.getByRole("button", { name: "Connect", exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Add Treg", exact: true }).click();
+  await page.getByPlaceholder("Treg token").fill("fake-treg-browser-credential");
+  await page.getByRole("button", { name: "Verify and add", exact: true }).click();
+  await expect(page.getByText(/MCP · https:\/\/treg\.to\/mcp\/ · credential saved/)).toBeVisible();
+
+  await page.getByRole("button", { name: "Add MCP server", exact: true }).click();
+  await page.getByPlaceholder("Display name").fill("Browser MCP");
+  await page.getByPlaceholder("https://example.com/mcp").fill("https://mcp.example.test/mcp");
+  await page.getByRole("button", { name: "Verify and add", exact: true }).click();
+  await expect(page.getByText(/MCP · https:\/\/mcp\.example\.test\/mcp · no auth/)).toBeVisible();
+
+  await page.getByRole("button", { name: "Add OpenAPI", exact: true }).click();
+  await page.getByPlaceholder("Display name").fill("Browser API");
+  await page
+    .getByPlaceholder("https://example.com/openapi.json")
+    .fill("https://api.example.test/openapi.json");
+  await page.locator("select").selectOption("bearer");
+  await page.getByPlaceholder("Credential").fill("fake-openapi-browser-credential");
+  await page.getByRole("button", { name: "Verify and add", exact: true }).click();
+  await expect(
+    page.getByText(/API · https:\/\/api\.example\.test\/v1 · credential saved/),
+  ).toBeVisible();
+  await captureScreenshot(page, testInfo, "11c-provider-emulators");
+
   await page.getByRole("button", { name: "Close integrations" }).click();
 
   await page.getByText("Chief").first().click();

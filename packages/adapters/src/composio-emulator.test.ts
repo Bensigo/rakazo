@@ -43,4 +43,41 @@ describe("ComposioEmulator", () => {
     await emulator.revoke("GMAIL", context);
     await expect(emulator.connectionReady(context, "GMAIL")).resolves.toBe(false);
   });
+
+  it("discovers and executes deterministic tools for connected apps", async () => {
+    const emulator = new ComposioEmulator();
+    const connectedContext = {
+      ...context,
+      connectedConnections: [
+        {
+          id: "connection-gmail",
+          connectorId: "composio",
+          externalId: "GMAIL",
+          displayName: "Gmail",
+        },
+      ],
+    };
+    await expect(emulator.discoverTools(connectedContext)).resolves.toContainEqual(
+      expect.objectContaining({ name: "GMAIL_EMULATED_ACTION" }),
+    );
+    const events = [];
+    for await (const event of emulator.execute(
+      {
+        tool: "GMAIL_EMULATED_ACTION",
+        args: { value: "ok" },
+        executionId: "composio-emulator-execution",
+      },
+      connectedContext,
+    )) {
+      events.push(event);
+    }
+    expect(events).toContainEqual(expect.objectContaining({ type: "result" }));
+    expect(emulator.executions).toEqual([
+      {
+        userId: context.userId,
+        tool: "GMAIL_EMULATED_ACTION",
+        args: { value: "ok" },
+      },
+    ]);
+  });
 });

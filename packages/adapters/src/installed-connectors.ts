@@ -17,6 +17,7 @@ import {
   callRemoteMcpTool,
   createSafeRemoteFetch,
   listRemoteMcpTools,
+  type RemoteTransportDependencies,
 } from "./remote-mcp.js";
 import type { EncryptedSecretStore } from "./secrets.js";
 
@@ -100,10 +101,13 @@ type InstalledRow = {
   config: unknown;
 };
 
+export type RemoteConnectorDependencies = RemoteTransportDependencies;
+
 export class InstalledConnectorProvider implements ConnectorProvider {
   constructor(
     private readonly prisma: PrismaClient,
     private readonly secrets: EncryptedSecretStore,
+    private readonly remote: RemoteConnectorDependencies = {},
   ) {}
 
   describe() {
@@ -146,6 +150,8 @@ export class InstalledConnectorProvider implements ConnectorProvider {
           endpoint: install.source,
           headers: connectorHeaders(config, credential),
           signal: context.signal,
+          fetch: this.remote.fetch,
+          resolveHostname: this.remote.resolveHostname,
         });
         return remote.map((tool) => ({
           ...tool,
@@ -204,6 +210,8 @@ export class InstalledConnectorProvider implements ConnectorProvider {
             endpoint: install.source,
             headers: connectorHeaders(config, credential),
             signal: context.signal,
+            fetch: this.remote.fetch,
+            resolveHostname: this.remote.resolveHostname,
           },
           call.route?.toolName ?? call.tool,
           call.args,
@@ -226,6 +234,7 @@ export class InstalledConnectorProvider implements ConnectorProvider {
         call.args,
         credential,
         context.signal,
+        this.remote,
       );
       yield {
         type: "result",
@@ -260,6 +269,7 @@ export async function verifyMcpInstall(input: {
   config: unknown;
   credential?: string;
   signal?: AbortSignal;
+  remote?: RemoteConnectorDependencies;
 }): Promise<{ config: Record<string, unknown>; toolCount: number }> {
   assertNoSensitiveQuery(input.source);
   const config = McpConfigSchema.parse(input.config);
@@ -268,6 +278,8 @@ export async function verifyMcpInstall(input: {
     endpoint: input.source,
     headers: connectorHeaders(config, input.credential),
     signal: input.signal,
+    fetch: input.remote?.fetch,
+    resolveHostname: input.remote?.resolveHostname,
   });
   if (tools.length === 0) throw new Error("MCP server returned no tools");
   return { config, toolCount: tools.length };
@@ -278,6 +290,7 @@ export async function prepareApiInstall(input: {
   config: Record<string, unknown>;
   credential?: string;
   signal?: AbortSignal;
+  remote?: RemoteConnectorDependencies;
 }): Promise<{ source: string; config: Record<string, unknown>; operationCount: number }> {
   const auth = AuthSchema.parse(input.config.auth);
   requireCredential(auth, input.credential);
@@ -289,12 +302,17 @@ export async function prepareApiInstall(input: {
     const documentUrl = new URL(input.source);
     const documentHeaders: Record<string, string> = { accept: "application/json", ...headers };
     applyCredential(documentUrl, documentHeaders, auth, input.credential);
-    const document = await loadOpenApiDocument(documentUrl, documentHeaders, input.signal);
+    const document = await loadOpenApiDocument(
+      documentUrl,
+      documentHeaders,
+      input.signal,
+      input.remote,
+    );
     const imported = importOpenApiDocument(document);
     source = imported.baseUrl;
     operationsValue = imported.operations;
   }
-  await assertSafeRemoteUrl(source);
+  await assertSafeRemoteUrl(source, input.remote?.resolveHostname);
   const config = ApiConfigSchema.parse({ auth, headers, operations: operationsValue });
   return {
     source,
@@ -307,8 +325,9 @@ async function loadOpenApiDocument(
   url: URL,
   headers: Record<string, string>,
   signal?: AbortSignal,
+  remote: RemoteConnectorDependencies = {},
 ): Promise<Record<string, unknown>> {
-  const safeFetch = createSafeRemoteFetch();
+  const safeFetch = createSafeRemoteFetch(remote.fetch ?? globalThis.fetch, remote.resolveHostname);
   try {
     const response = await safeFetch(url, {
       headers,
@@ -430,6 +449,7 @@ async function executeApiOperation(
   args: Record<string, unknown>,
   credential: string | undefined,
   signal: AbortSignal,
+  remote: RemoteConnectorDependencies,
 ): Promise<unknown> {
   const consumed = new Set<string>();
   const path = operation.path.replace(/\{([^}]+)\}/g, (_match, name: string) => {
@@ -472,7 +492,7 @@ async function executeApiOperation(
     headers["content-type"] = "application/json";
   }
   applyCredential(url, headers, config.auth, credential);
-  const safeFetch = createSafeRemoteFetch();
+  const safeFetch = createSafeRemoteFetch(remote.fetch ?? globalThis.fetch, remote.resolveHostname);
   try {
     const response = await safeFetch(url, {
       method: operation.method,

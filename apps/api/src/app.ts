@@ -1,6 +1,11 @@
 import { rm } from "node:fs/promises";
 import { RPCHandler } from "@orpc/server/fetch";
-import type { JobPublisher, RealtimeFanout, SandboxProvider } from "@rakazo/adapter-kit";
+import type {
+  JobPublisher,
+  ManagedConnectorProvider,
+  RealtimeFanout,
+  SandboxProvider,
+} from "@rakazo/adapter-kit";
 import {
   type ComposioProvider,
   type ConnectorRegistry,
@@ -26,6 +31,7 @@ import {
   PipedreamConnector,
   PostgresRealtimeFanout,
   pushTokenPath,
+  type RemoteConnectorDependencies,
   ScriptedAgentRuntime,
 } from "@rakazo/adapters";
 import { blockedAuthPaths, createAuth } from "@rakazo/auth";
@@ -54,12 +60,16 @@ export async function createApp(
     prisma?: PrismaClient;
     realtime?: RealtimeFanout;
     composio?: ComposioProvider;
+    pipedream?: ManagedConnectorProvider;
+    remoteConnectors?: RemoteConnectorDependencies;
   } = {},
 ): Promise<AppHandles> {
   const {
     prisma: prismaOverride,
     realtime: realtimeOverride,
     composio: composioOverride,
+    pipedream: pipedreamOverride,
+    remoteConnectors,
     ...envOverrides
   } = overrides;
   const env = { ...loadEnv(process.env), ...envOverrides };
@@ -110,10 +120,10 @@ export async function createApp(
     environment: env.pipedreamEnvironment,
     identitySecret: env.encryptionKey,
   };
-  const pipedream = isPipedreamEnabled(pipedreamConfig)
-    ? new PipedreamConnector(pipedreamConfig)
-    : undefined;
-  const installed = new InstalledConnectorProvider(prisma, secrets);
+  const pipedream =
+    pipedreamOverride ??
+    (isPipedreamEnabled(pipedreamConfig) ? new PipedreamConnector(pipedreamConfig) : undefined);
+  const installed = new InstalledConnectorProvider(prisma, secrets, remoteConnectors);
   const stack = createConnectorStack(isComposioEnabled(env.composioApiKey), composioOverride, [
     installed,
     ...(pipedream ? [pipedream] : []),
@@ -121,7 +131,7 @@ export async function createApp(
   const connector = stack.destination;
   await connector.start();
   void stack.composio?.warmDirectory().catch(() => undefined);
-  void pipedream?.warmDirectory().catch(() => undefined);
+  void pipedream?.warmDirectory?.().catch(() => undefined);
   const runtime =
     env.agentRuntime === "scripted" ? new ScriptedAgentRuntime() : new PiAgentRuntime();
   const notifications = new ExpoPushProvider(env.dataDir);
@@ -211,6 +221,7 @@ export async function createApp(
     secrets,
     oauthLogins,
     connectors: stack.connector,
+    remoteConnectors,
     artifacts,
     dataDir: env.dataDir,
     env: {

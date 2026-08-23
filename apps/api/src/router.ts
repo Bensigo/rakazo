@@ -35,6 +35,7 @@ import {
   planLiveConnectionSync,
   prepareApiInstall,
   provisionComputer,
+  type RemoteConnectorDependencies,
   releaseComputerExecutionLease,
   resolveBotWorkspacePath,
   sanitizeComposioError,
@@ -189,6 +190,7 @@ export interface RouterDeps {
   secrets: EncryptedSecretStore;
   oauthLogins: PiOAuthLogins;
   connectors: ConnectorRegistry;
+  remoteConnectors?: RemoteConnectorDependencies;
   artifacts: ArtifactStore;
   dataDir: string;
   env: {
@@ -1502,6 +1504,7 @@ export function createRouter(deps: RouterDeps) {
               config,
               credential,
               signal: context.signal,
+              remote: deps.remoteConnectors,
             });
             config = verified.config;
           }
@@ -1511,6 +1514,7 @@ export function createRouter(deps: RouterDeps) {
               config,
               credential,
               signal: context.signal,
+              remote: deps.remoteConnectors,
             });
             source = prepared.source;
             config = prepared.config;

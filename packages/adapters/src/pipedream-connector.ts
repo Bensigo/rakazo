@@ -13,7 +13,11 @@ import {
   redactConnectorPayload,
   sanitizeConnectorError,
 } from "./connector-safety.js";
-import { callRemoteMcpTool, listRemoteMcpTools } from "./remote-mcp.js";
+import {
+  callRemoteMcpTool,
+  listRemoteMcpTools,
+  type RemoteTransportDependencies,
+} from "./remote-mcp.js";
 
 const API_BASE = "https://api.pipedream.com";
 const MCP_ENDPOINT = "https://remote.mcp.pipedream.net/v3";
@@ -27,6 +31,8 @@ export interface PipedreamConnectorConfig {
   environment: "development" | "production";
   identitySecret: string;
 }
+
+export type PipedreamConnectorDependencies = RemoteTransportDependencies;
 
 type PipedreamApp = {
   id: string;
@@ -59,7 +65,10 @@ export class PipedreamConnector implements ManagedConnectorProvider {
   private directory?: { value: PipedreamApp[]; expiresAt: number };
   private directoryRequest?: Promise<PipedreamApp[]>;
 
-  constructor(private readonly config: PipedreamConnectorConfig) {}
+  constructor(
+    private readonly config: PipedreamConnectorConfig,
+    private readonly dependencies: PipedreamConnectorDependencies = {},
+  ) {}
 
   describe() {
     return {
@@ -118,6 +127,8 @@ export class PipedreamConnector implements ManagedConnectorProvider {
           endpoint: MCP_ENDPOINT,
           headers: this.mcpHeaders(context, app, token),
           signal: context.signal,
+          fetch: this.dependencies.fetch,
+          resolveHostname: this.dependencies.resolveHostname,
         });
         return tools.map((tool) => ({
           ...tool,
@@ -142,6 +153,8 @@ export class PipedreamConnector implements ManagedConnectorProvider {
           endpoint: MCP_ENDPOINT,
           headers: this.mcpHeaders(context, app, token),
           signal: context.signal,
+          fetch: this.dependencies.fetch,
+          resolveHostname: this.dependencies.resolveHostname,
         },
         call.route?.toolName ?? call.tool,
         call.args,
@@ -279,7 +292,7 @@ export class PipedreamConnector implements ManagedConnectorProvider {
     signal?: AbortSignal,
   ): Promise<T> {
     const token = await this.token();
-    const response = await fetch(`${API_BASE}${path}`, {
+    const response = await (this.dependencies.fetch ?? globalThis.fetch)(`${API_BASE}${path}`, {
       ...init,
       headers: {
         authorization: `Bearer ${token}`,
@@ -313,17 +326,20 @@ export class PipedreamConnector implements ManagedConnectorProvider {
   }
 
   private async fetchToken(): Promise<string> {
-    const response = await fetch(`${API_BASE}/v1/oauth/token`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        grant_type: "client_credentials",
-        client_id: this.config.clientId,
-        client_secret: this.config.clientSecret,
-        scope: "connect:*",
-      }),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
+    const response = await (this.dependencies.fetch ?? globalThis.fetch)(
+      `${API_BASE}/v1/oauth/token`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          grant_type: "client_credentials",
+          client_id: this.config.clientId,
+          client_secret: this.config.clientSecret,
+          scope: "connect:*",
+        }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      },
+    );
     const body = (await response.json()) as {
       access_token?: string;
       expires_in?: number;
