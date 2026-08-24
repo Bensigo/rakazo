@@ -119,16 +119,19 @@ describe("Pi agent thinking level", () => {
     vi.stubEnv("PI_DEFAULT_PROVIDER", " openrouter ");
     vi.stubEnv("PI_DEFAULT_MODEL", "  stealth/ox-alpha  ");
 
-    await runWithModel("  stealth/ox-alpha  ", "openrouter");
+    const levels = await runWithModel("  stealth/ox-alpha  ", "openrouter");
 
     expect(fakeAgentState.models).toHaveLength(2);
     expect(fakeAgentState.models[0]).toMatchObject({
       id: "stealth/ox-alpha",
       provider: "openrouter",
-      reasoning: false,
+      reasoning: true,
       contextWindow: 16_384,
       maxTokens: 4_096,
     });
+    // Unknown OpenRouter PI_DEFAULT_MODEL must not force thinking off (#114).
+    expect(levels).toEqual(["medium", "medium"]);
+    expect(levels.every((level) => level !== "off")).toBe(true);
   });
 
   it("uses the trimmed configured default for scripted requests", async () => {
