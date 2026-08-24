@@ -23,6 +23,10 @@ function catalogModels(): Models {
   return catalogModelsCache;
 }
 const MAX_PARALLEL_SUBAGENTS = 4;
+// Reasoning-capable models must not start at "off": for OpenRouter, pi-ai maps
+// that to reasoning.effort "none", which 400s on endpoints that mandate
+// reasoning (e.g. google/gemini-3.7-flash). Keep a real level when model.reasoning
+// is set; plain models stay off.
 const REASONING_MODEL_THINKING_LEVEL = "medium";
 function thinkingLevelFor(model: { reasoning?: boolean }) {
   return model.reasoning ? REASONING_MODEL_THINKING_LEVEL : "off";

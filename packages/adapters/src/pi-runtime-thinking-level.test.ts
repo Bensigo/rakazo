@@ -104,7 +104,11 @@ describe("Pi agent thinking level", () => {
   });
 
   it("uses medium reasoning for the main agent and subagent", async () => {
-    expect(await runWithModel("reasoning-model")).toEqual(["medium", "medium"]);
+    // Regression for OpenRouter mandatory-reasoning models (#114): forcing
+    // thinkingLevel "off" becomes effort "none" and the provider returns 400.
+    const levels = await runWithModel("reasoning-model");
+    expect(levels).toEqual(["medium", "medium"]);
+    expect(levels.every((level) => level !== "off")).toBe(true);
   });
 
   it("keeps reasoning off for the main agent and subagent", async () => {
