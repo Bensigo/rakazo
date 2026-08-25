@@ -247,7 +247,9 @@ describe("E2B computer backend", () => {
     expect(startControl).toMatch(
       /x11vnc -bg[\s\S]*-rfbport 5901[\s\S]*for i in \$\(seq 1 50\); do netstat -tuln \| grep -q ':5901 ' && break[\s\S]*if ! netstat -tuln \| grep -q ':5901 '; then exit 1; fi[\s\S]*novnc_proxy/,
     );
-    const vncReadyIdx = startControl!.indexOf("if ! netstat -tuln | grep -q ':5901 '; then exit 1; fi");
+    const vncReadyIdx = startControl!.indexOf(
+      "if ! netstat -tuln | grep -q ':5901 '; then exit 1; fi",
+    );
     const proxyStartIdx = startControl!.indexOf("./novnc_proxy --vnc localhost:5901");
     const proxyReadyIdx = startControl!.lastIndexOf("grep -q ':6081 '");
     expect(vncReadyIdx).toBeGreaterThan(-1);
