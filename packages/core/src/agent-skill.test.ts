@@ -73,25 +73,56 @@ chomp-indent: |-2
   });
 
   it("preserves more-indented lines inside folded scalars", () => {
-    const doc = `---
-name: Fold indent
-description: Folded with indented fragment
-detail: >
+    const cases: Array<{ label: string; detail: string; expected: string }> = [
+      {
+        label: "adjacent indented fragment",
+        detail: `>
   Intro line
   continues here
     more indented
     also indented
   outro line
----
+`,
+        // Matches yaml@2.9 folded semantics: newline separation, not space-fold.
+        expected: "Intro line continues here\n  more indented\n  also indented\noutro line\n",
+      },
+      {
+        label: "blank lines around indented list",
+        detail: `>
+  paragraph one
+  still one
+
+    - list item
+    - two
+
+  paragraph two
+`,
+        expected: "paragraph one still one\n\n  - list item\n  - two\n\nparagraph two\n",
+      },
+      {
+        label: "indented block without surrounding blanks",
+        detail: `>
+  before
+    code block
+    line two
+  after
+`,
+        expected: "before\n  code block\n  line two\nafter\n",
+      },
+    ];
+
+    for (const { label, detail, expected } of cases) {
+      const parsed = parseSkillMd(`---
+name: Fold indent
+description: Folded with indented fragment
+detail: ${detail}---
 
 # Body
-`;
-    const parsed = parseSkillMd(doc);
-    expect("error" in parsed).toBe(false);
-    if ("error" in parsed) return;
-    expect(parsed.frontmatter.detail).toBe(
-      "Intro line continues here\n  more indented\n  also indented\noutro line\n",
-    );
+`);
+      expect("error" in parsed, label).toBe(false);
+      if ("error" in parsed) return;
+      expect(parsed.frontmatter.detail, label).toBe(expected);
+    }
   });
 
   it("requires name and description", () => {

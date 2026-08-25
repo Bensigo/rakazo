@@ -326,8 +326,10 @@ function decodeYamlBlockScalar(rawLines: string[], header: YamlBlockScalarHeader
   if (header.style === "|") {
     text = contentLines.join("\n");
   } else {
-    // Folded: same-indent lines join with spaces; blank lines become paragraph breaks.
-    // More-indented lines (still leading spaces after content-indent strip) stay literal.
+    // Folded (YAML 1.2 §8.1.3): same-indent lines join with spaces; empty source
+    // lines become paragraph breaks; more-indented lines stay literal. Parts are
+    // always joined with "\n" so folded paragraphs and indented fragments keep
+    // line-break separation (never concatenated into one folded run).
     const parts: string[] = [];
     let paragraph: string[] = [];
     const flush = () => {
