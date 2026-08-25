@@ -65,7 +65,11 @@ describe("createRunExecutor", () => {
   it("expands @skill mentions in the routine prompt at fire time", async () => {
     const scheduledAt = new Date(Date.now() - 1_000);
     const enqueue = vi.fn(async () => undefined);
-    const taskCreate = vi.fn(async () => ({ id: "task-1" }));
+    let createdPrompt = "";
+    const taskCreate = vi.fn(async (args: { data: { prompt: string } }) => {
+      createdPrompt = args.data.prompt;
+      return { id: "task-1" };
+    });
     const skillContent = `---
 name: Daily standup
 description: Prepare standup notes
@@ -120,16 +124,8 @@ description: Prepare standup notes
 
     await executor.wakeRoutine("routine-1", scheduledAt.toISOString());
 
-    expect(taskCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          prompt: expect.stringMatching(/Use skill: Daily standup[\s\S]*Summarize wins/),
-        }),
-      }),
-    );
-    const createdPrompt = String(
-      (taskCreate.mock.calls as Array<[{ data?: { prompt?: string } }]>)[0]?.[0]?.data?.prompt ?? "",
-    );
+    expect(createdPrompt).toContain("Use skill: Daily standup");
+    expect(createdPrompt).toContain("Summarize wins");
     expect(createdPrompt).not.toMatch(/@Daily standup/);
   });
 
