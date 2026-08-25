@@ -215,11 +215,13 @@ async function setComputerMode(
   mode: "team" | "dedicated",
 ) {
   await page.getByRole("button", { name: botName, exact: true }).last().click();
-  await expect(page.locator("label:has-text('Name') input")).toHaveValue(botName);
-  await page
+  const settings = page.getByTestId("bot-settings");
+  await expect(settings.locator("label:has-text('Name') input")).toHaveValue(botName);
+  await settings.getByText("Advanced", { exact: true }).click();
+  await settings
     .getByRole("button", { name: mode === "team" ? "Team" : "Private", exact: true })
     .click();
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await settings.getByRole("button", { name: "Save", exact: true }).click();
   await expect
     .poll(async () => {
       const bots = await rpc<Array<{ id: string; computerMode: string }>>(page, "bots/list", {});
