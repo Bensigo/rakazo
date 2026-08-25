@@ -123,12 +123,14 @@ description: Prepare standup notes
     expect(taskCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          prompt: expect.stringContaining("Use skill: Daily standup"),
+          prompt: expect.stringMatching(/Use skill: Daily standup[\s\S]*Summarize wins/),
         }),
       }),
     );
-    expect(taskCreate.mock.calls[0]?.[0]?.data?.prompt).toContain("Summarize wins");
-    expect(taskCreate.mock.calls[0]?.[0]?.data?.prompt).not.toMatch(/@Daily standup/);
+    const createdPrompt = String(
+      (taskCreate.mock.calls as Array<[{ data?: { prompt?: string } }]>)[0]?.[0]?.data?.prompt ?? "",
+    );
+    expect(createdPrompt).not.toMatch(/@Daily standup/);
   });
 
   it("still continues the run when routine.fired append fails", async () => {
