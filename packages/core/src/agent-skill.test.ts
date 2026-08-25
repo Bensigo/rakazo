@@ -100,6 +100,35 @@ describe("buildSkillMd", () => {
     expect(again.body.trim()).toBe(parsed.body.trim());
   });
 
+  it("round-trips keep-chomp and strip-chomp block scalars", () => {
+    const doc = `---
+name: Chomp
+description: Round-trip chomp
+notes: |+
+  Keep trailing newlines.
+
+
+strip: |-
+  No trailing newline
+clip: |
+  One trailing newline
+---
+
+# Body
+`;
+    const parsed = parseSkillMd(doc);
+    if ("error" in parsed) throw new Error(parsed.error);
+    expect(parsed.frontmatter.notes).toBe("Keep trailing newlines.\n\n\n");
+    expect(parsed.frontmatter.strip).toBe("No trailing newline");
+    expect(parsed.frontmatter.clip).toBe("One trailing newline\n");
+    const rebuilt = buildSkillMd(parsed);
+    const again = parseSkillMd(rebuilt);
+    if ("error" in again) throw new Error(again.error);
+    expect(again.frontmatter.notes).toBe(parsed.frontmatter.notes);
+    expect(again.frontmatter.strip).toBe(parsed.frontmatter.strip);
+    expect(again.frontmatter.clip).toBe(parsed.frontmatter.clip);
+  });
+
   it("rejects overlong structured names", () => {
     expect(() => buildSkillMd({ name: "N".repeat(81), description: "ok", body: "body" })).toThrow(
       /at most 80 characters/,

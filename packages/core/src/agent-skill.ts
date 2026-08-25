@@ -451,15 +451,33 @@ function parseYamlScalar(raw: string): string | number | boolean {
   return value;
 }
 
+function formatYamlBlockScalar(key: string, value: string): string {
+  // Choose chomp so decodeYamlBlockScalar round-trips trailing newlines:
+  // strip (0), clip (1), keep (2+). Folded (`>`) style is not preserved — only the string value.
+  const trailing = /\n*$/.exec(value)?.[0].length ?? 0;
+  let indicator = "|";
+  let lines: string[];
+  if (trailing === 0) {
+    indicator = "|-";
+    lines = value.split("\n");
+  } else if (trailing === 1) {
+    indicator = "|";
+    lines = value.slice(0, -1).split("\n");
+  } else {
+    indicator = "|+";
+    const core = value.slice(0, -trailing);
+    // keep decoder yields 1 + trailingBlanks newlines; emit trailingBlanks blank lines.
+    lines = [core, ...Array.from({ length: trailing - 1 }, () => "")];
+  }
+  const indented = lines.map((line) => `  ${line}`).join("\n");
+  return `${key}: ${indicator}\n${indented}`;
+}
+
 function formatYamlLine(key: string, value: unknown): string {
   if (value === null || value === undefined) return `${key}:`;
   if (typeof value === "string") {
     if (value.includes("\n") || value.includes(": ")) {
-      const indented = value
-        .split("\n")
-        .map((line) => `  ${line}`)
-        .join("\n");
-      return `${key}: |\n${indented}`;
+      return formatYamlBlockScalar(key, value);
     }
     if (value === "" || /[#{}[\],&*?|>!%@`]/.test(value) || value !== value.trim()) {
       return `${key}: ${JSON.stringify(value)}`;
