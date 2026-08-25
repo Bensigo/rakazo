@@ -2762,14 +2762,18 @@ const Composer = memo(function Composer({
     if (!el) return;
 
     function syncHeight() {
-      el.style.height = "0px";
-      el.style.height = `${el.scrollHeight}px`;
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      textarea.style.height = "0px";
+      textarea.style.height = `${textarea.scrollHeight}px`;
     }
 
     syncHeight();
     let lastWidth = el.getBoundingClientRect().width;
     const observer = new ResizeObserver(() => {
-      const width = el.getBoundingClientRect().width;
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      const width = textarea.getBoundingClientRect().width;
       if (width === lastWidth) return;
       lastWidth = width;
       syncHeight();
