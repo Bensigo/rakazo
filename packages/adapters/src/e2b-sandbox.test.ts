@@ -237,11 +237,11 @@ describe("E2B computer backend", () => {
       .map(([value]) => String(value))
       .find((value) => value.includes("novnc_proxy") && value.includes("-rfbport 5901"));
     expect(startControl).toBeDefined();
-    expect(startControl).toContain("pkill -f 'x11vnc.*-rfbport 5901'");
+    expect(startControl).toContain("pkill -f '(^|/)x11vnc .* -rfbport 5901'");
     expect(startControl).toContain("pkill -f 'novnc_proxy.*--listen 6081'");
     // After stop: wait until VNC port is free (or fail) before storing a new password.
     expect(startControl).toMatch(
-      /pkill -f 'x11vnc\.\*-rfbport 5901'[\s\S]*for i in \$\(seq 1 50\); do netstat -tuln \| grep -q ':5901 ' \|\| break[\s\S]*if netstat -tuln \| grep -q ':5901 '; then exit 1; fi[\s\S]*x11vnc -storepasswd/,
+      /pkill -f '\(\^\|\/\)x11vnc \.\* -rfbport 5901'[\s\S]*for i in \$\(seq 1 50\); do netstat -tuln \| grep -q ':5901 ' \|\| break[\s\S]*if netstat -tuln \| grep -q ':5901 '; then exit 1; fi[\s\S]*x11vnc -storepasswd/,
     );
     // After starting x11vnc: require VNC port listen before starting novnc_proxy.
     expect(startControl).toMatch(
@@ -267,7 +267,7 @@ describe("E2B computer backend", () => {
     await provider.setScreenControl(computer, false, context, "lease-1");
     expect(
       command.mock.calls.some(([value]) =>
-        String(value).includes("pkill -f 'x11vnc.*-rfbport 5901'"),
+        String(value).includes("pkill -f '(^|/)x11vnc .* -rfbport 5901'"),
       ),
     ).toBe(true);
     const replacementControl = await provider.connectScreen(
@@ -455,7 +455,7 @@ describe("E2B computer backend", () => {
       .map(([value]) => String(value))
       .find((value) => value.includes("-rfbport 5903") && value.includes("novnc_proxy"));
     expect(startControl).toBeDefined();
-    expect(startControl).toContain("pkill -f 'x11vnc.*-rfbport 5903'");
+    expect(startControl).toContain("pkill -f '(^|/)x11vnc .* -rfbport 5903'");
     expect(startControl).toMatch(
       /for i in \$\(seq 1 50\); do \(echo >\/dev\/tcp\/127\.0\.0\.1\/5903\)[\s\S]*then exit 1; fi[\s\S]*x11vnc -storepasswd/,
     );

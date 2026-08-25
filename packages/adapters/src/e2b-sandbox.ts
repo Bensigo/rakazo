@@ -683,9 +683,11 @@ async function settleForTeardown(pending: Promise<void> | undefined): Promise<vo
 }
 
 function controlStreamStopCommand(controlToken?: string) {
-  // Match path-prefixed x11vnc and flexible spacing so leftovers are reaped when possible.
+  // Anchor to the x11vnc binary (path-prefixed OK). Do not use an unanchored
+  // `x11vnc.*` pattern — E2B embeds the full script in the runner argv, so that
+  // would pkill the runner itself.
   const stop = [
-    "pkill -f 'x11vnc.*-rfbport 5901' || true",
+    "pkill -f '(^|/)x11vnc .* -rfbport 5901' || true",
     "pkill -f '^/usr/bin/python3 .*websockify.*6081' || true",
     "pkill -f 'novnc_proxy.*--listen 6081' || true",
     "rm -f /tmp/rakazo-control.vncpass",

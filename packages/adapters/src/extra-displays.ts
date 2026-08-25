@@ -161,7 +161,7 @@ export function ensureExtraDisplayCommand(
     `    fi`,
     `  done`,
     `fi`,
-    `pkill -f 'x11vnc.*-rfbport ${layout.viewVncPort}' || true`,
+    `pkill -f '(^|/)x11vnc .* -rfbport ${layout.viewVncPort}' || true`,
     `pkill -f '^/usr/bin/python3 .*websockify.*${layout.viewPort}' || true`,
     `pkill -f 'novnc_proxy.*--listen ${layout.viewPort}' || true`,
     `x11vnc -storepasswd "$view_password" ${shellQuote(passwordAuthFile)} >/dev/null`,
@@ -224,8 +224,8 @@ export function extraDisplayControlStopCommand(
   controlToken?: string,
 ): string {
   const stop = [
-    // Match path-prefixed x11vnc and flexible spacing so leftovers are reaped when possible.
-    `pkill -f 'x11vnc.*-rfbport ${layout.controlVncPort}' || true`,
+    // Anchor to the x11vnc binary (path-prefixed OK); avoid unanchored matches that hit the runner argv.
+    `pkill -f '(^|/)x11vnc .* -rfbport ${layout.controlVncPort}' || true`,
     `pkill -f '^/usr/bin/python3 .*websockify.*${layout.controlPort}' || true`,
     `pkill -f 'novnc_proxy.*--listen ${layout.controlPort}' || true`,
     `rm -f /tmp/rakazo-control-${layout.displayNumber}.vncpass`,
@@ -327,7 +327,7 @@ export function extraDisplayInputCommand(layout: ExtraDisplayLayout, input: Comp
 
 export function primaryStreamCleanupCommand(primaryViewPort = 6080): string {
   return [
-    "pkill -f 'x11vnc.*-R viewonly' || true",
+    "pkill -f '(^|/)x11vnc .* -R viewonly' || true",
     `pkill -f '[n]ovnc_proxy.*${primaryViewPort}' || true`,
     `pkill -f '[w]ebsockify.*${primaryViewPort}' || true`,
   ].join("; ");
