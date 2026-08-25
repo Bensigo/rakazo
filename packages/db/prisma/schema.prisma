@@ -550,7 +550,8 @@ model TaughtSkill {
   @@map("taught_skills")
 }
 
-/// Cursor-style SKILL.md recipes shared across assistants (not per-bot).
+/// Claude Agent Skills: SKILL.md recipes shared across assistants (not per-bot).
+/// The Pi runtime already understands this format; we persist and inject them.
 /// Distinct from TaughtSkill (demo/record playbooks).
 model AgentSkill {
   id          String   @id @default(cuid())

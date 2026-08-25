@@ -1,5 +1,6 @@
 /**
- * Cursor-style agent skills: reusable SKILL.md recipes shared across assistants.
+ * Claude Agent Skills: reusable SKILL.md recipes shared across assistants.
+ * The Pi runtime already understands this format; we persist and inject them.
  * Distinct from taught skills (demo/record playbooks on a single bot).
  */
 
@@ -14,7 +15,7 @@ export type ParsedSkillMd = {
   body: string;
   /**
    * All frontmatter keys as parsed scalars/structures. Unknown keys are preserved
-   * so Cursor-managed skills with extra fields round-trip safely.
+   * so Claude Agent Skills with extra fields round-trip safely.
    */
   frontmatter: Record<string, unknown>;
 };
@@ -124,7 +125,7 @@ export function formatSkillsCatalogInstruction(entries: SkillCatalogEntry[]): st
   if (entries.length === 0) return undefined;
   const lines = entries.slice(0, 50).map(skillCatalogLine).join("\n");
   return [
-    "Available skills (shared across assistants; generic how-tos, not account-specific routines):",
+    "Available Claude Agent Skills (SKILL.md recipes shared across assistants; generic how-tos, not account-specific routines). The Pi runtime already understands this format; we persist and inject them:",
     lines,
     "When a skill matches the user's request, call skill_read for that name and follow it immediately. Prefer matching skills over improvising multi-step recipes.",
     "Users can force a skill with /Name in the composer. Routines may mention a skill as @Name — that loads the skill at fire time.",
