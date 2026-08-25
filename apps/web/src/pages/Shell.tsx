@@ -2404,6 +2404,11 @@ export function ShellPage() {
             email={session.data?.user.email}
             usage={usage}
             focusUsage={accountSettingsFocusUsage}
+            onOpenModels={() => {
+              setAccountSettingsOpen(false);
+              setAccountSettingsFocusUsage(false);
+              setModelsOpen(true);
+            }}
             onClose={() => {
               setAccountSettingsOpen(false);
               setAccountSettingsFocusUsage(false);

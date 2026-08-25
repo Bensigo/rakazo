@@ -51,6 +51,16 @@ export default function Account() {
         </Text>
       ) : null}
       <Text style={styles.settingsExplanation}>Model spend uses your provider keys.</Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Open models and billing"
+        disabled={pending}
+        onPress={() => router.push("/models")}
+        hitSlop={8}
+        style={{ marginTop: 10 }}
+      >
+        <Text style={styles.restoreLabel}>Models & billing</Text>
+      </Pressable>
     </View>
   );
 
