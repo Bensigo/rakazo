@@ -55,6 +55,7 @@ import {
   createThreadMessageInTransaction,
   effectiveMemoryScope,
   findDefaultModelCredential,
+  findModelCredential,
   type McpServer,
   type Prisma,
   type PrismaClient,
@@ -262,17 +263,33 @@ export function createRunExecutor(deps: ExecutorDeps) {
     async resolveModel(scope: {
       userId: string;
       workspaceId: string;
+      botId?: string;
     }): Promise<AgentRunRequest["model"]> {
+      const override = scope.botId
+        ? await deps.prisma.bot.findFirst({
+            where: {
+              id: scope.botId,
+              userId: scope.userId,
+              workspaceId: scope.workspaceId,
+            },
+            select: { modelProvider: true, modelId: true, thinkingLevel: true },
+          })
+        : null;
+      const hasOverride = Boolean(override?.modelProvider && override.modelId);
       const [credential, settings] = await Promise.all([
-        findDefaultModelCredential(deps.prisma, scope),
+        hasOverride
+          ? findModelCredential(deps.prisma, scope, override!.modelProvider!)
+          : findDefaultModelCredential(deps.prisma, scope),
         deps.prisma.deploymentSettings.findUnique({ where: { id: "default" } }),
       ]);
       const resolved = await resolveModelKey(deps, scope.userId, scope.workspaceId, credential);
       const provider =
+        (hasOverride ? override!.modelProvider : null) ??
         credential?.provider ??
         settings?.defaultModelProvider ??
         (deps.deploymentModelKey ? "openrouter" : "scripted");
       const id =
+        (hasOverride ? override!.modelId : null) ??
         credential?.defaultModel ??
         settings?.defaultModelId ??
         (deps.deploymentModelKey
@@ -283,6 +300,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
         id,
         apiKey: resolved.oauth ? undefined : resolved.apiKey,
         baseUrl: resolved.baseUrl,
+        thinkingLevel:
+          (override?.thinkingLevel as AgentRunRequest["model"]["thinkingLevel"]) ?? null,
         oauth: resolved.oauth
           ? { credential: resolved.oauth, persist: resolved.persistOAuth }
           : undefined,
@@ -508,7 +527,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           messages,
           task,
           storedConnections,
-          credential,
+          defaultCredential,
           settings,
           configuredMemory,
           savedSkills,
@@ -543,6 +562,12 @@ export function createRunExecutor(deps: ExecutorDeps) {
             where: { botId: run.botId, workspaceId: run.workspaceId, status: "saved" },
           }),
         ]);
+        const hasModelOverride = Boolean(bot.modelProvider && bot.modelId);
+        const credential =
+          hasModelOverride && bot.modelProvider
+            ? ((await findModelCredential(deps.prisma, run, bot.modelProvider)) ??
+              defaultCredential)
+            : defaultCredential;
         runAbortController = new AbortController();
         if (!leaseValid) runAbortController.abort();
         const composioRows = storedConnections.filter(
@@ -679,6 +704,20 @@ export function createRunExecutor(deps: ExecutorDeps) {
           (values) => runSecrets.push(...values),
         );
         runSecrets.push(...resolved.redact);
+        const runModelProvider =
+          (hasModelOverride ? bot.modelProvider : null) ??
+          credential?.provider ??
+          settings?.defaultModelProvider ??
+          "scripted";
+        const runModelId =
+          (hasModelOverride ? bot.modelId : null) ??
+          credential?.defaultModel ??
+          settings?.defaultModelId ??
+          "scripted";
+        await deps.prisma.run.updateMany({
+          where: { id: runId, status: "running", leaseOwner: workerId, leaseFence: fence },
+          data: { modelProvider: runModelProvider, modelId: runModelId },
+        });
         if (!bot.computer) throw new Error("Bot has no computer");
         const storedComputer = bot.computer;
         const computerMode = parseComputerMode(storedComputer.scope);
@@ -1636,10 +1675,12 @@ export function createRunExecutor(deps: ExecutorDeps) {
               currentTurnImages,
               tools,
               model: {
-                provider: credential?.provider ?? settings?.defaultModelProvider ?? "scripted",
-                id: credential?.defaultModel ?? settings?.defaultModelId ?? "scripted",
+                provider: runModelProvider,
+                id: runModelId,
                 apiKey: resolved.oauth ? undefined : resolved.apiKey,
                 baseUrl: resolved.baseUrl,
+                thinkingLevel:
+                  (bot.thinkingLevel as AgentRunRequest["model"]["thinkingLevel"]) ?? null,
                 oauth: resolved.oauth
                   ? { credential: resolved.oauth, persist: resolved.persistOAuth }
                   : undefined,

@@ -243,4 +243,61 @@ describe("createRunExecutor", () => {
     );
     expect(enqueue).toHaveBeenCalledOnce();
   });
+
+  it("resolves a per-bot model override with that provider’s credential", async () => {
+    const findFirst = vi.fn(async (args: { where: { provider?: string; isDefault?: boolean } }) => {
+      if (args.where.provider === "xai") {
+        return {
+          id: "cred-xai",
+          provider: "xai",
+          secretId: "secret-xai",
+          defaultModel: "grok-4.6",
+          isDefault: false,
+        };
+      }
+      if (args.where.isDefault) {
+        return {
+          id: "cred-default",
+          provider: "openrouter",
+          secretId: "secret-or",
+          defaultModel: "deepseek/deepseek-v4-flash-0731",
+          isDefault: true,
+        };
+      }
+      return null;
+    });
+    const prisma = {
+      bot: {
+        findFirst: vi.fn(async () => ({
+          modelProvider: "xai",
+          modelId: "grok-4.6",
+          thinkingLevel: "high",
+        })),
+      },
+      userModelCredential: { findFirst },
+      deploymentSettings: { findUnique: vi.fn(async () => null) },
+      secret: { findUnique: vi.fn(async () => null) },
+    } as unknown as PrismaClient;
+    const executor = createRunExecutor({
+      prisma,
+      secretStore: { load: vi.fn(), put: vi.fn() },
+    } as unknown as Parameters<typeof createRunExecutor>[0]);
+
+    const model = await executor.resolveModel({
+      userId: "user-1",
+      workspaceId: "ws-1",
+      botId: "bot-1",
+    });
+
+    expect(model).toMatchObject({
+      provider: "xai",
+      id: "grok-4.6",
+      thinkingLevel: "high",
+    });
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ provider: "xai" }),
+      }),
+    );
+  });
 });

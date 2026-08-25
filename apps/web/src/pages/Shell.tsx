@@ -8,10 +8,13 @@ import type {
   Group,
   Me,
   MessageBlock,
+  ModelCatalogEntry,
+  ModelCredential,
   ProductEvent,
   Routine,
   SearchHit,
   TaughtSkill,
+  ThinkingLevel,
   ThreadMessage,
   ThreadSnapshot,
   VoiceInfo,
@@ -3497,6 +3500,9 @@ function BotSettings({
     memoryScope?: "isolated" | "shared" | null;
     autoSpeak?: boolean;
     voiceId?: string | null;
+    modelProvider?: string | null;
+    modelId?: string | null;
+    thinkingLevel?: ThinkingLevel | null;
   }) => Promise<void>;
   onExport: () => Promise<void>;
   onClear: () => void;
@@ -3509,6 +3515,13 @@ function BotSettings({
   const [autoSpeak, setAutoSpeak] = useState(bot.autoSpeak);
   const [voiceId, setVoiceId] = useState(bot.voiceId ?? "");
   const [voices, setVoices] = useState<VoiceInfo[]>([]);
+  const [modelKey, setModelKey] = useState(
+    bot.modelProvider && bot.modelId ? modelOptionKey(bot.modelProvider, bot.modelId) : "",
+  );
+  const [thinkingLevel, setThinkingLevel] = useState(bot.thinkingLevel ?? "");
+  const [credentials, setCredentials] = useState<ModelCredential[]>([]);
+  const [catalog, setCatalog] = useState<ModelCatalogEntry[]>([]);
+  const [me, setMe] = useState<Me | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -3517,7 +3530,37 @@ function BotSettings({
       .voices({})
       .then(setVoices)
       .catch(() => setVoices([]));
+    void Promise.all([rpc.models.credentials(), rpc.models.list(), rpc.me()])
+      .then(([nextCredentials, nextCatalog, nextMe]) => {
+        setCredentials(nextCredentials);
+        setCatalog(nextCatalog);
+        setMe(nextMe);
+      })
+      .catch(() => undefined);
   }, []);
+
+  const connectedOptions = credentials
+    .filter((entry) => entry.modelId)
+    .map((entry) => ({
+      key: modelOptionKey(entry.provider, entry.modelId!),
+      provider: entry.provider,
+      modelId: entry.modelId!,
+      label: `${entry.label} · ${catalogLabel(catalog, entry.provider, entry.modelId!) ?? entry.modelId}`,
+    }));
+
+  const effectiveProvider = modelKey
+    ? parseModelOptionKey(modelKey)?.provider
+    : (me?.defaultProvider ?? null);
+  const effectiveModelId = modelKey
+    ? parseModelOptionKey(modelKey)?.modelId
+    : (me?.defaultModel ?? null);
+  const effectiveEntry =
+    effectiveProvider && effectiveModelId
+      ? catalog.find(
+          (entry) => entry.provider === effectiveProvider && entry.id === effectiveModelId,
+        )
+      : undefined;
+  const thinkingOptions = (effectiveEntry?.thinkingLevels ?? []).filter((level) => level !== "off");
 
   return (
     <div data-testid="bot-settings">
@@ -3552,6 +3595,49 @@ function BotSettings({
           className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
         />
       </label>
+      <label className="mt-4 block text-[14px] text-[#85858A]">
+        Model
+        <select
+          value={modelKey}
+          onChange={(event) => {
+            setModelKey(event.target.value);
+            setThinkingLevel("");
+          }}
+          className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
+        >
+          <option value="">
+            Workspace default
+            {me?.defaultModel
+              ? ` (${catalogLabel(catalog, me.defaultProvider, me.defaultModel) ?? me.defaultModel})`
+              : ""}
+          </option>
+          {modelKey && !connectedOptions.some((option) => option.key === modelKey) ? (
+            <option value={modelKey}>{parseModelOptionKey(modelKey)?.modelId ?? modelKey}</option>
+          ) : null}
+          {connectedOptions.map((option) => (
+            <option key={option.key} value={option.key}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {thinkingOptions.length ? (
+        <label className="mt-4 block text-[14px] text-[#85858A]">
+          Thinking
+          <select
+            value={thinkingLevel}
+            onChange={(event) => setThinkingLevel(event.target.value)}
+            className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
+          >
+            <option value="">Default (medium)</option>
+            {thinkingOptions.map((level) => (
+              <option key={level} value={level}>
+                {level}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
       <ComputerModePicker value={computerMode} onChange={setComputerMode} />
       {memoryProviderConfigured ? (
         <div className="mt-4 text-[14px] text-[#85858A]">
@@ -3617,6 +3703,7 @@ function BotSettings({
           onClick={() => {
             setSaving(true);
             setError(null);
+            const selected = modelKey ? parseModelOptionKey(modelKey) : null;
             void onSave({
               name,
               title,
@@ -3626,6 +3713,11 @@ function BotSettings({
               memoryScope,
               autoSpeak,
               voiceId: voiceId || null,
+              modelProvider: selected?.provider ?? null,
+              modelId: selected?.modelId ?? null,
+              thinkingLevel: thinkingOptions.length
+                ? ((thinkingLevel || null) as ThinkingLevel | null)
+                : null,
             })
               .catch((err) => setError(err instanceof Error ? err.message : "Could not save"))
               .finally(() => setSaving(false));
@@ -3647,6 +3739,25 @@ function BotSettings({
       </div>
     </div>
   );
+}
+
+function modelOptionKey(provider: string, modelId: string) {
+  return `${provider}::${modelId}`;
+}
+
+function parseModelOptionKey(key: string) {
+  const separator = key.indexOf("::");
+  if (separator <= 0) return null;
+  return { provider: key.slice(0, separator), modelId: key.slice(separator + 2) };
+}
+
+function catalogLabel(
+  catalog: ModelCatalogEntry[],
+  provider: string | null | undefined,
+  modelId: string,
+) {
+  if (!provider) return undefined;
+  return catalog.find((entry) => entry.provider === provider && entry.id === modelId)?.label;
 }
 
 function NewBotSectionDialog({

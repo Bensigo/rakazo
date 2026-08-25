@@ -240,6 +240,9 @@ model Bot {
   computerSwitching Boolean @default(false)
   voiceId        String?
   autoSpeak      Boolean  @default(false)
+  modelProvider  String?
+  modelId        String?
+  thinkingLevel  String?
   routines       Routine[]
   scratchpadItems ScratchpadItem[]
   taughtSkills   TaughtSkill[]
