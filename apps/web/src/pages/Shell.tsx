@@ -29,6 +29,7 @@ import {
   BOT_NAME_MAX_LENGTH,
   BOT_TITLE_MAX_LENGTH,
   normalizeCreateBotProfile,
+  OPENAI_COMPATIBLE_PROVIDER_ID,
 } from "@rakazo/contracts";
 import {
   abortableDelay,
@@ -3539,14 +3540,35 @@ function BotSettings({
       .catch(() => undefined);
   }, []);
 
-  const connectedOptions = credentials
-    .filter((entry) => entry.modelId)
+  const connectedProviders = new Set(credentials.map((entry) => entry.provider));
+  const connectedOptions = catalog
+    .filter(
+      (entry) =>
+        connectedProviders.has(entry.provider) && entry.provider !== OPENAI_COMPATIBLE_PROVIDER_ID,
+    )
     .map((entry) => ({
-      key: modelOptionKey(entry.provider, entry.modelId!),
+      key: modelOptionKey(entry.provider, entry.id),
       provider: entry.provider,
-      modelId: entry.modelId!,
-      label: `${entry.label} · ${catalogLabel(catalog, entry.provider, entry.modelId!) ?? entry.modelId}`,
+      modelId: entry.id,
+      label: `${entry.providerName} · ${entry.label}`,
     }));
+  for (const credential of credentials) {
+    if (!credential.modelId) continue;
+    if (
+      connectedOptions.some(
+        (option) =>
+          option.provider === credential.provider && option.modelId === credential.modelId,
+      )
+    ) {
+      continue;
+    }
+    connectedOptions.push({
+      key: modelOptionKey(credential.provider, credential.modelId),
+      provider: credential.provider,
+      modelId: credential.modelId,
+      label: `${credential.label} · ${credential.modelId}`,
+    });
+  }
 
   const effectiveProvider = modelKey
     ? parseModelOptionKey(modelKey)?.provider

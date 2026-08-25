@@ -60,7 +60,10 @@ test("bot creation, editing, and deletion persist", async ({ page }, testInfo) =
   await expect(descriptionInput).toHaveValue(
     "Finds reliable sources and turns them into concise briefs.",
   );
+  await expect(page.locator("label:has-text('Model') select")).toBeVisible();
+  await expect(page.locator("label:has-text('Model') select")).toContainText("Workspace default");
   await captureScreenshot(page, testInfo, "27a-settings-panel");
+  await captureScreenshot(page, testInfo, "27a-bot-settings-model");
   await page.getByRole("button", { name: "Show computer" }).click();
   await expect(page.getByTestId("side-panel")).toHaveAttribute("data-panel", "computer");
   await expect(page.getByRole("button", { name: "Show settings" })).toBeVisible();

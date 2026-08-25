@@ -589,6 +589,13 @@ export function createRouter(deps: RouterDeps) {
           if (!credential) {
             throw new ORPCError("BAD_REQUEST", { message: "Connect that model provider first" });
           }
+          const knownModels = [...listPiCatalog(), scriptedCatalogEntry];
+          const inCatalog = knownModels.some(
+            (item) => item.provider === input.modelProvider && item.id === input.modelId,
+          );
+          if (!inCatalog && credential.defaultModel !== input.modelId) {
+            throw new ORPCError("BAD_REQUEST", { message: "Unknown model for that provider" });
+          }
         }
         const thinkingLevel = input.thinkingLevel;
         if (input.thinkingLevel) {
