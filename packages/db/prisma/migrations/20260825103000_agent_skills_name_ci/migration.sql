@@ -2,16 +2,18 @@
 DROP INDEX IF EXISTS "agent_skills_workspaceId_userId_name_key";
 DROP INDEX IF EXISTS "agent_skills_workspaceId_userId_name_ci_key";
 
--- Reconcile case-variant duplicates (e.g. Standup + standup) before the CI unique index.
--- Keep the most recently updated row per (workspaceId, userId, lower(name)).
-DELETE FROM "agent_skills" a
-USING "agent_skills" b
-WHERE a."workspaceId" = b."workspaceId"
-  AND a."userId" = b."userId"
-  AND lower(a."name") = lower(b."name")
+-- Preserve case-variant duplicates (e.g. Standup + standup) by renaming older rows so
+-- lower(name) is unique without discarding skill content.
+UPDATE "agent_skills" AS older
+SET "name" = left(older."name", 64) || ' ·' || right(older."id", 6)
+FROM "agent_skills" AS newer
+WHERE older."workspaceId" = newer."workspaceId"
+  AND older."userId" = newer."userId"
+  AND lower(older."name") = lower(newer."name")
+  AND older."id" <> newer."id"
   AND (
-    a."updatedAt" < b."updatedAt"
-    OR (a."updatedAt" = b."updatedAt" AND a."id" < b."id")
+    older."updatedAt" < newer."updatedAt"
+    OR (older."updatedAt" = newer."updatedAt" AND older."id" < newer."id")
   );
 
 CREATE UNIQUE INDEX IF NOT EXISTS "agent_skills_workspaceId_userId_name_lower_key"
