@@ -15,10 +15,7 @@ test("composer / picker lists skills above actions", async ({ page }, testInfo) 
     body: "1. Summarize wins.\n2. List blockers.",
   });
 
-<<<<<<< HEAD
   // aria-label stays available when skill/mention chips hide the placeholder.
-=======
->>>>>>> 9d0e4da (Locate composer by aria-label after skill/mention chips)
   const composer = page.getByRole("textbox", { name: /^Message/ });
   await expect(composer).toBeVisible();
   await composer.fill("/");
