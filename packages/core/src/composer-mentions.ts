@@ -52,7 +52,8 @@ export function stripMentionToken(text: string, mentionName: string): string {
   );
   return text
     .replace(pattern, (_match, prefix: string) => prefix ?? "")
-    .replace(/\s+/g, " ")
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/[^\S\n]*\n/g, "\n")
     .trim();
 }
 

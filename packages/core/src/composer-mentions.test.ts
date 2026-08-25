@@ -226,6 +226,11 @@ describe("strip and connector intent", () => {
     expect(stripMentionToken("Ask @Draft team please", "Draft team")).toBe("Ask please");
   });
 
+  it("preserves newlines when stripping mention tokens", () => {
+    expect(stripMentionToken("@Planning\n\nline two", "Planning")).toBe("line two");
+    expect(stripMentionToken("one\n@Planning\ntwo", "Planning")).toBe("one\n\ntwo");
+  });
+
   it("builds connector intent lines", () => {
     expect(connectorIntentLine(["Gmail", "Stripe"])).toBe(
       "Use these connectors if relevant: Gmail, Stripe.",

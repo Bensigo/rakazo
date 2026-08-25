@@ -1094,7 +1094,15 @@ export function ShellPage() {
   const loadOlderMessagesRef = useRef(loadOlderMessages);
   loadOlderMessagesRef.current = loadOlderMessages;
 
+  const mentionBotsKey = useMemo(
+    () => bots.map((bot) => `${bot.id}:${bot.name}`).join(","),
+    [bots],
+  );
+  const botsForMentionsRef = useRef(bots);
+  botsForMentionsRef.current = bots;
+
   useEffect(() => {
+    const bots = botsForMentionsRef.current;
     if (!initialBotsLoaded || bots.length === 0) {
       setMentionRoutines([]);
       setMentionConnectors([]);
@@ -1156,7 +1164,7 @@ export function ShellPage() {
     return () => {
       cancelled = true;
     };
-  }, [bots, initialBotsLoaded]);
+  }, [initialBotsLoaded, mentionBotsKey]);
 
   useLayoutEffect(() => {
     if (initialBotsLoaded) {

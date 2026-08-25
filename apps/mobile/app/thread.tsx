@@ -56,6 +56,14 @@ import { playMpeg, speakUtterance } from "../lib/voice";
 
 type PendingAttachment = PickedAttachment & { threadKey: string };
 
+function newClientNonce(): string {
+  const webCrypto = globalThis.crypto;
+  if (webCrypto && typeof webCrypto.randomUUID === "function") {
+    return webCrypto.randomUUID();
+  }
+  return `m-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function formatApprovalAnswer(answer: string | undefined): string {
   if (!answer) return "Answered";
   if (answer === "allow") return "Allowed once";
@@ -622,7 +630,7 @@ export default function Thread() {
     setError(null);
     try {
       if (plan.shouldRunRoutines) {
-        const sendNonce = crypto.randomUUID();
+        const sendNonce = newClientNonce();
         await Promise.all(
           plan.routineIds.map((routineId) =>
             rpc("routines/testRun", {
