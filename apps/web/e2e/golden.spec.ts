@@ -92,7 +92,6 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
     })
     .toBe("waiting_takeover");
   // Agent computer toggles the panel — only open it when closed so we don't hide Take control.
-  const sidePanel = page.getByTestId("side-panel");
   if ((await sidePanel.getAttribute("data-panel")) !== "computer") {
     await page.getByTitle("Agent computer").click();
   }
