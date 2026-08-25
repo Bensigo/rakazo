@@ -15,7 +15,7 @@ async function createBot(page: import("@playwright/test").Page, name: string) {
   await page.locator("label:has-text('Name') input").fill(name);
   await page.getByRole("button", { name: "Create", exact: true }).click();
   await expect(botList.getByRole("button", { name: new RegExp(`^${name}`) })).toBeVisible();
-  await expect(page.getByPlaceholder(`Message ${name}`)).toBeVisible();
+  await expect(page.getByRole("textbox", { name: `Message ${name}` })).toBeVisible();
   await page.waitForURL(/\/app\/[^/]+$/);
   return activeBotId(page);
 }
@@ -56,7 +56,7 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
   });
   await page.reload();
   await expect(page).toHaveURL(groupUrl);
-  await expect(page.getByPlaceholder("Message Draft team")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Message Draft team" })).toBeVisible();
 
   const groups = await rpc<
     Array<{
@@ -201,7 +201,7 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
   await expect(page).toHaveURL(new RegExp(`/app/g/${reviewGroup.id}$`));
   await expect(page.getByTestId("transcript")).not.toContainText("Answered: Paris");
   releaseReviewSnapshot();
-  await expect(page.getByPlaceholder("Message Review team")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Message Review team" })).toBeVisible();
   await page.unroute("**/rpc/threads/get");
   await sidebar.getByRole("button", { name: /Draft team/ }).click();
   await expect(page.getByText("Answered: Paris", { exact: true })).toBeVisible();
@@ -232,5 +232,5 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
   await rpc(page, "groups/remove", { groupId: reviewGroup.id });
   await page.goto(`/app/g/${reviewGroup.id}`);
   await page.waitForURL(/\/app\/(?!g\/)[^/]+$/);
-  await expect(page.getByPlaceholder(/Message/)).toBeVisible();
+  await expect(page.getByRole("textbox", { name: /Message/ })).toBeVisible();
 });
