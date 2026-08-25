@@ -91,7 +91,12 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
       message: "the second protected-input run must be ready for takeover",
     })
     .toBe("waiting_takeover");
-  await page.getByRole("button", { name: "Take control" }).click();
+  // Side panel may have closed after the first takeover; reopen and wait until
+  // Take control is enabled (busyBotName can lag briefly after waiting_takeover).
+  await page.getByTitle("Agent computer").click();
+  const takeControl = page.getByRole("button", { name: "Take control" });
+  await expect(takeControl).toBeEnabled({ timeout: 30_000 });
+  await takeControl.click();
   await expect(page.getByRole("button", { name: "Close computer" })).toBeVisible();
   await page.getByRole("button", { name: "Skip", exact: true }).last().click();
   await expect(page.getByRole("button", { name: "Close computer" })).toBeHidden();
