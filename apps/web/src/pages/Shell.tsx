@@ -1,5 +1,6 @@
 import { ChatMarkdown } from "@rakazo/chat-ui/web";
 import type {
+  AgentSkillCatalogEntry,
   Bot,
   BotSection,
   ComputerMode,
@@ -48,6 +49,7 @@ import {
 import { BotAvatar, Button, GroupAvatar } from "@rakazo/ui-web";
 import {
   ArrowUp,
+  Box,
   ChevronLeft,
   Cpu,
   Gauge,
@@ -197,6 +199,7 @@ export function ShellPage() {
   const [routinesBotId, setRoutinesBotId] = useState<string | null>(null);
   const [taughtSkills, setTaughtSkills] = useState<TaughtSkill[]>([]);
   const [taughtSkillsBotId, setTaughtSkillsBotId] = useState<string | null>(null);
+  const [agentSkills, setAgentSkills] = useState<AgentSkillCatalogEntry[]>([]);
   const [teachBusy, setTeachBusy] = useState(false);
   const [computer, setComputer] = useState<ComputerStatus | null>(null);
   const computerRef = useRef<ComputerStatus | null>(null);
@@ -600,6 +603,28 @@ export function ShellPage() {
       window.removeEventListener("focus", refreshVisibleBots);
       document.removeEventListener("visibilitychange", refreshVisibleBots);
     };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void rpc.agentSkills
+      .list()
+      .then((skills) => {
+        if (!cancelled) setAgentSkills(skills);
+      })
+      .catch(() => {
+        if (!cancelled) setAgentSkills([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const refreshAgentSkills = useCallback(() => {
+    void rpc.agentSkills
+      .list()
+      .then(setAgentSkills)
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -1821,6 +1846,25 @@ export function ShellPage() {
                 }))
               : undefined
           }
+          agentSkills={agentSkills}
+          onSlashOpen={refreshAgentSkills}
+          onSlashAction={(action) => {
+            if (action === "chat-settings") {
+              setPanel(inGroup ? "group-settings" : "settings");
+              return;
+            }
+            if (action === "settings-general") {
+              setAccountSettingsOpen(true);
+              return;
+            }
+            if (action === "settings-usage") {
+              setAccountSettingsOpen(true);
+              void rpc.usage
+                .summary()
+                .then(setUsage)
+                .catch(() => undefined);
+            }
+          }}
           dictating={dictating}
           transcribe={Boolean(voiceStatus?.transcribe)}
           onDictateStart={(onFinal) => {
@@ -2647,6 +2691,9 @@ const Composer = memo(function Composer({
   replyTarget,
   onClearReply,
   mentionMembers,
+  agentSkills,
+  onSlashOpen,
+  onSlashAction,
   dictating,
   transcribe,
   onDictateStart,
@@ -2668,6 +2715,9 @@ const Composer = memo(function Composer({
   replyTarget?: ThreadMessage | null;
   onClearReply?: () => void;
   mentionMembers?: Array<{ botId: string; name: string }>;
+  agentSkills?: AgentSkillCatalogEntry[];
+  onSlashOpen?: () => void;
+  onSlashAction?: (action: "chat-settings" | "settings-general" | "settings-usage") => void;
   dictating: boolean;
   transcribe: boolean;
   onDictateStart: (onFinal: (text: string) => void) => void;
@@ -2675,6 +2725,7 @@ const Composer = memo(function Composer({
 }) {
   const [draft, setDraft] = useState("");
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [slashQuery, setSlashQuery] = useState<string | null>(null);
   const [selectedMentions, setSelectedMentions] = useState<Array<{ botId: string; name: string }>>(
     [],
   );
@@ -2685,8 +2736,13 @@ const Composer = memo(function Composer({
     setSelectedMentions((current) =>
       current.filter((member) => hasMentionToken(value, member.name)),
     );
-    const match = /(?:^|\s)@([\w-]*)$/.exec(value);
-    setMentionQuery(match ? (match[1] ?? "") : null);
+    const mentionMatch = /(?:^|\s)@([\w-]*)$/.exec(value);
+    setMentionQuery(mentionMatch ? (mentionMatch[1] ?? "") : null);
+    // `/` picker is separate from `@` mentions.
+    const slashMatch = /(?:^|\s)\/([^\n]*)$/.exec(value);
+    const nextSlash = slashMatch ? (slashMatch[1] ?? "") : null;
+    if (nextSlash !== null && slashQuery === null) onSlashOpen?.();
+    setSlashQuery(nextSlash);
   }
 
   function insertMention(member: { botId: string; name: string }) {
@@ -2701,6 +2757,17 @@ const Composer = memo(function Composer({
     setMentionQuery(null);
   }
 
+  function insertSkill(skill: AgentSkillCatalogEntry) {
+    setDraft((current) => current.replace(/\/([^\n]*)$/, `/${skill.name} `));
+    setSlashQuery(null);
+  }
+
+  function runSlashAction(action: "chat-settings" | "settings-general" | "settings-usage") {
+    setDraft((current) => current.replace(/(^|\s)\/([^\n]*)$/, "$1").replace(/\s+$/, ""));
+    setSlashQuery(null);
+    onSlashAction?.(action);
+  }
+
   const mentionOptions = useMemo(() => {
     if (mentionQuery === null || !mentionMembers?.length) return [];
     const query = mentionQuery.toLowerCase();
@@ -2711,11 +2778,38 @@ const Composer = memo(function Composer({
     return options.slice(0, 8);
   }, [mentionMembers, mentionQuery]);
 
+  const slashSkillOptions = useMemo(() => {
+    if (slashQuery === null) return [];
+    const query = slashQuery.trim().toLowerCase();
+    const skills = agentSkills ?? [];
+    return skills
+      .filter((skill) => {
+        if (!query) return true;
+        return (
+          skill.name.toLowerCase().includes(query) ||
+          skill.description.toLowerCase().includes(query)
+        );
+      })
+      .slice(0, 8);
+  }, [agentSkills, slashQuery]);
+
+  const slashActionOptions = useMemo(() => {
+    if (slashQuery === null) return [];
+    const query = slashQuery.trim().toLowerCase();
+    return SLASH_ACTIONS.filter((action) => !query || action.label.toLowerCase().includes(query));
+  }, [slashQuery]);
+
+  const showSlashPicker =
+    slashQuery !== null &&
+    mentionQuery === null &&
+    (slashSkillOptions.length > 0 || slashActionOptions.length > 0);
+
   function send() {
     if (!canSend || sending || disabled) return;
     const text = draft;
     setDraft("");
     setMentionQuery(null);
+    setSlashQuery(null);
     const mentions = selectedMentions.map((member) => member.botId);
     setSelectedMentions([]);
     void onSend(text, mentions);
@@ -2792,6 +2886,44 @@ const Composer = memo(function Composer({
               className="block w-full px-4 py-2 text-start text-[14px] text-[#ECECEE] hover:bg-[#1F1F22]"
             >
               <span dir="auto">@{member.name}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {showSlashPicker ? (
+        <div
+          data-testid="slash-picker"
+          className="mb-2 overflow-hidden rounded-[14px] border border-[#26262A] bg-[#17171A]"
+        >
+          {slashSkillOptions.map((skill) => (
+            <button
+              key={skill.id}
+              type="button"
+              aria-label={`Skill ${skill.name}`}
+              onClick={() => insertSkill(skill)}
+              className="flex w-full items-start gap-3 px-4 py-2.5 text-start hover:bg-[#1F1F22]"
+            >
+              <Box size={16} strokeWidth={1.7} className="mt-0.5 shrink-0 text-[#9A9AA0]" />
+              <span className="min-w-0">
+                <span dir="auto" className="block text-[14px] text-[#ECECEE]">
+                  {skill.name}
+                </span>
+                <span dir="auto" className="block truncate text-[12.5px] text-[#85858A]">
+                  {truncateSlashDescription(skill.description)}
+                </span>
+              </span>
+            </button>
+          ))}
+          {slashActionOptions.map((action) => (
+            <button
+              key={action.id}
+              type="button"
+              aria-label={action.label}
+              onClick={() => runSlashAction(action.id)}
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-start hover:bg-[#1F1F22]"
+            >
+              <Settings size={16} strokeWidth={1.7} className="shrink-0 text-[#9A9AA0]" />
+              <span className="text-[14px] text-[#ECECEE]">{action.label}</span>
             </button>
           ))}
         </div>
@@ -2880,6 +3012,18 @@ const Composer = memo(function Composer({
     </div>
   );
 });
+
+const SLASH_ACTIONS = [
+  { id: "chat-settings" as const, label: "Chat Settings" },
+  { id: "settings-general" as const, label: "Settings: General" },
+  { id: "settings-usage" as const, label: "Settings: Usage & Billing" },
+];
+
+function truncateSlashDescription(value: string, max = 72): string {
+  const text = value.replace(/\s+/g, " ").trim();
+  if (text.length <= max) return text;
+  return `${text.slice(0, max - 1).trimEnd()}…`;
+}
 
 function previewMessageText(message: ThreadMessage): string {
   const text = message.blocks

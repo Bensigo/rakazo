@@ -85,6 +85,10 @@ export default function Thread() {
   const [snap, setSnap] = useState<MobileSnapshot | null>(null);
   const [draft, setDraft] = useState("");
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [slashQuery, setSlashQuery] = useState<string | null>(null);
+  const [agentSkills, setAgentSkills] = useState<
+    Array<{ id: string; name: string; description: string }>
+  >([]);
   const [selectedMentions, setSelectedMentions] = useState<Array<{ botId: string; name: string }>>(
     [],
   );
@@ -109,6 +113,38 @@ export default function Thread() {
             : []),
         ].slice(0, 8)
       : [];
+  const slashQueryNormalized = slashQuery?.trim().toLowerCase() ?? null;
+  const slashSkillOptions =
+    slashQuery !== null && mentionQuery === null
+      ? agentSkills
+          .filter((skill) => {
+            if (!slashQueryNormalized) return true;
+            return (
+              skill.name.toLowerCase().includes(slashQueryNormalized) ||
+              skill.description.toLowerCase().includes(slashQueryNormalized)
+            );
+          })
+          .slice(0, 8)
+      : [];
+  const slashActionOptions =
+    slashQuery !== null && mentionQuery === null
+      ? (
+          [
+            { id: "chat-settings", label: "Chat Settings" },
+            { id: "settings-general", label: "Settings: General" },
+            { id: "settings-usage", label: "Settings: Usage & Billing" },
+          ] as const
+        ).filter(
+          (action) =>
+            !slashQueryNormalized || action.label.toLowerCase().includes(slashQueryNormalized),
+        )
+      : [];
+
+  useEffect(() => {
+    void rpc<Array<{ id: string; name: string; description: string }>>("agentSkills/list")
+      .then(setAgentSkills)
+      .catch(() => setAgentSkills([]));
+  }, []);
 
   function isCurrentTarget(targetBotId: string | undefined, targetGroupId: string | undefined) {
     return activeBotId.current === targetBotId && activeGroupId.current === targetGroupId;
@@ -392,6 +428,7 @@ export default function Thread() {
     setPendingAttachments((current) => attachmentsForThread(current, threadKey));
     setDraft("");
     setMentionQuery(null);
+    setSlashQuery(null);
     setSelectedMentions([]);
     setReplyTarget(null);
     setAttachmentNotice(null);
@@ -405,6 +442,8 @@ export default function Thread() {
     );
     const match = /(?:^|\s)@([\w-]*)$/.exec(value);
     setMentionQuery(match ? (match[1] ?? "") : null);
+    const slashMatch = /(?:^|\s)\/([^\n]*)$/.exec(value);
+    setSlashQuery(slashMatch ? (slashMatch[1] ?? "") : null);
   }
 
   function insertMention(member: { botId: string; name: string }) {
@@ -417,6 +456,25 @@ export default function Thread() {
       );
     }
     setMentionQuery(null);
+  }
+
+  function insertSkill(skill: { name: string }) {
+    setDraft((current) => current.replace(/\/([^\n]*)$/, `/${skill.name} `));
+    setSlashQuery(null);
+  }
+
+  function runSlashAction(action: "chat-settings" | "settings-general" | "settings-usage") {
+    setDraft((current) => current.replace(/(^|\s)\/([^\n]*)$/, "$1").replace(/\s+$/, ""));
+    setSlashQuery(null);
+    if (action === "chat-settings") {
+      if (inGroup && groupId) {
+        router.push({ pathname: "/group-settings", params: { groupId } });
+      } else {
+        showBotActions();
+      }
+      return;
+    }
+    router.push("/account");
   }
 
   async function send() {
@@ -464,6 +522,7 @@ export default function Thread() {
       if (isCurrentTarget(targetBotId, targetGroupId)) {
         setDraft("");
         setMentionQuery(null);
+        setSlashQuery(null);
         setSelectedMentions([]);
         setReplyTarget(null);
         setAttachmentNotice(null);
@@ -710,6 +769,43 @@ export default function Thread() {
               style={{ paddingHorizontal: 14, paddingVertical: 10 }}
             >
               <Text style={{ color: "#ECECEE", fontSize: 14 }}>@{member.name}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+      {slashSkillOptions.length || slashActionOptions.length ? (
+        <View
+          testID="slash-picker"
+          style={{
+            marginTop: 12,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: "#26262A",
+            backgroundColor: "#17171A",
+            overflow: "hidden",
+          }}
+        >
+          {slashSkillOptions.map((skill) => (
+            <Pressable
+              key={skill.id}
+              accessibilityLabel={`Skill ${skill.name}`}
+              onPress={() => insertSkill(skill)}
+              style={{ paddingHorizontal: 14, paddingVertical: 10 }}
+            >
+              <Text style={{ color: "#ECECEE", fontSize: 14 }}>{skill.name}</Text>
+              <Text numberOfLines={1} style={{ color: "#85858A", fontSize: 12.5, marginTop: 2 }}>
+                {skill.description}
+              </Text>
+            </Pressable>
+          ))}
+          {slashActionOptions.map((action) => (
+            <Pressable
+              key={action.id}
+              accessibilityLabel={action.label}
+              onPress={() => runSlashAction(action.id)}
+              style={{ paddingHorizontal: 14, paddingVertical: 10 }}
+            >
+              <Text style={{ color: "#ECECEE", fontSize: 14 }}>{action.label}</Text>
             </Pressable>
           ))}
         </View>
