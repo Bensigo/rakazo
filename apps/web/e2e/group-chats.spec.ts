@@ -164,7 +164,12 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
   expect(speechRequest.postDataJSON()).toMatchObject({ botId: researcherId });
   await captureScreenshot(page, testInfo, "group-transcript");
 
-  await composer.fill("@Research Writer ask me which city to use");
+  await composer.fill("@Res");
+  await page.getByRole("button", { name: "@Research Writer", exact: true }).click();
+  await expect(
+    page.getByTestId("mention-chip").filter({ hasText: "Research Writer" }),
+  ).toBeVisible();
+  await composer.fill("ask me which city to use");
   await composer.press("Enter");
   await expect(page.getByText("Which city should I use?", { exact: true })).toBeVisible({
     timeout: 60_000,
