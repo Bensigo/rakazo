@@ -261,7 +261,12 @@ export function reduceThreadSnapshot(
       event.type === "run.waiting_input" && prev.messages.some((message) => message.id === liveId)
         ? prev.messages.filter((message) => message.id !== liveId)
         : prev.messages;
-    if (!runChanged && !activeRunChanged && members === prev.members && messages === prev.messages) {
+    if (
+      !runChanged &&
+      !activeRunChanged &&
+      members === prev.members &&
+      messages === prev.messages
+    ) {
       return prev;
     }
     return {
