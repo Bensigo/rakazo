@@ -1692,11 +1692,25 @@ export function createRouter(deps: RouterDeps) {
       }),
       testRun: authed.routines.testRun.handler(async ({ context, input }) => {
         const routine = await deps.prisma.routine.findFirst({
-          where: { id: input.routineId, workspaceId: context.actor.workspaceId },
+          where: {
+            id: input.routineId,
+            workspaceId: context.actor.workspaceId,
+            userId: context.actor.userId,
+          },
         });
         if (!routine) throw new IsolationError();
         const bot = await repos.getBot(context.actor, routine.botId);
         if (!bot.thread) throw new IsolationError();
+        if (input.clientNonce) {
+          const existing = await deps.prisma.run.findFirst({
+            where: {
+              threadId: bot.thread.id,
+              clientNonce: `routine-test:${input.clientNonce}`,
+            },
+            select: { id: true },
+          });
+          if (existing) return { runId: existing.id };
+        }
         const skillRecords = await agentSkills.listWithContent(context.actor);
         const prompt = expandSkillReferencesInPrompt(routine.prompt, skillRecords);
         const task = await deps.prisma.task.create({
@@ -1709,20 +1723,35 @@ export function createRouter(deps: RouterDeps) {
             status: "queued",
           },
         });
-        const run = await deps.prisma.run.create({
-          data: {
-            workspaceId: context.actor.workspaceId,
-            botId: bot.id,
-            threadId: bot.thread.id,
-            taskId: task.id,
-            userId: context.actor.userId,
-            status: "queued",
-            trigger: "routine",
-            routineId: routine.id,
-          },
-        });
-        await deps.jobs.enqueue(runContinueJob(run.id));
-        return { runId: run.id };
+        try {
+          const run = await deps.prisma.run.create({
+            data: {
+              workspaceId: context.actor.workspaceId,
+              botId: bot.id,
+              threadId: bot.thread.id,
+              taskId: task.id,
+              userId: context.actor.userId,
+              status: "queued",
+              trigger: "routine",
+              routineId: routine.id,
+              clientNonce: input.clientNonce ? `routine-test:${input.clientNonce}` : undefined,
+            },
+          });
+          await deps.jobs.enqueue(runContinueJob(run.id));
+          return { runId: run.id };
+        } catch (error) {
+          if (input.clientNonce) {
+            const existing = await deps.prisma.run.findFirst({
+              where: {
+                threadId: bot.thread.id,
+                clientNonce: `routine-test:${input.clientNonce}`,
+              },
+              select: { id: true },
+            });
+            if (existing) return { runId: existing.id };
+          }
+          throw error;
+        }
       }),
     },
     scratchpad: {

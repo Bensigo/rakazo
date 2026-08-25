@@ -240,6 +240,11 @@ export function buildUserMessageBlocks(
 export function buildSendPrompt(
   text: string | undefined,
   artifacts: Array<{ name: string; mimeType: string; size: number }>,
+  connectorNames: string[] = [],
 ) {
-  return promptTextForAttachments(text, artifacts);
+  const prompt = promptTextForAttachments(text, artifacts);
+  if (connectorNames.length === 0) return prompt;
+  const line = `Use these connectors if relevant: ${connectorNames.join(", ")}.`;
+  if (prompt.includes("Use these connectors if relevant:")) return prompt;
+  return prompt ? `${prompt}\n\n${line}` : line;
 }

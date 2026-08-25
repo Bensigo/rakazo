@@ -30,12 +30,14 @@ export function parseMentionNames(text: string): string[] {
 export function resolveGroupTargetBotIds(input: {
   text: string;
   members: GroupMemberRef[];
+  /** Bot ids from typed mention chips (non-members are ignored for wake). */
   explicitMentions?: string[];
 }): string[] {
   const membersById = new Map(input.members.map((member) => [member.id, member]));
   const targetIds = new Set<string>();
 
   for (const mentionId of input.explicitMentions ?? []) {
+    // Out-of-chat bots stay as @Name in the prompt; only members are woken here.
     if (membersById.has(mentionId)) targetIds.add(mentionId);
   }
 
