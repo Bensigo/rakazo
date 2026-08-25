@@ -3,11 +3,11 @@ import { describe, expect, it } from "vitest";
 import { reliableStreamOptions } from "./pi-runtime.js";
 
 describe("Pi runtime transport", () => {
-  it("forces SSE for Codex OAuth models", () => {
-    const model = {
-      provider: "openai-codex",
-      api: "openai-codex-responses",
-    } as Model<Api>;
+  it.each([
+    { source: "provider", provider: "openai-codex", api: "openai-completions" },
+    { source: "API", provider: "custom-provider", api: "openai-codex-responses" },
+  ])("forces SSE when Codex is identified by $source", ({ provider, api }) => {
+    const model = { provider, api } as Model<Api>;
 
     expect(reliableStreamOptions(model, { transport: "auto", maxRetries: 4 })).toEqual({
       transport: "sse",
