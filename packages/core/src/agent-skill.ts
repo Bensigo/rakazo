@@ -206,6 +206,18 @@ export function findSkillByName<T extends { name: string }>(
   return skills.find((skill) => skill.name.trim().toLowerCase() === needle);
 }
 
+/** True when `rest` already begins with the skill body (prior expand pass). */
+function restAlreadyIncludesSkillContent(rest: string, content: string): boolean {
+  const trimmedRest = rest.trim();
+  const trimmedContent = content.trim();
+  if (!trimmedContent) return false;
+  return (
+    trimmedRest === trimmedContent ||
+    trimmedRest.startsWith(`${trimmedContent}\n`) ||
+    trimmedRest.startsWith(`${trimmedContent}\r\n`)
+  );
+}
+
 /** Expand forced `/Name` or routine `@Name` mentions into full skill bodies for the task prompt. */
 export function expandSkillReferencesInPrompt(
   prompt: string,
@@ -214,7 +226,13 @@ export function expandSkillReferencesInPrompt(
   const forced = extractForcedSkillName(prompt);
   if (forced) {
     const skill = findSkillByName(skills, forced.name);
-    if (skill) return formatForcedSkillPrompt(skill.name, skill.content, forced.rest);
+    if (skill) {
+      // Routines expand at fire time into `Use skill: …`; run time expands again — stay idempotent.
+      if (restAlreadyIncludesSkillContent(forced.rest, skill.content)) {
+        return prompt.trimStart();
+      }
+      return formatForcedSkillPrompt(skill.name, skill.content, forced.rest);
+    }
   }
 
   const mentions = extractRoutineSkillMentions(

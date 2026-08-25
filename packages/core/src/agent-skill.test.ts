@@ -96,6 +96,11 @@ describe("skill prompt helpers", () => {
     expect(mentioned).toContain("Use skill: Daily standup");
     expect(mentioned).toContain("then email me");
     expect(mentioned).not.toMatch(/@Daily standup/i);
+
+    // Fire-time expand then run-time expand must not duplicate the body.
+    const again = expandSkillReferencesInPrompt(mentioned, skills);
+    expect(again).toBe(mentioned);
+    expect(again.split(SAMPLE.trim()).length - 1).toBe(1);
   });
 
   it("builds catalog instructions for auto-use", () => {

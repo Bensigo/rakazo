@@ -207,14 +207,29 @@ export function createAgentSkillsService(prisma: PrismaClient) {
           throw new ORPCError("CONFLICT", { message: "A skill with that name already exists." });
         }
       }
-      const row = await prisma.agentSkill.update({
-        where: { id: existing.id },
+      // Mutate only owner-scoped user rows (never builtin/plugin), even if source was tampered.
+      const updated = await prisma.agentSkill.updateMany({
+        where: {
+          id: existing.id,
+          workspaceId: actor.workspaceId,
+          userId: actor.userId,
+          source: "user",
+        },
         data: {
           name: resolved.name,
           description: resolved.description,
           content: resolved.content,
         },
       });
+      if (updated.count !== 1) throw new IsolationError();
+      const row = await prisma.agentSkill.findFirst({
+        where: {
+          id: existing.id,
+          workspaceId: actor.workspaceId,
+          userId: actor.userId,
+        },
+      });
+      if (!row) throw new IsolationError();
       return mapAgentSkill(row);
     },
 
@@ -223,7 +238,15 @@ export function createAgentSkillsService(prisma: PrismaClient) {
       if (isSkillReadOnly(asSource(existing.source) as SkillSource)) {
         throw new ORPCError("BAD_REQUEST", { message: "Builtin and plugin skills are read-only." });
       }
-      await prisma.agentSkill.delete({ where: { id: existing.id } });
+      const deleted = await prisma.agentSkill.deleteMany({
+        where: {
+          id: existing.id,
+          workspaceId: actor.workspaceId,
+          userId: actor.userId,
+          source: "user",
+        },
+      });
+      if (deleted.count !== 1) throw new IsolationError();
       return { ok: true };
     },
   };

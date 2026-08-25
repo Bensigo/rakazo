@@ -16,6 +16,9 @@ export const SKILL_TOOL_NAMES = new Set([
   "skill_delete",
 ]);
 
+/** Match CreateAgentSkillInput / UpdateAgentSkillInput content bounds. */
+const MAX_SKILL_CONTENT_CHARS = 100_000;
+
 type SkillOwner = {
   workspaceId: string;
   userId: string;
@@ -55,6 +58,13 @@ function builtinRecords(): Array<SkillRecord & { id: string }> {
     source: "builtin" as const,
     readOnly: true,
   }));
+}
+
+function rejectOversizedContent(content: string): string | undefined {
+  if (content.length > MAX_SKILL_CONTENT_CHARS) {
+    return `Skill content must be at most ${MAX_SKILL_CONTENT_CHARS} characters.`;
+  }
+  return undefined;
 }
 
 export async function listAgentSkillRecords(
@@ -123,6 +133,9 @@ export async function skillCreateFromTool(
     content = buildSkillMd({ name, description, body });
   }
 
+  const oversized = rejectOversizedContent(content);
+  if (oversized) return { error: oversized };
+
   const existing = await findOwnedSkill(prisma, owner, { name });
   if (existing) return { error: `A skill named "${existing.name}" already exists.` };
 
@@ -166,7 +179,7 @@ export async function skillUpdateFromTool(
     name: input.name,
   });
   if (!existing) return { error: "Skill not found." };
-  if (existing.readOnly || existing.id.startsWith("builtin:")) {
+  if (existing.readOnly || existing.source !== "user" || existing.id.startsWith("builtin:")) {
     return { error: "Builtin and plugin skills are read-only." };
   }
 
@@ -196,6 +209,9 @@ export async function skillUpdateFromTool(
     });
   }
 
+  const oversized = rejectOversizedContent(nextContent);
+  if (oversized) return { error: oversized };
+
   if (nextName.toLowerCase() !== existing.name.toLowerCase()) {
     const clash = await findOwnedSkill(prisma, owner, { name: nextName });
     if (clash && clash.id !== existing.id) {
@@ -204,15 +220,22 @@ export async function skillUpdateFromTool(
   }
 
   try {
-    const row = await prisma.agentSkill.update({
-      where: { id: existing.id },
+    // Re-scope mutate to owner + user source so a stale id cannot cross tenants.
+    const updated = await prisma.agentSkill.updateMany({
+      where: {
+        id: existing.id,
+        workspaceId: owner.workspaceId,
+        userId: owner.userId,
+        source: "user",
+      },
       data: {
         name: nextName,
         description: nextDescription,
         content: nextContent,
       },
     });
-    return { ok: true, id: row.id, name: row.name, description: row.description };
+    if (updated.count !== 1) return { error: "Could not update skill." };
+    return { ok: true, id: existing.id, name: nextName, description: nextDescription };
   } catch {
     return { error: "Could not update skill." };
   }
@@ -225,9 +248,17 @@ export async function skillDeleteFromTool(
 ): Promise<Record<string, unknown>> {
   const existing = await findOwnedSkill(prisma, owner, input);
   if (!existing) return { error: "Skill not found." };
-  if (existing.readOnly || existing.id.startsWith("builtin:")) {
+  if (existing.readOnly || existing.source !== "user" || existing.id.startsWith("builtin:")) {
     return { error: "Builtin and plugin skills are read-only." };
   }
-  await prisma.agentSkill.delete({ where: { id: existing.id } });
+  const deleted = await prisma.agentSkill.deleteMany({
+    where: {
+      id: existing.id,
+      workspaceId: owner.workspaceId,
+      userId: owner.userId,
+      source: "user",
+    },
+  });
+  if (deleted.count !== 1) return { error: "Could not delete skill." };
   return { ok: true, name: existing.name };
 }

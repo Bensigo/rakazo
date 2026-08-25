@@ -12,7 +12,16 @@ function makePrisma(rows: Array<Record<string, unknown>> = []) {
   const store = [...rows];
   return {
     agentSkill: {
-      findMany: vi.fn(async () => store.map((row) => ({ ...row }))),
+      findMany: vi.fn(async ({ where }: { where?: Record<string, string> } = {}) =>
+        store
+          .filter((row) => {
+            if (!where) return true;
+            if (where.workspaceId && row.workspaceId !== where.workspaceId) return false;
+            if (where.userId && row.userId !== where.userId) return false;
+            return true;
+          })
+          .map((row) => ({ ...row })),
+      ),
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
         const row = {
           id: `skill-${store.length + 1}`,
@@ -32,11 +41,43 @@ function makePrisma(rows: Array<Record<string, unknown>> = []) {
           return store[index];
         },
       ),
+      updateMany: vi.fn(
+        async ({
+          where,
+          data,
+        }: {
+          where: Record<string, string>;
+          data: Record<string, unknown>;
+        }) => {
+          const index = store.findIndex(
+            (row) =>
+              row.id === where.id &&
+              row.workspaceId === where.workspaceId &&
+              row.userId === where.userId &&
+              row.source === where.source,
+          );
+          if (index < 0) return { count: 0 };
+          store[index] = { ...store[index], ...data, updatedAt: new Date() };
+          return { count: 1 };
+        },
+      ),
       delete: vi.fn(async ({ where }: { where: { id: string } }) => {
         const index = store.findIndex((row) => row.id === where.id);
         if (index < 0) throw new Error("missing");
         const [removed] = store.splice(index, 1);
         return removed;
+      }),
+      deleteMany: vi.fn(async ({ where }: { where: Record<string, string> }) => {
+        const index = store.findIndex(
+          (row) =>
+            row.id === where.id &&
+            row.workspaceId === where.workspaceId &&
+            row.userId === where.userId &&
+            row.source === where.source,
+        );
+        if (index < 0) return { count: 0 };
+        store.splice(index, 1);
+        return { count: 1 };
       }),
     },
     _store: store,
@@ -110,5 +151,42 @@ describe("skill tools", () => {
     const catalog = formatSkillsCatalogInstruction(records);
     expect(catalog).toContain("- Daily standup: Prepare standup notes");
     expect(catalog).toContain("skill_read");
+  });
+
+  it("rejects update/delete for plugin and builtin skills", async () => {
+    prisma = makePrisma([
+      {
+        id: "plugin-1",
+        workspaceId: owner.workspaceId,
+        userId: owner.userId,
+        name: "Plugin recipe",
+        description: "From a plugin",
+        content: buildSkillMd({
+          name: "Plugin recipe",
+          description: "From a plugin",
+          body: "do not edit",
+        }),
+        source: "plugin",
+      },
+    ]);
+    expect(
+      await skillUpdateFromTool(prisma as never, owner, {
+        name: "Plugin recipe",
+        description: "hijack",
+      }),
+    ).toEqual({ error: "Builtin and plugin skills are read-only." });
+    expect(await skillDeleteFromTool(prisma as never, owner, { name: "Plugin recipe" })).toEqual({
+      error: "Builtin and plugin skills are read-only.",
+    });
+  });
+
+  it("rejects oversized skill content", async () => {
+    const body = "x".repeat(100_001);
+    const created = await skillCreateFromTool(prisma as never, owner, {
+      name: "Huge",
+      description: "too big",
+      body,
+    });
+    expect(created).toMatchObject({ error: expect.stringContaining("at most") });
   });
 });
