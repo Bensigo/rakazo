@@ -697,7 +697,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
           computer.kind !== "desktop" && deps.sandbox.describe().capabilities.graphical;
         const modelProvider = credential?.provider ?? settings?.defaultModelProvider ?? "scripted";
         const modelId = credential?.defaultModel ?? settings?.defaultModelId ?? "scripted";
-        const acceptsImages = modelAcceptsImageInput(modelProvider, modelId);
+        // Scripted runtime fixtures still need screenshot tools; for Pi, resolve
+        // the scripted placeholder the same way the runtime does before gating.
+        const acceptsImages =
+          deps.runtime.describe().capabilities.scripted ||
+          modelAcceptsImageInput(modelProvider, modelId);
         const groupContext = thread.groupId
           ? await loadGroupContext(deps.prisma, thread.groupId)
           : undefined;

@@ -1,13 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { builtinAgentTools } from "./builtin-tools.js";
 import {
   filterImageReturningComputerTools,
   IMAGE_RETURNING_COMPUTER_TOOLS,
   MODEL_CANNOT_SEE_MESSAGE,
   modelAcceptsImageInput,
+  resolveModelRefForVisionCheck,
 } from "./model-vision.js";
 
 describe("model vision gating for computer tools", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("treats catalog text-only models as unable to see", () => {
     expect(modelAcceptsImageInput("openrouter", "deepseek/deepseek-v4-flash-0731")).toBe(false);
     expect(modelAcceptsImageInput("openrouter", "deepseek/deepseek-v4-pro")).toBe(false);
@@ -20,9 +25,25 @@ describe("model vision gating for computer tools", () => {
     );
   });
 
-  it("treats unknown models as text-only and allows scripted fixtures", () => {
-    expect(modelAcceptsImageInput("openrouter", "rakazo-test/unknown-future-model")).toBe(false);
+  it("resolves the scripted placeholder like Pi before checking vision", () => {
+    expect(resolveModelRefForVisionCheck("scripted", "scripted")).toEqual({
+      provider: "openrouter",
+      id: "deepseek/deepseek-v4-flash-0731",
+    });
+    // Default PI_DEFAULT_MODEL is text-only, so the scripted fallback must not
+    // expose screenshot tools (reproduces the self-host default failure mode).
+    expect(modelAcceptsImageInput("scripted", "scripted")).toBe(false);
+
+    vi.stubEnv("PI_DEFAULT_MODEL", "openai/gpt-4o");
+    expect(resolveModelRefForVisionCheck("scripted", "scripted")).toEqual({
+      provider: "openrouter",
+      id: "openai/gpt-4o",
+    });
     expect(modelAcceptsImageInput("scripted", "scripted")).toBe(true);
+  });
+
+  it("treats unknown models as text-only", () => {
+    expect(modelAcceptsImageInput("openrouter", "rakazo-test/unknown-future-model")).toBe(false);
   });
 
   it("omits image-returning computer tools for text-only models", () => {
