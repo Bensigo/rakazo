@@ -851,15 +851,18 @@ export default function Thread() {
           placeholder="Message…"
           placeholderTextColor="#6C6C70"
           keyboardAppearance="dark"
-          returnKeyType="send"
-          onSubmitEditing={() => void send()}
+          multiline
+          textAlignVertical="center"
+          blurOnSubmit={false}
           style={{
             flex: 1,
             color: "#ECECEE",
             backgroundColor: "#131315",
             borderRadius: 20,
             paddingHorizontal: 14,
-            height: 44,
+            paddingVertical: 10,
+            minHeight: 44,
+            maxHeight: 120,
             writingDirection: "auto",
           }}
         />

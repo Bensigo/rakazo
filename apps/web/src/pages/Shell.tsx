@@ -2981,7 +2981,7 @@ const Composer = memo(function Composer({
         >
           <Mic size={16} strokeWidth={1.8} />
         </button>
-        <input
+        <textarea
           value={draft}
           onChange={(event) => updateDraft(event.target.value)}
           onKeyDown={(event) => {
@@ -2996,7 +2996,8 @@ const Composer = memo(function Composer({
           name="chat-message"
           autoComplete="off"
           dir="auto"
-          className="flex-1 bg-transparent text-[15.5px] text-[#E9E9EA] outline-none disabled:opacity-40"
+          rows={1}
+          className="max-h-32 min-h-[24px] flex-1 resize-none overflow-y-auto bg-transparent py-0.5 text-[15.5px] leading-6 text-[#E9E9EA] outline-none disabled:opacity-40"
         />
         {running ? (
           <button
