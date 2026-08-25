@@ -15,7 +15,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { onDesktopOAuthCallback } from "../lib/desktop";
+import { desktopOAuthCaptureMatches, onDesktopOAuthCallback } from "../lib/desktop";
 import {
   cancelModelOAuthAttempt,
   finishModelOAuthAttempt,
@@ -50,13 +50,19 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
   const oauthAbortRef = useRef<AbortController | null>(null);
   const oauthLoginIdRef = useRef<string | null>(null);
   const oauthCodeSubmittingRef = useRef(false);
+  const oauthRef = useRef<ModelOAuthBegin | null>(null);
+  const pasteCodeRef = useRef("");
   const refreshRevisionRef = useRef(0);
   const selectionRevisionRef = useRef(0);
   const probeRequestIdRef = useRef(0);
 
+  oauthRef.current = oauth;
+  pasteCodeRef.current = pasteCode;
+
   function cancelOAuthAttempt(resetState = true) {
     const loginId = oauthLoginIdRef.current;
     oauthLoginIdRef.current = null;
+    oauthRef.current = null;
     cancelModelOAuthAttempt(oauthAbortRef, () => {
       if (resetState) {
         setOauth(null);
@@ -290,6 +296,7 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
     await rpc.models.finishOAuth({ loginId }, { signal: controller.signal });
     if (controller.signal.aborted) return;
     oauthLoginIdRef.current = null;
+    oauthRef.current = null;
     setOauth(null);
     await refresh();
     if (controller.signal.aborted) return;
@@ -316,6 +323,9 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
       if (controller.signal.aborted) return;
       oauthLoginIdRef.current = started.loginId;
       setPasteCode("");
+      // Eagerly publish before window.open so a fast redirect can submit
+      // before React re-renders with the oauth state.
+      oauthRef.current = started;
       setOauth(started);
       window.open(started.verificationUri, "_blank", "noopener,noreferrer");
       waitingForCode = started.mode === "auth-url";
@@ -324,6 +334,7 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
       if (controller.signal.aborted) return;
       const loginId = oauthLoginIdRef.current;
       oauthLoginIdRef.current = null;
+      oauthRef.current = null;
       if (loginId) void rpc.models.cancelOAuth({ loginId }).catch(() => undefined);
       setError(err instanceof Error ? err.message : "Could not start sign-in");
       setOauth(null);
@@ -334,15 +345,19 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
     }
   }
 
+  // Subscribe while beginOAuth is in flight (oauthPending), not after oauth
+  // state commits — a cached provider session can redirect before that paint.
   useEffect(() => {
-    if (oauth?.mode !== "auth-url") return;
+    if (!oauthPending) return;
     return onDesktopOAuthCallback((code) => void submitOAuthCode(code));
-  }, [oauth]);
+  }, [oauthPending]);
 
   async function submitOAuthCode(captured?: string) {
-    if (oauth?.mode !== "auth-url" || oauthCodeSubmittingRef.current) return;
+    const current = oauthRef.current;
+    if (current?.mode !== "auth-url" || oauthCodeSubmittingRef.current) return;
+    if (captured && !desktopOAuthCaptureMatches(captured, current.verificationUri)) return;
     const controller = oauthAbortRef.current;
-    const code = (captured ?? pasteCode).trim();
+    const code = (captured ?? pasteCodeRef.current).trim();
     if (!controller || !code) return;
     oauthCodeSubmittingRef.current = true;
     setPasteCode("");
@@ -351,17 +366,18 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
     let retryable = false;
     try {
       await rpc.models.submitOAuthCode(
-        { loginId: oauth.loginId, code },
+        { loginId: current.loginId, code },
         { signal: controller.signal },
       );
       submitted = true;
-      await finishSubscriptionSignIn(oauth.loginId, controller);
+      await finishSubscriptionSignIn(current.loginId, controller);
     } catch (err) {
       if (controller.signal.aborted) return;
       if (submitted) {
         oauthLoginIdRef.current = null;
+        oauthRef.current = null;
         setOauth(null);
-        void rpc.models.cancelOAuth({ loginId: oauth.loginId }).catch(() => undefined);
+        void rpc.models.cancelOAuth({ loginId: current.loginId }).catch(() => undefined);
       } else {
         retryable = true;
         setPasteCode(code);
