@@ -18,6 +18,7 @@ describe("threadSnapshot", () => {
       error: null,
       startedAt: null,
       completedAt: null,
+      createdAt: new Date("2026-08-23T00:00:00.000Z"),
     };
     const findManyEvents = vi.fn().mockResolvedValue([
       {

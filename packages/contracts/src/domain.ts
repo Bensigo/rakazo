@@ -530,6 +530,7 @@ export const RunSchema = z.object({
   error: z.string().nullable(),
   startedAt: z.string().nullable(),
   completedAt: z.string().nullable(),
+  createdAt: z.string(),
 });
 export type Run = z.infer<typeof RunSchema>;
 
