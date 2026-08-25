@@ -33,9 +33,11 @@ const CHEVRON_DELAYS = Array.from({ length: 9 }, (_, i) => {
 
 /** Format wall-clock seconds since `startedAtMs` as `0.0s` / `1m 2.3s`. */
 export function formatElapsed(startedAtMs: number, nowMs: number): string {
-  const total = Math.max(0, nowMs - startedAtMs) / 1000;
-  if (total < 60) return `${total.toFixed(1)}s`;
-  return `${Math.floor(total / 60)}m ${(total % 60).toFixed(1)}s`;
+  const totalTenths = Math.round(Math.max(0, nowMs - startedAtMs) / 100);
+  const minutes = Math.floor(totalTenths / 600);
+  const seconds = (totalTenths % 600) / 10;
+  if (minutes === 0) return `${seconds.toFixed(1)}s`;
+  return `${minutes}m ${seconds.toFixed(1)}s`;
 }
 
 function useElapsed(startedAtMs?: number): string {

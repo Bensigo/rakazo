@@ -14,6 +14,11 @@ describe("formatElapsed", () => {
     expect(formatElapsed(0, 125_700)).toBe("2m 5.7s");
   });
 
+  it("rounds to tenths before choosing the minute boundary", () => {
+    expect(formatElapsed(0, 59_950)).toBe("1m 0.0s");
+    expect(formatElapsed(0, 119_950)).toBe("2m 0.0s");
+  });
+
   it("clamps negative deltas to zero", () => {
     expect(formatElapsed(5_000, 4_000)).toBe("0.0s");
   });
