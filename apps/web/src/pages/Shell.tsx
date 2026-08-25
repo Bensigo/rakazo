@@ -2750,11 +2750,19 @@ const Composer = memo(function Composer({
   const [selectedMentions, setSelectedMentions] = useState<
     Array<{ botId: string; name: string; color?: string }>
   >([]);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const canSend =
     draft.trim().length > 0 ||
     selectedSkill !== null ||
     selectedMentions.length > 0 ||
     pendingAttachments.length > 0;
+
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "0px";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [draft]);
 
   function updateDraft(value: string) {
     setDraft(value);
@@ -2963,7 +2971,7 @@ const Composer = memo(function Composer({
           ))}
         </div>
       ) : null}
-      <div className="flex items-center gap-3.5 rounded-full border border-[#202023] bg-[#131315] py-[9px] pe-2.5 ps-3">
+      <div className="flex items-end gap-3.5 rounded-full border border-[#202023] bg-[#131315] py-[9px] pe-2.5 ps-3">
         <input
           ref={fileInputRef}
           type="file"
@@ -3006,7 +3014,7 @@ const Composer = memo(function Composer({
         >
           <Mic size={16} strokeWidth={1.8} />
         </button>
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+        <div className="flex min-w-0 flex-1 flex-wrap items-end gap-1.5">
           {selectedSkill ? (
             <span
               data-testid="skill-chip"
@@ -3051,6 +3059,7 @@ const Composer = memo(function Composer({
             </span>
           ))}
           <textarea
+            ref={textareaRef}
             value={draft}
             onChange={(event) => updateDraft(event.target.value)}
             onKeyDown={(event) => {
