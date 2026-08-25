@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
-import { completeOnboarding, rpc, signup } from "./helpers";
+import { captureScreenshot, completeOnboarding, rpc, signup } from "./helpers";
 
-test("composer / picker lists skills above actions", async ({ page }) => {
+test("composer / picker lists skills above actions", async ({ page }, testInfo) => {
   const stamp = Date.now();
   await signup(page, `slash-skills-${stamp}@rakazo.test`, "password12", "Slash Skills");
   await completeOnboarding(page);
@@ -37,9 +37,11 @@ test("composer / picker lists skills above actions", async ({ page }) => {
   expect(skill!.y).toBeLessThan(action!.y);
 
   await expect(skillButton).toContainText("Prepare a concise standup");
+  await captureScreenshot(page, testInfo, "slash-skills-picker");
 
   await skillButton.click();
   await expect(composer).toHaveValue("/Daily standup\n");
+  await captureScreenshot(page, testInfo, "slash-skills-inserted");
 
   await composer.fill("hello /");
   await expect(page.getByTestId("slash-picker")).toHaveCount(0);
