@@ -9,6 +9,7 @@ import { Button } from "@rakazo/ui-web";
 import { ChevronDown } from "lucide-react";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
+  type RefObject,
   useEffect,
   useId,
   useMemo,
@@ -672,6 +673,7 @@ function ModelPicker({
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const listboxId = useId();
   const selectedIndex = Math.max(
@@ -679,7 +681,39 @@ function ModelPicker({
     options.findIndex((option) => option.id === value),
   );
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState(selectedIndex);
+  const trimmedQuery = query.trim().toLowerCase();
+  const filteredOptions = useMemo(
+    () =>
+      trimmedQuery
+        ? options.filter(
+            (option) =>
+              option.label.toLowerCase().includes(trimmedQuery) ||
+              option.id.toLowerCase().includes(trimmedQuery) ||
+              (option.providerName ?? option.provider).toLowerCase().includes(trimmedQuery),
+          )
+        : options,
+    [options, trimmedQuery],
+  );
+  const groups = useMemo(() => {
+    const grouped = new Map<string, ModelCatalogEntry[]>();
+    for (const option of filteredOptions) {
+      const key = option.providerName ?? option.provider;
+      const list = grouped.get(key);
+      if (list) list.push(option);
+      else grouped.set(key, [option]);
+    }
+    return [...grouped].map(([name, entries]) => ({ name, entries }));
+  }, [filteredOptions]);
+  const groupRanges = useMemo(() => {
+    let index = 0;
+    return groups.map((group) => {
+      const start = index;
+      index += group.entries.length;
+      return { name: group.name, start, entries: group.entries };
+    });
+  }, [groups]);
 
   useEffect(() => {
     setHighlightedIndex(selectedIndex);
@@ -687,9 +721,12 @@ function ModelPicker({
   }, [selectedIndex, value]);
 
   useEffect(() => {
-    if (!open) return;
-    optionRefs.current[highlightedIndex]?.focus();
-  }, [highlightedIndex, open]);
+    if (!open) {
+      setQuery("");
+      return;
+    }
+    searchRef.current?.focus();
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -701,7 +738,7 @@ function ModelPicker({
   }, [open]);
 
   function choose(index: number) {
-    const option = options[index];
+    const option = filteredOptions[index];
     if (!option) return;
     onChange(option.id);
     setOpen(false);
@@ -709,7 +746,19 @@ function ModelPicker({
   }
 
   function moveHighlight(index: number) {
-    setHighlightedIndex((index + options.length) % options.length);
+    setHighlightedIndex((index + filteredOptions.length) % filteredOptions.length);
+  }
+
+  function onSearchKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setHighlightedIndex(0);
+      optionRefs.current[0]?.focus();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      setOpen(false);
+      triggerRef.current?.focus();
+    }
   }
 
   function onTriggerKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>) {
@@ -726,7 +775,7 @@ function ModelPicker({
     if (event.key === "ArrowUp") {
       event.preventDefault();
       setOpen(true);
-      setHighlightedIndex(options.length - 1);
+      setHighlightedIndex(filteredOptions.length - 1);
     }
   }
 
@@ -742,7 +791,7 @@ function ModelPicker({
       setHighlightedIndex(0);
     } else if (event.key === "End") {
       event.preventDefault();
-      setHighlightedIndex(options.length - 1);
+      setHighlightedIndex(filteredOptions.length - 1);
     } else if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       choose(index);
@@ -773,33 +822,94 @@ function ModelPicker({
         </span>
       </button>
       {open ? (
-        <div
-          id={listboxId}
-          role="listbox"
-          aria-label="Model options"
-          className="rk-scroll absolute left-0 right-0 top-full z-20 mt-2 max-h-60 overflow-y-auto rounded-[11px] border border-[#26262A] bg-[#101012] p-1 shadow-[0_20px_45px_rgba(0,0,0,.55)]"
-        >
-          {options.map((option, index) => (
-            <button
-              key={`${option.provider}:${option.id}`}
-              ref={(element) => {
-                optionRefs.current[index] = element;
-              }}
-              type="button"
-              role="option"
-              aria-selected={option.id === value}
-              tabIndex={index === highlightedIndex ? 0 : -1}
-              className={`w-full rounded-[8px] px-3 py-2 text-start text-[13.5px] text-[#ECECEE] outline-none hover:bg-[#1A1A1D] focus-visible:bg-[#1A1A1D] ${
-                option.id === value ? "bg-[#1A1A1D]" : ""
-              }`}
-              onClick={() => choose(index)}
-              onKeyDown={(event) => onOptionKeyDown(event, index)}
-            >
-              {option.label}
-            </button>
-          ))}
+        <div className="absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-[11px] border border-[#26262A] bg-[#101012] shadow-[0_20px_45px_rgba(0,0,0,.55)]">
+          <input
+            ref={searchRef}
+            type="text"
+            value={query}
+            aria-label="Search models"
+            placeholder="Search"
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setHighlightedIndex(0);
+            }}
+            onKeyDown={onSearchKeyDown}
+            className="w-full border-b border-[#26262A] bg-transparent px-3 py-2.5 text-[13.5px] text-[#ECECEE] outline-none placeholder:text-[#6C6C70]"
+          />
+          <div
+            id={listboxId}
+            role="listbox"
+            aria-label="Model options"
+            className="rk-scroll max-h-64 overflow-y-auto py-1"
+          >
+            {groupRanges.map((group) => (
+              <div key={group.name}>
+                <p className="px-3 pb-1 pt-2 text-[11px] font-medium uppercase tracking-[0.08em] text-[#6C6C70]">
+                  {group.name}
+                </p>
+                {group.entries.map((option, groupIndex) => {
+                  const index = group.start + groupIndex;
+                  return (
+                    <ModelOption
+                      key={`${option.provider}:${option.id}`}
+                      option={option}
+                      index={index}
+                      value={value}
+                      highlighted={highlightedIndex === index}
+                      optionRefs={optionRefs}
+                      choose={choose}
+                      onOptionKeyDown={onOptionKeyDown}
+                    />
+                  );
+                })}
+              </div>
+            ))}
+            {filteredOptions.length === 0 ? (
+              <p className="px-3 py-2 text-[13px] text-[#85858A]">No matching models</p>
+            ) : null}
+          </div>
         </div>
       ) : null}
     </div>
+  );
+}
+
+function ModelOption({
+  option,
+  index,
+  value,
+  highlighted,
+  optionRefs,
+  choose,
+  onOptionKeyDown,
+}: {
+  option: ModelCatalogEntry;
+  index: number;
+  value: string;
+  highlighted: boolean;
+  optionRefs: RefObject<Array<HTMLButtonElement | null>>;
+  choose: (index: number) => void;
+  onOptionKeyDown: (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => void;
+}) {
+  return (
+    <button
+      ref={(element) => {
+        optionRefs.current[index] = element;
+      }}
+      type="button"
+      role="option"
+      aria-selected={option.id === value}
+      tabIndex={highlighted ? 0 : -1}
+      className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-start text-[13.5px] text-[#ECECEE] outline-none hover:bg-[#1A1A1D] focus-visible:bg-[#1A1A1D] ${
+        option.id === value ? "bg-[#1A1A1D]" : ""
+      }`}
+      onClick={() => choose(index)}
+      onKeyDown={(event) => onOptionKeyDown(event, index)}
+    >
+      <span className="min-w-0 truncate">{option.label}</span>
+      {option.billing.toLowerCase().includes("free") ? (
+        <span className="shrink-0 text-[12px] text-[#85858A]">Free</span>
+      ) : null}
+    </button>
   );
 }
