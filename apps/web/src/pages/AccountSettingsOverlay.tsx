@@ -79,7 +79,7 @@ export function AccountSettingsOverlay({
           <h3 className="text-[15px] font-medium text-[#ECECEE]">Usage & Billing</h3>
           {usage ? (
             <p className="mt-3 text-[14px] text-[#C9C9CE]">
-              {usage.runs} runs · {usage.inputTokens + usage.outputTokens} tokens this week
+              {usage.runs} runs · {usage.inputTokens + usage.outputTokens} tokens
             </p>
           ) : null}
           <p className={`text-[12.5px] text-[#6C6C70] ${usage ? "mt-2" : "mt-3"}`}>

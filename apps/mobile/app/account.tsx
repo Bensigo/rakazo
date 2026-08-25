@@ -47,7 +47,7 @@ export default function Account() {
       <Text style={styles.settingsTitle}>Usage & Billing</Text>
       {usage ? (
         <Text style={styles.email}>
-          {usage.runs} runs · {usage.inputTokens + usage.outputTokens} tokens this week
+          {usage.runs} runs · {usage.inputTokens + usage.outputTokens} tokens
         </Text>
       ) : null}
       <Text style={styles.settingsExplanation}>Model spend uses your provider keys.</Text>
