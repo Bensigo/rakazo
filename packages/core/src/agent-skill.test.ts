@@ -72,6 +72,28 @@ chomp-indent: |-2
     expect(parsed.frontmatter["chomp-indent"]).toBe("Chomp then indent");
   });
 
+  it("preserves more-indented lines inside folded scalars", () => {
+    const doc = `---
+name: Fold indent
+description: Folded with indented fragment
+detail: >
+  Intro line
+  continues here
+    more indented
+    also indented
+  outro line
+---
+
+# Body
+`;
+    const parsed = parseSkillMd(doc);
+    expect("error" in parsed).toBe(false);
+    if ("error" in parsed) return;
+    expect(parsed.frontmatter.detail).toBe(
+      "Intro line continues here\n  more indented\n  also indented\noutro line\n",
+    );
+  });
+
   it("requires name and description", () => {
     expect(parseSkillMd("---\nname: x\n---\nbody")).toEqual({
       error: "SKILL.md frontmatter requires description.",

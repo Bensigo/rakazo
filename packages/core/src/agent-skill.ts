@@ -326,7 +326,8 @@ function decodeYamlBlockScalar(rawLines: string[], header: YamlBlockScalarHeader
   if (header.style === "|") {
     text = contentLines.join("\n");
   } else {
-    // Folded: join adjacent non-empty lines with a space; blank lines become newlines.
+    // Folded: same-indent lines join with spaces; blank lines become paragraph breaks.
+    // More-indented lines (still leading spaces after content-indent strip) stay literal.
     const parts: string[] = [];
     let paragraph: string[] = [];
     const flush = () => {
@@ -338,6 +339,11 @@ function decodeYamlBlockScalar(rawLines: string[], header: YamlBlockScalarHeader
       if (line === "") {
         flush();
         parts.push("");
+        continue;
+      }
+      if (/^ /.test(line)) {
+        flush();
+        parts.push(line);
         continue;
       }
       paragraph.push(line);
