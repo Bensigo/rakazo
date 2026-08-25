@@ -153,8 +153,20 @@ export const UpdateBotInput = z
     thinkingLevel: ThinkingLevelSchema.nullable().optional(),
   })
   .superRefine((value, ctx) => {
-    if (value.modelProvider === undefined && value.modelId === undefined) return;
-    const bothNull = value.modelProvider == null && value.modelId == null;
+    const providerProvided = value.modelProvider !== undefined;
+    const modelProvided = value.modelId !== undefined;
+    if (!providerProvided && !modelProvided) return;
+    // Reject partial shapes like `{ modelId: null }` (provider omitted) so a
+    // clear cannot succeed without updating both persisted fields.
+    if (providerProvided !== modelProvided) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Model provider and model id must both be set or both cleared",
+        path: ["modelId"],
+      });
+      return;
+    }
+    const bothNull = value.modelProvider === null && value.modelId === null;
     const bothSet = Boolean(value.modelProvider) && Boolean(value.modelId);
     if (!bothNull && !bothSet) {
       ctx.addIssue({

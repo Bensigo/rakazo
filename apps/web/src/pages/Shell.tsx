@@ -3522,6 +3522,7 @@ function BotSettings({
   const [credentials, setCredentials] = useState<ModelCredential[]>([]);
   const [catalog, setCatalog] = useState<ModelCatalogEntry[]>([]);
   const [me, setMe] = useState<Me | null>(null);
+  const [modelMetaReady, setModelMetaReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -3536,7 +3537,8 @@ function BotSettings({
         setCatalog(nextCatalog);
         setMe(nextMe);
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => setModelMetaReady(true));
   }, []);
 
   const connectedOptions: Array<{
@@ -3753,9 +3755,15 @@ function BotSettings({
               voiceId: voiceId || null,
               modelProvider: selected?.provider ?? null,
               modelId: selected?.modelId ?? null,
-              thinkingLevel: thinkingOptions.length
-                ? ((thinkingLevel || null) as ThinkingLevel | null)
-                : null,
+              // Only clear thinking when catalog metadata is available; otherwise
+              // preserve the stored override if models.list failed or is still loading.
+              ...(modelMetaReady
+                ? {
+                    thinkingLevel: thinkingOptions.length
+                      ? ((thinkingLevel || null) as ThinkingLevel | null)
+                      : null,
+                  }
+                : {}),
             })
               .catch((err) => setError(err instanceof Error ? err.message : "Could not save"))
               .finally(() => setSaving(false));

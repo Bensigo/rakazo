@@ -276,20 +276,25 @@ export function createRunExecutor(deps: ExecutorDeps) {
           })
         : null;
       const hasOverride = Boolean(override?.modelProvider && override.modelId);
-      const [credential, settings] = await Promise.all([
+      const [overrideCredential, defaultCredential, settings] = await Promise.all([
         hasOverride
           ? findModelCredential(deps.prisma, scope, override!.modelProvider!)
-          : findDefaultModelCredential(deps.prisma, scope),
+          : Promise.resolve(null),
+        findDefaultModelCredential(deps.prisma, scope),
         deps.prisma.deploymentSettings.findUnique({ where: { id: "default" } }),
       ]);
+      // Keep provider/model/credential as one unit — never pair an override
+      // provider with a workspace or deployment secret from another provider.
+      const useOverride = Boolean(hasOverride && overrideCredential);
+      const credential = useOverride ? overrideCredential : defaultCredential;
       const resolved = await resolveModelKey(deps, scope.userId, scope.workspaceId, credential);
       const provider =
-        (hasOverride ? override!.modelProvider : null) ??
+        (useOverride ? override!.modelProvider : null) ??
         credential?.provider ??
         settings?.defaultModelProvider ??
         (deps.deploymentModelKey ? "openrouter" : "scripted");
       const id =
-        (hasOverride ? override!.modelId : null) ??
+        (useOverride ? override!.modelId : null) ??
         credential?.defaultModel ??
         settings?.defaultModelId ??
         (deps.deploymentModelKey
@@ -563,11 +568,14 @@ export function createRunExecutor(deps: ExecutorDeps) {
           }),
         ]);
         const hasModelOverride = Boolean(bot.modelProvider && bot.modelId);
-        const credential =
+        const overrideCredential =
           hasModelOverride && bot.modelProvider
-            ? ((await findModelCredential(deps.prisma, run, bot.modelProvider)) ??
-              defaultCredential)
-            : defaultCredential;
+            ? await findModelCredential(deps.prisma, run, bot.modelProvider)
+            : null;
+        // Keep provider/model/credential as one unit — never use the workspace
+        // default secret for a different override provider.
+        const useModelOverride = Boolean(hasModelOverride && overrideCredential);
+        const credential = useModelOverride ? overrideCredential! : defaultCredential;
         runAbortController = new AbortController();
         if (!leaseValid) runAbortController.abort();
         const composioRows = storedConnections.filter(
@@ -705,15 +713,17 @@ export function createRunExecutor(deps: ExecutorDeps) {
         );
         runSecrets.push(...resolved.redact);
         const runModelProvider =
-          (hasModelOverride ? bot.modelProvider : null) ??
+          (useModelOverride ? bot.modelProvider : null) ??
           credential?.provider ??
           settings?.defaultModelProvider ??
-          "scripted";
+          (deps.deploymentModelKey ? "openrouter" : "scripted");
         const runModelId =
-          (hasModelOverride ? bot.modelId : null) ??
+          (useModelOverride ? bot.modelId : null) ??
           credential?.defaultModel ??
           settings?.defaultModelId ??
-          "scripted";
+          (deps.deploymentModelKey
+            ? (process.env.PI_DEFAULT_MODEL ?? "deepseek/deepseek-v4-flash-0731")
+            : "scripted");
         await deps.prisma.run.updateMany({
           where: { id: runId, status: "running", leaseOwner: workerId, leaseFence: fence },
           data: { modelProvider: runModelProvider, modelId: runModelId },

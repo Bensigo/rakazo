@@ -641,6 +641,13 @@ describeWithDatabase("API authorization and resource isolation", () => {
     });
     expect(disconnected.status).toBeGreaterThanOrEqual(400);
     expect(await disconnected.text()).toMatch(/connect/i);
+
+    const partialClear = await raw(app, cookie, "bots/update", {
+      botId: bot.id,
+      modelId: null,
+    });
+    expect(partialClear.status).toBeGreaterThanOrEqual(400);
+    expect(await partialClear.text()).toMatch(/both be set or both cleared/i);
   });
 
   it("chooses the newest duplicate provider credential when selecting a default", async () => {
