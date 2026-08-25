@@ -43,7 +43,11 @@ import {
   isRunTerminalEvent,
   latestAnswerableAskMessageId,
   presetFromCron,
+  SLASH_ACTIONS,
+  type SlashActionId,
+  serializeComposerPrompt,
   speechFromBlocks,
+  truncateSlashDescription,
 } from "@rakazo/core";
 import { BotAvatar, Button, GroupAvatar } from "@rakazo/ui-web";
 import {
@@ -2735,7 +2739,7 @@ const Composer = memo(function Composer({
   mentionMembers?: Array<{ botId: string; name: string; color?: string }>;
   agentSkills?: AgentSkillCatalogEntry[];
   onSlashOpen?: () => void;
-  onSlashAction?: (action: "chat-settings" | "settings-general" | "settings-usage") => void;
+  onSlashAction?: (action: SlashActionId) => void;
   dictating: boolean;
   transcribe: boolean;
   onDictateStart: (onFinal: (text: string) => void) => void;
@@ -2783,7 +2787,7 @@ const Composer = memo(function Composer({
     setSlashQuery(null);
   }
 
-  function runSlashAction(action: "chat-settings" | "settings-general" | "settings-usage") {
+  function runSlashAction(action: SlashActionId) {
     setDraft("");
     setSlashQuery(null);
     onSlashAction?.(action);
@@ -3014,6 +3018,14 @@ const Composer = memo(function Composer({
               <span dir="auto" className="truncate">
                 {selectedSkill.name}
               </span>
+              <button
+                type="button"
+                aria-label={`Remove ${selectedSkill.name}`}
+                onClick={() => setSelectedSkill(null)}
+                className="text-[#85858A] hover:text-[#ECECEE]"
+              >
+                <X size={12} strokeWidth={2} />
+              </button>
             </span>
           ) : null}
           {selectedMentions.map((member) => (
@@ -3026,6 +3038,18 @@ const Composer = memo(function Composer({
               <span dir="auto" className="truncate">
                 {member.name}
               </span>
+              <button
+                type="button"
+                aria-label={`Remove ${member.name}`}
+                onClick={() =>
+                  setSelectedMentions((current) =>
+                    current.filter((selected) => selected.botId !== member.botId),
+                  )
+                }
+                className="text-[#85858A] hover:text-[#ECECEE]"
+              >
+                <X size={12} strokeWidth={2} />
+              </button>
             </span>
           ))}
           <textarea
@@ -3086,30 +3110,6 @@ const Composer = memo(function Composer({
     </div>
   );
 });
-
-const SLASH_ACTIONS = [
-  { id: "chat-settings" as const, label: "Chat Settings" },
-  { id: "settings-general" as const, label: "Settings: General" },
-  { id: "settings-usage" as const, label: "Settings: Usage" },
-];
-
-function serializeComposerPrompt(
-  draft: string,
-  skill: { name: string } | null,
-  mentions: Array<{ name: string }>,
-): string {
-  const body = draft.replace(/^\s+/, "");
-  const mentionPrefix = mentions.map((member) => `@${member.name}`).join(" ");
-  const afterSkill = [mentionPrefix, body].filter((part) => part.trim().length > 0).join(" ");
-  if (!skill) return afterSkill.trimEnd();
-  return afterSkill.trim().length > 0 ? `/${skill.name}\n${afterSkill}` : `/${skill.name}`;
-}
-
-function truncateSlashDescription(value: string, max = 72): string {
-  const text = value.replace(/\s+/g, " ").trim();
-  if (text.length <= max) return text;
-  return `${text.slice(0, max - 1).trimEnd()}…`;
-}
 
 function previewMessageText(message: ThreadMessage): string {
   const text = message.blocks

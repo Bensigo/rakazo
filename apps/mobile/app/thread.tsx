@@ -6,6 +6,9 @@ import {
   isApprovalAskBlock,
   isRunTerminalEvent,
   latestAnswerableAskMessageId,
+  SLASH_ACTIONS,
+  type SlashActionId,
+  serializeComposerPrompt,
 } from "@rakazo/core";
 import { Link, useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -132,13 +135,7 @@ export default function Thread() {
       : [];
   const slashActionOptions =
     slashQuery !== null && mentionQuery === null
-      ? (
-          [
-            { id: "chat-settings", label: "Chat Settings" },
-            { id: "settings-general", label: "Settings: General" },
-            { id: "settings-usage", label: "Settings: Usage" },
-          ] as const
-        ).filter(
+      ? SLASH_ACTIONS.filter(
           (action) =>
             !slashQueryNormalized || action.label.toLowerCase().includes(slashQueryNormalized),
         )
@@ -474,24 +471,18 @@ export default function Thread() {
     if (selectedSkill) setSelectedSkill(null);
   }
 
-  function serializeComposerPrompt(): string {
-    const body = draft.replace(/^\s+/, "");
-    const mentionPrefix = selectedMentions.map((member) => `@${member.name}`).join(" ");
-    const afterSkill = [mentionPrefix, body].filter((part) => part.trim().length > 0).join(" ");
-    if (!selectedSkill) return afterSkill.trimEnd();
-    return afterSkill.trim().length > 0
-      ? `/${selectedSkill.name}\n${afterSkill}`
-      : `/${selectedSkill.name}`;
+  function serializeComposerPromptText(): string {
+    return serializeComposerPrompt(draft, selectedSkill, selectedMentions);
   }
 
-  function runSlashAction(action: "chat-settings" | "settings-general" | "settings-usage") {
+  function runSlashAction(action: SlashActionId) {
     setDraft("");
     setSlashQuery(null);
     if (action === "chat-settings") {
       if (inGroup && groupId) {
         router.push({ pathname: "/group-settings", params: { groupId } });
-      } else {
-        showBotActions();
+      } else if (botId) {
+        router.push({ pathname: "/bot-settings", params: { botId } });
       }
       return;
     }
@@ -506,7 +497,7 @@ export default function Thread() {
     const targetGroupId = groupId;
     if ((!targetBotId && !targetGroupId) || sending) return;
     const attachments = attachmentsForThread(pendingAttachments, threadKey);
-    const text = serializeComposerPrompt().trim();
+    const text = serializeComposerPromptText().trim();
     if (!text && attachments.length === 0) return;
     setSending(true);
     setError(null);
