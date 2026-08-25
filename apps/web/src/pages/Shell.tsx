@@ -29,7 +29,6 @@ import {
   BOT_NAME_MAX_LENGTH,
   BOT_TITLE_MAX_LENGTH,
   normalizeCreateBotProfile,
-  OPENAI_COMPATIBLE_PROVIDER_ID,
 } from "@rakazo/contracts";
 import {
   abortableDelay,
@@ -3540,34 +3539,41 @@ function BotSettings({
       .catch(() => undefined);
   }, []);
 
-  const connectedProviders = new Set(credentials.map((entry) => entry.provider));
-  const connectedOptions = catalog
-    .filter(
-      (entry) =>
-        connectedProviders.has(entry.provider) && entry.provider !== OPENAI_COMPATIBLE_PROVIDER_ID,
-    )
-    .map((entry) => ({
-      key: modelOptionKey(entry.provider, entry.id),
-      provider: entry.provider,
-      modelId: entry.id,
-      label: `${entry.providerName} · ${entry.label}`,
-    }));
+  const connectedOptions: Array<{
+    key: string;
+    provider: string;
+    modelId: string;
+    label: string;
+  }> = [];
+  const seenOptions = new Set<string>();
   for (const credential of credentials) {
-    if (!credential.modelId) continue;
-    if (
-      connectedOptions.some(
-        (option) =>
-          option.provider === credential.provider && option.modelId === credential.modelId,
-      )
-    ) {
-      continue;
+    const providerModels = catalog.filter((entry) => entry.provider === credential.provider);
+    const credentialInCatalog = Boolean(
+      credential.modelId && providerModels.some((entry) => entry.id === credential.modelId),
+    );
+    // Catalog providers expand to every model for that connection. Free-form
+    // credentials (model id not in the catalog) stay a single connected pair.
+    const options =
+      credential.modelId && !credentialInCatalog
+        ? [
+            {
+              key: modelOptionKey(credential.provider, credential.modelId),
+              provider: credential.provider,
+              modelId: credential.modelId,
+              label: `${credential.label} · ${credential.modelId}`,
+            },
+          ]
+        : providerModels.map((entry) => ({
+            key: modelOptionKey(entry.provider, entry.id),
+            provider: entry.provider,
+            modelId: entry.id,
+            label: `${entry.providerName ?? entry.provider} · ${entry.label}`,
+          }));
+    for (const option of options) {
+      if (seenOptions.has(option.key)) continue;
+      seenOptions.add(option.key);
+      connectedOptions.push(option);
     }
-    connectedOptions.push({
-      key: modelOptionKey(credential.provider, credential.modelId),
-      provider: credential.provider,
-      modelId: credential.modelId,
-      label: `${credential.label} · ${credential.modelId}`,
-    });
   }
 
   const effectiveProvider = modelKey
