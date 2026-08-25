@@ -84,6 +84,10 @@ type E2BDesktopBrowser = {
   open: (fileOrUrl: string) => Promise<void>;
 };
 
+type E2BDesktopCommands = {
+  run: (cmd: string) => Promise<{ exitCode?: number }>;
+};
+
 export async function openDesktopBrowser(desktop: E2BDesktopBrowser): Promise<void> {
   for (const app of E2B_BROWSER_APPS) {
     try {
@@ -97,14 +101,21 @@ export async function openDesktopBrowser(desktop: E2BDesktopBrowser): Promise<vo
 }
 
 /** Open an http(s) URL via a named browser — avoids the broken default-browser association. */
-export async function openDesktopUrl(desktop: E2BDesktopBrowser, url: string): Promise<void> {
+export async function openDesktopUrl(
+  desktop: E2BDesktopBrowser & { commands: E2BDesktopCommands },
+  url: string,
+): Promise<void> {
   for (const app of E2B_BROWSER_APPS) {
-    try {
-      await desktop.launch(app, url);
-      return;
-    } catch {
-      // try the next installed browser
-    }
+    // desktop.launch backgrounds gtk-launch and always resolves, so probe first.
+    const available = await desktop.commands
+      .run(`command -v ${shellQuote(app)} >/dev/null 2>&1`)
+      .then(
+        (result) => (result.exitCode ?? 0) === 0,
+        () => false,
+      );
+    if (!available) continue;
+    await desktop.launch(app, url);
+    return;
   }
   await desktop.open(url);
 }

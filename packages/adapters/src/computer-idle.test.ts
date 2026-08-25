@@ -123,11 +123,18 @@ describe("e2b create options", () => {
 
   it("opens a URL through the named browser launcher", async () => {
     const launched: Array<{ application: string; uri?: string }> = [];
+    const commands = {
+      run: async (cmd: string) => {
+        if (cmd.includes("google-chrome")) throw new Error("missing");
+        if (cmd.includes("firefox")) return { exitCode: 0 };
+        throw new Error("missing");
+      },
+    };
     await openDesktopUrl(
       {
+        commands,
         launch: async (application, uri) => {
           launched.push({ application, uri });
-          if (application !== "firefox") throw new Error("missing");
         },
         open: async () => {
           throw new Error("should not fall back");
@@ -135,10 +142,7 @@ describe("e2b create options", () => {
       },
       "https://example.com/page",
     );
-    expect(launched).toEqual([
-      { application: "google-chrome", uri: "https://example.com/page" },
-      { application: "firefox", uri: "https://example.com/page" },
-    ]);
+    expect(launched).toEqual([{ application: "firefox", uri: "https://example.com/page" }]);
   });
 });
 

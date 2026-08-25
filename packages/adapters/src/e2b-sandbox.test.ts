@@ -69,6 +69,10 @@ describe("E2B computer backend", () => {
       if (value.includes("RAKAZO_SCREEN_INDEX=")) {
         return { stdout: "RAKAZO_SCREEN_INDEX=0\n", stderr: "", exitCode: 0 };
       }
+      if (value.includes("command -v")) {
+        if (value.includes("google-chrome")) return { stdout: "", stderr: "", exitCode: 0 };
+        throw new Error("missing");
+      }
       return { stdout: "", stderr: "", exitCode: 0 };
     });
     const launch = vi.fn(async () => undefined);
@@ -95,6 +99,9 @@ describe("E2B computer backend", () => {
       computer,
       { actions: [{ kind: "open", path: "https://example.com/docs" }], observe: false },
       context,
+    );
+    expect(command).toHaveBeenCalledWith(
+      expect.stringMatching(/command -v ['"]?google-chrome['"]?/),
     );
     expect(launch).toHaveBeenCalledWith("google-chrome", "https://example.com/docs");
     expect(open).not.toHaveBeenCalled();
