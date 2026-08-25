@@ -80,9 +80,9 @@ chomp-indent: |-2
 
   it("rejects overlong names", () => {
     const name = "N".repeat(81);
-    expect(
-      parseSkillMd(`---\nname: ${name}\ndescription: ok\n---\nbody`),
-    ).toEqual({ error: "Skill name must be at most 80 characters." });
+    expect(parseSkillMd(`---\nname: ${name}\ndescription: ok\n---\nbody`)).toEqual({
+      error: "Skill name must be at most 80 characters.",
+    });
   });
 });
 
@@ -100,9 +100,9 @@ describe("buildSkillMd", () => {
   });
 
   it("rejects overlong structured names", () => {
-    expect(() =>
-      buildSkillMd({ name: "N".repeat(81), description: "ok", body: "body" }),
-    ).toThrow(/at most 80 characters/);
+    expect(() => buildSkillMd({ name: "N".repeat(81), description: "ok", body: "body" })).toThrow(
+      /at most 80 characters/,
+    );
   });
 });
 
