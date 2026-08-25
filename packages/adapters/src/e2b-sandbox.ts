@@ -654,14 +654,22 @@ export class E2BSandboxProvider implements SandboxProvider {
     if (layout.isPrimary) {
       const passwordFile = "/tmp/rakazo-control.vncpass";
       const tokenFile = "/tmp/rakazo-control.token";
+      const vncPort = layout.controlVncPort;
+      const proxyPort = layout.controlPort;
       const command = [
         controlStreamStopCommand(),
+        // Old x11vnc may outlive pkill briefly; do not store a new password until the VNC port is free.
+        `for i in $(seq 1 50); do netstat -tuln | grep -q ':${vncPort} ' || break; sleep 0.1; done`,
+        `if netstat -tuln | grep -q ':${vncPort} '; then exit 1; fi`,
         `printf %s ${shellQuote(controlToken)} > ${tokenFile}`,
         `x11vnc -storepasswd ${shellQuote(password)} ${passwordFile} >/dev/null`,
-        `x11vnc -bg -display ${shellQuote(desktop.display)} -forever -wait 50 -shared -rfbport ${layout.controlVncPort} -rfbauth ${passwordFile} 2>/tmp/rakazo-control-x11vnc.log`,
+        `x11vnc -bg -display ${shellQuote(desktop.display)} -forever -wait 50 -shared -rfbport ${vncPort} -rfbauth ${passwordFile} 2>/tmp/rakazo-control-x11vnc.log`,
+        // Require the new x11vnc itself — proxy listen alone can pass with a leftover server.
+        `for i in $(seq 1 50); do netstat -tuln | grep -q ':${vncPort} ' && break; sleep 0.1; done`,
+        `if ! netstat -tuln | grep -q ':${vncPort} '; then exit 1; fi`,
         "cd /opt/noVNC/utils",
-        `(nohup ./novnc_proxy --vnc localhost:${layout.controlVncPort} --listen ${layout.controlPort} --web /opt/noVNC >/tmp/rakazo-control-novnc.log 2>&1 &)`,
-        `for i in $(seq 1 50); do netstat -tuln | grep -q ':${layout.controlPort} ' && exit 0; sleep 0.1; done`,
+        `(nohup ./novnc_proxy --vnc localhost:${vncPort} --listen ${proxyPort} --web /opt/noVNC >/tmp/rakazo-control-novnc.log 2>&1 &)`,
+        `for i in $(seq 1 50); do netstat -tuln | grep -q ':${proxyPort} ' && exit 0; sleep 0.1; done`,
         "exit 1",
       ].join(" && ");
       const result = await desktop.commands.run(command);
@@ -701,9 +709,13 @@ async function settleForTeardown(pending: Promise<void> | undefined): Promise<vo
 }
 
 function controlStreamStopCommand(controlToken?: string) {
+  // Anchor to the x11vnc binary (path-prefixed OK). Do not use an unanchored
+  // `x11vnc.*` pattern — E2B embeds the full script in the runner argv, so that
+  // would pkill the runner itself.
   const stop = [
-    "pkill -f '^x11vnc .* -rfbport 5901' || true",
+    "pkill -f '(^|/)x11vnc .* -rfbport 5901' || true",
     "pkill -f '^/usr/bin/python3 .*websockify.*6081' || true",
+    "pkill -f 'novnc_proxy.*--listen 6081' || true",
     "rm -f /tmp/rakazo-control.vncpass",
     "rm -f /tmp/rakazo-control.token",
   ].join("; ");

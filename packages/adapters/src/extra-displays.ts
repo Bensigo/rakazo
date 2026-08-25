@@ -69,7 +69,7 @@ export function releaseExtraDisplayCommand(screenKey: string, leaseId?: string):
     // biome-ignore lint/suspicious/noTemplateCurlyInString: POSIX parameter expansion in the remote shell script
     'case "$current" in *:*) rest=${current##*:}; case "$rest" in \'\'|*[!0-9]*) ;; *) current_fence=$rest; current_owner=${current%:*}; esac ;; esac',
     '[ -z "$owner" ] || [ "$current" = "$owner" ] || { [ "$incoming_owner" = "$current_owner" ] && [ "$incoming_fence" -ge "$current_fence" ]; } || { printf \'RAKAZO_SCREEN_RELEASE=stale\\n\'; exit 0; }',
-    'if [ "$index" -ne 0 ]; then display_number=$((index + 1)); view_port=$((6080 + index * 2)); control_port=$((6081 + index * 2)); view_vnc_port=$((5900 + index * 2)); control_vnc_port=$((5901 + index * 2)); pkill -f "Xvfb :$display_number -screen" || true; pkill -f "HOME=/tmp/fluxbox-home-$display_number DISPLAY=:$display_number fluxbox" || true; pkill -f -- "chromium-screen-$display_number" || true; pkill -f "^x11vnc .* -rfbport $view_vnc_port" || true; pkill -f "^x11vnc .* -rfbport $control_vnc_port" || true; pkill -f "^/usr/bin/python3 .*websockify.*$view_port" || true; pkill -f "novnc_proxy.*--listen $view_port" || true; pkill -f "^/usr/bin/python3 .*websockify.*$control_port" || true; pkill -f "novnc_proxy.*--listen $control_port" || true; rm -f "/tmp/.X$display_number-lock" "/tmp/.X11-unix/X$display_number" "/tmp/rakazo/control-token-$display_number" "/tmp/rakazo/view-password-$display_number" "/tmp/rakazo-view-$display_number.vncpass" "/tmp/rakazo-control-$display_number.vncpass" "/tmp/rakazo/screen-$display_number.lock"; fi',
+    'if [ "$index" -ne 0 ]; then display_number=$((index + 1)); view_port=$((6080 + index * 2)); control_port=$((6081 + index * 2)); view_vnc_port=$((5900 + index * 2)); control_vnc_port=$((5901 + index * 2)); pkill -f "Xvfb :$display_number -screen" || true; pkill -f "HOME=/tmp/fluxbox-home-$display_number DISPLAY=:$display_number fluxbox" || true; pkill -f -- "chromium-screen-$display_number" || true; pkill -f "(^|/)x11vnc .* -rfbport $view_vnc_port" || true; pkill -f "(^|/)x11vnc .* -rfbport $control_vnc_port" || true; pkill -f "^/usr/bin/python3 .*websockify.*$view_port" || true; pkill -f "novnc_proxy.*--listen $view_port" || true; pkill -f "^/usr/bin/python3 .*websockify.*$control_port" || true; pkill -f "novnc_proxy.*--listen $control_port" || true; rm -f "/tmp/.X$display_number-lock" "/tmp/.X11-unix/X$display_number" "/tmp/rakazo/control-token-$display_number" "/tmp/rakazo/view-password-$display_number" "/tmp/rakazo-view-$display_number.vncpass" "/tmp/rakazo-control-$display_number.vncpass" "/tmp/rakazo/screen-$display_number.lock"; fi',
     'rm -f "$slot"',
     "printf 'RAKAZO_SCREEN_RELEASE=%s\\n' \"$index\"",
   ].join("; ");
@@ -161,7 +161,7 @@ export function ensureExtraDisplayCommand(
     `    fi`,
     `  done`,
     `fi`,
-    `pkill -f '^x11vnc .* -rfbport ${layout.viewVncPort}' || true`,
+    `pkill -f '(^|/)x11vnc .* -rfbport ${layout.viewVncPort}' || true`,
     `pkill -f '^/usr/bin/python3 .*websockify.*${layout.viewPort}' || true`,
     `pkill -f 'novnc_proxy.*--listen ${layout.viewPort}' || true`,
     `x11vnc -storepasswd "$view_password" ${shellQuote(passwordAuthFile)} >/dev/null`,
@@ -192,21 +192,29 @@ export function extraDisplayControlStartCommand(
   const passwordFile = `/tmp/rakazo-control-${layout.displayNumber}.vncpass`;
   const tokenFile = `/tmp/rakazo/control-token-${layout.displayNumber}`;
   const log = `/tmp/rakazo/screen-${layout.displayNumber}`;
+  const vncPort = layout.controlVncPort;
+  const proxyPort = layout.controlPort;
   return [
     "set -eu",
     extraDisplayControlStopCommand(layout, controlToken),
+    // Old x11vnc may outlive pkill briefly; do not store a new password until the VNC port is free.
+    `for i in $(seq 1 50); do (echo >/dev/tcp/127.0.0.1/${vncPort}) >/dev/null 2>&1 || break; sleep 0.1; done`,
+    `if (echo >/dev/tcp/127.0.0.1/${vncPort}) >/dev/null 2>&1; then exit 1; fi`,
     `mkdir -p /tmp/rakazo`,
     `printf %s ${shellQuote(controlToken)} > ${tokenFile}`,
     `x11vnc -storepasswd ${shellQuote(password)} ${passwordFile} >/dev/null`,
-    `x11vnc -bg -display ${shellQuote(layout.display)} -forever -wait 50 -shared -rfbport ${layout.controlVncPort} -rfbauth ${passwordFile} 2>${log}-control-x11vnc.log`,
+    `x11vnc -bg -display ${shellQuote(layout.display)} -forever -wait 50 -shared -rfbport ${vncPort} -rfbauth ${passwordFile} 2>${log}-control-x11vnc.log`,
+    // Require the new x11vnc itself — proxy listen alone can pass with a leftover server.
+    `for i in $(seq 1 50); do (echo >/dev/tcp/127.0.0.1/${vncPort}) >/dev/null 2>&1 && break; sleep 0.1; done`,
+    `if ! (echo >/dev/tcp/127.0.0.1/${vncPort}) >/dev/null 2>&1; then exit 1; fi`,
     "if command -v websockify >/dev/null 2>&1; then",
-    `  (nohup websockify --web=/usr/share/novnc 0.0.0.0:${layout.controlPort} 127.0.0.1:${layout.controlVncPort} >${log}-control-novnc.log 2>&1 &)`,
+    `  (nohup websockify --web=/usr/share/novnc 0.0.0.0:${proxyPort} 127.0.0.1:${vncPort} >${log}-control-novnc.log 2>&1 &)`,
     "elif [ -d /opt/noVNC/utils ]; then",
-    `  (cd /opt/noVNC/utils && nohup ./novnc_proxy --vnc localhost:${layout.controlVncPort} --listen ${layout.controlPort} --web /opt/noVNC >${log}-control-novnc.log 2>&1 &)`,
+    `  (cd /opt/noVNC/utils && nohup ./novnc_proxy --vnc localhost:${vncPort} --listen ${proxyPort} --web /opt/noVNC >${log}-control-novnc.log 2>&1 &)`,
     "else",
     "  exit 1",
     "fi",
-    `for i in $(seq 1 50); do (echo >/dev/tcp/127.0.0.1/${layout.controlPort}) >/dev/null 2>&1 && exit 0; sleep 0.1; done`,
+    `for i in $(seq 1 50); do (echo >/dev/tcp/127.0.0.1/${proxyPort}) >/dev/null 2>&1 && exit 0; sleep 0.1; done`,
     "exit 1",
   ].join("\n");
 }
@@ -216,7 +224,8 @@ export function extraDisplayControlStopCommand(
   controlToken?: string,
 ): string {
   const stop = [
-    `pkill -f '^x11vnc .* -rfbport ${layout.controlVncPort}' || true`,
+    // Anchor to the x11vnc binary (path-prefixed OK); avoid unanchored matches that hit the runner argv.
+    `pkill -f '(^|/)x11vnc .* -rfbport ${layout.controlVncPort}' || true`,
     `pkill -f '^/usr/bin/python3 .*websockify.*${layout.controlPort}' || true`,
     `pkill -f 'novnc_proxy.*--listen ${layout.controlPort}' || true`,
     `rm -f /tmp/rakazo-control-${layout.displayNumber}.vncpass`,
@@ -318,7 +327,7 @@ export function extraDisplayInputCommand(layout: ExtraDisplayLayout, input: Comp
 
 export function primaryStreamCleanupCommand(primaryViewPort = 6080): string {
   return [
-    "pkill -f '^x11vnc .* -R viewonly' || true",
+    "pkill -f '(^|/)x11vnc .* -R viewonly' || true",
     `pkill -f '[n]ovnc_proxy.*${primaryViewPort}' || true`,
     `pkill -f '[w]ebsockify.*${primaryViewPort}' || true`,
   ].join("; ");
