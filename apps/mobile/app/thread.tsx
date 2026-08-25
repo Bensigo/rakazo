@@ -887,9 +887,16 @@ export default function Thread() {
               }}
             >
               <NativeSymbol ios="cube" android="cube-outline" size={13} color="#B0B0B6" />
-              <Text numberOfLines={1} style={{ color: "#ECECEE", fontSize: 13 }}>
+              <Text numberOfLines={1} style={{ color: "#ECECEE", fontSize: 13, flexShrink: 1 }}>
                 {selectedSkill.name}
               </Text>
+              <Pressable
+                accessibilityLabel={`Remove ${selectedSkill.name}`}
+                hitSlop={8}
+                onPress={() => setSelectedSkill(null)}
+              >
+                <NativeSymbol ios="xmark" android="close" size={12} color="#85858A" />
+              </Pressable>
             </View>
           ) : null}
           {selectedMentions.map((member) => (
@@ -915,9 +922,20 @@ export default function Thread() {
                   backgroundColor: member.color ?? "#85858A",
                 }}
               />
-              <Text numberOfLines={1} style={{ color: "#ECECEE", fontSize: 13 }}>
+              <Text numberOfLines={1} style={{ color: "#ECECEE", fontSize: 13, flexShrink: 1 }}>
                 {member.name}
               </Text>
+              <Pressable
+                accessibilityLabel={`Remove ${member.name}`}
+                hitSlop={8}
+                onPress={() =>
+                  setSelectedMentions((current) =>
+                    current.filter((selected) => selected.botId !== member.botId),
+                  )
+                }
+              >
+                <NativeSymbol ios="xmark" android="close" size={12} color="#85858A" />
+              </Pressable>
             </View>
           ))}
           <TextInput
