@@ -1062,6 +1062,7 @@ function MessageBubble({
   onPreviewMarkdown: (target: MarkdownArtifactPreviewTarget) => void;
   onSpeak?: () => void;
 }) {
+  const [peerExpanded, setPeerExpanded] = useState(false);
   const artifactTarget: MobileArtifactTarget = groupId ? { groupId } : { botId };
   const ask = message.blocks.find(
     (block): block is Extract<MessageBlock, { kind: "ask" }> =>
@@ -1079,6 +1080,54 @@ function MessageBubble({
           {handoff.text ? ` · ${handoff.text}` : ""}
         </Text>
       </View>
+    );
+  }
+  const peerMessage = message.blocks.find(
+    (
+      block,
+    ): block is Extract<MessageBlock, { kind: "bot_message_sent" | "bot_message_received" }> =>
+      block.kind === "bot_message_sent" || block.kind === "bot_message_received",
+  );
+  if (peerMessage) {
+    const sent = peerMessage.kind === "bot_message_sent";
+    const peer = sent ? peerMessage.toBotName : peerMessage.fromBotName;
+    // Peer traffic is the bots working, not this conversation, so it stays
+    // collapsed to a line. Mobile has no peer-messages modal yet, so the line
+    // opens in place rather than leaving the text unreachable here.
+    return (
+      <Pressable
+        onPress={() => setPeerExpanded((expanded) => !expanded)}
+        accessibilityRole="button"
+        accessibilityLabel={
+          sent
+            ? peerExpanded
+              ? `Hide message to ${peer}`
+              : `Show message to ${peer}`
+            : peerExpanded
+              ? `Hide message from ${peer}`
+              : `Show message from ${peer}`
+        }
+        style={{ paddingVertical: 4 }}
+      >
+        <Text style={{ color: "#85858A", fontSize: 13.5, textAlign: "center" }}>
+          ↔ {sent ? `Messaged ${peer}` : `Message from ${peer}`}
+        </Text>
+        {peerExpanded ? (
+          <View
+            style={{
+              marginTop: 6,
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor: "#26262A",
+              backgroundColor: "#101012",
+              paddingHorizontal: 14,
+              paddingVertical: 10,
+            }}
+          >
+            <ChatMarkdown>{peerMessage.text}</ChatMarkdown>
+          </View>
+        ) : null}
+      </Pressable>
     );
   }
   const special = message.blocks.find(

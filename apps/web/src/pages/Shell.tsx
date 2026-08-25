@@ -138,6 +138,9 @@ const AccountSettingsOverlay = lazy(() =>
 const ModelSettingsOverlay = lazy(() =>
   import("./ModelSettingsOverlay").then((module) => ({ default: module.ModelSettingsOverlay })),
 );
+const PeerMessagesOverlay = lazy(() =>
+  import("./PeerMessagesOverlay").then((module) => ({ default: module.PeerMessagesOverlay })),
+);
 const PluginsOverlay = lazy(() =>
   import("./PluginsOverlay").then((module) => ({ default: module.PluginsOverlay })),
 );
@@ -200,6 +203,8 @@ export function ShellPage() {
   const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [panel, setPanel] = useState<Panel>(null);
+  const [peerMessagesOpen, setPeerMessagesOpen] = useState(false);
+  const [peerMessagesFocusId, setPeerMessagesFocusId] = useState<string | null>(null);
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [routinesBotId, setRoutinesBotId] = useState<string | null>(null);
   const [taughtSkills, setTaughtSkills] = useState<TaughtSkill[]>([]);
@@ -1874,6 +1879,10 @@ export function ShellPage() {
           onOpenBot={openBot}
           onAnswer={answerMessage}
           onReply={setReplyTarget}
+          onOpenPeerMessages={(peerBotId) => {
+            setPeerMessagesFocusId(peerBotId);
+            setPeerMessagesOpen(true);
+          }}
           memberName={resolveTranscriptMemberName}
           onRefresh={refreshActiveThread}
           onBotChanged={refreshBots}
@@ -2476,6 +2485,19 @@ export function ShellPage() {
           />
         ) : null}
         {modelsOpen ? <ModelSettingsOverlay onClose={() => setModelsOpen(false)} /> : null}
+        {peerMessagesOpen && active ? (
+          <PeerMessagesOverlay
+            botId={active.id}
+            botName={active.name}
+            messages={activeSnapshot?.messages ?? []}
+            olderCursor={activeSnapshot?.olderCursor ?? null}
+            initialPeerBotId={peerMessagesFocusId}
+            onClose={() => {
+              setPeerMessagesOpen(false);
+              setPeerMessagesFocusId(null);
+            }}
+          />
+        ) : null}
         {voiceOpen ? (
           <VoiceSettingsOverlay
             onClose={() => {
@@ -2653,6 +2675,7 @@ const Transcript = memo(function Transcript({
   onOpenBot,
   onAnswer,
   onReply,
+  onOpenPeerMessages,
   memberName,
   onRefresh,
   onBotChanged,
@@ -2673,6 +2696,7 @@ const Transcript = memo(function Transcript({
   onOpenBot: (botId: string) => void;
   onAnswer: (message: ThreadMessage, text: string) => Promise<void>;
   onReply: (message: ThreadMessage) => void;
+  onOpenPeerMessages: (peerBotId: string) => void;
   memberName?: (botId: string | undefined) => string | undefined;
   onRefresh: () => Promise<void>;
   onBotChanged: () => Promise<void>;
@@ -2716,6 +2740,7 @@ const Transcript = memo(function Transcript({
             message={message}
             canAnswer={message.id === answerableAskMessageId}
             onOpenBot={onOpenBot}
+            onOpenPeerMessages={onOpenPeerMessages}
             onAnswer={onAnswer}
             speakerName={message.role === "bot" ? memberName?.(message.botId) : undefined}
             memberName={memberName}
@@ -3299,6 +3324,7 @@ const MessageView = memo(function MessageView({
   message,
   onAnswer,
   onOpenBot,
+  onOpenPeerMessages,
   speakerName,
   memberName,
   replyPreview,
@@ -3314,6 +3340,7 @@ const MessageView = memo(function MessageView({
   message: ThreadMessage;
   onAnswer: (message: ThreadMessage, text: string) => Promise<void>;
   onOpenBot: (botId: string) => void;
+  onOpenPeerMessages: (peerBotId: string) => void;
   speakerName?: string;
   memberName?: (botId: string | undefined) => string | undefined;
   replyPreview?: ThreadMessage;
@@ -3410,6 +3437,24 @@ const MessageView = memo(function MessageView({
               </span>
               <span>{block.text}</span>
             </div>
+          );
+        }
+        if (block.kind === "bot_message_sent" || block.kind === "bot_message_received") {
+          const sent = block.kind === "bot_message_sent";
+          const peer = sent ? block.toBotName : block.fromBotName;
+          const peerBotId = sent ? block.toBotId : block.fromBotId;
+          const label = sent ? `Messaged ${peer}` : `Message from ${peer}`;
+          return (
+            <button
+              key={i}
+              type="button"
+              aria-label={label}
+              onClick={() => onOpenPeerMessages(peerBotId)}
+              className="flex items-center justify-center gap-2 self-center rounded-full border border-[#26262A] px-3 py-1 text-[13px] text-[#85858A] hover:bg-[#161618]"
+            >
+              <span aria-hidden>↔</span>
+              <span>{label}</span>
+            </button>
           );
         }
         if (block.kind === "meta") {

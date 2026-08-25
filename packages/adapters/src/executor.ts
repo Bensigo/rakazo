@@ -42,6 +42,7 @@ import {
   nextFence,
   promptInvokesSkill,
   redactSecrets,
+  renderBotDirectory,
   resolveActionApproval,
   sandboxCommandTimeoutMs,
   type ToolCallStreak,
@@ -76,6 +77,7 @@ import {
   settleUncertainEffect,
   uncertainEffectResult,
 } from "./approval-effect.js";
+import { messageBot } from "./bot-messages.js";
 import { builtinAgentTools } from "./builtin-tools.js";
 import { archiveSpawnedBot, spawnBot } from "./child-bots.js";
 import {
@@ -198,6 +200,9 @@ const MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS = 6;
 // never trips) but keeps hammering the same tool without ever narrating progress in between.
 const MAX_CONSECUTIVE_SAME_TOOL_CALLS = 20;
 const BUILTIN_AGENT_TOOL_NAMES = new Set(builtinAgentTools.map((tool) => tool.name));
+
+/** Cap the roster so a large workspace cannot flood the prompt. */
+const BOT_DIRECTORY_LIMIT = 40;
 
 export interface ExecutorDeps {
   prisma: PrismaClient;
@@ -1659,6 +1664,21 @@ export function createRunExecutor(deps: ExecutorDeps) {
             }
             return spawned;
           }
+          if (name === "message_bot") {
+            const sent = await messageBot(
+              deps,
+              { ...run, sourceMessageId: run.sourceMessageId },
+              { id: bot.id, name: bot.name },
+              {
+                bot_id: args.bot_id ? String(args.bot_id) : undefined,
+                confirm_name: args.confirm_name ? String(args.confirm_name) : undefined,
+                message: redactSecrets(String(args.message ?? ""), runSecrets),
+                deliveryKey: executionId,
+              },
+            );
+            if (!sent.ok) return finish({ error: sent.error });
+            return finish({ ok: true, botId: sent.botId, name: sent.name, note: sent.note });
+          }
           if (name === "handoff_to_bot") {
             if (!thread.groupId) return finish({ error: "handoff_to_bot is only for group chats" });
             const result = await handoffToGroupBot(deps, run, thread.groupId, {
@@ -1789,6 +1809,25 @@ export function createRunExecutor(deps: ExecutorDeps) {
           });
         }
         const runtimeHistory = [...historicalContext, ...history];
+        // Without a roster a bot only knows the bots it spawned itself.
+        const botDirectory = thread.groupId
+          ? undefined
+          : renderBotDirectory(
+              (
+                await deps.prisma.bot.findMany({
+                  where: {
+                    workspaceId: run.workspaceId,
+                    userId: run.userId,
+                    archivedAt: null,
+                    id: { not: bot.id },
+                    thread: { isNot: null },
+                  },
+                  select: { id: true, name: true, title: true },
+                  orderBy: { createdAt: "asc" },
+                  take: BOT_DIRECTORY_LIMIT,
+                })
+              ).map((peer) => ({ id: peer.id, name: peer.name, title: peer.title })),
+            );
 
         try {
           for await (const event of deps.runtime.run(
@@ -1810,6 +1849,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 "A bot and a subagent are different. Never use both for the same request.",
                 "spawn_bot creates a lasting regular bot (own chat, computer, memory) that appears in the user's bot list. If the user asked to create a bot, call spawn_bot once and stop. Do not run_subagent to demo it.",
                 "run_subagent is a short helper inside this turn only. It is not a bot, has no thread, and does not show in the list. Use it for parallel work you will summarize here.",
+                botDirectory,
                 "archive_bot safely archives a bot this bot created, and only that bot. Use it when the user asks to remove that bot or when it is finished and unused. The user can restore it or permanently delete it later. confirm_name must exactly match its name.",
                 pluginLine,
                 agentSkillsLine,
@@ -2343,11 +2383,15 @@ async function requeueComputerRun(
 }
 
 function redactBlocks(blocks: MessageBlock[], secrets: string[]): MessageBlock[] {
-  return blocks.map((block) =>
-    block.kind === "text"
-      ? { kind: "text" as const, text: redactSecrets(block.text, secrets) }
-      : block,
-  );
+  return blocks.map((block) => {
+    if (block.kind === "text") {
+      return { kind: "text" as const, text: redactSecrets(block.text, secrets) };
+    }
+    if (block.kind === "bot_message_sent" || block.kind === "bot_message_received") {
+      return { ...block, text: redactSecrets(block.text, secrets) };
+    }
+    return block;
+  });
 }
 
 async function publishMessage(
