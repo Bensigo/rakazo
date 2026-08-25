@@ -2760,8 +2760,22 @@ const Composer = memo(function Composer({
   useLayoutEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
-    el.style.height = "0px";
-    el.style.height = `${el.scrollHeight}px`;
+
+    function syncHeight() {
+      el.style.height = "0px";
+      el.style.height = `${el.scrollHeight}px`;
+    }
+
+    syncHeight();
+    let lastWidth = el.getBoundingClientRect().width;
+    const observer = new ResizeObserver(() => {
+      const width = el.getBoundingClientRect().width;
+      if (width === lastWidth) return;
+      lastWidth = width;
+      syncHeight();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
   }, [draft]);
 
   function updateDraft(value: string) {
