@@ -67,7 +67,8 @@ export default function Thread() {
   const expandedHistoryThread = useRef<string | null>(null);
   const historyEpoch = useRef(0);
   const pinnedAroundRef = useRef<{
-    botId: string;
+    botId?: string;
+    groupId?: string;
     messageId: string;
     threadId: string;
     messages: readonly MobileMessage[];
@@ -248,42 +249,36 @@ export default function Thread() {
       })
     )
       return next;
-    const pin = pinnedAroundRef.current;
-    setSnap((prev) => {
-      let merged = mergeMobileSnapshot(prev, next, expandedHistoryThread.current === next.threadId);
-      if (pin && merged && pin.botId === targetBotId) {
-        merged = {
-          ...merged,
-          messages: [...pin.messages],
-          olderCursor: pin.olderCursor,
-        };
-      }
-      return merged;
-    });
+    setSnap((prev) =>
+      mergeMobileSnapshot(prev, next, expandedHistoryThread.current === next.threadId),
+    );
     return next;
   }
 
-  async function applyMessageJump(targetBotId: string, targetMessageId: string) {
+  async function applyMessageJump(target: { botId?: string; groupId?: string; messageId: string }) {
+    const threadTarget = target.groupId ? { groupId: target.groupId } : { botId: target.botId! };
     const epoch = historyEpoch.current;
     const [snap, page] = await Promise.all([
-      rpc<MobileSnapshot>("threads/get", { botId: targetBotId }),
+      rpc<MobileSnapshot>("threads/get", threadTarget),
       rpc<MobileMessagePage>("threads/messages", {
-        botId: targetBotId,
-        around: { messageId: targetMessageId },
+        ...threadTarget,
+        around: { messageId: target.messageId },
       }),
     ]);
     // The epoch check drops a jump that raced a conversation clear (or a bot switch): applying
     // the fetched page would pin deleted messages that every later refresh keeps restoring.
     if (epoch !== historyEpoch.current) return;
+    if (target.groupId && activeGroupId.current !== target.groupId) return;
+    if (target.botId && activeBotId.current !== target.botId) return;
     expandedHistoryThread.current = page.threadId;
     pinnedAroundRef.current = {
-      botId: targetBotId,
-      messageId: targetMessageId,
+      ...threadTarget,
+      messageId: target.messageId,
       threadId: page.threadId,
       messages: [...page.messages],
       olderCursor: page.olderCursor,
     };
-    jumpScrollTarget.current = targetMessageId;
+    jumpScrollTarget.current = target.messageId;
     setSnap({
       ...snap,
       messages: [...page.messages],
@@ -357,10 +352,18 @@ export default function Thread() {
     historyEpoch.current += 1;
     const abort = new AbortController();
     void (async () => {
-      const next = await refresh().catch((err: Error) => {
-        setError(err.message);
-        return null;
-      });
+      // Pending search jumps load the around-page separately; avoid replacing it with latest.
+      const next = messageId
+        ? await rpc<MobileSnapshot>("threads/get", groupId ? { groupId } : { botId: botId! }).catch(
+            (err: Error) => {
+              setError(err.message);
+              return null;
+            },
+          )
+        : await refresh().catch((err: Error) => {
+            setError(err.message);
+            return null;
+          });
       if (abort.signal.aborted) return;
       let cursor = next?.cursor ?? -1;
       let retryMs = 250;
@@ -394,7 +397,9 @@ export default function Thread() {
                 markReadIfVisible();
               }
               if (isRunTerminalEvent(event)) {
-                void refresh().catch(() => undefined);
+                if (!jumpScrollTarget.current && !expandedHistoryThread.current) {
+                  void refresh().catch(() => undefined);
+                }
               }
             },
             abort.signal,
@@ -403,7 +408,9 @@ export default function Thread() {
           // A full refresh reconciles visible state; the event cursor still resumes without gaps.
         }
         if (abort.signal.aborted) break;
-        await refresh().catch(() => undefined);
+        if (!jumpScrollTarget.current && !expandedHistoryThread.current) {
+          await refresh().catch(() => undefined);
+        }
         await abortableDelay(retryMs, abort.signal);
         retryMs = Math.min(retryMs * 2, 5_000);
       }
@@ -414,11 +421,13 @@ export default function Thread() {
   }, [botId, groupId, markReadIfVisible]);
 
   useEffect(() => {
-    if (!botId || !messageId) return;
-    void applyMessageJump(botId, messageId).catch((err) => {
-      setError(err instanceof Error ? err.message : "Could not open message");
-    });
-  }, [botId, messageId]);
+    if ((!botId && !groupId) || !messageId) return;
+    void applyMessageJump(groupId ? { groupId, messageId } : { botId: botId!, messageId }).catch(
+      (err) => {
+        setError(err instanceof Error ? err.message : "Could not open message");
+      },
+    );
+  }, [botId, groupId, messageId]);
 
   useEffect(() => {
     setPendingAttachments((current) => attachmentsForThread(current, threadKey));
@@ -615,7 +624,11 @@ export default function Thread() {
           }
           if (
             jumpScrollTarget.current ||
-            (pinnedAroundRef.current && pinnedAroundRef.current.botId === botId)
+            (pinnedAroundRef.current &&
+              ((pinnedAroundRef.current.botId && pinnedAroundRef.current.botId === botId) ||
+                (pinnedAroundRef.current.groupId &&
+                  pinnedAroundRef.current.groupId === groupId))) ||
+            expandedHistoryThread.current === snap?.threadId
           )
             return;
           scroll.current?.scrollToEnd({ animated: false });

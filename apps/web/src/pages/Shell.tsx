@@ -45,6 +45,7 @@ import {
   presetFromCron,
   SLASH_ACTIONS,
   type SlashActionId,
+  searchHitThreadTarget,
   serializeComposerPrompt,
   speechFromBlocks,
   truncateSlashDescription,
@@ -325,7 +326,8 @@ export function ShellPage() {
   const initiallyScrolledThread = useRef<string | null>(null);
   const messageScroll = useRef<HTMLDivElement>(null);
   const pinnedAroundRef = useRef<{
-    botId: string;
+    botId?: string;
+    groupId?: string;
     messageId: string;
     threadId: string;
     messages: ThreadMessage[];
@@ -460,7 +462,8 @@ export function ShellPage() {
     commitComputer(null);
     setRoutines([]);
     setRoutinesBotId(null);
-    if (stickToEnd) {
+    // Keep the search-jump viewport; expandedHistoryThread merge still accepts live messages.
+    if (stickToEnd && expandedHistoryThread.current !== snap.threadId) {
       window.requestAnimationFrame(() => {
         const element = messageScroll.current;
         if (element) element.scrollTop = element.scrollHeight;
@@ -475,8 +478,6 @@ export function ShellPage() {
       !scrollElement ||
       scrollElement.scrollHeight - scrollElement.scrollTop - scrollElement.clientHeight < 80;
     markOnce("rk:renderer:thread-request-start");
-    const pin = pinnedAroundRef.current;
-    const keepPin = pin?.botId === id;
     const epoch = historyEpoch.current;
     const request = ++threadRefreshEpoch.current;
     // Apply threads.get as soon as it returns so stop/takeover status is not held behind
@@ -496,18 +497,10 @@ export function ShellPage() {
       computerRef.current,
       expandedHistoryThread.current === snap.threadId,
     );
-    let merged = reconciled.snapshot;
-    if (keepPin && merged) {
-      merged = {
-        ...merged,
-        messages: pin.messages,
-        olderCursor: pin.olderCursor,
-      };
-    }
-    commitSnapshot(merged);
+    commitSnapshot(reconciled.snapshot);
     commitComputer(reconciled.computer);
     cacheComputerFor(id, { computer: reconciled.computer });
-    if (!keepPin && stickToEnd) {
+    if (stickToEnd && expandedHistoryThread.current !== snap.threadId) {
       window.requestAnimationFrame(() => {
         const element = messageScroll.current;
         if (element) element.scrollTop = element.scrollHeight;
@@ -746,7 +739,8 @@ export function ShellPage() {
 
   useEffect(() => {
     if (!active) return;
-    if (!searchParamsRef.current.get("m")) {
+    const pendingJump = searchParamsRef.current.get("m");
+    if (!pendingJump) {
       pinnedAroundRef.current = null;
     }
     screenRequest.current += 1;
@@ -765,8 +759,13 @@ export function ShellPage() {
     void (async () => {
       const primed = bootstrappedThread.current;
       bootstrappedThread.current = null;
+      // Pending search jumps load the around-page separately; avoid replacing it with latest.
       const snap =
-        primed?.botId === active.id ? primed : await refreshThread(active.id).catch(() => null);
+        primed?.botId === active.id
+          ? primed
+          : pendingJump
+            ? await rpc.threads.get({ botId: active.id }).catch(() => null)
+            : await refreshThread(active.id).catch(() => null);
       if (abort.signal.aborted) return;
       let cursor = snap?.cursor ?? -1;
       let retryMs = 250;
@@ -858,10 +857,17 @@ export function ShellPage() {
     markVisibleGroupRead();
     window.addEventListener("focus", markVisibleGroupRead);
     document.addEventListener("visibilitychange", markVisibleGroupRead);
-    pinnedAroundRef.current = null;
+    const pendingJump = searchParamsRef.current.get("m");
+    if (!pendingJump) {
+      pinnedAroundRef.current = null;
+      expandedHistoryThread.current = null;
+    }
+    historyEpoch.current += 1;
     const abort = new AbortController();
     void (async () => {
-      const snap = await refreshGroupThread(groupId).catch(() => null);
+      const snap = pendingJump
+        ? await rpc.threads.get({ groupId }).catch(() => null)
+        : await refreshGroupThread(groupId).catch(() => null);
       if (abort.signal.aborted) return;
       let cursor = snap?.cursor ?? -1;
       let retryMs = 250;
@@ -943,47 +949,66 @@ export function ShellPage() {
     if (hit.messageId) params.set("m", hit.messageId);
     if (hit.routineId) params.set("routine", hit.routineId);
     navigate({
-      pathname: `/app/${hit.botId}`,
+      pathname: hit.groupId ? `/app/g/${hit.groupId}` : `/app/${hit.botId}`,
       search: params.toString() ? `?${params.toString()}` : undefined,
     });
   }
 
-  async function jumpToMessage(botId: string, messageId: string) {
+  async function jumpToMessage(target: { botId?: string; groupId?: string; messageId: string }) {
+    const threadTarget = searchHitThreadTarget(target);
     const epoch = historyEpoch.current;
     const [snap, page] = await Promise.all([
-      rpc.threads.get({ botId }),
-      rpc.threads.messages({ botId, around: { messageId } }),
+      rpc.threads.get(threadTarget),
+      rpc.threads.messages({ ...threadTarget, around: { messageId: target.messageId } }),
     ]);
     // The epoch check drops a jump that raced a conversation clear (or a bot switch): applying
     // the fetched page would pin deleted messages that every later refresh keeps restoring.
     if (epoch !== historyEpoch.current) return;
+    if (target.groupId && activeGroupId.current !== target.groupId) return;
+    if (target.botId && activeBotId.current !== target.botId) return;
     expandedHistoryThread.current = page.threadId;
     pinnedAroundRef.current = {
-      botId,
-      messageId,
+      ...threadTarget,
+      messageId: target.messageId,
       threadId: page.threadId,
       messages: page.messages,
       olderCursor: page.olderCursor,
     };
+    initiallyScrolledThread.current = page.threadId;
     commitSnapshot({
       ...snap,
       messages: page.messages,
       olderCursor: page.olderCursor,
     });
-    commitComputer(snap.computer ?? null);
-    setRoutines(await rpc.routines.list({ botId }));
-    setRoutinesBotId(botId);
+    if (threadTarget.botId) {
+      commitComputer(snap.computer ?? null);
+      setRoutines(await rpc.routines.list({ botId: threadTarget.botId }));
+      setRoutinesBotId(threadTarget.botId);
+    } else {
+      commitComputer(null);
+      setRoutines([]);
+      setRoutinesBotId(null);
+    }
     window.requestAnimationFrame(() => {
       document
-        .querySelector(`[data-message-id="${messageId}"]`)
+        .querySelector(`[data-message-id="${target.messageId}"]`)
         ?.scrollIntoView({ behavior: "smooth", block: "center" });
     });
   }
 
   useEffect(() => {
-    if (!active) return;
     const messageId = searchParams.get("m");
     const routineId = searchParams.get("routine");
+    if (inGroup && groupId && messageId) {
+      void jumpToMessage({ groupId, messageId }).finally(() => {
+        // Keep expandedHistoryThread; only strip the jump URL so refresh does not remount.
+        const next = new URLSearchParams(searchParams);
+        next.delete("m");
+        setSearchParams(next, { replace: true });
+      });
+      return;
+    }
+    if (!active) return;
     if (routineId && routinesBotId === active.id) {
       const routine = routines.find((item) => item.id === routineId);
       if (routine) {
@@ -1001,13 +1026,13 @@ export function ShellPage() {
       setSearchParams(next, { replace: true });
     }
     if (messageId) {
-      void jumpToMessage(active.id, messageId).finally(() => {
+      void jumpToMessage({ botId: active.id, messageId }).finally(() => {
         const next = new URLSearchParams(searchParams);
         next.delete("m");
         setSearchParams(next, { replace: true });
       });
     }
-  }, [active?.id, routines, routinesBotId, searchParams, setSearchParams]);
+  }, [active?.id, groupId, inGroup, routines, routinesBotId, searchParams, setSearchParams]);
   const activeSnapshot = inGroup
     ? snapshot?.groupId === groupId
       ? snapshot
@@ -1075,14 +1100,23 @@ export function ShellPage() {
   }, [active, initialBotsLoaded, shellReady, snapshot?.botId]);
 
   useLayoutEffect(() => {
-    if (!active || !snapshot || snapshot.botId !== active.id) return;
-    if (initiallyScrolledThread.current === snapshot.threadId) return;
-    if (pinnedAroundRef.current?.botId === active.id) return;
+    const pin = pinnedAroundRef.current;
+    if (inGroup) {
+      if (!groupId || !snapshot || snapshot.groupId !== groupId) return;
+      if (initiallyScrolledThread.current === snapshot.threadId) return;
+      if (expandedHistoryThread.current === snapshot.threadId) return;
+      if (pin?.groupId === groupId) return;
+    } else {
+      if (!active || !snapshot || snapshot.botId !== active.id) return;
+      if (initiallyScrolledThread.current === snapshot.threadId) return;
+      if (expandedHistoryThread.current === snapshot.threadId) return;
+      if (pin?.botId === active.id) return;
+    }
     const element = messageScroll.current;
     if (!element) return;
     element.scrollTop = element.scrollHeight;
     initiallyScrolledThread.current = snapshot.threadId;
-  }, [active, snapshot?.botId, snapshot?.threadId]);
+  }, [active, groupId, inGroup, snapshot?.botId, snapshot?.groupId, snapshot?.threadId]);
 
   const openBot = useCallback((id: string) => navigate(`/app/${id}`), [navigate]);
   const loadOlder = useCallback(() => loadOlderMessagesRef.current(), []);
