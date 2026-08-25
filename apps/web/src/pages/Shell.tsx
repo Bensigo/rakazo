@@ -107,7 +107,6 @@ import {
   computerTakeoverBlocked,
   isComputerStatusEvent,
   isThreadSnapshotEvent,
-  mergeThreadSnapshot,
   prependThreadMessagePage,
   reconcileRefreshedThread,
   reduceComputerStatus,
