@@ -137,6 +137,11 @@ describeWithDatabase("API authorization and resource isolation", () => {
       ["skills/save", { skillId: "missing-skill" }],
       ["skills/testRun", { skillId: "missing-skill" }],
       ["skills/remove", { skillId: "missing-skill" }],
+      ["agentSkills/list"],
+      ["agentSkills/get", { skillId: "missing-skill" }],
+      ["agentSkills/create", { name: "Unauthenticated", description: "Nope", body: "Steps" }],
+      ["agentSkills/update", { skillId: "missing-skill", description: "Nope" }],
+      ["agentSkills/remove", { skillId: "missing-skill" }],
       ["capabilities/list"],
       ["capabilities/install", capabilityInput("Unauthenticated")],
       ["capabilities/remove", { id: "missing-capability" }],
@@ -213,6 +218,11 @@ describeWithDatabase("API authorization and resource isolation", () => {
         playbook: skillPlaybookInput(),
         recording: { events: [], snapshots: [] },
       },
+    });
+    const ownerAgentSkill = await rpc<{ id: string }>(app, owner, "agentSkills/create", {
+      name: "Owner Recipe",
+      description: "Owner-only shared skill",
+      body: "1. Do the private thing.",
     });
     const ownerCapability = await rpc<{ id: string }>(
       app,
@@ -379,6 +389,9 @@ describeWithDatabase("API authorization and resource isolation", () => {
       ["skills/save", { skillId: ownerSkill.id }],
       ["skills/testRun", { skillId: ownerSkill.id }],
       ["skills/remove", { skillId: ownerSkill.id }],
+      ["agentSkills/get", { skillId: ownerAgentSkill.id }],
+      ["agentSkills/update", { skillId: ownerAgentSkill.id, description: "Stolen" }],
+      ["agentSkills/remove", { skillId: ownerAgentSkill.id }],
       ["memory/update", { documentId: ownerMemory.id, content: "stolen" }],
       ["connections/complete", { connectionId: ownerConnection.connectionId }],
     ] satisfies Array<[string, unknown]>;
@@ -392,6 +405,9 @@ describeWithDatabase("API authorization and resource isolation", () => {
     );
     expect(await rpc<Array<{ id: string }>>(app, intruder, "capabilities/list")).not.toContainEqual(
       expect.objectContaining({ id: ownerCapability.id }),
+    );
+    expect(await rpc<Array<{ id: string }>>(app, intruder, "agentSkills/list")).not.toContainEqual(
+      expect.objectContaining({ id: ownerAgentSkill.id }),
     );
     expect(await rpc<Array<{ id: string }>>(app, intruder, "connections/list")).not.toContainEqual(
       expect.objectContaining({ id: ownerConnection.connectionId }),

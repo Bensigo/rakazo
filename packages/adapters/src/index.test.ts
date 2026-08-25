@@ -150,6 +150,10 @@ describe("builtin tools", () => {
         "run_subagent",
         "spawn_bot",
         "archive_bot",
+        "skill_read",
+        "skill_create",
+        "skill_update",
+        "skill_delete",
       ]),
     );
   });

@@ -1,0 +1,379 @@
+/**
+ * Cursor-style agent skills: reusable SKILL.md recipes shared across assistants.
+ * Distinct from taught skills (demo/record playbooks on a single bot).
+ */
+
+const FRONTMATTER_FENCE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
+
+export type SkillSource = "user" | "builtin" | "plugin";
+
+export type ParsedSkillMd = {
+  name: string;
+  description: string;
+  /** Markdown body after the frontmatter fence. */
+  body: string;
+  /**
+   * All frontmatter keys as parsed scalars/structures. Unknown keys are preserved
+   * so Cursor-managed skills with extra fields round-trip safely.
+   */
+  frontmatter: Record<string, unknown>;
+};
+
+export type SkillCatalogEntry = {
+  name: string;
+  description: string;
+  source: SkillSource;
+  readOnly: boolean;
+};
+
+export type SkillRecord = SkillCatalogEntry & {
+  id?: string;
+  content: string;
+};
+
+const FORCE_SKILL_PREFIX = /^(?:\/|use\s+skill:\s*)(.+?)(?:\n|$)/i;
+const ROUTINE_SKILL_STOP = new Set([
+  "then",
+  "and",
+  "or",
+  "to",
+  "for",
+  "with",
+  "from",
+  "via",
+  "before",
+  "after",
+  "please",
+  "the",
+  "a",
+  "an",
+]);
+/** Fallback when no catalog is available: @Token with optional Title-case words. */
+const ROUTINE_SKILL_MENTION =
+  /(?:^|[\s(,])@([A-Za-z][\w-]*(?:[ ]+[A-Za-z][\w-]*){0,5})(?=[\s,.)]|$)/g;
+
+export function isSkillReadOnly(source: SkillSource): boolean {
+  return source === "builtin" || source === "plugin";
+}
+
+/**
+ * Parse a SKILL.md document. Requires YAML frontmatter with `name` and `description`.
+ * Extra frontmatter keys are kept in `frontmatter`.
+ */
+export function parseSkillMd(content: string): ParsedSkillMd | { error: string } {
+  const trimmed = content.replace(/^\uFEFF/, "");
+  const match = FRONTMATTER_FENCE.exec(trimmed);
+  if (!match) {
+    return { error: "SKILL.md must start with YAML frontmatter (--- ... ---)." };
+  }
+  const frontmatterText = match[1] ?? "";
+  const body = trimmed.slice(match[0].length).replace(/^\r?\n/, "");
+  let frontmatter: Record<string, unknown>;
+  try {
+    frontmatter = parseSimpleYamlObject(frontmatterText);
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Invalid SKILL.md frontmatter.",
+    };
+  }
+  const name = stringifyScalar(frontmatter.name).trim();
+  const description = stringifyScalar(frontmatter.description).trim();
+  if (!name) return { error: "SKILL.md frontmatter requires name." };
+  if (!description) return { error: "SKILL.md frontmatter requires description." };
+  if (name.length > 80) return { error: "Skill name must be at most 80 characters." };
+  if (description.length > 2000) {
+    return { error: "Skill description must be at most 2000 characters." };
+  }
+  return { name, description, body, frontmatter };
+}
+
+/** Build SKILL.md, preserving unknown frontmatter keys from a prior parse. */
+export function buildSkillMd(input: {
+  name: string;
+  description: string;
+  body: string;
+  frontmatter?: Record<string, unknown>;
+}): string {
+  const name = input.name.trim();
+  const description = input.description.trim();
+  const merged: Record<string, unknown> = { ...(input.frontmatter ?? {}) };
+  merged.name = name;
+  merged.description = description;
+  // Stable order: name, description, then remaining keys alphabetically.
+  const rank = (key: string) => (key === "name" ? 0 : key === "description" ? 1 : 2);
+  const keys = Object.keys(merged).sort((a, b) => {
+    const diff = rank(a) - rank(b);
+    return diff !== 0 ? diff : a.localeCompare(b);
+  });
+  const lines = keys.map((key) => formatYamlLine(key, merged[key]));
+  const body = input.body.replace(/^\r?\n/, "");
+  return `---\n${lines.join("\n")}\n---\n${body.startsWith("\n") ? body : `\n${body}`}`;
+}
+
+export function skillCatalogLine(entry: Pick<SkillCatalogEntry, "name" | "description">): string {
+  return `- ${entry.name}: ${entry.description}`;
+}
+
+export function formatSkillsCatalogInstruction(entries: SkillCatalogEntry[]): string | undefined {
+  if (entries.length === 0) return undefined;
+  const lines = entries.slice(0, 50).map(skillCatalogLine).join("\n");
+  return [
+    "Available skills (shared across assistants; generic how-tos, not account-specific routines):",
+    lines,
+    "When a skill matches the user's request, call skill_read for that name and follow it immediately. Prefer matching skills over improvising multi-step recipes.",
+    "Users can force a skill with /Name in the composer. Routines may mention a skill as @Name — that loads the skill at fire time.",
+    "Create a skill with skill_create when a multi-step task is worth repeating (or when asked). After creating one, mention /Name so the user can open it.",
+    "Only skill_update / skill_delete user-created skills (not builtin or plugin).",
+  ].join("\n");
+}
+
+export function formatForcedSkillPrompt(name: string, content: string, rest?: string): string {
+  const parts = [`Use skill: ${name}`, "", content.trim()];
+  const trailing = rest?.trim();
+  if (trailing) parts.push("", trailing);
+  return parts.join("\n");
+}
+
+/** Detect a composer-forced skill (`/Name` or `Use skill: Name`) at the start of a prompt. */
+export function extractForcedSkillName(prompt: string): { name: string; rest: string } | null {
+  const text = prompt.trimStart();
+  const match = FORCE_SKILL_PREFIX.exec(text);
+  if (!match) return null;
+  const name = (match[1] ?? "").trim().replace(/^\/+/, "").trim();
+  if (!name || name.length > 80) return null;
+  // Avoid treating `/` settings actions as skills.
+  if (/^(chat\s+settings|settings:)/i.test(name)) return null;
+  const rest = text.slice(match[0].length).trimStart();
+  return { name, rest };
+}
+
+/**
+ * Mentions like `@Daily standup` inside a routine prompt. Returns unique names in order.
+ * When `knownNames` is provided, matches those names (longest first). Otherwise uses a
+ * heuristic that stops before common connector words and skips `@everyone`.
+ */
+export function extractRoutineSkillMentions(prompt: string, knownNames?: string[]): string[] {
+  if (knownNames && knownNames.length > 0) {
+    const sorted = [...knownNames].sort((a, b) => b.length - a.length);
+    const found: string[] = [];
+    const seen = new Set<string>();
+    for (const name of sorted) {
+      const re = new RegExp(`(?:^|[\\s(,])@${escapeRegExp(name)}(?=[\\s,.)]|$)`, "gi");
+      if (!re.test(prompt)) continue;
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      found.push(name);
+    }
+    return found;
+  }
+
+  const names: string[] = [];
+  const seen = new Set<string>();
+  ROUTINE_SKILL_MENTION.lastIndex = 0;
+  let match = ROUTINE_SKILL_MENTION.exec(prompt);
+  while (match !== null) {
+    const raw = (match[1] ?? "").trim();
+    if (!raw) {
+      match = ROUTINE_SKILL_MENTION.exec(prompt);
+      continue;
+    }
+    const parts = raw.split(/\s+/);
+    while (parts.length > 1 && ROUTINE_SKILL_STOP.has(parts[parts.length - 1]!.toLowerCase())) {
+      parts.pop();
+    }
+    const name = parts.join(" ").trim();
+    if (!name || name.toLowerCase() === "everyone") {
+      match = ROUTINE_SKILL_MENTION.exec(prompt);
+      continue;
+    }
+    const key = name.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      names.push(name);
+    }
+    match = ROUTINE_SKILL_MENTION.exec(prompt);
+  }
+  return names;
+}
+
+export function findSkillByName<T extends { name: string }>(
+  skills: readonly T[],
+  name: string,
+): T | undefined {
+  const needle = name.trim().toLowerCase();
+  if (!needle) return undefined;
+  return skills.find((skill) => skill.name.trim().toLowerCase() === needle);
+}
+
+/** Expand forced `/Name` or routine `@Name` mentions into full skill bodies for the task prompt. */
+export function expandSkillReferencesInPrompt(
+  prompt: string,
+  skills: readonly SkillRecord[],
+): string {
+  const forced = extractForcedSkillName(prompt);
+  if (forced) {
+    const skill = findSkillByName(skills, forced.name);
+    if (skill) return formatForcedSkillPrompt(skill.name, skill.content, forced.rest);
+  }
+
+  const mentions = extractRoutineSkillMentions(
+    prompt,
+    skills.map((skill) => skill.name),
+  );
+  if (mentions.length === 0) return prompt;
+
+  const blocks: string[] = [];
+  let remaining = prompt;
+  for (const mention of mentions) {
+    const skill = findSkillByName(skills, mention);
+    if (!skill) continue;
+    blocks.push(formatForcedSkillPrompt(skill.name, skill.content));
+    // Strip the @mention token so the agent is not confused by a dangling pointer.
+    remaining = remaining.replace(
+      new RegExp(`(^|[\\s(,])@${escapeRegExp(skill.name)}(?=[\\s,.)]|$)`, "i"),
+      "$1",
+    );
+  }
+  if (blocks.length === 0) return prompt;
+  const rest = remaining.replace(/[ \t]{2,}/g, " ").trim();
+  return [...blocks, rest].filter(Boolean).join("\n\n");
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function stringifyScalar(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return "";
+}
+
+/**
+ * Minimal YAML object parser for SKILL.md frontmatter.
+ * Supports scalars, folded `>` / `|` blocks, inline arrays, and nested maps one level deep.
+ * Unrecognized lines are kept as string values under their key when possible.
+ */
+function parseSimpleYamlObject(text: string): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  const lines = text.split(/\r?\n/);
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i] ?? "";
+    if (!line.trim() || line.trimStart().startsWith("#")) {
+      i += 1;
+      continue;
+    }
+    if (/^\s/.test(line)) {
+      throw new Error("Unexpected indented frontmatter line without a key.");
+    }
+    const keyed = /^([A-Za-z_][\w-]*):\s*(.*)$/.exec(line);
+    if (!keyed) {
+      throw new Error(`Invalid frontmatter line: ${line}`);
+    }
+    const key = keyed[1]!;
+    const raw = keyed[2] ?? "";
+    if (raw === ">" || raw === "|") {
+      const blockLines: string[] = [];
+      i += 1;
+      while (i < lines.length && (/^\s+/.test(lines[i] ?? "") || (lines[i] ?? "").trim() === "")) {
+        const blockLine = lines[i] ?? "";
+        blockLines.push(blockLine.replace(/^\s{2}/, ""));
+        i += 1;
+      }
+      result[key] = blockLines.join("\n").replace(/\n+$/, "");
+      continue;
+    }
+    if (raw === "") {
+      // Nested map or list on following indented lines.
+      const nested: Record<string, unknown> = {};
+      const list: unknown[] = [];
+      let mode: "empty" | "map" | "list" = "empty";
+      i += 1;
+      while (i < lines.length && /^\s+/.test(lines[i] ?? "")) {
+        const nestedLine = (lines[i] ?? "").replace(/^\s+/, "");
+        const listItem = /^-\s+(.*)$/.exec(nestedLine);
+        if (listItem) {
+          mode = "list";
+          list.push(parseYamlScalar(listItem[1] ?? ""));
+          i += 1;
+          continue;
+        }
+        const nestedKey = /^([A-Za-z_][\w-]*):\s*(.*)$/.exec(nestedLine);
+        if (nestedKey) {
+          mode = "map";
+          nested[nestedKey[1]!] = parseYamlScalar(nestedKey[2] ?? "");
+          i += 1;
+          continue;
+        }
+        break;
+      }
+      result[key] = mode === "list" ? list : mode === "map" ? nested : "";
+      continue;
+    }
+    if (raw.startsWith("[") && raw.endsWith("]")) {
+      result[key] = raw
+        .slice(1, -1)
+        .split(",")
+        .map((part) => parseYamlScalar(part.trim()))
+        .filter((part) => part !== "");
+      i += 1;
+      continue;
+    }
+    result[key] = parseYamlScalar(raw);
+    i += 1;
+  }
+  return result;
+}
+
+function parseYamlScalar(raw: string): string | number | boolean {
+  const value = raw.trim();
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1);
+  }
+  if (value === "true") return true;
+  if (value === "false") return false;
+  if (/^-?\d+(\.\d+)?$/.test(value)) return Number(value);
+  return value;
+}
+
+function formatYamlLine(key: string, value: unknown): string {
+  if (value === null || value === undefined) return `${key}:`;
+  if (typeof value === "string") {
+    if (value.includes("\n") || value.includes(": ")) {
+      const indented = value
+        .split("\n")
+        .map((line) => `  ${line}`)
+        .join("\n");
+      return `${key}: |\n${indented}`;
+    }
+    if (value === "" || /[#{}[\],&*?|>!%@`]/.test(value) || value !== value.trim()) {
+      return `${key}: ${JSON.stringify(value)}`;
+    }
+    return `${key}: ${value}`;
+  }
+  if (typeof value === "number" || typeof value === "boolean") return `${key}: ${value}`;
+  if (Array.isArray(value)) {
+    if (value.every((item) => typeof item === "string" || typeof item === "number")) {
+      return `${key}: [${value.map((item) => JSON.stringify(String(item))).join(", ")}]`;
+    }
+    const items = value
+      .map((item) => `  - ${typeof item === "string" ? item : JSON.stringify(item)}`)
+      .join("\n");
+    return `${key}:\n${items}`;
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) return `${key}:`;
+    const nested = entries
+      .map(([nestedKey, nestedValue]) => `  ${formatYamlLine(nestedKey, nestedValue)}`)
+      .join("\n");
+    return `${key}:\n${nested}`;
+  }
+  return `${key}: ${JSON.stringify(String(value))}`;
+}

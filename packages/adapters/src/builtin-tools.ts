@@ -362,6 +362,70 @@ export const builtinAgentTools: ConnectorTool[] = [
     },
   },
   {
+    name: "skill_read",
+    description:
+      "Load a shared skill (SKILL.md recipe) by exact name. Call this when a catalog skill matches the user's request, then follow it immediately.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Exact skill name from the catalog." },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "skill_create",
+    description:
+      "Create a reusable user skill (generic how-to SKILL.md) shared across assistants. Use when a multi-step task is worth repeating or the user asks to save a skill. Do not include account names, channels, or inboxes — those belong in a routine.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Short skill name." },
+        description: {
+          type: "string",
+          description: "When to use this skill (shown in the / picker and used for auto-use).",
+        },
+        body: {
+          type: "string",
+          description: "Markdown steps and guidance after the frontmatter.",
+        },
+        content: {
+          type: "string",
+          description:
+            "Optional full SKILL.md (frontmatter + body) instead of name/description/body.",
+        },
+      },
+    },
+  },
+  {
+    name: "skill_update",
+    description:
+      "Update a user-created skill by name or id. Builtin and plugin skills are read-only.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Current exact skill name." },
+        skillId: { type: "string" },
+        newName: { type: "string" },
+        description: { type: "string" },
+        body: { type: "string" },
+        content: { type: "string", description: "Optional full replacement SKILL.md." },
+      },
+    },
+  },
+  {
+    name: "skill_delete",
+    description:
+      "Delete a user-created skill by name or id. Builtin and plugin skills cannot be deleted.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        skillId: { type: "string" },
+      },
+    },
+  },
+  {
     name: "run_subagent",
     description:
       "Run a short-lived helper inside this turn only. It is not a bot: no list entry, no thread, no computer of its own, and it disappears when this turn ends. Never call this because the user asked to create a bot — that is spawn_bot, and spawn_bot alone.",

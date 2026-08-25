@@ -3,6 +3,8 @@ import * as z from "zod";
 import { ATTACHMENT_MAX_BASE64_LENGTH, ATTACHMENT_MAX_COUNT } from "./attachments.js";
 import {
   ActionApprovalRuleSchema,
+  AgentSkillCatalogEntrySchema,
+  AgentSkillSchema,
   AppBootstrapSchema,
   ArtifactSchema,
   ArtifactWithContentSchema,
@@ -15,6 +17,7 @@ import {
   ComputerStatusSchema,
   ConnectionCatalogItemSchema,
   ConnectionSchema,
+  CreateAgentSkillInput,
   CreateBotInput,
   CreateGroupInput,
   CreateRoutineInput,
@@ -41,6 +44,7 @@ import {
   TeachRecordingEventSchema,
   ThreadMessagePageSchema,
   ThreadSnapshotSchema,
+  UpdateAgentSkillInput,
   UpdateBotInput,
   UpdateGroupInput,
   UsageRecordSchema,
@@ -346,6 +350,28 @@ export const appContract = {
     testRun: oc
       .input(z.object({ skillId: Id, prompt: z.string().optional() }))
       .output(z.object({ runId: Id })),
+    remove: oc.input(z.object({ skillId: Id })).output(z.object({ ok: z.literal(true) })),
+  },
+  /** Cursor-style SKILL.md recipes shared across assistants (not taught/demo skills). */
+  agentSkills: {
+    list: oc.output(z.array(AgentSkillCatalogEntrySchema)),
+    get: oc
+      .input(
+        z
+          .object({ skillId: Id.optional(), name: z.string().min(1).max(80).optional() })
+          .superRefine((input, ctx) => {
+            if (!input.skillId && !input.name?.trim()) {
+              ctx.addIssue({
+                code: "custom",
+                message: "Provide skillId or name",
+                path: ["skillId"],
+              });
+            }
+          }),
+      )
+      .output(AgentSkillSchema),
+    create: oc.input(CreateAgentSkillInput).output(AgentSkillSchema),
+    update: oc.input(UpdateAgentSkillInput).output(AgentSkillSchema),
     remove: oc.input(z.object({ skillId: Id })).output(z.object({ ok: z.literal(true) })),
   },
   capabilities: {

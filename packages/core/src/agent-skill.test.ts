@@ -1,0 +1,114 @@
+import { describe, expect, it } from "vitest";
+import {
+  buildSkillMd,
+  expandSkillReferencesInPrompt,
+  extractForcedSkillName,
+  extractRoutineSkillMentions,
+  formatSkillsCatalogInstruction,
+  parseSkillMd,
+} from "./agent-skill.js";
+
+const SAMPLE = `---
+name: Daily standup
+description: Prepare a concise standup update from recent work. Use when the user asks for standup notes or a status summary.
+compatibility: optional-extra
+allowed-tools: [shell, read_file]
+---
+
+# Daily standup
+
+1. Scan recent commits and open tasks.
+2. Summarize wins, plans, and blockers.
+`;
+
+describe("parseSkillMd", () => {
+  it("parses name, description, body, and extra frontmatter keys", () => {
+    const parsed = parseSkillMd(SAMPLE);
+    expect("error" in parsed).toBe(false);
+    if ("error" in parsed) return;
+    expect(parsed.name).toBe("Daily standup");
+    expect(parsed.description).toContain("standup");
+    expect(parsed.body).toContain("# Daily standup");
+    expect(parsed.frontmatter.compatibility).toBe("optional-extra");
+    expect(parsed.frontmatter["allowed-tools"]).toEqual(["shell", "read_file"]);
+  });
+
+  it("requires name and description", () => {
+    expect(parseSkillMd("---\nname: x\n---\nbody")).toEqual({
+      error: "SKILL.md frontmatter requires description.",
+    });
+    expect(parseSkillMd("no frontmatter")).toMatchObject({ error: expect.any(String) });
+  });
+});
+
+describe("buildSkillMd", () => {
+  it("round-trips and preserves extra keys", () => {
+    const parsed = parseSkillMd(SAMPLE);
+    if ("error" in parsed) throw new Error(parsed.error);
+    const rebuilt = buildSkillMd(parsed);
+    const again = parseSkillMd(rebuilt);
+    if ("error" in again) throw new Error(again.error);
+    expect(again.name).toBe(parsed.name);
+    expect(again.description).toBe(parsed.description);
+    expect(again.frontmatter.compatibility).toBe("optional-extra");
+    expect(again.body.trim()).toBe(parsed.body.trim());
+  });
+});
+
+describe("skill prompt helpers", () => {
+  it("extracts forced /Name and Use skill: Name", () => {
+    expect(extractForcedSkillName("/Daily standup\nplease")).toEqual({
+      name: "Daily standup",
+      rest: "please",
+    });
+    expect(extractForcedSkillName("Use skill: Weekly review")).toEqual({
+      name: "Weekly review",
+      rest: "",
+    });
+    expect(extractForcedSkillName("/Settings: General")).toBeNull();
+  });
+
+  it("extracts @skill mentions from routine prompts", () => {
+    expect(extractRoutineSkillMentions("Run @Daily standup, then post to Slack")).toEqual([
+      "Daily standup",
+    ]);
+    expect(extractRoutineSkillMentions("ping @everyone then @Weekly review")).toEqual([
+      "Weekly review",
+    ]);
+  });
+
+  it("expands forced and mentioned skills into the prompt", () => {
+    const skills = [
+      {
+        name: "Daily standup",
+        description: "standup",
+        source: "user" as const,
+        readOnly: false,
+        content: SAMPLE,
+      },
+    ];
+    const forced = expandSkillReferencesInPrompt("/Daily standup\nfocus on blockers", skills);
+    expect(forced).toContain("Use skill: Daily standup");
+    expect(forced).toContain(SAMPLE.trim());
+    expect(forced).toContain("focus on blockers");
+
+    const mentioned = expandSkillReferencesInPrompt("Run @Daily standup then email me", skills);
+    expect(mentioned).toContain("Use skill: Daily standup");
+    expect(mentioned).toContain("then email me");
+    expect(mentioned).not.toMatch(/@Daily standup/i);
+  });
+
+  it("builds catalog instructions for auto-use", () => {
+    const line = formatSkillsCatalogInstruction([
+      {
+        name: "Daily standup",
+        description: "Prepare standup notes",
+        source: "user",
+        readOnly: false,
+      },
+    ]);
+    expect(line).toContain("- Daily standup: Prepare standup notes");
+    expect(line).toContain("skill_read");
+    expect(line).toContain("Prefer matching skills");
+  });
+});

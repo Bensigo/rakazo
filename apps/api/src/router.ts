@@ -74,6 +74,7 @@ import {
   ACTIVE_RUN_STATUSES,
   AttachmentValidationError,
   containsSecret,
+  expandSkillReferencesInPrompt,
   isOneShotRoutineCron,
   nextCronDate,
 } from "@rakazo/core";
@@ -95,6 +96,7 @@ import {
   type ThreadEvents,
   touchGroupUpdatedAt,
 } from "@rakazo/db";
+import { createAgentSkillsService } from "./agent-skills.js";
 import { createOwnedArtifact, getOwnedArtifact, getWorkspaceArtifact } from "./artifacts.js";
 import {
   executionBlocksUserTakeover,
@@ -317,6 +319,7 @@ export function createRouter(deps: RouterDeps) {
     home: deps.home,
     dataDir: deps.dataDir,
   });
+  const agentSkills = createAgentSkillsService(deps.prisma);
 
   const authed = os.use(async ({ context, next }) => {
     if (!context.actor) throw new ORPCError("UNAUTHORIZED");
@@ -1681,13 +1684,15 @@ export function createRouter(deps: RouterDeps) {
         if (!routine) throw new IsolationError();
         const bot = await repos.getBot(context.actor, routine.botId);
         if (!bot.thread) throw new IsolationError();
+        const skillRecords = await agentSkills.listWithContent(context.actor);
+        const prompt = expandSkillReferencesInPrompt(routine.prompt, skillRecords);
         const task = await deps.prisma.task.create({
           data: {
             workspaceId: context.actor.workspaceId,
             botId: bot.id,
             threadId: bot.thread.id,
             userId: context.actor.userId,
-            prompt: routine.prompt,
+            prompt,
             status: "queued",
           },
         });
@@ -1803,6 +1808,21 @@ export function createRouter(deps: RouterDeps) {
       ),
       remove: authed.skills.remove.handler(async ({ context, input }) =>
         taughtSkills.remove(context.actor, input.skillId),
+      ),
+    },
+    agentSkills: {
+      list: authed.agentSkills.list.handler(async ({ context }) => agentSkills.list(context.actor)),
+      get: authed.agentSkills.get.handler(async ({ context, input }) =>
+        agentSkills.get(context.actor, input),
+      ),
+      create: authed.agentSkills.create.handler(async ({ context, input }) =>
+        agentSkills.create(context.actor, input),
+      ),
+      update: authed.agentSkills.update.handler(async ({ context, input }) =>
+        agentSkills.update(context.actor, input),
+      ),
+      remove: authed.agentSkills.remove.handler(async ({ context, input }) =>
+        agentSkills.remove(context.actor, input.skillId),
       ),
     },
     capabilities: {
