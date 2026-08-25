@@ -37,8 +37,9 @@ import {
   formatSkillsCatalogInstruction,
   humanizeToolName,
   inferAttachmentMimeType,
+  isOneShotRoutineCrons,
   isTerminal,
-  nextCronDate,
+  nextCronDateAcross,
   nextFence,
   promptInvokesSkill,
   redactSecrets,
@@ -153,7 +154,6 @@ import {
   cancelScheduleFromTool,
   createScheduleFromTool,
   filterBuiltinToolsForThread,
-  isOneShotRoutineCron,
   listSchedulesFromTool,
 } from "./schedule-tools.js";
 import { loadAgentScratchpadContext } from "./scratchpad-context.js";
@@ -358,21 +358,17 @@ export function createRunExecutor(deps: ExecutorDeps) {
         include: { thread: true },
       });
       if (!bot?.thread) return;
-      let nextRunAt: Date | null = null;
-      if (isOneShotRoutineCron(routine.cron)) {
-        nextRunAt = null;
-      } else {
-        try {
-          nextRunAt = nextCronDate(
-            routine.cron,
+      // A schedule with no valid parseable cron among its crons (e.g. a
+      // legacy row accepted before cron validation was added) fires the
+      // already-due run once, then nextRunAt stays null and the routine
+      // pauses rather than crash-looping the wakeup job.
+      const nextRunAt = isOneShotRoutineCrons(routine.crons)
+        ? null
+        : nextCronDateAcross(
+            routine.crons,
             new Date(Math.max(Date.now(), scheduledAt.getTime())),
             routine.timezone,
           );
-        } catch {
-          // Legacy rows may contain schedules accepted before cron validation was added.
-          // Fire the already-due run once, then pause the invalid schedule.
-        }
-      }
       const previousLastRunAt = routine.lastRunAt;
       const skillRecords = await listAgentSkillRecords(deps.prisma, {
         workspaceId: routine.workspaceId,
@@ -408,6 +404,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             userId: routine.userId,
             status: "queued",
             trigger: "routine",
+            routineId: routine.id,
           },
         });
       });
@@ -447,7 +444,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
       } catch {
         // Best effort: the run is already queued.
       }
-      if (isOneShotRoutineCron(routine.cron)) {
+      if (isOneShotRoutineCrons(routine.crons)) {
         try {
           await deps.jobs.cancel(routineJobKey(routine.id));
         } catch {
@@ -673,7 +670,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           botId: bot.id,
           type: "run.started",
           runId,
-          payload: { trigger: run.trigger },
+          payload: { trigger: run.trigger, routineId: run.routineId },
         });
 
         const discoveredPromise = deps.connector

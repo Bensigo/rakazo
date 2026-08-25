@@ -153,7 +153,7 @@ describe("schedule tool persistence", () => {
         data: expect.objectContaining({
           workspaceId: "ws-1",
           userId: "user-1",
-          cron: "*/1 * * * *",
+          crons: ["*/1 * * * *"],
           active: true,
         }),
       }),
@@ -173,6 +173,7 @@ describe("schedule tool persistence", () => {
           create: vi.fn(async () => ({
             id: "routine-1",
             name: "Morning joke",
+            crons: ["*/1 * * * *"],
             nextRunAt: new Date(),
           })),
           delete: remove,
@@ -209,6 +210,7 @@ describe("schedule tool persistence", () => {
           create: vi.fn(async () => ({
             id: "routine-1",
             name: "Morning joke",
+            crons: ["*/1 * * * *"],
             nextRunAt: new Date(),
           })),
           delete: remove,
@@ -245,6 +247,7 @@ describe("schedule tool persistence", () => {
           create: vi.fn(async () => ({
             id: "routine-1",
             name: "Morning joke",
+            crons: ["*/1 * * * *"],
             nextRunAt: new Date(),
           })),
           delete: vi.fn(async () => {
@@ -286,6 +289,7 @@ describe("schedule tool persistence", () => {
           create: vi.fn(async () => ({
             id: "routine-1",
             name: "Morning joke",
+            crons: ["*/1 * * * *"],
             nextRunAt: new Date(),
           })),
           delete: vi.fn(async () => {

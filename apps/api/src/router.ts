@@ -75,8 +75,9 @@ import {
   AttachmentValidationError,
   containsSecret,
   expandSkillReferencesInPrompt,
-  isOneShotRoutineCron,
-  nextCronDate,
+  hasMixedOneShotSchedule,
+  isOneShotRoutineCrons,
+  nextCronDateAcrossStrict,
 } from "@rakazo/core";
 import {
   appendEventInTransaction,
@@ -1557,16 +1558,21 @@ export function createRouter(deps: RouterDeps) {
         return listRoutinesDto(deps, context.actor, input.botId);
       }),
       create: authed.routines.create.handler(async ({ context, input }) => {
-        if (input.active && isOneShotRoutineCron(input.cron)) {
+        if (hasMixedOneShotSchedule(input.crons)) {
+          throw new ORPCError("BAD_REQUEST", {
+            message: "A one-time schedule can't be combined with other schedules.",
+          });
+        }
+        if (input.active && isOneShotRoutineCrons(input.crons)) {
           throw new ORPCError("BAD_REQUEST", {
             message: "One-shot schedules must be created from chat.",
           });
         }
         const bot = await repos.getBot(context.actor, input.botId);
-        // Validate recurring cron even when inactive; @once has no next date.
+        // Validate every recurring cron even when inactive; @once has no next date.
         let nextRunAt: Date | null = null;
-        if (!isOneShotRoutineCron(input.cron)) {
-          const computedNextRunAt = nextRoutineDate(input.cron, input.timezone);
+        if (!isOneShotRoutineCrons(input.crons)) {
+          const computedNextRunAt = nextRoutineDate(input.crons, input.timezone);
           nextRunAt = input.active ? computedNextRunAt : null;
         }
         const row = await deps.prisma.routine.create({
@@ -1576,7 +1582,7 @@ export function createRouter(deps: RouterDeps) {
             userId: context.actor.userId,
             name: input.name,
             prompt: input.prompt,
-            cron: input.cron,
+            crons: input.crons,
             timezone: input.timezone,
             notify: input.notify,
             active: input.active,
@@ -1607,10 +1613,15 @@ export function createRouter(deps: RouterDeps) {
         });
         if (!existing) throw new IsolationError();
         const active = input.active ?? existing.active;
-        const cron = input.cron ?? existing.cron;
+        const crons = input.crons ?? existing.crons;
         const timezone = input.timezone ?? existing.timezone;
-        if (active && isOneShotRoutineCron(cron)) {
-          if (!isOneShotRoutineCron(existing.cron)) {
+        if (hasMixedOneShotSchedule(crons)) {
+          throw new ORPCError("BAD_REQUEST", {
+            message: "A one-time schedule can't be combined with other schedules.",
+          });
+        }
+        if (active && isOneShotRoutineCrons(crons)) {
+          if (!isOneShotRoutineCrons(existing.crons)) {
             throw new ORPCError("BAD_REQUEST", {
               message: "One-shot schedules must be created from chat.",
             });
@@ -1623,15 +1634,16 @@ export function createRouter(deps: RouterDeps) {
         }
         const scheduleChanged =
           (!existing.active && active) ||
-          (input.cron !== undefined && input.cron !== existing.cron) ||
+          (input.crons !== undefined &&
+            JSON.stringify(input.crons) !== JSON.stringify(existing.crons)) ||
           (input.timezone !== undefined && input.timezone !== existing.timezone);
         const recalculatedNextRunAt =
-          !isOneShotRoutineCron(cron) && (scheduleChanged || (active && !existing.nextRunAt))
-            ? nextRoutineDate(cron, timezone)
+          !isOneShotRoutineCrons(crons) && (scheduleChanged || (active && !existing.nextRunAt))
+            ? nextRoutineDate(crons, timezone)
             : null;
         const nextRunAt = !active
           ? null
-          : isOneShotRoutineCron(cron)
+          : isOneShotRoutineCrons(crons)
             ? existing.nextRunAt
             : (recalculatedNextRunAt ?? existing.nextRunAt);
         const row = await deps.prisma.routine.update({
@@ -1639,7 +1651,7 @@ export function createRouter(deps: RouterDeps) {
           data: {
             name: input.name,
             prompt: input.prompt,
-            cron: input.cron,
+            crons: input.crons,
             timezone: input.timezone,
             active: input.active,
             notify: input.notify,
@@ -1706,6 +1718,7 @@ export function createRouter(deps: RouterDeps) {
             userId: context.actor.userId,
             status: "queued",
             trigger: "routine",
+            routineId: routine.id,
           },
         });
         await deps.jobs.enqueue(runContinueJob(run.id));
@@ -2715,7 +2728,7 @@ export function createRouter(deps: RouterDeps) {
           routines: routines.map((r) => ({
             name: r.name,
             prompt: r.prompt,
-            cron: r.cron,
+            crons: r.crons,
             timezone: r.timezone,
           })),
           files,
@@ -3120,12 +3133,15 @@ function throwIfAborted(signal?: AbortSignal) {
   if (signal?.aborted) throw signal.reason ?? new Error("Request cancelled");
 }
 
-function nextRoutineDate(cron: string, timezone: string): Date {
+function nextRoutineDate(crons: string[], timezone: string): Date {
+  let next: Date | null;
   try {
-    return nextCronDate(cron, new Date(), timezone);
+    next = nextCronDateAcrossStrict(crons, new Date(), timezone);
   } catch {
     throw new ORPCError("BAD_REQUEST", { message: "Enter a valid cron expression." });
   }
+  if (!next) throw new ORPCError("BAD_REQUEST", { message: "Enter a valid cron expression." });
+  return next;
 }
 
 function mapRoutine(row: {
@@ -3133,7 +3149,7 @@ function mapRoutine(row: {
   botId: string;
   name: string;
   prompt: string;
-  cron: string;
+  crons: string[];
   timezone: string;
   active: boolean;
   notify: boolean;
@@ -3146,7 +3162,7 @@ function mapRoutine(row: {
     botId: row.botId,
     name: row.name,
     prompt: row.prompt,
-    cron: row.cron,
+    crons: row.crons,
     timezone: row.timezone,
     active: row.active,
     notify: row.notify,

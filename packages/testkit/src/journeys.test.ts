@@ -303,7 +303,7 @@ describeJourneys("required product journeys", () => {
       botId: bot.id,
       name: "Kept routine",
       prompt: "Check in",
-      cron: "0 9 * * 1",
+      crons: ["0 9 * * 1"],
       timezone: "UTC",
       notify: false,
       active: false,
@@ -852,7 +852,7 @@ describeJourneys("required product journeys", () => {
         botId: bot.id,
         name: "Monday briefing",
         prompt: "write a file in your home called notes/result.txt that says routine-ok",
-        cron: "0 9 * * 1",
+        crons: ["0 9 * * 1"],
         timezone: "UTC",
         notify: true,
         active: true,
@@ -898,7 +898,7 @@ describeJourneys("required product journeys", () => {
         botId: bot.id,
         name: "Legacy schedule",
         prompt: "Run the legacy schedule once",
-        cron: "0 0 9 * * *",
+        crons: ["0 0 9 * * *"],
         timezone: "UTC",
         notify: false,
         active: true,
@@ -1401,7 +1401,7 @@ describeJourneys("required product journeys", () => {
       botId: bot.id,
       name: "Test now",
       prompt: "write a file in your home called notes/result.txt that says testrun-ok",
-      cron: "0 9 * * 1",
+      crons: ["0 9 * * 1"],
       timezone: "UTC",
       notify: false,
       active: false,
@@ -2136,7 +2136,7 @@ describeJourneys("required product journeys", () => {
       botId: bot.id,
       name: "Send note",
       prompt: "write this to the destination crm as a note",
-      cron: "0 9 * * 1",
+      crons: ["0 9 * * 1"],
       timezone: "UTC",
       notify: false,
       active: false,
@@ -2160,6 +2160,37 @@ describeJourneys("required product journeys", () => {
       (snap) => !snap.run || ["completed", "failed", "cancelled"].includes(snap.run.status),
     );
     expect(connector.records.length).toBeGreaterThan(recordsBefore);
+  });
+
+  it("22: a routine schedule with any malformed or mixed one-shot cron is rejected", async () => {
+    const cookie = await signup(app, `routine-crons-j-${stamp}@rakazo.test`, "Routine Crons");
+    const bot = await rpc<Bot>(app, cookie, "bots/create", {
+      name: "Scheduler",
+      title: "",
+      description: "",
+      instructions: "",
+      notifyOnFinish: true,
+    });
+    const partiallyInvalid = await raw(app, cookie, "routines/create", {
+      botId: bot.id,
+      name: "Bad schedule",
+      prompt: "check the fixture",
+      crons: ["0 9 * * *", "not-a-cron"],
+      timezone: "UTC",
+      notify: false,
+      active: true,
+    });
+    expect(partiallyInvalid.status).toBeGreaterThanOrEqual(400);
+    const mixedOneShot = await raw(app, cookie, "routines/create", {
+      botId: bot.id,
+      name: "Mixed schedule",
+      prompt: "check the fixture",
+      crons: ["@once", "0 9 * * *"],
+      timezone: "UTC",
+      notify: false,
+      active: false,
+    });
+    expect(mixedOneShot.status).toBeGreaterThanOrEqual(400);
   });
 });
 
