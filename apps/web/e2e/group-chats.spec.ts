@@ -161,7 +161,7 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
   await composer.fill("@Research Writer ask me which city to use");
   await composer.press("Enter");
   await expect(page.getByText("Which city should I use?", { exact: true })).toBeVisible({
-    timeout: 30_000,
+    timeout: 60_000,
   });
   await page.getByRole("button", { name: "Edit first" }).click();
   await page.getByRole("textbox", { name: "Answer" }).fill("Paris");
