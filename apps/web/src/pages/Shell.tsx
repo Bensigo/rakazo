@@ -1753,7 +1753,16 @@ export function ShellPage() {
               <button
                 type="button"
                 title="Agent computer"
-                onClick={() => setPanel((p) => (p === "computer" ? null : "computer"))}
+                onClick={() => {
+                  setPanel((p) => {
+                    const next = p === "computer" ? null : "computer";
+                    if (next === "computer" && active) {
+                      // Refresh run/computer so Take control isn't stuck on a stale busyBotName.
+                      void refreshThread(active.id).catch(() => undefined);
+                    }
+                    return next;
+                  });
+                }}
                 className="grid h-[30px] w-[34px] place-items-center rounded-[9px] hover:bg-[#1B1B1E]"
                 style={{ background: panel ? "#1B1B1E" : "transparent" }}
               >

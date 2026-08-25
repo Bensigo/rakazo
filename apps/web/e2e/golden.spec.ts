@@ -92,9 +92,11 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
     })
     .toBe("waiting_takeover");
   // Agent computer toggles the panel — only open it when closed so we don't hide Take control.
-  if ((await sidePanel.getAttribute("data-panel")) !== "computer") {
+  // Opening refreshes thread/computer status so Take control can clear a stale busyBotName.
+  if ((await sidePanel.getAttribute("data-panel")) === "computer") {
     await page.getByTitle("Agent computer").click();
   }
+  await page.getByTitle("Agent computer").click();
   await expect(sidePanel).toHaveAttribute("data-panel", "computer");
   const takeControl = sidePanel.getByRole("button", { name: "Take control" });
   await expect(takeControl).toBeEnabled({ timeout: 30_000 });
