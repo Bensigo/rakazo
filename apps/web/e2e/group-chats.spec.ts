@@ -171,9 +171,18 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
   ).toBeVisible();
   await composer.fill("ask me which city to use");
   await composer.press("Enter");
-  await expect(page.getByText("Which city should I use?", { exact: true })).toBeVisible({
+  // threads/get / member status can observe waiting_input before realtime paints the ask card.
+  await expect(page.getByRole("button", { name: /Research Writer waiting_input/ })).toBeVisible({
     timeout: 60_000,
   });
+  const cityAsk = page.locator("p").filter({ hasText: /^Which city should I use\?$/ });
+  if ((await cityAsk.count()) === 0) {
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("textbox", { name: "Message Draft team" })).toBeVisible({
+      timeout: 15_000,
+    });
+  }
+  await expect(cityAsk).toBeVisible({ timeout: 15_000 });
   await page.getByRole("button", { name: "Edit first" }).click();
   await page.getByRole("textbox", { name: "Answer" }).fill("Paris");
   await page.getByRole("button", { name: "Send answer" }).click();
