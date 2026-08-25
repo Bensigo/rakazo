@@ -3625,7 +3625,6 @@ function BotSettings({
           className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
         />
       </label>
-      <ComputerModePicker value={computerMode} onChange={setComputerMode} />
       <details data-testid="bot-settings-advanced" className="group mt-5">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[14px] text-[#85858A]">
           <span className="text-[#85858A]">Advanced</span>
@@ -3633,6 +3632,10 @@ function BotSettings({
             ›
           </span>
         </summary>
+        <ComputerModePicker value={computerMode} onChange={setComputerMode} />
+        <Suspense fallback={null}>
+          <ScratchpadSection botId={bot.id} />
+        </Suspense>
         <label className="mt-4 block text-[14px] text-[#85858A]">
           Model
           <select
@@ -3676,64 +3679,61 @@ function BotSettings({
             </select>
           </label>
         ) : null}
-      </details>
-      {memoryProviderConfigured ? (
-        <div className="mt-4 text-[14px] text-[#85858A]">
-          Memory scope
-          <div className="mt-2 flex gap-2">
-            {(
-              [
-                { value: null, label: "Inherit default" },
-                { value: "isolated" as const, label: "Isolated" },
-                { value: "shared" as const, label: "Shared" },
-              ] satisfies Array<{ value: "isolated" | "shared" | null; label: string }>
-            ).map((option) => (
-              <button
-                key={option.label}
-                type="button"
-                aria-pressed={memoryScope === option.value}
-                onClick={() => setMemoryScope(option.value)}
-                className={`flex-1 rounded-[11px] border px-3 py-2 text-[13px] ${
-                  memoryScope === option.value
-                    ? "border-[#4A4A50] bg-[#1A1A1D] text-[#ECECEE]"
-                    : "border-[#26262A] text-[#85858A]"
-                }`}
-              >
-                {option.label}
-              </button>
-            ))}
+        {memoryProviderConfigured ? (
+          <div className="mt-4 text-[14px] text-[#85858A]">
+            Memory scope
+            <div className="mt-2 flex gap-2">
+              {(
+                [
+                  { value: null, label: "Inherit default" },
+                  { value: "isolated" as const, label: "Isolated" },
+                  { value: "shared" as const, label: "Shared" },
+                ] satisfies Array<{ value: "isolated" | "shared" | null; label: string }>
+              ).map((option) => (
+                <button
+                  key={option.label}
+                  type="button"
+                  aria-pressed={memoryScope === option.value}
+                  onClick={() => setMemoryScope(option.value)}
+                  className={`flex-1 rounded-[11px] border px-3 py-2 text-[13px] ${
+                    memoryScope === option.value
+                      ? "border-[#4A4A50] bg-[#1A1A1D] text-[#ECECEE]"
+                      : "border-[#26262A] text-[#85858A]"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-      ) : null}
-      <label className="mt-5 flex cursor-pointer items-center gap-3 text-[14px] text-[#C9C9CE]">
-        <input
-          type="checkbox"
-          checked={autoSpeak}
-          onChange={(event) => setAutoSpeak(event.target.checked)}
-        />
-        Read replies aloud
-      </label>
-      {voices.length ? (
-        <label className="mt-4 block text-[14px] text-[#85858A]">
-          Voice
-          <select
-            value={voiceId}
-            onChange={(event) => setVoiceId(event.target.value)}
-            className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
-          >
-            <option value="">Account default</option>
-            {voices.map((voice) => (
-              <option key={voice.id} value={voice.id}>
-                {voice.label}
-              </option>
-            ))}
-          </select>
+        ) : null}
+        <label className="mt-5 flex cursor-pointer items-center gap-3 text-[14px] text-[#C9C9CE]">
+          <input
+            type="checkbox"
+            checked={autoSpeak}
+            onChange={(event) => setAutoSpeak(event.target.checked)}
+          />
+          Read replies aloud
         </label>
-      ) : null}
+        {voices.length ? (
+          <label className="mt-4 block text-[14px] text-[#85858A]">
+            Voice
+            <select
+              value={voiceId}
+              onChange={(event) => setVoiceId(event.target.value)}
+              className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
+            >
+              <option value="">Account default</option>
+              {voices.map((voice) => (
+                <option key={voice.id} value={voice.id}>
+                  {voice.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+      </details>
       {error ? <p className="mt-2 text-[13px] text-[#E65707]">{error}</p> : null}
-      <Suspense fallback={null}>
-        <ScratchpadSection botId={bot.id} />
-      </Suspense>
       <div className="mt-5 flex flex-col items-start gap-3">
         <button
           type="button"
