@@ -15,7 +15,7 @@ export function AccountSettingsOverlay({
   onClose: () => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
-  const usageRef = useRef<HTMLElement>(null);
+  const usageRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
@@ -70,7 +70,7 @@ export function AccountSettingsOverlay({
           {email ? <p className="mt-1 text-[13px] text-[#7A7A80]">{email}</p> : null}
         </section>
 
-        <section
+        <div
           ref={usageRef}
           tabIndex={-1}
           data-testid="usage-billing-settings"
@@ -81,15 +81,11 @@ export function AccountSettingsOverlay({
             <p className="mt-3 text-[14px] text-[#C9C9CE]">
               {usage.runs} runs · {usage.inputTokens + usage.outputTokens} tokens this week
             </p>
-          ) : (
-            <p className="mt-3 text-[14px] text-[#7A7A80]">
-              {focusUsage ? "Loading usage…" : "Weekly usage appears here when loaded."}
-            </p>
-          )}
-          <p className="mt-2 text-[12.5px] text-[#6C6C70]">
-            Model spend follows your connected provider accounts.
+          ) : null}
+          <p className={`text-[12.5px] text-[#6C6C70] ${usage ? "mt-2" : "mt-3"}`}>
+            Model spend uses your provider keys.
           </p>
-        </section>
+        </div>
 
         <details
           data-testid="advanced-settings"

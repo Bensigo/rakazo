@@ -2767,7 +2767,8 @@ const Composer = memo(function Composer({
   }
 
   function insertSkill(skill: AgentSkillCatalogEntry) {
-    setDraft(`/${skill.name} `);
+    // Newline keeps trailing prompt text off the forced `/Name` line.
+    setDraft(`/${skill.name}\n`);
     setSlashQuery(null);
   }
 

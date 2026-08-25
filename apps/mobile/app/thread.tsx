@@ -459,7 +459,7 @@ export default function Thread() {
   }
 
   function insertSkill(skill: { name: string }) {
-    setDraft(`/${skill.name} `);
+    setDraft(`/${skill.name}\n`);
     setSlashQuery(null);
   }
 
@@ -474,19 +474,10 @@ export default function Thread() {
       }
       return;
     }
-    if (action === "settings-usage") {
-      void rpc<{ runs: number; inputTokens: number; outputTokens: number }>("usage/summary")
-        .then((summary) => {
-          Alert.alert(
-            "Usage & Billing",
-            `${summary.runs} runs · ${summary.inputTokens + summary.outputTokens} tokens this week.\nModel spend follows your connected provider accounts.`,
-            [{ text: "Account", onPress: () => router.push("/account") }, { text: "OK" }],
-          );
-        })
-        .catch(() => router.push("/account"));
-      return;
-    }
-    router.push("/account");
+    router.push({
+      pathname: "/account",
+      params: action === "settings-usage" ? { focus: "usage" } : undefined,
+    });
   }
 
   async function send() {
@@ -802,12 +793,21 @@ export default function Thread() {
               key={skill.id}
               accessibilityLabel={`Skill ${skill.name}`}
               onPress={() => insertSkill(skill)}
-              style={{ paddingHorizontal: 14, paddingVertical: 10 }}
+              style={{
+                flexDirection: "row",
+                alignItems: "flex-start",
+                gap: 10,
+                paddingHorizontal: 14,
+                paddingVertical: 10,
+              }}
             >
-              <Text style={{ color: "#ECECEE", fontSize: 14 }}>{skill.name}</Text>
-              <Text numberOfLines={1} style={{ color: "#85858A", fontSize: 12.5, marginTop: 2 }}>
-                {skill.description}
-              </Text>
+              <NativeSymbol ios="cube" android="cube-outline" size={16} color="#9A9AA0" />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ color: "#ECECEE", fontSize: 14 }}>{skill.name}</Text>
+                <Text numberOfLines={1} style={{ color: "#85858A", fontSize: 12.5, marginTop: 2 }}>
+                  {skill.description}
+                </Text>
+              </View>
             </Pressable>
           ))}
           {slashActionOptions.map((action) => (
@@ -815,8 +815,15 @@ export default function Thread() {
               key={action.id}
               accessibilityLabel={action.label}
               onPress={() => runSlashAction(action.id)}
-              style={{ paddingHorizontal: 14, paddingVertical: 10 }}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 10,
+                paddingHorizontal: 14,
+                paddingVertical: 10,
+              }}
             >
+              <NativeSymbol ios="gearshape" android="settings-outline" size={16} color="#9A9AA0" />
               <Text style={{ color: "#ECECEE", fontSize: 14 }}>{action.label}</Text>
             </Pressable>
           ))}

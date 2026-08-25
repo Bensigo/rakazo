@@ -39,7 +39,7 @@ test("composer / picker lists skills above actions", async ({ page }) => {
   await expect(skillButton).toContainText("Prepare a concise standup");
 
   await skillButton.click();
-  await expect(composer).toHaveValue("/Daily standup ");
+  await expect(composer).toHaveValue("/Daily standup\n");
 
   await composer.fill("hello /");
   await expect(page.getByTestId("slash-picker")).toHaveCount(0);
