@@ -115,8 +115,16 @@ test("connecting to an existing instance verifies, saves, and opens it", async (
     path: path.join(import.meta.dirname, "screenshots", "03-connected-instance.png"),
   });
 
-  const saved = JSON.parse(await readFile(path.join(userData, "setup.json"), "utf8"));
-  expect(saved).toEqual({ mode: "existing", serverUrl });
+  // Continue can paint the app window before setup.json finishes flushing to disk.
+  await expect
+    .poll(async () => {
+      try {
+        return JSON.parse(await readFile(path.join(userData, "setup.json"), "utf8"));
+      } catch {
+        return null;
+      }
+    })
+    .toEqual({ mode: "existing", serverUrl });
 });
 
 test("Continue verifies and remembers the instance so setup does not run again", async () => {
@@ -255,11 +263,18 @@ test("a post-session ready app mount is accepted", async () => {
     ]).then(([window]) => window);
 
     await expect(appWindow.getByTestId("shell-root")).toBeVisible();
-    const saved = JSON.parse(await readFile(path.join(userData, "setup.json"), "utf8"));
-    expect(saved).toEqual({
-      mode: "existing",
-      serverUrl: `http://127.0.0.1:${address.port}`,
-    });
+    await expect
+      .poll(async () => {
+        try {
+          return JSON.parse(await readFile(path.join(userData, "setup.json"), "utf8"));
+        } catch {
+          return null;
+        }
+      })
+      .toEqual({
+        mode: "existing",
+        serverUrl: `http://127.0.0.1:${address.port}`,
+      });
   } finally {
     await new Promise<void>((resolve, reject) => {
       ready.close((error) => (error ? reject(error) : resolve()));
