@@ -254,6 +254,15 @@ describe("pauseRunForInput", () => {
       ),
     ).resolves.toBe(true);
 
+    expect(tx.message.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          botId: "bot-1",
+          runId: "run-1",
+          role: "bot",
+        }),
+      }),
+    );
     expect(tx.run.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ status: "running", leaseFence: 3 }),

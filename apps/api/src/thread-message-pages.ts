@@ -1,8 +1,10 @@
 import type { ThreadMessage, ThreadMessagePage } from "@rakazo/contracts";
 import type { Prisma, PrismaClient } from "@rakazo/db";
 
+type MessageDb = PrismaClient | Prisma.TransactionClient;
+
 export async function loadMessagePage(
-  prisma: PrismaClient,
+  prisma: MessageDb,
   threadId: string,
   before: number | undefined,
   pageSize: number,
