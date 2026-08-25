@@ -292,7 +292,7 @@ export default function Home() {
           if (item.type === "bot") return item.bot.id;
           if (item.type === "group") return `group-${item.group.id}`;
           const hit = item.hit;
-          return `${hit.kind}-${hit.botId}-${hit.messageId ?? hit.artifactId ?? hit.routineId ?? hit.url}`;
+          return `${hit.kind}-${hit.botId ?? hit.groupId}-${hit.messageId ?? hit.artifactId ?? hit.routineId ?? hit.url}`;
         }}
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
@@ -482,7 +482,7 @@ function SearchRow({ hit, onPress }: { hit: SearchHit; onPress: () => void }) {
           <Text style={styles.time}>{hit.kind}</Text>
         </View>
         <Text style={styles.preview} numberOfLines={2}>
-          {hit.botName} · {hit.snippet}
+          {hit.groupName ?? hit.botName} · {hit.snippet}
         </Text>
       </View>
     </Pressable>
