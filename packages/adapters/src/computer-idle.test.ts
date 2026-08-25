@@ -122,9 +122,10 @@ describe("e2b create options", () => {
   });
 
   it("opens a URL through the named browser launcher", async () => {
-    const launched: Array<{ application: string; uri?: string }> = [];
+    const launched: string[] = [];
     const commands = {
       run: async (cmd: string) => {
+        launched.push(cmd);
         if (cmd.includes("google-chrome")) throw new Error("missing");
         if (cmd.includes("firefox")) return { exitCode: 0 };
         throw new Error("missing");
@@ -133,8 +134,8 @@ describe("e2b create options", () => {
     await openDesktopUrl(
       {
         commands,
-        launch: async (application, uri) => {
-          launched.push({ application, uri });
+        launch: async () => {
+          throw new Error("should use gtk-launch via commands");
         },
         open: async () => {
           throw new Error("should not fall back");
@@ -142,7 +143,10 @@ describe("e2b create options", () => {
       },
       "https://example.com/page",
     );
-    expect(launched).toEqual([{ application: "firefox", uri: "https://example.com/page" }]);
+    expect(launched).toEqual([
+      "gtk-launch 'google-chrome' 'https://example.com/page'",
+      "gtk-launch 'firefox' 'https://example.com/page'",
+    ]);
   });
 });
 

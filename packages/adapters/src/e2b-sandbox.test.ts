@@ -69,7 +69,7 @@ describe("E2B computer backend", () => {
       if (value.includes("RAKAZO_SCREEN_INDEX=")) {
         return { stdout: "RAKAZO_SCREEN_INDEX=0\n", stderr: "", exitCode: 0 };
       }
-      if (value.includes("command -v")) {
+      if (value.startsWith("gtk-launch")) {
         if (value.includes("google-chrome")) return { stdout: "", stderr: "", exitCode: 0 };
         throw new Error("missing");
       }
@@ -100,10 +100,8 @@ describe("E2B computer backend", () => {
       { actions: [{ kind: "open", path: "https://example.com/docs" }], observe: false },
       context,
     );
-    expect(command).toHaveBeenCalledWith(
-      expect.stringMatching(/command -v ['"]?google-chrome['"]?/),
-    );
-    expect(launch).toHaveBeenCalledWith("google-chrome", "https://example.com/docs");
+    expect(command).toHaveBeenCalledWith("gtk-launch 'google-chrome' 'https://example.com/docs'");
+    expect(launch).not.toHaveBeenCalled();
     expect(open).not.toHaveBeenCalled();
 
     await provider.act(

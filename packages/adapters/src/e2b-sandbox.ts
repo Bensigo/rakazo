@@ -106,16 +106,15 @@ export async function openDesktopUrl(
   url: string,
 ): Promise<void> {
   for (const app of E2B_BROWSER_APPS) {
-    // desktop.launch backgrounds gtk-launch and always resolves, so probe first.
-    const available = await desktop.commands
-      .run(`command -v ${shellQuote(app)} >/dev/null 2>&1`)
+    // Prefer a foreground gtk-launch so missing desktop entries / launch failures reject
+    // and we can try the next browser. desktop.launch backgrounds and always resolves.
+    const launched = await desktop.commands
+      .run(`gtk-launch ${shellQuote(app)} ${shellQuote(url)}`)
       .then(
         (result) => (result.exitCode ?? 0) === 0,
         () => false,
       );
-    if (!available) continue;
-    await desktop.launch(app, url);
-    return;
+    if (launched) return;
   }
   await desktop.open(url);
 }
