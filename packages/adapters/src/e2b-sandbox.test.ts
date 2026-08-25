@@ -54,7 +54,62 @@ describe("E2B computer backend", () => {
     await provider.prepare(computer, context);
 
     expect(command.mock.calls.filter(([value]) => String(value).includes("ln -s"))).toHaveLength(1);
+    expect(
+      command.mock.calls.some(
+        ([value]) =>
+          String(value).includes("xdg-settings set default-web-browser google-chrome.desktop") &&
+          String(value).includes("WebBrowser=google-chrome"),
+      ),
+    ).toBe(true);
     expect(desktop.launch).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens http(s) URLs through the named browser launcher", async () => {
+    const command = vi.fn(async (value: string) => {
+      if (value.includes("RAKAZO_SCREEN_INDEX=")) {
+        return { stdout: "RAKAZO_SCREEN_INDEX=0\n", stderr: "", exitCode: 0 };
+      }
+      if (value.startsWith("gtk-launch")) {
+        if (value.includes("google-chrome")) return { stdout: "", stderr: "", exitCode: 0 };
+        throw new Error("missing");
+      }
+      return { stdout: "", stderr: "", exitCode: 0 };
+    });
+    const launch = vi.fn(async () => undefined);
+    const open = vi.fn(async () => undefined);
+    const desktop = {
+      sandboxId: "e2b-open-url-box",
+      display: ":0",
+      commands: { run: command },
+      files: { makeDir: vi.fn(async () => undefined) },
+      launch,
+      open,
+    } as unknown as Sandbox;
+    const provider = new E2BSandboxProvider("test-key", {
+      create: vi.fn(async () => desktop),
+      connect: vi.fn(async () => desktop),
+      pause: vi.fn(async () => undefined),
+    });
+    const computer = await provider.provision(
+      { botId: "bot-1", homePath: "/unused", providerKind: "e2b" },
+      context,
+    );
+
+    await provider.act(
+      computer,
+      { actions: [{ kind: "open", path: "https://example.com/docs" }], observe: false },
+      context,
+    );
+    expect(command).toHaveBeenCalledWith("gtk-launch 'google-chrome' 'https://example.com/docs'");
+    expect(launch).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+
+    await provider.act(
+      computer,
+      { actions: [{ kind: "open", path: "notes/readme.md" }], observe: false },
+      context,
+    );
+    expect(open).toHaveBeenCalledWith("/home/user/rakazo-home/notes/readme.md");
   });
 
   it("controls the desktop and exposes a portable workspace", async () => {

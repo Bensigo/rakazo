@@ -79,10 +79,16 @@ export function isUnrecoverableSandboxError(error: unknown): boolean {
 
 export const E2B_BROWSER_APPS = ["google-chrome", "firefox", "chromium"] as const;
 
-export async function openDesktopBrowser(desktop: {
+type E2BDesktopBrowser = {
   launch: (application: string, uri?: string) => Promise<void>;
   open: (fileOrUrl: string) => Promise<void>;
-}): Promise<void> {
+};
+
+type E2BDesktopCommands = {
+  run: (cmd: string) => Promise<{ exitCode?: number }>;
+};
+
+export async function openDesktopBrowser(desktop: E2BDesktopBrowser): Promise<void> {
   for (const app of E2B_BROWSER_APPS) {
     try {
       await desktop.launch(app);
@@ -92,6 +98,25 @@ export async function openDesktopBrowser(desktop: {
     }
   }
   await desktop.open("https://www.google.com").catch(() => undefined);
+}
+
+/** Open an http(s) URL via a named browser — avoids the broken default-browser association. */
+export async function openDesktopUrl(
+  desktop: E2BDesktopBrowser & { commands: E2BDesktopCommands },
+  url: string,
+): Promise<void> {
+  for (const app of E2B_BROWSER_APPS) {
+    // Prefer a foreground gtk-launch so missing desktop entries / launch failures reject
+    // and we can try the next browser. desktop.launch backgrounds and always resolves.
+    const launched = await desktop.commands
+      .run(`gtk-launch ${shellQuote(app)} ${shellQuote(url)}`)
+      .then(
+        (result) => (result.exitCode ?? 0) === 0,
+        () => false,
+      );
+    if (launched) return;
+  }
+  await desktop.open(url);
 }
 
 export class E2BSandboxProvider implements SandboxProvider {
@@ -221,6 +246,7 @@ export class E2BSandboxProvider implements SandboxProvider {
     const desktop = await this.box(computer);
     if (computer.fresh) await desktop.files.makeDir(E2B_WORKSPACE);
     const profilesChanged = await configurePortableBrowserProfiles(desktop);
+    await configureDefaultWebBrowser(desktop);
     if (!computer.fresh && profilesChanged) await openDesktopBrowser(desktop);
   }
 
@@ -762,6 +788,20 @@ async function configurePortableBrowserProfiles(desktop: Sandbox): Promise<boole
   return true;
 }
 
+/** Point xdg-open / XFCE exo-open at Chrome. Lives outside the checkpointed workspace. */
+async function configureDefaultWebBrowser(desktop: Sandbox): Promise<void> {
+  await desktop.commands
+    .run(
+      [
+        "command -v google-chrome >/dev/null 2>&1 || exit 0",
+        'mkdir -p "$HOME/.config/xfce4"',
+        "printf 'WebBrowser=google-chrome\\n' > \"$HOME/.config/xfce4/helpers.rc\"",
+        "xdg-settings set default-web-browser google-chrome.desktop",
+      ].join(" && "),
+    )
+    .catch(() => undefined);
+}
+
 async function stopDesktopBrowsers(desktop: Sandbox): Promise<void> {
   await desktop.commands.run(PORTABLE_BROWSER_STOP_COMMAND).catch(() => undefined);
 }
@@ -799,10 +839,11 @@ async function applyE2BAction(desktop: Sandbox, action: ComputerAction): Promise
     return;
   }
   if (action.kind === "open") {
-    const value = /^https?:\/\//i.test(action.path)
-      ? action.path
-      : workspacePath(E2B_WORKSPACE, action.path);
-    await desktop.open(value);
+    if (/^https?:\/\//i.test(action.path)) {
+      await openDesktopUrl(desktop, action.path);
+      return;
+    }
+    await desktop.open(workspacePath(E2B_WORKSPACE, action.path));
     return;
   }
   await desktop.launch(action.application, action.uri);
