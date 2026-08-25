@@ -28,8 +28,24 @@ describe("approved effect replay", () => {
       { kind: "destination.write", request: { sequence: 2 } },
     ]);
 
+    expect(queue.assertDrained).toThrow();
     expect(queue.take("destination.write")).toEqual({ sequence: 1 });
+    expect(queue.assertDrained).toThrow();
     expect(queue.take("destination.write")).toEqual({ sequence: 2 });
+    expect(queue.assertDrained).not.toThrow();
+  });
+
+  it("does not consume a later tool before the next approved request", () => {
+    const queue = createApprovedEffectReplayQueue([
+      { kind: "first.write", request: { sequence: 1 } },
+      { kind: "second.write", request: { sequence: 2 } },
+    ]);
+
+    expect(queue.nextToolName()).toBe("first.write");
+    expect(queue.take("second.write")).toBeUndefined();
+    expect(queue.nextToolName()).toBe("first.write");
+    expect(queue.take("first.write")).toEqual({ sequence: 1 });
+    expect(queue.nextToolName()).toBe("second.write");
   });
 });
 

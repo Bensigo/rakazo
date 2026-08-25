@@ -269,6 +269,8 @@ async function persistLivePluginConnections(
   }
 }
 
+export const APPROVED_EFFECT_REPLAY_ORDER = [{ createdAt: "asc" as const }, { id: "asc" as const }];
+
 export function buildApprovalContinuation(
   approvedEffects: readonly { kind: string; request: unknown }[],
   formatRequest: (request: unknown) => string,
@@ -821,7 +823,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
         const tools = [...builtins, ...exposedConnectorTools];
         const approvedEffects = await deps.prisma.externalEffect.findMany({
           where: { runId, status: "approved" },
-          orderBy: { createdAt: "asc" },
+          orderBy: APPROVED_EFFECT_REPLAY_ORDER,
           select: { kind: true, request: true },
         });
         const approvedEffectReplays = createApprovedEffectReplayQueue(approvedEffects);
@@ -908,6 +910,12 @@ export function createRunExecutor(deps: ExecutorDeps) {
           // Approval applies to the exact persisted request, never to a payload the model
           // reconstructs after the worker resumes. This also makes a changed reconstruction
           // hit the already-approved effect instead of creating a second approval card.
+          const nextApprovedTool = approvedEffectReplays.nextToolName();
+          if (nextApprovedTool && nextApprovedTool !== name) {
+            return {
+              error: `Approved request ${nextApprovedTool} must be replayed before ${name}.`,
+            };
+          }
           args = approvedEffectReplays.take(name) ?? args;
           const viaConnector = !BUILTIN_AGENT_TOOL_NAMES.has(name);
           const requiresApprovalByDefault = toolRequiresApproval(name, viaConnector);
@@ -1982,6 +1990,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 toolCallStreak.count >= MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS;
               const stuckOnSameTool = toolNameStreak.count >= MAX_CONSECUTIVE_SAME_TOOL_CALLS;
               if (stuckOnExactRepeat || stuckOnSameTool) {
+                approvedEffectReplays.assertDrained();
                 flushPendingTools();
                 if (!(await renewRunLease(deps, runId, workerId, fence))) return;
                 if (messageSegments.length > 0) {
@@ -2067,6 +2076,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           }
 
           if (approvalPausePending) return;
+          approvedEffectReplays.assertDrained();
           pendingProgress += progressRedactor.finish();
           await flushProgress();
 

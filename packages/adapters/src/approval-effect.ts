@@ -8,29 +8,34 @@ export interface ApprovedEffectReplay {
 }
 
 export interface ApprovedEffectReplayQueue {
+  nextToolName(): string | undefined;
   take(toolName: string): Record<string, unknown> | undefined;
+  assertDrained(): void;
 }
 
 export function createApprovedEffectReplayQueue(
   effects: readonly ApprovedEffectReplay[],
 ): ApprovedEffectReplayQueue {
-  const pending = new Map<string, unknown[]>();
-  for (const effect of effects) {
-    const requests = pending.get(effect.kind) ?? [];
-    requests.push(effect.request);
-    pending.set(effect.kind, requests);
-  }
+  const pending = [...effects];
 
   return {
+    nextToolName() {
+      return pending[0]?.kind;
+    },
     take(toolName) {
-      const requests = pending.get(toolName);
-      const request = requests?.shift();
-      if (requests?.length === 0) pending.delete(toolName);
-      if (request === undefined) return undefined;
+      const next = pending[0];
+      if (!next || next.kind !== toolName) return undefined;
+      pending.shift();
+      const request = next.request;
       if (!request || typeof request !== "object" || Array.isArray(request)) {
         throw new TypeError(`Approved ${toolName} request is not a JSON object`);
       }
       return request as Record<string, unknown>;
+    },
+    assertDrained() {
+      if (pending.length > 0) {
+        throw new Error("Approved tool requests were not fully replayed");
+      }
     },
   };
 }
