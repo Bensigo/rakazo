@@ -150,10 +150,10 @@ export function buildComposerMentionOptions(input: {
   connectors: readonly MentionPickerConnector[];
   currentGroupId?: string | null;
   includeEveryone?: boolean;
+  /** When omitted, return every match (catalog build). When set, apply after query filter. */
   limit?: number;
 }): ComposerMention[] {
   const query = input.query.trim().toLowerCase();
-  const limit = input.limit ?? 12;
   const options: ComposerMention[] = [];
 
   const matches = (name: string) => !query || name.toLowerCase().startsWith(query);
@@ -219,7 +219,60 @@ export function buildComposerMentionOptions(input: {
     });
   }
 
-  return options.slice(0, limit);
+  if (input.limit == null) return options;
+  return options.slice(0, input.limit);
+}
+
+/**
+ * Shared send routing for web + mobile composers.
+ * Chip-only `@Group` from a 1:1 opens that group (no fabricated body).
+ * Routines always test-run; with a group chip, open the group after.
+ */
+export function resolveComposerSendPlan(input: {
+  text: string;
+  mentions: readonly ComposerMention[];
+  hasAttachments: boolean;
+  /** True when the composer is already inside a group thread. */
+  alreadyInGroup: boolean;
+}): {
+  trimmed: string;
+  routineIds: string[];
+  rerouteGroupId: string | null;
+  rerouteGroupName: string | null;
+  mentionPayload: ReturnType<typeof toThreadMentionPayload>;
+  shouldSend: boolean;
+  shouldOpenGroup: boolean;
+  shouldRunRoutines: boolean;
+  isNoOp: boolean;
+} {
+  const parts = partitionComposerMentions(input.mentions);
+  const mentionedGroup = input.alreadyInGroup ? undefined : parts.groups[0];
+  let trimmed = stripMentionKinds(input.text.trim(), input.mentions, [
+    "group",
+    "routine",
+    "connector",
+  ]);
+  trimmed = appendConnectorIntent(trimmed, needsAuthConnectorNames(input.mentions));
+  if (!trimmed && parts.connectors.length) {
+    trimmed = parts.connectors.map((mention) => `@${mention.name}`).join(" ");
+  }
+  const routineIds = [...new Set(parts.routines.map((routine) => routine.id))];
+  const shouldSend = Boolean(trimmed) || input.hasAttachments;
+  const shouldOpenGroup = Boolean(mentionedGroup);
+  const shouldRunRoutines = routineIds.length > 0;
+  return {
+    trimmed,
+    routineIds,
+    rerouteGroupId: mentionedGroup?.id ?? null,
+    rerouteGroupName: mentionedGroup?.name ?? null,
+    mentionPayload: toThreadMentionPayload(
+      input.mentions.filter((mention) => mention.kind !== "group" && mention.kind !== "routine"),
+    ),
+    shouldSend,
+    shouldOpenGroup,
+    shouldRunRoutines,
+    isNoOp: !shouldSend && !shouldOpenGroup && !shouldRunRoutines,
+  };
 }
 
 export function mentionStillInPrompt(

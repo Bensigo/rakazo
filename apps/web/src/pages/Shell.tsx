@@ -35,7 +35,6 @@ import {
 } from "@rakazo/contracts";
 import {
   abortableDelay,
-  appendConnectorIntent,
   attachmentsForThread,
   buildComposerMentionOptions,
   type ComposerMention,
@@ -48,15 +47,12 @@ import {
   isRunTerminalEvent,
   latestAnswerableAskMessageId,
   mentionChipKey,
-  needsAuthConnectorNames,
-  partitionComposerMentions,
   presetFromCron,
+  resolveComposerSendPlan,
   SLASH_ACTIONS,
   type SlashActionId,
   serializeComposerPrompt,
   speechFromBlocks,
-  stripMentionKinds,
-  toThreadMentionPayload,
   truncateSlashDescription,
 } from "@rakazo/core";
 import { BotAvatar, Button, GroupAvatar } from "@rakazo/ui-web";
@@ -1083,7 +1079,6 @@ export function ShellPage() {
           botName: routine.botName,
         })),
         connectors: mentionConnectors,
-        limit: 64,
       }),
     [bots, groupId, groups, inGroup, mentionConnectors, mentionRoutines],
   );
@@ -1250,31 +1245,25 @@ export function ShellPage() {
       const initialGroupTarget = activeGroupId.current;
       if ((!initialBotTarget && !initialGroupTarget) || sending) return;
       const originThreadKey = initialGroupTarget ?? initialBotTarget;
-      let botTarget = initialBotTarget;
-      let groupTarget = initialGroupTarget;
-      const parts = partitionComposerMentions(mentions);
-      const mentionedGroup = parts.groups[0];
-      const reroutedToGroup = Boolean(!initialGroupTarget && mentionedGroup);
-      // Capture destination ids before any navigate so refresh/send cannot use the old 1:1.
-      if (reroutedToGroup && mentionedGroup) {
-        groupTarget = mentionedGroup.id;
-        botTarget = undefined;
-      }
       const attachments = attachmentsForThread(pendingAttachments, originThreadKey);
-      let trimmed = stripMentionKinds(text.trim(), mentions, ["group", "routine", "connector"]);
-      trimmed = appendConnectorIntent(trimmed, needsAuthConnectorNames(mentions));
-      if (!trimmed && parts.connectors.length) {
-        trimmed = parts.connectors.map((mention) => `@${mention.name}`).join(" ");
-      }
-      const routineIds = [...new Set(parts.routines.map((routine) => routine.id))];
-      if (!trimmed && attachments.length === 0 && routineIds.length === 0) return;
+      const plan = resolveComposerSendPlan({
+        text,
+        mentions,
+        hasAttachments: attachments.length > 0,
+        alreadyInGroup: Boolean(initialGroupTarget),
+      });
+      if (plan.isNoOp) return;
+      const reroutedToGroup = Boolean(plan.rerouteGroupId);
+      const groupTarget = plan.rerouteGroupId ?? initialGroupTarget;
+      const botTarget = reroutedToGroup ? undefined : initialBotTarget;
+      const trimmed = plan.trimmed;
       setSending(true);
       setSendError(null);
       try {
-        if (routineIds.length) {
+        if (plan.shouldRunRoutines) {
           const sendNonce = crypto.randomUUID();
           await Promise.all(
-            routineIds.map((routineId) =>
+            plan.routineIds.map((routineId) =>
               rpc.routines.testRun({
                 routineId,
                 clientNonce: `routine-mention:${sendNonce}:${routineId}`,
@@ -1282,8 +1271,12 @@ export function ShellPage() {
             ),
           );
         }
-        if (!trimmed && attachments.length === 0) {
+        if (!plan.shouldSend) {
           setReplyTarget(null);
+          if (plan.shouldOpenGroup && groupTarget) {
+            navigate(`/app/g/${groupTarget}`);
+            return;
+          }
           if (groupTarget && activeGroupId.current === groupTarget) {
             await refreshGroupThreadRef.current(groupTarget);
           } else if (botTarget && activeBotId.current === botTarget) {
@@ -1305,14 +1298,11 @@ export function ShellPage() {
           );
           artifactIds.push(artifact.id);
         }
-        const mentionPayload = toThreadMentionPayload(
-          mentions.filter((mention) => mention.kind !== "group" && mention.kind !== "routine"),
-        );
         if (groupTarget) {
           await rpc.threads.send({
             groupId: groupTarget,
             text: trimmed || undefined,
-            mentions: mentionPayload.length ? mentionPayload : undefined,
+            mentions: plan.mentionPayload.length ? plan.mentionPayload : undefined,
             artifactIds: artifactIds.length ? artifactIds : undefined,
             replyToMessageId: reroutedToGroup ? undefined : activeReplyTarget?.id,
           });
@@ -1320,7 +1310,7 @@ export function ShellPage() {
           await rpc.threads.send({
             botId: botTarget,
             text: trimmed || undefined,
-            mentions: mentionPayload.length ? mentionPayload : undefined,
+            mentions: plan.mentionPayload.length ? plan.mentionPayload : undefined,
             artifactIds: artifactIds.length ? artifactIds : undefined,
             replyToMessageId: activeReplyTarget?.id,
           });
@@ -1330,7 +1320,7 @@ export function ShellPage() {
         setPendingAttachments((current) =>
           current.filter((attachment) => attachment.threadKey !== originThreadKey),
         );
-        if (reroutedToGroup && groupTarget) {
+        if (plan.shouldOpenGroup && groupTarget) {
           navigate(`/app/g/${groupTarget}`);
           return;
         }

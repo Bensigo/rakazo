@@ -8,7 +8,6 @@ import type {
 } from "@rakazo/contracts";
 import {
   abortableDelay,
-  appendConnectorIntent,
   attachmentsForThread,
   buildComposerMentionOptions,
   type ComposerMention,
@@ -16,13 +15,10 @@ import {
   isRunTerminalEvent,
   latestAnswerableAskMessageId,
   mentionChipKey,
-  needsAuthConnectorNames,
-  partitionComposerMentions,
+  resolveComposerSendPlan,
   SLASH_ACTIONS,
   type SlashActionId,
   serializeComposerPrompt,
-  stripMentionKinds,
-  toThreadMentionPayload,
   truncateSlashDescription,
 } from "@rakazo/core";
 import { Link, useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from "expo-router";
@@ -145,7 +141,6 @@ export default function Thread() {
           botName: routine.botName,
         })),
         connectors: mentionConnectors,
-        limit: 64,
       }),
     [groupId, inGroup, mentionBots, mentionConnectors, mentionGroups, mentionRoutines],
   );
@@ -611,35 +606,25 @@ export default function Thread() {
     const initialGroupTarget = groupId;
     if ((!initialBotTarget && !initialGroupTarget) || sending) return;
     const originThreadKey = initialGroupTarget ?? initialBotTarget;
-    let botTarget = initialBotTarget;
-    let groupTarget = initialGroupTarget;
-    const mentions = selectedMentions;
-    const parts = partitionComposerMentions(mentions);
-    const mentionedGroup = parts.groups[0];
-    const reroutedToGroup = Boolean(!initialGroupTarget && mentionedGroup);
-    if (reroutedToGroup && mentionedGroup) {
-      groupTarget = mentionedGroup.id;
-      botTarget = undefined;
-    }
     const attachments = attachmentsForThread(pendingAttachments, originThreadKey);
-    let trimmed = stripMentionKinds(serializeComposerPromptText().trim(), mentions, [
-      "group",
-      "routine",
-      "connector",
-    ]);
-    trimmed = appendConnectorIntent(trimmed, needsAuthConnectorNames(mentions));
-    if (!trimmed && parts.connectors.length) {
-      trimmed = parts.connectors.map((mention) => `@${mention.name}`).join(" ");
-    }
-    const routineIds = [...new Set(parts.routines.map((routine) => routine.id))];
-    if (!trimmed && attachments.length === 0 && routineIds.length === 0) return;
+    const plan = resolveComposerSendPlan({
+      text: serializeComposerPromptText(),
+      mentions: selectedMentions,
+      hasAttachments: attachments.length > 0,
+      alreadyInGroup: Boolean(initialGroupTarget),
+    });
+    if (plan.isNoOp) return;
+    const reroutedToGroup = Boolean(plan.rerouteGroupId);
+    const groupTarget = plan.rerouteGroupId ?? initialGroupTarget;
+    const botTarget = reroutedToGroup ? undefined : initialBotTarget;
+    const trimmed = plan.trimmed;
     setSending(true);
     setError(null);
     try {
-      if (routineIds.length) {
+      if (plan.shouldRunRoutines) {
         const sendNonce = crypto.randomUUID();
         await Promise.all(
-          routineIds.map((routineId) =>
+          plan.routineIds.map((routineId) =>
             rpc("routines/testRun", {
               routineId,
               clientNonce: `routine-mention:${sendNonce}:${routineId}`,
@@ -647,14 +632,17 @@ export default function Thread() {
           ),
         );
       }
-      if (!trimmed && attachments.length === 0) {
+      if (!plan.shouldSend) {
         setPendingAttachments((current) =>
           current.filter((attachment) => attachment.threadKey !== originThreadKey),
         );
-        if (reroutedToGroup && groupTarget) {
+        if (plan.shouldOpenGroup && groupTarget) {
           router.push({
             pathname: "/group-thread",
-            params: { groupId: groupTarget, name: mentionedGroup?.name ?? "Group" },
+            params: {
+              groupId: groupTarget,
+              name: plan.rerouteGroupName ?? "Group",
+            },
           });
           return;
         }
@@ -680,23 +668,20 @@ export default function Thread() {
         });
         artifactIds.push(artifact.id);
       }
-      const mentionPayload = toThreadMentionPayload(
-        mentions.filter((mention) => mention.kind !== "group" && mention.kind !== "routine"),
-      );
       await rpc(
         "threads/send",
         groupTarget
           ? {
               groupId: groupTarget,
               text: trimmed || undefined,
-              mentions: mentionPayload.length ? mentionPayload : undefined,
+              mentions: plan.mentionPayload.length ? plan.mentionPayload : undefined,
               artifactIds: artifactIds.length ? artifactIds : undefined,
               replyToMessageId: reroutedToGroup ? undefined : replyTarget?.id,
             }
           : {
               botId: botTarget!,
               text: trimmed || undefined,
-              mentions: mentionPayload.length ? mentionPayload : undefined,
+              mentions: plan.mentionPayload.length ? plan.mentionPayload : undefined,
               artifactIds: artifactIds.length ? artifactIds : undefined,
               replyToMessageId: replyTarget?.id,
             },
@@ -704,10 +689,13 @@ export default function Thread() {
       setPendingAttachments((current) =>
         current.filter((attachment) => attachment.threadKey !== originThreadKey),
       );
-      if (reroutedToGroup && groupTarget) {
+      if (plan.shouldOpenGroup && groupTarget) {
         router.push({
           pathname: "/group-thread",
-          params: { groupId: groupTarget, name: mentionedGroup?.name ?? "Group" },
+          params: {
+            groupId: groupTarget,
+            name: plan.rerouteGroupName ?? "Group",
+          },
         });
         return;
       }
