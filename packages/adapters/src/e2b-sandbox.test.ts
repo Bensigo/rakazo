@@ -233,9 +233,26 @@ describe("E2B computer backend", () => {
       context,
     );
     expect(control.url).toMatch(/^https:\/\/6081-desktop\.test\/vnc\.html\?/);
-    expect(command.mock.calls.some(([value]) => String(value).includes("-rfbport 5901"))).toBe(
-      true,
+    const startControl = command.mock.calls
+      .map(([value]) => String(value))
+      .find((value) => value.includes("novnc_proxy") && value.includes("-rfbport 5901"));
+    expect(startControl).toBeDefined();
+    expect(startControl).toContain("pkill -f 'x11vnc.*-rfbport 5901'");
+    expect(startControl).toContain("pkill -f 'novnc_proxy.*--listen 6081'");
+    // After stop: wait until VNC port is free (or fail) before storing a new password.
+    expect(startControl).toMatch(
+      /pkill -f 'x11vnc\.\*-rfbport 5901'[\s\S]*for i in \$\(seq 1 50\); do netstat -tuln \| grep -q ':5901 ' \|\| break[\s\S]*if netstat -tuln \| grep -q ':5901 '; then exit 1; fi[\s\S]*x11vnc -storepasswd/,
     );
+    // After starting x11vnc: require VNC port listen before starting novnc_proxy.
+    expect(startControl).toMatch(
+      /x11vnc -bg[\s\S]*-rfbport 5901[\s\S]*for i in \$\(seq 1 50\); do netstat -tuln \| grep -q ':5901 ' && break[\s\S]*if ! netstat -tuln \| grep -q ':5901 '; then exit 1; fi[\s\S]*novnc_proxy/,
+    );
+    const vncReadyIdx = startControl!.indexOf("if ! netstat -tuln | grep -q ':5901 '; then exit 1; fi");
+    const proxyStartIdx = startControl!.indexOf("./novnc_proxy --vnc localhost:5901");
+    const proxyReadyIdx = startControl!.lastIndexOf("grep -q ':6081 '");
+    expect(vncReadyIdx).toBeGreaterThan(-1);
+    expect(proxyStartIdx).toBeGreaterThan(vncReadyIdx);
+    expect(proxyReadyIdx).toBeGreaterThan(proxyStartIdx);
 
     await provider.connectScreen(computer, { view: "stream" }, context);
     const sameControl = await provider.connectScreen(
@@ -248,7 +265,7 @@ describe("E2B computer backend", () => {
     await provider.setScreenControl(computer, false, context, "lease-1");
     expect(
       command.mock.calls.some(([value]) =>
-        String(value).includes("pkill -f '^x11vnc .* -rfbport 5901'"),
+        String(value).includes("pkill -f 'x11vnc.*-rfbport 5901'"),
       ),
     ).toBe(true);
     const replacementControl = await provider.connectScreen(
@@ -432,8 +449,16 @@ describe("E2B computer backend", () => {
       researcher,
     );
     expect(control.url).toMatch(/6083-desktop\.test/);
-    expect(command.mock.calls.some(([value]) => String(value).includes("-rfbport 5903"))).toBe(
-      true,
+    const startControl = command.mock.calls
+      .map(([value]) => String(value))
+      .find((value) => value.includes("-rfbport 5903") && value.includes("novnc_proxy"));
+    expect(startControl).toBeDefined();
+    expect(startControl).toContain("pkill -f 'x11vnc.*-rfbport 5903'");
+    expect(startControl).toMatch(
+      /for i in \$\(seq 1 50\); do \(echo >\/dev\/tcp\/127\.0\.0\.1\/5903\)[\s\S]*then exit 1; fi[\s\S]*x11vnc -storepasswd/,
+    );
+    expect(startControl).toMatch(
+      /x11vnc -bg[\s\S]*-rfbport 5903[\s\S]*for i in \$\(seq 1 50\); do \(echo >\/dev\/tcp\/127\.0\.0\.1\/5903\)[\s\S]*then exit 1; fi[\s\S]*novnc_proxy/,
     );
 
     await provider.writeFile(
