@@ -570,6 +570,8 @@ export const ModelCatalogEntrySchema = z.object({
   signIn: ModelOAuthSignInModeSchema.optional(),
   reasoning: z.boolean().optional(),
   thinkingLevels: z.array(ThinkingLevelSchema).optional(),
+  /** Catalog stand-in so a provider appears before the user enters a real model id. */
+  placeholder: z.boolean().optional(),
 });
 export type ModelCatalogEntry = z.infer<typeof ModelCatalogEntrySchema>;
 

@@ -45,6 +45,8 @@ describe("Pi model catalog", () => {
       reasoning: true,
       thinkingLevels: ["low", "medium", "high", "xhigh"],
     });
+    const openAiCompatible = catalog.find((entry) => entry.provider === "openai-compatible");
+    expect(openAiCompatible).toMatchObject({ id: "custom", placeholder: true });
   });
 
   it("adds a configured OpenRouter model that is newer than the static catalog", async () => {

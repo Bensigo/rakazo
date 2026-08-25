@@ -4,6 +4,7 @@ import type { ModelOAuthSignInMode, ThinkingLevel } from "@rakazo/contracts";
 import { LOCAL_PROVIDER_ID, registerLocalProvider } from "./pi-local-provider.js";
 import { SUBSCRIPTION_SIGN_IN_PROVIDERS } from "./pi-oauth.js";
 import {
+  OPENAI_COMPATIBLE_CATALOG_MODEL_ID,
   OPENAI_COMPATIBLE_PROVIDER_ID,
   registerOpenAiCompatibleCatalog,
 } from "./pi-openai-compatible-provider.js";
@@ -23,6 +24,7 @@ export type PiCatalogEntry = {
   signIn?: ModelOAuthSignInMode;
   reasoning?: boolean;
   thinkingLevels?: ThinkingLevel[];
+  placeholder?: boolean;
 };
 
 export function listPiCatalog(): PiCatalogEntry[] {
@@ -63,6 +65,7 @@ function buildPiCatalog(): PiCatalogEntry[] {
         signIn: signInMeta?.mode,
         reasoning: Boolean(model.reasoning),
         thinkingLevels,
+        ...(model.id === OPENAI_COMPATIBLE_CATALOG_MODEL_ID ? { placeholder: true } : {}),
       });
     }
   }
