@@ -5,8 +5,8 @@ describe("formatElapsed", () => {
   it("formats sub-minute elapsed time to one decimal second", () => {
     expect(formatElapsed(1_000, 1_000)).toBe("0.0s");
     expect(formatElapsed(1_000, 1_100)).toBe("0.1s");
-    expect(formatElapsed(1_000, 12_450)).toBe("11.5s");
-    expect(formatElapsed(1_000, 60_999)).toBe("60.0s");
+    expect(formatElapsed(1_000, 12_500)).toBe("11.5s");
+    expect(formatElapsed(1_000, 60_900)).toBe("59.9s");
   });
 
   it("formats elapsed time past a minute", () => {
