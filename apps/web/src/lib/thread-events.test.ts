@@ -210,6 +210,7 @@ describe("thread event reduction", () => {
       error: null,
       startedAt: null,
       completedAt: null,
+      createdAt: "2026-08-16T00:00:00.000Z",
     };
 
     const next = reduceThreadSnapshot(
@@ -521,6 +522,7 @@ describe("thread event reduction", () => {
         error: null,
         startedAt: null,
         completedAt: null,
+        createdAt: "2026-08-16T00:00:00.000Z",
       },
     };
 
@@ -823,6 +825,7 @@ describe("thread event reduction", () => {
       error: null,
       startedAt: null,
       completedAt: null,
+      createdAt: "2026-08-16T00:00:00.000Z",
     };
     const otherLive = {
       ...message("progress:run-b", [{ kind: "progress" as const, text: "Other bot" }]),
@@ -936,6 +939,7 @@ describe("thread event reduction", () => {
       error: null,
       startedAt: null,
       completedAt: null,
+      createdAt: "2026-08-16T00:00:00.000Z",
     };
     const waitingRun = { ...newerRun, id: "run-waiting", botId: "bot-b", taskId: "task-b" };
     const initial: ThreadSnapshot = {
@@ -1157,6 +1161,7 @@ function threadRun(id: string, botId = "bot-1"): NonNullable<ThreadSnapshot["run
     error: null,
     startedAt: null,
     completedAt: null,
+    createdAt: "2026-08-16T00:00:00.000Z",
   };
 }
 

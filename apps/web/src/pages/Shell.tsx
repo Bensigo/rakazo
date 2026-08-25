@@ -972,8 +972,10 @@ export function ShellPage() {
   const workingStartedAtMs = (() => {
     let earliest: number | undefined;
     for (const run of workingRuns) {
-      if (!run.startedAt) continue;
-      const ms = Date.parse(run.startedAt);
+      // Prefer startedAt; fall back to createdAt so queued/leased runs keep a
+      // stable clock across remounts before the executor sets startedAt.
+      const iso = run.startedAt ?? run.createdAt;
+      const ms = Date.parse(iso);
       if (Number.isNaN(ms)) continue;
       if (earliest === undefined || ms < earliest) earliest = ms;
     }

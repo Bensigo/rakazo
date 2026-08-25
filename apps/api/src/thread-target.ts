@@ -335,6 +335,7 @@ function mapRun(run: {
   error: string | null;
   startedAt: Date | null;
   completedAt: Date | null;
+  createdAt: Date;
 }) {
   return {
     id: run.id,
@@ -348,6 +349,7 @@ function mapRun(run: {
     error: run.error,
     startedAt: run.startedAt?.toISOString() ?? null,
     completedAt: run.completedAt?.toISOString() ?? null,
+    createdAt: run.createdAt.toISOString(),
   };
 }
 

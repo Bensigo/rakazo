@@ -43,6 +43,7 @@ function runFromStartedEvent(event: ProductEvent, previous: Run | undefined): Ru
     error: null,
     startedAt: previous?.startedAt ?? event.createdAt,
     completedAt: null,
+    createdAt: previous?.createdAt ?? event.createdAt,
   };
 }
 
