@@ -305,9 +305,12 @@ export function createRunExecutor(deps: ExecutorDeps) {
         id,
         apiKey: resolved.oauth ? undefined : resolved.apiKey,
         baseUrl: resolved.baseUrl,
-        thinkingLevel: useOverride
-          ? ((override?.thinkingLevel as AgentRunRequest["model"]["thinkingLevel"]) ?? null)
-          : null,
+        thinkingLevel:
+          // Apply bot thinking with a successful override or workspace default.
+          // Drop it only when an override existed but its credential was missing.
+          hasOverride && !useOverride
+            ? null
+            : ((override?.thinkingLevel as AgentRunRequest["model"]["thinkingLevel"]) ?? null),
         oauth: resolved.oauth
           ? { credential: resolved.oauth, persist: resolved.persistOAuth }
           : undefined,
@@ -1690,9 +1693,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 id: runModelId,
                 apiKey: resolved.oauth ? undefined : resolved.apiKey,
                 baseUrl: resolved.baseUrl,
-                thinkingLevel: useModelOverride
-                  ? ((bot.thinkingLevel as AgentRunRequest["model"]["thinkingLevel"]) ?? null)
-                  : null,
+                thinkingLevel:
+                  hasModelOverride && !useModelOverride
+                    ? null
+                    : ((bot.thinkingLevel as AgentRunRequest["model"]["thinkingLevel"]) ?? null),
                 oauth: resolved.oauth
                   ? { credential: resolved.oauth, persist: resolved.persistOAuth }
                   : undefined,

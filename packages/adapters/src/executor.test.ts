@@ -356,4 +356,47 @@ describe("createRunExecutor", () => {
       }),
     );
   });
+
+  it("keeps per-bot thinking when using the workspace default model", async () => {
+    const findFirst = vi.fn(async (args: { where: { provider?: string; isDefault?: boolean } }) => {
+      if (args.where.isDefault) {
+        return {
+          id: "cred-default",
+          provider: "openrouter",
+          secretId: "secret-or",
+          defaultModel: "deepseek/deepseek-v4-flash-0731",
+          isDefault: true,
+        };
+      }
+      return null;
+    });
+    const prisma = {
+      bot: {
+        findFirst: vi.fn(async () => ({
+          modelProvider: null,
+          modelId: null,
+          thinkingLevel: "high",
+        })),
+      },
+      userModelCredential: { findFirst },
+      deploymentSettings: { findUnique: vi.fn(async () => null) },
+      secret: { findUnique: vi.fn(async () => null) },
+    } as unknown as PrismaClient;
+    const executor = createRunExecutor({
+      prisma,
+      secretStore: { load: vi.fn(), put: vi.fn() },
+    } as unknown as Parameters<typeof createRunExecutor>[0]);
+
+    const model = await executor.resolveModel({
+      userId: "user-1",
+      workspaceId: "ws-1",
+      botId: "bot-1",
+    });
+
+    expect(model).toMatchObject({
+      provider: "openrouter",
+      id: "deepseek/deepseek-v4-flash-0731",
+      thinkingLevel: "high",
+    });
+  });
 });
