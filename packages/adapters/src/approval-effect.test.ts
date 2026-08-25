@@ -5,10 +5,33 @@ import {
   claimApprovedEffect,
   claimIntendedEffect,
   completeExternalEffect,
+  createApprovedEffectReplayQueue,
   isApprovalPausedResult,
   resolveDuplicateEffectGate,
   settleUncertainEffect,
 } from "./approval-effect.js";
+
+describe("approved effect replay", () => {
+  it("replays persisted arguments instead of a changed model reconstruction", () => {
+    const approved = { title: "Approved title", body: "Approved body" };
+    const queue = createApprovedEffectReplayQueue([
+      { kind: "destination.write", request: approved },
+    ]);
+
+    expect(queue.take("destination.write")).toEqual(approved);
+    expect(queue.take("destination.write")).toBeUndefined();
+  });
+
+  it("keeps independently approved calls in creation order", () => {
+    const queue = createApprovedEffectReplayQueue([
+      { kind: "destination.write", request: { sequence: 1 } },
+      { kind: "destination.write", request: { sequence: 2 } },
+    ]);
+
+    expect(queue.take("destination.write")).toEqual({ sequence: 1 });
+    expect(queue.take("destination.write")).toEqual({ sequence: 2 });
+  });
+});
 
 describe("approvalEffectKey", () => {
   it("is stable across arg key order", () => {
