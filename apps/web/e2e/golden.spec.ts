@@ -94,7 +94,7 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
   // Side panel may have closed after the first takeover; reopen and wait until
   // Take control is enabled (busyBotName can lag briefly after waiting_takeover).
   await page.getByTitle("Agent computer").click();
-  const takeControl = page.getByRole("button", { name: "Take control" });
+  const takeControl = page.getByTestId("side-panel").getByRole("button", { name: "Take control" });
   await expect(takeControl).toBeEnabled({ timeout: 30_000 });
   await takeControl.click();
   await expect(page.getByRole("button", { name: "Close computer" })).toBeVisible();
