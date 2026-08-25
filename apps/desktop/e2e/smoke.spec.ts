@@ -39,7 +39,7 @@ test("launches with a narrow preload bridge and an isolated renderer", async () 
       };
     });
 
-    expect(renderer.bridgeKeys).toEqual(["platform", "window"]);
+    expect(renderer.bridgeKeys).toEqual(["oauth", "platform", "window"]);
     expect(renderer.windowKeys).toEqual(["close", "minimize", "state", "toggleMaximize"]);
     expect(renderer.platform).toBe(process.platform);
     expect(renderer.state).toEqual({ minimized: false, maximized: false, fullScreen: false });

@@ -7,6 +7,7 @@ import {
 import { ChevronDown } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { onDesktopOAuthCallback } from "../lib/desktop";
 import {
   cancelModelOAuthAttempt,
   finishModelOAuthAttempt,
@@ -232,10 +233,15 @@ export function OnboardingPage() {
     }
   }
 
-  async function submitOAuthCode() {
+  useEffect(() => {
+    if (oauth?.mode !== "auth-url") return;
+    return onDesktopOAuthCallback((code) => void submitOAuthCode(code));
+  }, [oauth]);
+
+  async function submitOAuthCode(captured?: string) {
     if (oauth?.mode !== "auth-url" || oauthCodeSubmittingRef.current) return;
     const controller = oauthAbortRef.current;
-    const code = pasteCode.trim();
+    const code = (captured ?? pasteCode).trim();
     if (!controller || !code) return;
     oauthCodeSubmittingRef.current = true;
     setPasteCode("");

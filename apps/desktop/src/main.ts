@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { app, BrowserWindow, ipcMain, net, session } from "electron";
+import { oauthCallbackFrom } from "./oauth-callback.js";
 import {
   bundledRendererCandidates,
   contentType,
@@ -86,6 +87,20 @@ function createWindow() {
         },
       },
     };
+  });
+  // The popup has no address bar, so a loopback redirect would otherwise strand
+  // the user on a blank window holding the authorization code in a URL they
+  // cannot read. Capture it here and hand it to the app instead.
+  win.webContents.on("did-create-window", (popup) => {
+    const capture = (details: Electron.Event, url: string) => {
+      const callback = oauthCallbackFrom(url);
+      if (!callback) return;
+      details.preventDefault();
+      if (!win.isDestroyed()) win.webContents.send("desktop.oauth.callback", callback);
+      if (!popup.isDestroyed()) popup.close();
+    };
+    popup.webContents.on("will-redirect", (details) => capture(details, details.url));
+    popup.webContents.on("will-navigate", (details) => capture(details, details.url));
   });
   win.on("close", (event) => {
     if (
