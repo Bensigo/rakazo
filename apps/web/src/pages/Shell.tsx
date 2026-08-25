@@ -1691,7 +1691,7 @@ export function ShellPage() {
                 }}
               >
                 <Gauge size={16} strokeWidth={1.7} className="text-[#9A9AA0]" />
-                <span className="flex-1 text-start text-[14.5px] text-[#ECECEE]">Weekly usage</span>
+                <span className="flex-1 text-start text-[14.5px] text-[#ECECEE]">Usage</span>
               </button>
               {usage ? (
                 <p className="px-3 pb-2 text-[12.5px] text-[#85858A]">
