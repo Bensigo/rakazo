@@ -62,6 +62,15 @@ test("logout protects bot deep links and sign-in restores the session", async ({
   await expect(composer).toHaveAttribute("autocomplete", "off");
   await expect(composer).toHaveAttribute("aria-label", "Message Chief");
   await expect(page.getByRole("button", { name: new RegExp(userName, "i") })).toBeVisible();
+
+  await composer.fill("line one");
+  const heightBeforeNewline = await composer.evaluate((el) => el.getBoundingClientRect().height);
+  await composer.press("Shift+Enter");
+  await composer.type("line two");
+  await expect(composer).toHaveValue("line one\nline two");
+  const heightWithNewline = await composer.evaluate((el) => el.getBoundingClientRect().height);
+  expect(heightWithNewline).toBeGreaterThan(heightBeforeNewline);
+
   const message = "Fake composer regression check.";
   await composer.fill(message);
   await captureScreenshot(page, testInfo, "40-restored-auth-session");
