@@ -1417,7 +1417,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   name: args.name ? String(args.name) : undefined,
                   skillId: args.skillId ? String(args.skillId) : undefined,
                   newName: args.newName ? String(args.newName) : undefined,
-                  description: args.description !== undefined ? String(args.description) : undefined,
+                  description:
+                    args.description !== undefined ? String(args.description) : undefined,
                   body: args.body !== undefined ? String(args.body) : undefined,
                   content: args.content ? String(args.content) : undefined,
                 },
