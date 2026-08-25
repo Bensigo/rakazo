@@ -6,6 +6,7 @@ import {
   e2bCreateOptions,
   isUnrecoverableSandboxError,
   openDesktopBrowser,
+  openDesktopUrl,
 } from "./e2b-sandbox.js";
 
 describe("sandbox idle", () => {
@@ -118,6 +119,26 @@ describe("e2b create options", () => {
       },
     });
     expect(launched).toEqual(["google-chrome", "firefox"]);
+  });
+
+  it("opens a URL through the named browser launcher", async () => {
+    const launched: Array<{ application: string; uri?: string }> = [];
+    await openDesktopUrl(
+      {
+        launch: async (application, uri) => {
+          launched.push({ application, uri });
+          if (application !== "firefox") throw new Error("missing");
+        },
+        open: async () => {
+          throw new Error("should not fall back");
+        },
+      },
+      "https://example.com/page",
+    );
+    expect(launched).toEqual([
+      { application: "google-chrome", uri: "https://example.com/page" },
+      { application: "firefox", uri: "https://example.com/page" },
+    ]);
   });
 });
 
