@@ -98,6 +98,9 @@ export function mergeThreadSnapshot(
   next: ThreadSnapshot,
   preserveLoadedHistory = false,
 ): ThreadSnapshot {
+  // A threads.get started before SSE caught up must not wipe newer live state
+  // (e.g. ask cards applied after send's post-refresh request was already in flight).
+  if (prev && prev.threadId === next.threadId && prev.cursor > next.cursor) return prev;
   return mergeThreadHistory(prev, next, preserveLoadedHistory);
 }
 
@@ -251,11 +254,26 @@ export function reduceThreadSnapshot(
       (candidate) => candidate.id === event.runId && candidate.status !== status,
     );
     const members = updateMemberStatus(prev.members, event.botId, status);
-    if (!runChanged && !activeRunChanged && members === prev.members) return prev;
+    // Ask pauses delete progress events server-side; drop the live bubble so a missed
+    // message.created cannot leave "working…" stuck next to waiting_input.
+    const liveId = progressMessageId(event);
+    const messages =
+      event.type === "run.waiting_input" && prev.messages.some((message) => message.id === liveId)
+        ? prev.messages.filter((message) => message.id !== liveId)
+        : prev.messages;
+    if (
+      !runChanged &&
+      !activeRunChanged &&
+      members === prev.members &&
+      messages === prev.messages
+    ) {
+      return prev;
+    }
     return {
       ...prev,
       cursor: event.seq,
       members,
+      messages,
       run: runChanged && prev.run ? { ...prev.run, status } : prev.run,
       activeRuns: activeRunChanged
         ? prev.activeRuns?.map((candidate) =>

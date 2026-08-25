@@ -210,84 +210,98 @@ export async function threadSnapshot(
   deps: { prisma: PrismaClient },
   target: ThreadTarget,
 ): Promise<ThreadSnapshot> {
+  // Lock the thread row so messages, the event cursor, active runs, and live
+  // progress are read from one consistent commit. A torn Promise.all can
+  // otherwise advance the client cursor past thread.message.created while the
+  // ask message page still omits it — leaving waiting_input with no AskCard.
   if (target.kind === "bot") {
-    const [messagePage, last, run, busyBotName] = await Promise.all([
-      loadMessagePage(deps.prisma, target.threadId, undefined, THREAD_MESSAGE_PAGE_SIZE),
-      deps.prisma.event.findFirst({
-        where: { threadId: target.threadId },
-        orderBy: { seq: "desc" },
-        select: { seq: true },
-      }),
-      deps.prisma.run.findFirst({
-        where: {
-          botId: target.botId,
-          status: { in: [...ACTIVE_RUN_STATUSES] },
-        },
-        orderBy: { createdAt: "desc" },
-      }),
+    const [busyBotName, core] = await Promise.all([
       resolveBusyBotName(deps.prisma, {
         computerId: target.bot.computer?.id,
         botId: target.botId,
         botName: target.bot.name,
       }),
+      deps.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM threads WHERE id = ${target.threadId} FOR SHARE`;
+        const [messagePage, last, run] = await Promise.all([
+          loadMessagePage(tx, target.threadId, undefined, THREAD_MESSAGE_PAGE_SIZE),
+          tx.event.findFirst({
+            where: { threadId: target.threadId },
+            orderBy: { seq: "desc" },
+            select: { seq: true },
+          }),
+          tx.run.findFirst({
+            where: {
+              botId: target.botId,
+              status: { in: [...ACTIVE_RUN_STATUSES] },
+            },
+            orderBy: { createdAt: "desc" },
+          }),
+        ]);
+        const liveEvents = run
+          ? await tx.event.findMany({
+              where: {
+                threadId: target.threadId,
+                runId: run.id,
+                type: { in: ["thread.progress", "thread.subagent", "agent.tool.called"] },
+              },
+              orderBy: { seq: "asc" },
+            })
+          : [];
+        return { messagePage, last, run, liveEvents };
+      }),
     ]);
-    const liveEvents = run
-      ? await deps.prisma.event.findMany({
-          where: {
-            threadId: target.threadId,
-            runId: run.id,
-            type: { in: ["thread.progress", "thread.subagent", "agent.tool.called"] },
-          },
-          orderBy: { seq: "asc" },
-        })
-      : [];
     return {
       botId: target.botId,
       threadId: target.threadId,
-      cursor: last?.seq ?? -1,
-      messages: messagesWithLiveEvents(messagePage.messages, liveEvents),
-      olderCursor: messagePage.olderCursor,
-      run: run ? mapRun(run) : null,
+      cursor: core.last?.seq ?? -1,
+      messages: messagesWithLiveEvents(core.messagePage.messages, core.liveEvents),
+      olderCursor: core.messagePage.olderCursor,
+      run: core.run ? mapRun(core.run) : null,
       computer: toComputerStatus(target.botId, target.bot.computer, busyBotName),
     };
   }
 
-  const [messagePage, last, activeRuns] = await Promise.all([
-    loadMessagePage(deps.prisma, target.threadId, undefined, THREAD_MESSAGE_PAGE_SIZE),
-    deps.prisma.event.findFirst({
-      where: { threadId: target.threadId },
-      orderBy: { seq: "desc" },
-      select: { seq: true },
-    }),
-    deps.prisma.run.findMany({
-      where: {
-        threadId: target.threadId,
-        status: { in: [...ACTIVE_RUN_STATUSES] },
-      },
-      orderBy: { createdAt: "desc" },
-    }),
-  ]);
-  const liveEvents =
-    activeRuns.length > 0
-      ? await deps.prisma.event.findMany({
-          where: {
-            threadId: target.threadId,
-            runId: { in: activeRuns.map((run) => run.id) },
-            type: { in: ["thread.progress", "thread.subagent", "agent.tool.called"] },
-          },
-          orderBy: { seq: "asc" },
-        })
-      : [];
+  const core = await deps.prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM threads WHERE id = ${target.threadId} FOR SHARE`;
+    const [messagePage, last, activeRuns] = await Promise.all([
+      loadMessagePage(tx, target.threadId, undefined, THREAD_MESSAGE_PAGE_SIZE),
+      tx.event.findFirst({
+        where: { threadId: target.threadId },
+        orderBy: { seq: "desc" },
+        select: { seq: true },
+      }),
+      tx.run.findMany({
+        where: {
+          threadId: target.threadId,
+          status: { in: [...ACTIVE_RUN_STATUSES] },
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+    ]);
+    const liveEvents =
+      activeRuns.length > 0
+        ? await tx.event.findMany({
+            where: {
+              threadId: target.threadId,
+              runId: { in: activeRuns.map((run) => run.id) },
+              type: { in: ["thread.progress", "thread.subagent", "agent.tool.called"] },
+            },
+            orderBy: { seq: "asc" },
+          })
+        : [];
+    return { messagePage, last, activeRuns, liveEvents };
+  });
   return {
     groupId: target.groupId,
     groupName: target.groupName,
     members: target.members,
     threadId: target.threadId,
-    cursor: last?.seq ?? -1,
-    messages: messagesWithLiveEvents(messagePage.messages, liveEvents),
-    olderCursor: messagePage.olderCursor,
-    run: activeRuns[0] ? mapRun(activeRuns[0]) : null,
-    activeRuns: activeRuns.map(mapRun),
+    cursor: core.last?.seq ?? -1,
+    messages: messagesWithLiveEvents(core.messagePage.messages, core.liveEvents),
+    olderCursor: core.messagePage.olderCursor,
+    run: core.activeRuns[0] ? mapRun(core.activeRuns[0]) : null,
+    activeRuns: core.activeRuns.map(mapRun),
   };
 }
 

@@ -4,13 +4,18 @@ import { ApprovalRulesSettings } from "../components/ApprovalRulesSettings";
 export function AccountSettingsOverlay({
   email,
   name,
+  usage,
+  focusUsage,
   onClose,
 }: {
   email?: string | null;
   name: string;
+  usage?: { runs: number; inputTokens: number; outputTokens: number } | null;
+  focusUsage?: boolean;
   onClose: () => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const usageRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
@@ -21,12 +26,13 @@ export function AccountSettingsOverlay({
       if (event.key === "Escape") onCloseRef.current();
     }
     window.addEventListener("keydown", handleKeyDown);
-    panelRef.current?.focus();
+    if (focusUsage) usageRef.current?.focus();
+    else panelRef.current?.focus();
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       previousFocus?.focus();
     };
-  }, []);
+  }, [focusUsage]);
 
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center bg-[rgba(4,4,5,.62)] p-4 sm:p-10">
@@ -63,6 +69,23 @@ export function AccountSettingsOverlay({
           <p className="mt-3 text-[14px] text-[#C9C9CE]">{name}</p>
           {email ? <p className="mt-1 text-[13px] text-[#7A7A80]">{email}</p> : null}
         </section>
+
+        <div
+          ref={usageRef}
+          tabIndex={-1}
+          data-testid="usage-settings"
+          className="mt-5 rounded-[14px] border border-[#26262A] bg-[#101012] px-4 py-4 outline-none"
+        >
+          <h3 className="text-[15px] font-medium text-[#ECECEE]">Usage</h3>
+          {usage ? (
+            <p className="mt-3 text-[14px] text-[#C9C9CE]">
+              {usage.runs} runs · {usage.inputTokens + usage.outputTokens} tokens
+            </p>
+          ) : null}
+          <p className={`text-[12.5px] text-[#6C6C70] ${usage ? "mt-2" : "mt-3"}`}>
+            Model spend uses your provider keys.
+          </p>
+        </div>
 
         <details
           data-testid="advanced-settings"

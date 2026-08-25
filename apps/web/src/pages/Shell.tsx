@@ -1,5 +1,6 @@
 import { ChatMarkdown } from "@rakazo/chat-ui/web";
 import type {
+  AgentSkillCatalogEntry,
   Bot,
   BotSection,
   ComputerMode,
@@ -37,17 +38,21 @@ import {
   defaultCronPreset,
   formatCron,
   groupBotsForSidebar,
-  hasMentionToken,
   inferAttachmentMimeType,
   isActive,
   isRunTerminalEvent,
   latestAnswerableAskMessageId,
   presetFromCron,
+  SLASH_ACTIONS,
+  type SlashActionId,
+  serializeComposerPrompt,
   speechFromBlocks,
+  truncateSlashDescription,
 } from "@rakazo/core";
 import { BotAvatar, Button, GroupAvatar } from "@rakazo/ui-web";
 import {
   ArrowUp,
+  Box,
   ChevronLeft,
   Cpu,
   Gauge,
@@ -106,7 +111,6 @@ import {
   computerTakeoverBlocked,
   isComputerStatusEvent,
   isThreadSnapshotEvent,
-  mergeThreadSnapshot,
   prependThreadMessagePage,
   reconcileRefreshedThread,
   reduceComputerStatus,
@@ -197,6 +201,7 @@ export function ShellPage() {
   const [routinesBotId, setRoutinesBotId] = useState<string | null>(null);
   const [taughtSkills, setTaughtSkills] = useState<TaughtSkill[]>([]);
   const [taughtSkillsBotId, setTaughtSkillsBotId] = useState<string | null>(null);
+  const [agentSkills, setAgentSkills] = useState<AgentSkillCatalogEntry[]>([]);
   const [teachBusy, setTeachBusy] = useState(false);
   const [computer, setComputer] = useState<ComputerStatus | null>(null);
   const computerRef = useRef<ComputerStatus | null>(null);
@@ -219,6 +224,7 @@ export function ShellPage() {
   const [pluginsOpen, setPluginsOpen] = useState(false);
   const [mcpOpen, setMcpOpen] = useState(false);
   const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
+  const [accountSettingsFocusUsage, setAccountSettingsFocusUsage] = useState(false);
   const [modelsOpen, setModelsOpen] = useState(false);
   const [memorySettingsOpen, setMemorySettingsOpen] = useState(false);
   const [memoryProviderConfig, setMemoryProviderConfig] = useState<
@@ -398,9 +404,13 @@ export function ShellPage() {
     const snap = await rpc.threads.get({ groupId: id });
     markOnce("rk:renderer:thread-response");
     if (activeGroupId.current !== id || request !== groupRefreshEpoch.current) return snap;
-    updateSnapshot((prev) =>
-      mergeThreadSnapshot(prev, snap, expandedHistoryThread.current === snap.threadId),
+    const reconciled = reconcileRefreshedThread(
+      snapshotRef.current,
+      snap,
+      computerRef.current,
+      expandedHistoryThread.current === snap.threadId,
     );
+    commitSnapshot(reconciled.snapshot);
     commitComputer(null);
     setRoutines([]);
     setRoutinesBotId(null);
@@ -603,6 +613,28 @@ export function ShellPage() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    void rpc.agentSkills
+      .list()
+      .then((skills) => {
+        if (!cancelled) setAgentSkills(skills);
+      })
+      .catch(() => {
+        if (!cancelled) setAgentSkills([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const refreshAgentSkills = useCallback(() => {
+    void rpc.agentSkills
+      .list()
+      .then(setAgentSkills)
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
     void rpc.voice
       .status()
       .then(setVoiceStatus)
@@ -715,7 +747,12 @@ export function ShellPage() {
               }
               if (event.payload.role === "bot") markBotReadIfVisible(active.id);
             }
-            if (isRunTerminalEvent(event) || event.type === "skill.teaching.stopped") {
+            if (
+              isRunTerminalEvent(event) ||
+              event.type === "run.waiting_input" ||
+              event.type === "skill.teaching.stopped"
+            ) {
+              // waiting_input: reconcile ask cards if a stale post-send refresh raced SSE.
               void refreshThread(active.id).catch(() => undefined);
             } else if (isComputerStatusEvent(event)) {
               void refreshComputerScreen(active.id).catch(() => undefined);
@@ -784,7 +821,8 @@ export function ShellPage() {
               readVisibleGroups.current.delete(groupId);
               markVisibleGroupRead();
             }
-            if (isRunTerminalEvent(event)) {
+            if (isRunTerminalEvent(event) || event.type === "run.waiting_input") {
+              // waiting_input: reconcile ask cards if a stale post-send refresh raced SSE.
               void refreshGroupThread(groupId).catch(() => undefined);
             }
           }
@@ -1617,6 +1655,7 @@ export function ShellPage() {
                 aria-label="Settings"
                 onClick={() => {
                   setMenuOpen(false);
+                  setAccountSettingsFocusUsage(false);
                   setAccountSettingsOpen(true);
                 }}
                 className="flex w-full items-center gap-3 rounded-[11px] px-3 py-2.5 hover:bg-[#232327]"
@@ -1665,7 +1704,7 @@ export function ShellPage() {
                 }}
               >
                 <Gauge size={16} strokeWidth={1.7} className="text-[#9A9AA0]" />
-                <span className="flex-1 text-start text-[14.5px] text-[#ECECEE]">Weekly usage</span>
+                <span className="flex-1 text-start text-[14.5px] text-[#ECECEE]">Usage</span>
               </button>
               {usage ? (
                 <p className="px-3 pb-2 text-[12.5px] text-[#85858A]">
@@ -1754,14 +1793,12 @@ export function ShellPage() {
                 type="button"
                 title="Agent computer"
                 onClick={() => {
-                  setPanel((p) => {
-                    const next = p === "computer" ? null : "computer";
-                    if (next === "computer" && active) {
-                      // Refresh run/computer so Take control isn't stuck on a stale busyBotName.
-                      void refreshThread(active.id).catch(() => undefined);
-                    }
-                    return next;
-                  });
+                  const next = panel === "computer" ? null : "computer";
+                  setPanel(next);
+                  if (next === "computer" && active) {
+                    // Refresh run/computer so Take control isn't stuck on a stale busyBotName.
+                    void refreshThread(active.id).catch(() => undefined);
+                  }
                 }}
                 className="grid h-[30px] w-[34px] place-items-center rounded-[9px] hover:bg-[#1B1B1E]"
                 style={{ background: panel ? "#1B1B1E" : "transparent" }}
@@ -1818,9 +1855,31 @@ export function ShellPage() {
               ? (activeSnapshot?.members ?? activeGroup?.members)?.map((member) => ({
                   botId: member.botId,
                   name: member.name,
+                  color: member.color,
                 }))
               : undefined
           }
+          agentSkills={agentSkills}
+          onSlashOpen={refreshAgentSkills}
+          onSlashAction={(action) => {
+            if (action === "chat-settings") {
+              setPanel(inGroup ? "group-settings" : "settings");
+              return;
+            }
+            if (action === "settings-general") {
+              setAccountSettingsFocusUsage(false);
+              setAccountSettingsOpen(true);
+              return;
+            }
+            if (action === "settings-usage") {
+              setAccountSettingsFocusUsage(true);
+              setAccountSettingsOpen(true);
+              void rpc.usage
+                .summary()
+                .then(setUsage)
+                .catch(() => undefined);
+            }
+          }}
           dictating={dictating}
           transcribe={Boolean(voiceStatus?.transcribe)}
           onDictateStart={(onFinal) => {
@@ -2354,7 +2413,12 @@ export function ShellPage() {
           <AccountSettingsOverlay
             name={userName}
             email={session.data?.user.email}
-            onClose={() => setAccountSettingsOpen(false)}
+            usage={usage}
+            focusUsage={accountSettingsFocusUsage}
+            onClose={() => {
+              setAccountSettingsOpen(false);
+              setAccountSettingsFocusUsage(false);
+            }}
           />
         ) : null}
         {modelsOpen ? <ModelSettingsOverlay onClose={() => setModelsOpen(false)} /> : null}
@@ -2647,6 +2711,9 @@ const Composer = memo(function Composer({
   replyTarget,
   onClearReply,
   mentionMembers,
+  agentSkills,
+  onSlashOpen,
+  onSlashAction,
   dictating,
   transcribe,
   onDictateStart,
@@ -2667,7 +2734,10 @@ const Composer = memo(function Composer({
   onStop: () => Promise<void>;
   replyTarget?: ThreadMessage | null;
   onClearReply?: () => void;
-  mentionMembers?: Array<{ botId: string; name: string }>;
+  mentionMembers?: Array<{ botId: string; name: string; color?: string }>;
+  agentSkills?: AgentSkillCatalogEntry[];
+  onSlashOpen?: () => void;
+  onSlashAction?: (action: SlashActionId) => void;
   dictating: boolean;
   transcribe: boolean;
   onDictateStart: (onFinal: (text: string) => void) => void;
@@ -2675,30 +2745,58 @@ const Composer = memo(function Composer({
 }) {
   const [draft, setDraft] = useState("");
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
-  const [selectedMentions, setSelectedMentions] = useState<Array<{ botId: string; name: string }>>(
-    [],
-  );
-  const canSend = draft.trim().length > 0 || pendingAttachments.length > 0;
+  const [slashQuery, setSlashQuery] = useState<string | null>(null);
+  const [selectedSkill, setSelectedSkill] = useState<AgentSkillCatalogEntry | null>(null);
+  const [selectedMentions, setSelectedMentions] = useState<
+    Array<{ botId: string; name: string; color?: string }>
+  >([]);
+  const canSend =
+    draft.trim().length > 0 ||
+    selectedSkill !== null ||
+    selectedMentions.length > 0 ||
+    pendingAttachments.length > 0;
 
   function updateDraft(value: string) {
     setDraft(value);
-    setSelectedMentions((current) =>
-      current.filter((member) => hasMentionToken(value, member.name)),
-    );
-    const match = /(?:^|\s)@([\w-]*)$/.exec(value);
-    setMentionQuery(match ? (match[1] ?? "") : null);
+    const mentionMatch = /(?:^|\s)@([\w-]*)$/.exec(value);
+    setMentionQuery(mentionMatch ? (mentionMatch[1] ?? "") : null);
+    // `/` only at the start of the draft so forced skills expand (`Use skill:` / `/Name` prefix).
+    const slashMatch = selectedSkill === null ? /^\/([^\n]*)$/.exec(value) : null;
+    const nextSlash = slashMatch ? (slashMatch[1] ?? "") : null;
+    if (nextSlash !== null && slashQuery === null) onSlashOpen?.();
+    setSlashQuery(nextSlash);
   }
 
-  function insertMention(member: { botId: string; name: string }) {
-    setDraft((current) => current.replace(/@([\w-]*)$/, `@${member.name} `));
-    if (member.botId !== "everyone") {
-      setSelectedMentions((current) =>
-        current.some((selected) => selected.botId === member.botId)
-          ? current
-          : [...current, member],
-      );
-    }
+  function insertMention(member: { botId: string; name: string; color?: string }) {
+    setDraft((current) => current.replace(/@([\w-]*)$/, ""));
     setMentionQuery(null);
+    if (member.botId === "everyone") {
+      setDraft((current) => `${current.replace(/\s+$/, "")} @everyone `.replace(/^\s+/, ""));
+      return;
+    }
+    setSelectedMentions((current) =>
+      current.some((selected) => selected.botId === member.botId) ? current : [...current, member],
+    );
+  }
+
+  function insertSkill(skill: AgentSkillCatalogEntry) {
+    setSelectedSkill(skill);
+    setDraft("");
+    setSlashQuery(null);
+  }
+
+  function runSlashAction(action: SlashActionId) {
+    setDraft("");
+    setSlashQuery(null);
+    onSlashAction?.(action);
+  }
+
+  function removeLastChip() {
+    if (selectedMentions.length > 0) {
+      setSelectedMentions((current) => current.slice(0, -1));
+      return;
+    }
+    if (selectedSkill) setSelectedSkill(null);
   }
 
   const mentionOptions = useMemo(() => {
@@ -2706,20 +2804,51 @@ const Composer = memo(function Composer({
     const query = mentionQuery.toLowerCase();
     const options = mentionMembers.filter((member) => member.name.toLowerCase().startsWith(query));
     if ("everyone".startsWith(query)) {
-      options.unshift({ botId: "everyone", name: "everyone" });
+      options.unshift({ botId: "everyone", name: "everyone", color: "#85858A" });
     }
     return options.slice(0, 8);
   }, [mentionMembers, mentionQuery]);
 
+  const slashSkillOptions = useMemo(() => {
+    if (slashQuery === null) return [];
+    const query = slashQuery.trim().toLowerCase();
+    const skills = agentSkills ?? [];
+    return skills
+      .filter((skill) => {
+        if (!query) return true;
+        return (
+          skill.name.toLowerCase().includes(query) ||
+          skill.description.toLowerCase().includes(query)
+        );
+      })
+      .slice(0, 8);
+  }, [agentSkills, slashQuery]);
+
+  const slashActionOptions = useMemo(() => {
+    if (slashQuery === null) return [];
+    const query = slashQuery.trim().toLowerCase();
+    return SLASH_ACTIONS.filter((action) => !query || action.label.toLowerCase().includes(query));
+  }, [slashQuery]);
+
+  const showSlashPicker =
+    slashQuery !== null &&
+    mentionQuery === null &&
+    (slashSkillOptions.length > 0 || slashActionOptions.length > 0);
+
   function send() {
     if (!canSend || sending || disabled) return;
-    const text = draft;
+    const text = serializeComposerPrompt(draft, selectedSkill, selectedMentions);
     setDraft("");
     setMentionQuery(null);
+    setSlashQuery(null);
+    setSelectedSkill(null);
     const mentions = selectedMentions.map((member) => member.botId);
     setSelectedMentions([]);
-    void onSend(text, mentions);
+    void onSend(text, mentions.length ? mentions : undefined);
   }
+
+  const showComposerPlaceholder =
+    draft.length === 0 && selectedSkill === null && selectedMentions.length === 0;
 
   return (
     <div className="relative z-30 px-3 pb-4 pt-3 md:px-6 md:pb-6">
@@ -2796,6 +2925,44 @@ const Composer = memo(function Composer({
           ))}
         </div>
       ) : null}
+      {showSlashPicker ? (
+        <div
+          data-testid="slash-picker"
+          className="mb-2 overflow-hidden rounded-[14px] border border-[#26262A] bg-[#17171A]"
+        >
+          {slashSkillOptions.map((skill) => (
+            <button
+              key={skill.id}
+              type="button"
+              aria-label={`Skill ${skill.name}`}
+              onClick={() => insertSkill(skill)}
+              className="flex w-full items-start gap-3 px-4 py-2.5 text-start hover:bg-[#1F1F22]"
+            >
+              <Box size={16} strokeWidth={1.7} className="mt-0.5 shrink-0 text-[#9A9AA0]" />
+              <span className="min-w-0">
+                <span dir="auto" className="block text-[14px] text-[#ECECEE]">
+                  {skill.name}
+                </span>
+                <span dir="auto" className="block truncate text-[12.5px] text-[#85858A]">
+                  {truncateSlashDescription(skill.description)}
+                </span>
+              </span>
+            </button>
+          ))}
+          {slashActionOptions.map((action) => (
+            <button
+              key={action.id}
+              type="button"
+              aria-label={action.label}
+              onClick={() => runSlashAction(action.id)}
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-start hover:bg-[#1F1F22]"
+            >
+              <Settings size={16} strokeWidth={1.7} className="shrink-0 text-[#9A9AA0]" />
+              <span className="text-[14px] text-[#ECECEE]">{action.label}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div className="flex items-center gap-3.5 rounded-full border border-[#202023] bg-[#131315] py-[9px] pe-2.5 ps-3">
         <input
           ref={fileInputRef}
@@ -2839,23 +3006,84 @@ const Composer = memo(function Composer({
         >
           <Mic size={16} strokeWidth={1.8} />
         </button>
-        <input
-          value={draft}
-          onChange={(event) => updateDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              send();
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+          {selectedSkill ? (
+            <span
+              data-testid="skill-chip"
+              className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-[#1C1C1F] px-2.5 py-1 text-[13px] text-[#ECECEE]"
+            >
+              <Box size={13} strokeWidth={1.7} className="shrink-0 text-[#B0B0B6]" />
+              <span dir="auto" className="truncate">
+                {selectedSkill.name}
+              </span>
+              <button
+                type="button"
+                aria-label={`Remove skill ${selectedSkill.name}`}
+                onClick={() => setSelectedSkill(null)}
+                className="text-[#85858A] hover:text-[#ECECEE]"
+              >
+                <X size={12} strokeWidth={2} />
+              </button>
+            </span>
+          ) : null}
+          {selectedMentions.map((member) => (
+            <span
+              key={member.botId}
+              data-testid="mention-chip"
+              className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-[#1C1C1F] px-2.5 py-1 text-[13px] text-[#ECECEE]"
+            >
+              <BotAvatar color={member.color ?? "#85858A"} size={16} />
+              <span dir="auto" className="truncate">
+                {member.name}
+              </span>
+              <button
+                type="button"
+                aria-label={`Remove mention ${member.name}`}
+                onClick={() =>
+                  setSelectedMentions((current) =>
+                    current.filter((selected) => selected.botId !== member.botId),
+                  )
+                }
+                className="text-[#85858A] hover:text-[#ECECEE]"
+              >
+                <X size={12} strokeWidth={2} />
+              </button>
+            </span>
+          ))}
+          <textarea
+            value={draft}
+            onChange={(event) => updateDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (
+                event.key === "Backspace" &&
+                draft.length === 0 &&
+                (selectedSkill !== null || selectedMentions.length > 0)
+              ) {
+                event.preventDefault();
+                removeLastChip();
+                return;
+              }
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                send();
+              }
+            }}
+            disabled={disabled}
+            placeholder={
+              showComposerPlaceholder
+                ? activeName
+                  ? `Message ${activeName}`
+                  : "Message…"
+                : undefined
             }
-          }}
-          disabled={disabled}
-          placeholder={activeName ? `Message ${activeName}` : "Message…"}
-          aria-label={activeName ? `Message ${activeName}` : "Message"}
-          name="chat-message"
-          autoComplete="off"
-          dir="auto"
-          className="flex-1 bg-transparent text-[15.5px] text-[#E9E9EA] outline-none disabled:opacity-40"
-        />
+            aria-label={activeName ? `Message ${activeName}` : "Message"}
+            name="chat-message"
+            autoComplete="off"
+            dir="auto"
+            rows={1}
+            className="max-h-32 min-h-[24px] min-w-[8rem] flex-1 resize-none overflow-y-auto bg-transparent py-0.5 text-[15.5px] leading-6 text-[#E9E9EA] outline-none disabled:opacity-40"
+          />
+        </div>
         {running ? (
           <button
             type="button"

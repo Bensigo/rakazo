@@ -140,6 +140,27 @@ describe("skill tools", () => {
     expect(String(read.content)).toContain("Leave comments");
   });
 
+  it("renames only via newName, not the name lookup key", async () => {
+    const created = await skillCreateFromTool(prisma as never, owner, {
+      name: "Original",
+      description: "Keep name unless newName",
+      body: "body",
+    });
+    const skillId = String(created.id);
+    const mistyped = await skillUpdateFromTool(prisma as never, owner, {
+      skillId,
+      name: "Should not apply",
+      description: "still original name",
+    });
+    expect(mistyped).toMatchObject({ ok: true, name: "Original" });
+
+    const renamed = await skillUpdateFromTool(prisma as never, owner, {
+      skillId,
+      newName: "Renamed",
+    });
+    expect(renamed).toMatchObject({ ok: true, name: "Renamed" });
+  });
+
   it("scopes list to the owner workspace and injects catalog lines", async () => {
     prisma = makePrisma([
       {

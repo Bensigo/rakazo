@@ -31,13 +31,17 @@ describe("threadSnapshot", () => {
         createdAt: new Date("2026-08-23T00:00:00.000Z"),
       },
     ]);
-    const prisma = {
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ id: "thread-1" }]),
       message: { findMany: vi.fn().mockResolvedValue([]) },
       event: {
         findFirst: vi.fn().mockResolvedValue({ seq: 4 }),
         findMany: findManyEvents,
       },
       run: { findFirst: vi.fn().mockResolvedValue(run) },
+    };
+    const prisma = {
+      $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
     } as unknown as PrismaClient;
     const target = {
       kind: "bot",
@@ -48,6 +52,7 @@ describe("threadSnapshot", () => {
 
     const snapshot = await threadSnapshot({ prisma }, target);
 
+    expect(tx.$queryRaw).toHaveBeenCalledOnce();
     expect(findManyEvents).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({

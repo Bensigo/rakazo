@@ -348,6 +348,9 @@ export function applyMobileThreadEvent(
     };
   }
   if (event.type === "run.waiting_input") {
+    const progressId = progressMessageId(event);
+    const messages = prev.messages.filter((message) => message.id !== progressId);
+    const progressCleared = messages.length !== prev.messages.length;
     const runChanged = Boolean(
       prev.run && prev.run.id === event.runId && prev.run.status !== "waiting_input",
     );
@@ -355,7 +358,7 @@ export function applyMobileThreadEvent(
       (candidate) => candidate.id === event.runId && candidate.status !== "waiting_input",
     );
     const cursor = event.seq ?? prev.cursor;
-    if (!runChanged && !activeRunChanged) {
+    if (!runChanged && !activeRunChanged && !progressCleared) {
       return cursor === prev.cursor ? prev : { ...prev, cursor };
     }
     const run = runChanged && prev.run ? { ...prev.run, status: "waiting_input" } : prev.run;
@@ -364,7 +367,7 @@ export function applyMobileThreadEvent(
           candidate.id === event.runId ? { ...candidate, status: "waiting_input" } : candidate,
         )
       : prev.activeRuns;
-    return { ...prev, cursor, run, activeRuns };
+    return { ...prev, cursor, run, activeRuns, messages };
   }
   if (isRunTerminalEvent(event)) {
     const activeRuns = prev.activeRuns?.filter((candidate) => candidate.id !== event.runId);
