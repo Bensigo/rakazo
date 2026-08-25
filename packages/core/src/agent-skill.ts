@@ -96,6 +96,12 @@ export function buildSkillMd(input: {
 }): string {
   const name = input.name.trim();
   const description = input.description.trim();
+  if (!name) throw new Error("Skill name is required.");
+  if (!description) throw new Error("Skill description is required.");
+  if (name.length > 80) throw new Error("Skill name must be at most 80 characters.");
+  if (description.length > 2000) {
+    throw new Error("Skill description must be at most 2000 characters.");
+  }
   const merged: Record<string, unknown> = { ...(input.frontmatter ?? {}) };
   merged.name = name;
   merged.description = description;
@@ -294,8 +300,8 @@ function parseSimpleYamlObject(text: string): Record<string, unknown> {
     }
     const key = keyed[1]!;
     const raw = keyed[2] ?? "";
-    // YAML block scalars: | / > with optional chomping (+/-) and indent digit (|-, >+, |2, …).
-    if (/^[>|][+-]?\d*$/.test(raw)) {
+    // YAML block scalars: | / > with optional chomp (+/-) and/or indent digit, either order.
+    if (/^[>|](?:[1-9]\d*[+-]?|[+-](?:[1-9]\d*)?)?$/.test(raw)) {
       const blockLines: string[] = [];
       i += 1;
       while (i < lines.length && (/^\s+/.test(lines[i] ?? "") || (lines[i] ?? "").trim() === "")) {

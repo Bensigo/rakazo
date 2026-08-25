@@ -78,13 +78,28 @@ export function resolveSkillContent(input: {
       message: "Provide content (SKILL.md) or name + description (+ optional body)",
     });
   }
-  const content = buildSkillMd({
-    name,
-    description,
-    body,
-    frontmatter: priorParsed && !("error" in priorParsed) ? priorParsed.frontmatter : undefined,
-  });
-  return { name, description, content };
+  let content: string;
+  try {
+    content = buildSkillMd({
+      name,
+      description,
+      body,
+      frontmatter: priorParsed && !("error" in priorParsed) ? priorParsed.frontmatter : undefined,
+    });
+  } catch (error) {
+    throw new ORPCError("BAD_REQUEST", {
+      message: error instanceof Error ? error.message : "Invalid skill fields.",
+    });
+  }
+  const validated = parseSkillMd(content);
+  if ("error" in validated) {
+    throw new ORPCError("BAD_REQUEST", { message: validated.error });
+  }
+  return {
+    name: validated.name,
+    description: validated.description,
+    content: buildSkillMd(validated),
+  };
 }
 
 export function createAgentSkillsService(prisma: PrismaClient) {
@@ -176,7 +191,11 @@ export function createAgentSkillsService(prisma: PrismaClient) {
         });
         return mapAgentSkill(row);
       } catch (error) {
-        if ((error as { code?: string }).code === "P2002") {
+        if (
+          error instanceof Error &&
+          "code" in error &&
+          (error as { code?: string }).code === "P2002"
+        ) {
           throw new ORPCError("CONFLICT", { message: "A skill with that name already exists." });
         }
         throw error;
@@ -231,7 +250,12 @@ export function createAgentSkillsService(prisma: PrismaClient) {
         });
         if (updated.count !== 1) throw new IsolationError();
       } catch (error) {
-        if ((error as { code?: string }).code === "P2002") {
+        if (error instanceof IsolationError) throw error;
+        if (
+          error instanceof Error &&
+          "code" in error &&
+          (error as { code?: string }).code === "P2002"
+        ) {
           throw new ORPCError("CONFLICT", { message: "A skill with that name already exists." });
         }
         throw error;

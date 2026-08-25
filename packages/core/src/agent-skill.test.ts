@@ -42,11 +42,47 @@ describe("parseSkillMd", () => {
     expect(String(parsed.frontmatter.literal)).toContain("Keep trailing newlines");
   });
 
+  it("parses block scalar indicators with chomping and indent hints", () => {
+    const doc = `---
+name: Folded
+description: >-
+  Multi-line description
+  that folds.
+notes: |+
+  Keep trailing newlines.
+
+
+indent: |2
+  Indented block
+chomp-indent: |-2
+  Chomp then indent
+---
+
+# Body
+`;
+    const parsed = parseSkillMd(doc);
+    expect("error" in parsed).toBe(false);
+    if ("error" in parsed) return;
+    expect(parsed.description).toContain("Multi-line description");
+    expect(parsed.frontmatter.notes).toEqual(expect.stringContaining("Keep trailing newlines"));
+    expect(parsed.frontmatter.indent).toEqual(expect.stringContaining("Indented block"));
+    expect(parsed.frontmatter["chomp-indent"]).toEqual(
+      expect.stringContaining("Chomp then indent"),
+    );
+  });
+
   it("requires name and description", () => {
     expect(parseSkillMd("---\nname: x\n---\nbody")).toEqual({
       error: "SKILL.md frontmatter requires description.",
     });
     expect(parseSkillMd("no frontmatter")).toMatchObject({ error: expect.any(String) });
+  });
+
+  it("rejects overlong names", () => {
+    const name = "N".repeat(81);
+    expect(
+      parseSkillMd(`---\nname: ${name}\ndescription: ok\n---\nbody`),
+    ).toEqual({ error: "Skill name must be at most 80 characters." });
   });
 });
 
@@ -61,6 +97,12 @@ describe("buildSkillMd", () => {
     expect(again.description).toBe(parsed.description);
     expect(again.frontmatter.compatibility).toBe("optional-extra");
     expect(again.body.trim()).toBe(parsed.body.trim());
+  });
+
+  it("rejects overlong structured names", () => {
+    expect(() =>
+      buildSkillMd({ name: "N".repeat(81), description: "ok", body: "body" }),
+    ).toThrow(/at most 80 characters/);
   });
 });
 

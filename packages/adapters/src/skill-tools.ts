@@ -216,6 +216,8 @@ export async function skillUpdateFromTool(
     nextDescription =
       input.description !== undefined ? String(input.description).trim() : existing.description;
     const body = input.body !== undefined ? String(input.body) : prior.body;
+    const invalidFields = rejectInvalidSkillFields(nextName, nextDescription);
+    if (invalidFields) return { error: invalidFields };
     nextContent = buildSkillMd({
       name: nextName,
       description: nextDescription,
