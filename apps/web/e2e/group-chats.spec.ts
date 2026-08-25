@@ -137,9 +137,13 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
   await composer.fill("@Res");
   await captureScreenshot(page, testInfo, "group-mention-picker");
   await page.getByRole("button", { name: "@Research Writer", exact: true }).click();
-  await composer.fill(`${await composer.inputValue()} turn the sources into a draft. @Res`);
+  await expect(
+    page.getByTestId("mention-chip").filter({ hasText: "Research Writer" }),
+  ).toBeVisible();
+  await composer.fill("turn the sources into a draft. @Res");
   await page.getByRole("button", { name: "@Researcher", exact: true }).click();
-  await composer.fill(`${await composer.inputValue()} gather sources.`);
+  await expect(page.getByTestId("mention-chip").filter({ hasText: "Researcher" })).toBeVisible();
+  await composer.fill(`${await composer.inputValue()}gather sources.`);
   await composer.press("Enter");
 
   await expect(page.getByTestId("transcript")).toContainText(/handled|on it|gather/i, {

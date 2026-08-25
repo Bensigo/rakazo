@@ -6,14 +6,12 @@ export function AccountSettingsOverlay({
   name,
   usage,
   focusUsage,
-  onOpenModels,
   onClose,
 }: {
   email?: string | null;
   name: string;
   usage?: { runs: number; inputTokens: number; outputTokens: number } | null;
   focusUsage?: boolean;
-  onOpenModels?: () => void;
   onClose: () => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -75,10 +73,10 @@ export function AccountSettingsOverlay({
         <div
           ref={usageRef}
           tabIndex={-1}
-          data-testid="usage-billing-settings"
+          data-testid="usage-settings"
           className="mt-5 rounded-[14px] border border-[#26262A] bg-[#101012] px-4 py-4 outline-none"
         >
-          <h3 className="text-[15px] font-medium text-[#ECECEE]">Usage & Billing</h3>
+          <h3 className="text-[15px] font-medium text-[#ECECEE]">Usage</h3>
           {usage ? (
             <p className="mt-3 text-[14px] text-[#C9C9CE]">
               {usage.runs} runs · {usage.inputTokens + usage.outputTokens} tokens
@@ -87,16 +85,6 @@ export function AccountSettingsOverlay({
           <p className={`text-[12.5px] text-[#6C6C70] ${usage ? "mt-2" : "mt-3"}`}>
             Model spend uses your provider keys.
           </p>
-          {onOpenModels ? (
-            <button
-              type="button"
-              aria-label="Open models and billing"
-              onClick={onOpenModels}
-              className="mt-3 text-[13.5px] text-[#C9C9CE] underline-offset-2 hover:underline"
-            >
-              Models & billing
-            </button>
-          ) : null}
         </div>
 
         <details

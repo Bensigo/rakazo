@@ -38,7 +38,6 @@ import {
   defaultCronPreset,
   formatCron,
   groupBotsForSidebar,
-  hasMentionToken,
   inferAttachmentMimeType,
   isActive,
   isRunTerminalEvent,
@@ -1845,6 +1844,7 @@ export function ShellPage() {
               ? (activeSnapshot?.members ?? activeGroup?.members)?.map((member) => ({
                   botId: member.botId,
                   name: member.name,
+                  color: member.color,
                 }))
               : undefined
           }
@@ -2404,11 +2404,6 @@ export function ShellPage() {
             email={session.data?.user.email}
             usage={usage}
             focusUsage={accountSettingsFocusUsage}
-            onOpenModels={() => {
-              setAccountSettingsOpen(false);
-              setAccountSettingsFocusUsage(false);
-              setModelsOpen(true);
-            }}
             onClose={() => {
               setAccountSettingsOpen(false);
               setAccountSettingsFocusUsage(false);
@@ -2728,7 +2723,7 @@ const Composer = memo(function Composer({
   onStop: () => Promise<void>;
   replyTarget?: ThreadMessage | null;
   onClearReply?: () => void;
-  mentionMembers?: Array<{ botId: string; name: string }>;
+  mentionMembers?: Array<{ botId: string; name: string; color?: string }>;
   agentSkills?: AgentSkillCatalogEntry[];
   onSlashOpen?: () => void;
   onSlashAction?: (action: "chat-settings" | "settings-general" | "settings-usage") => void;
@@ -2740,40 +2735,42 @@ const Composer = memo(function Composer({
   const [draft, setDraft] = useState("");
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [slashQuery, setSlashQuery] = useState<string | null>(null);
-  const [selectedMentions, setSelectedMentions] = useState<Array<{ botId: string; name: string }>>(
-    [],
-  );
-  const canSend = draft.trim().length > 0 || pendingAttachments.length > 0;
+  const [selectedSkill, setSelectedSkill] = useState<AgentSkillCatalogEntry | null>(null);
+  const [selectedMentions, setSelectedMentions] = useState<
+    Array<{ botId: string; name: string; color?: string }>
+  >([]);
+  const canSend =
+    draft.trim().length > 0 ||
+    selectedSkill !== null ||
+    selectedMentions.length > 0 ||
+    pendingAttachments.length > 0;
 
   function updateDraft(value: string) {
     setDraft(value);
-    setSelectedMentions((current) =>
-      current.filter((member) => hasMentionToken(value, member.name)),
-    );
     const mentionMatch = /(?:^|\s)@([\w-]*)$/.exec(value);
     setMentionQuery(mentionMatch ? (mentionMatch[1] ?? "") : null);
     // `/` only at the start of the draft so forced skills expand (`Use skill:` / `/Name` prefix).
-    const slashMatch = /^\/([^\n]*)$/.exec(value);
+    const slashMatch = selectedSkill === null ? /^\/([^\n]*)$/.exec(value) : null;
     const nextSlash = slashMatch ? (slashMatch[1] ?? "") : null;
     if (nextSlash !== null && slashQuery === null) onSlashOpen?.();
     setSlashQuery(nextSlash);
   }
 
-  function insertMention(member: { botId: string; name: string }) {
-    setDraft((current) => current.replace(/@([\w-]*)$/, `@${member.name} `));
-    if (member.botId !== "everyone") {
-      setSelectedMentions((current) =>
-        current.some((selected) => selected.botId === member.botId)
-          ? current
-          : [...current, member],
-      );
-    }
+  function insertMention(member: { botId: string; name: string; color?: string }) {
+    setDraft((current) => current.replace(/@([\w-]*)$/, ""));
     setMentionQuery(null);
+    if (member.botId === "everyone") {
+      setDraft((current) => `${current.replace(/\s+$/, "")} @everyone `.replace(/^\s+/, ""));
+      return;
+    }
+    setSelectedMentions((current) =>
+      current.some((selected) => selected.botId === member.botId) ? current : [...current, member],
+    );
   }
 
   function insertSkill(skill: AgentSkillCatalogEntry) {
-    // Newline keeps trailing prompt text off the forced `/Name` line.
-    setDraft(`/${skill.name}\n`);
+    setSelectedSkill(skill);
+    setDraft("");
     setSlashQuery(null);
   }
 
@@ -2783,12 +2780,20 @@ const Composer = memo(function Composer({
     onSlashAction?.(action);
   }
 
+  function removeLastChip() {
+    if (selectedMentions.length > 0) {
+      setSelectedMentions((current) => current.slice(0, -1));
+      return;
+    }
+    if (selectedSkill) setSelectedSkill(null);
+  }
+
   const mentionOptions = useMemo(() => {
     if (mentionQuery === null || !mentionMembers?.length) return [];
     const query = mentionQuery.toLowerCase();
     const options = mentionMembers.filter((member) => member.name.toLowerCase().startsWith(query));
     if ("everyone".startsWith(query)) {
-      options.unshift({ botId: "everyone", name: "everyone" });
+      options.unshift({ botId: "everyone", name: "everyone", color: "#85858A" });
     }
     return options.slice(0, 8);
   }, [mentionMembers, mentionQuery]);
@@ -2821,14 +2826,18 @@ const Composer = memo(function Composer({
 
   function send() {
     if (!canSend || sending || disabled) return;
-    const text = draft;
+    const text = serializeComposerPrompt(draft, selectedSkill, selectedMentions);
     setDraft("");
     setMentionQuery(null);
     setSlashQuery(null);
+    setSelectedSkill(null);
     const mentions = selectedMentions.map((member) => member.botId);
     setSelectedMentions([]);
-    void onSend(text, mentions);
+    void onSend(text, mentions.length ? mentions : undefined);
   }
+
+  const showComposerPlaceholder =
+    draft.length === 0 && selectedSkill === null && selectedMentions.length === 0;
 
   return (
     <div className="relative z-30 px-3 pb-4 pt-3 md:px-6 md:pb-6">
@@ -2986,24 +2995,64 @@ const Composer = memo(function Composer({
         >
           <Mic size={16} strokeWidth={1.8} />
         </button>
-        <textarea
-          value={draft}
-          onChange={(event) => updateDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              send();
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+          {selectedSkill ? (
+            <span
+              data-testid="skill-chip"
+              className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-[#1C1C1F] px-2.5 py-1 text-[13px] text-[#ECECEE]"
+            >
+              <Box size={13} strokeWidth={1.7} className="shrink-0 text-[#B0B0B6]" />
+              <span dir="auto" className="truncate">
+                {selectedSkill.name}
+              </span>
+            </span>
+          ) : null}
+          {selectedMentions.map((member) => (
+            <span
+              key={member.botId}
+              data-testid="mention-chip"
+              className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-[#1C1C1F] px-2.5 py-1 text-[13px] text-[#ECECEE]"
+            >
+              <BotAvatar color={member.color ?? "#85858A"} size={16} />
+              <span dir="auto" className="truncate">
+                {member.name}
+              </span>
+            </span>
+          ))}
+          <textarea
+            value={draft}
+            onChange={(event) => updateDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (
+                event.key === "Backspace" &&
+                draft.length === 0 &&
+                (selectedSkill !== null || selectedMentions.length > 0)
+              ) {
+                event.preventDefault();
+                removeLastChip();
+                return;
+              }
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                send();
+              }
+            }}
+            disabled={disabled}
+            placeholder={
+              showComposerPlaceholder
+                ? activeName
+                  ? `Message ${activeName}`
+                  : "Message…"
+                : undefined
             }
-          }}
-          disabled={disabled}
-          placeholder={activeName ? `Message ${activeName}` : "Message…"}
-          aria-label={activeName ? `Message ${activeName}` : "Message"}
-          name="chat-message"
-          autoComplete="off"
-          dir="auto"
-          rows={1}
-          className="max-h-32 min-h-[24px] flex-1 resize-none overflow-y-auto bg-transparent py-0.5 text-[15.5px] leading-6 text-[#E9E9EA] outline-none disabled:opacity-40"
-        />
+            aria-label={activeName ? `Message ${activeName}` : "Message"}
+            name="chat-message"
+            autoComplete="off"
+            dir="auto"
+            rows={1}
+            className="max-h-32 min-h-[24px] min-w-[8rem] flex-1 resize-none overflow-y-auto bg-transparent py-0.5 text-[15.5px] leading-6 text-[#E9E9EA] outline-none disabled:opacity-40"
+          />
+        </div>
         {running ? (
           <button
             type="button"
@@ -3032,8 +3081,20 @@ const Composer = memo(function Composer({
 const SLASH_ACTIONS = [
   { id: "chat-settings" as const, label: "Chat Settings" },
   { id: "settings-general" as const, label: "Settings: General" },
-  { id: "settings-usage" as const, label: "Settings: Usage & Billing" },
+  { id: "settings-usage" as const, label: "Settings: Usage" },
 ];
+
+function serializeComposerPrompt(
+  draft: string,
+  skill: { name: string } | null,
+  mentions: Array<{ name: string }>,
+): string {
+  const body = draft.replace(/^\s+/, "");
+  const mentionPrefix = mentions.map((member) => `@${member.name}`).join(" ");
+  const afterSkill = [mentionPrefix, body].filter((part) => part.trim().length > 0).join(" ");
+  if (!skill) return afterSkill.trimEnd();
+  return afterSkill.trim().length > 0 ? `/${skill.name}\n${afterSkill}` : `/${skill.name}`;
+}
 
 function truncateSlashDescription(value: string, max = 72): string {
   const text = value.replace(/\s+/g, " ").trim();

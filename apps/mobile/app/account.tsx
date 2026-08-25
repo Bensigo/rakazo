@@ -43,24 +43,14 @@ export default function Account() {
   }, []);
 
   const usageBlock = (
-    <View accessibilityLabel="Usage and billing" style={styles.profile}>
-      <Text style={styles.settingsTitle}>Usage & Billing</Text>
+    <View accessibilityLabel="Usage" style={styles.profile}>
+      <Text style={styles.settingsTitle}>Usage</Text>
       {usage ? (
         <Text style={styles.email}>
           {usage.runs} runs · {usage.inputTokens + usage.outputTokens} tokens
         </Text>
       ) : null}
       <Text style={styles.settingsExplanation}>Model spend uses your provider keys.</Text>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Open models and billing"
-        disabled={pending}
-        onPress={() => router.push("/models")}
-        hitSlop={8}
-        style={{ marginTop: 10 }}
-      >
-        <Text style={styles.restoreLabel}>Models & billing</Text>
-      </Pressable>
     </View>
   );
 

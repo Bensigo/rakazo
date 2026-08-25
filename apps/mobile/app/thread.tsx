@@ -3,7 +3,6 @@ import type { MessageBlock } from "@rakazo/contracts";
 import {
   abortableDelay,
   attachmentsForThread,
-  hasMentionToken,
   isApprovalAskBlock,
   isRunTerminalEvent,
   latestAnswerableAskMessageId,
@@ -89,9 +88,14 @@ export default function Thread() {
   const [agentSkills, setAgentSkills] = useState<
     Array<{ id: string; name: string; description: string }>
   >([]);
-  const [selectedMentions, setSelectedMentions] = useState<Array<{ botId: string; name: string }>>(
-    [],
-  );
+  const [selectedMentions, setSelectedMentions] = useState<
+    Array<{ botId: string; name: string; color?: string }>
+  >([]);
+  const [selectedSkill, setSelectedSkill] = useState<{
+    id: string;
+    name: string;
+    description: string;
+  } | null>(null);
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [replyTarget, setReplyTarget] = useState<MobileMessage | null>(null);
   const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
@@ -132,7 +136,7 @@ export default function Thread() {
           [
             { id: "chat-settings", label: "Chat Settings" },
             { id: "settings-general", label: "Settings: General" },
-            { id: "settings-usage", label: "Settings: Usage & Billing" },
+            { id: "settings-usage", label: "Settings: Usage" },
           ] as const
         ).filter(
           (action) =>
@@ -429,6 +433,7 @@ export default function Thread() {
     setDraft("");
     setMentionQuery(null);
     setSlashQuery(null);
+    setSelectedSkill(null);
     setSelectedMentions([]);
     setReplyTarget(null);
     setAttachmentNotice(null);
@@ -437,30 +442,46 @@ export default function Thread() {
 
   function updateDraft(value: string) {
     setDraft(value);
-    setSelectedMentions((current) =>
-      current.filter((member) => hasMentionToken(value, member.name)),
-    );
     const match = /(?:^|\s)@([\w-]*)$/.exec(value);
     setMentionQuery(match ? (match[1] ?? "") : null);
-    const slashMatch = /^\/([^\n]*)$/.exec(value);
+    const slashMatch = selectedSkill === null ? /^\/([^\n]*)$/.exec(value) : null;
     setSlashQuery(slashMatch ? (slashMatch[1] ?? "") : null);
   }
 
-  function insertMention(member: { botId: string; name: string }) {
-    setDraft((current) => current.replace(/@([\w-]*)$/, `@${member.name} `));
-    if (member.botId !== "everyone") {
-      setSelectedMentions((current) =>
-        current.some((selected) => selected.botId === member.botId)
-          ? current
-          : [...current, member],
-      );
-    }
+  function insertMention(member: { botId: string; name: string; color?: string }) {
+    setDraft((current) => current.replace(/@([\w-]*)$/, ""));
     setMentionQuery(null);
+    if (member.botId === "everyone") {
+      setDraft((current) => `${current.replace(/\s+$/, "")} @everyone `.replace(/^\s+/, ""));
+      return;
+    }
+    setSelectedMentions((current) =>
+      current.some((selected) => selected.botId === member.botId) ? current : [...current, member],
+    );
   }
 
-  function insertSkill(skill: { name: string }) {
-    setDraft(`/${skill.name}\n`);
+  function insertSkill(skill: { id: string; name: string; description: string }) {
+    setSelectedSkill(skill);
+    setDraft("");
     setSlashQuery(null);
+  }
+
+  function removeLastChip() {
+    if (selectedMentions.length > 0) {
+      setSelectedMentions((current) => current.slice(0, -1));
+      return;
+    }
+    if (selectedSkill) setSelectedSkill(null);
+  }
+
+  function serializeComposerPrompt(): string {
+    const body = draft.replace(/^\s+/, "");
+    const mentionPrefix = selectedMentions.map((member) => `@${member.name}`).join(" ");
+    const afterSkill = [mentionPrefix, body].filter((part) => part.trim().length > 0).join(" ");
+    if (!selectedSkill) return afterSkill.trimEnd();
+    return afterSkill.trim().length > 0
+      ? `/${selectedSkill.name}\n${afterSkill}`
+      : `/${selectedSkill.name}`;
   }
 
   function runSlashAction(action: "chat-settings" | "settings-general" | "settings-usage") {
@@ -485,7 +506,7 @@ export default function Thread() {
     const targetGroupId = groupId;
     if ((!targetBotId && !targetGroupId) || sending) return;
     const attachments = attachmentsForThread(pendingAttachments, threadKey);
-    const text = draft.trim();
+    const text = serializeComposerPrompt().trim();
     if (!text && attachments.length === 0) return;
     setSending(true);
     setError(null);
@@ -526,6 +547,7 @@ export default function Thread() {
         setDraft("");
         setMentionQuery(null);
         setSlashQuery(null);
+        setSelectedSkill(null);
         setSelectedMentions([]);
         setReplyTarget(null);
         setAttachmentNotice(null);
@@ -829,7 +851,7 @@ export default function Thread() {
           ))}
         </View>
       ) : null}
-      <View style={{ flexDirection: "row", gap: 8, marginTop: 16 }}>
+      <View style={{ flexDirection: "row", gap: 8, marginTop: 16, alignItems: "flex-end" }}>
         <Pressable
           accessibilityLabel="Attach file"
           onPress={showAttachMenu}
@@ -845,29 +867,105 @@ export default function Thread() {
         >
           <NativeSymbol ios="plus" android="add" size={18} color="#9A9AA0" />
         </Pressable>
-        <TextInput
-          value={draft}
-          onChangeText={updateDraft}
-          placeholder="Message…"
-          placeholderTextColor="#6C6C70"
-          keyboardAppearance="dark"
-          multiline
-          textAlignVertical="center"
-          blurOnSubmit={false}
+        <View
           style={{
             flex: 1,
-            color: "#ECECEE",
+            flexDirection: "row",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: 6,
             backgroundColor: "#131315",
             borderRadius: 20,
-            paddingHorizontal: 14,
-            paddingVertical: 10,
+            paddingHorizontal: 10,
+            paddingVertical: 8,
             minHeight: 44,
-            maxHeight: 120,
-            writingDirection: "auto",
           }}
-        />
+        >
+          {selectedSkill ? (
+            <View
+              testID="skill-chip"
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                backgroundColor: "#1C1C1F",
+                borderRadius: 999,
+                paddingHorizontal: 10,
+                paddingVertical: 5,
+                maxWidth: "100%",
+              }}
+            >
+              <NativeSymbol ios="cube" android="cube-outline" size={13} color="#B0B0B6" />
+              <Text numberOfLines={1} style={{ color: "#ECECEE", fontSize: 13 }}>
+                {selectedSkill.name}
+              </Text>
+            </View>
+          ) : null}
+          {selectedMentions.map((member) => (
+            <View
+              key={member.botId}
+              testID="mention-chip"
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                backgroundColor: "#1C1C1F",
+                borderRadius: 999,
+                paddingHorizontal: 10,
+                paddingVertical: 5,
+                maxWidth: "100%",
+              }}
+            >
+              <View
+                style={{
+                  width: 14,
+                  height: 14,
+                  borderRadius: 4,
+                  backgroundColor: member.color ?? "#85858A",
+                }}
+              />
+              <Text numberOfLines={1} style={{ color: "#ECECEE", fontSize: 13 }}>
+                {member.name}
+              </Text>
+            </View>
+          ))}
+          <TextInput
+            value={draft}
+            onChangeText={updateDraft}
+            onKeyPress={(event) => {
+              if (
+                event.nativeEvent.key === "Backspace" &&
+                draft.length === 0 &&
+                (selectedSkill !== null || selectedMentions.length > 0)
+              ) {
+                removeLastChip();
+              }
+            }}
+            placeholder={selectedSkill || selectedMentions.length ? undefined : "Message…"}
+            placeholderTextColor="#6C6C70"
+            keyboardAppearance="dark"
+            multiline
+            textAlignVertical="center"
+            blurOnSubmit={false}
+            style={{
+              flexGrow: 1,
+              flexShrink: 1,
+              minWidth: 96,
+              color: "#ECECEE",
+              paddingVertical: 2,
+              maxHeight: 100,
+              writingDirection: "auto",
+            }}
+          />
+        </View>
         <Pressable
-          disabled={sending || (!draft.trim() && activePendingAttachments.length === 0)}
+          disabled={
+            sending ||
+            (!draft.trim() &&
+              !selectedSkill &&
+              selectedMentions.length === 0 &&
+              activePendingAttachments.length === 0)
+          }
           onPress={() => void send()}
           style={{
             backgroundColor: "#F1F1EF",
@@ -876,7 +974,14 @@ export default function Thread() {
             height: 44,
             alignItems: "center",
             justifyContent: "center",
-            opacity: sending || (!draft.trim() && activePendingAttachments.length === 0) ? 0.5 : 1,
+            opacity:
+              sending ||
+              (!draft.trim() &&
+                !selectedSkill &&
+                selectedMentions.length === 0 &&
+                activePendingAttachments.length === 0)
+                ? 0.5
+                : 1,
           }}
         >
           <NativeSymbol ios="arrow.up" android="arrow-up" size={18} color="#17171A" />

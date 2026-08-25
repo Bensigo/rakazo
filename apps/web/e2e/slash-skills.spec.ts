@@ -26,7 +26,7 @@ test("composer / picker lists skills above actions", async ({ page }, testInfo) 
   await expect(skillButton).toBeVisible();
   await expect(chatSettings).toBeVisible();
   await expect(picker.getByRole("button", { name: "Settings: General" })).toBeVisible();
-  await expect(picker.getByRole("button", { name: "Settings: Usage & Billing" })).toBeVisible();
+  await expect(picker.getByRole("button", { name: "Settings: Usage" })).toBeVisible();
 
   const skillBox = skillButton.boundingBox();
   const actionBox = chatSettings.boundingBox();
@@ -40,11 +40,20 @@ test("composer / picker lists skills above actions", async ({ page }, testInfo) 
   await captureScreenshot(page, testInfo, "slash-skills-picker");
 
   await skillButton.click();
-  await expect(composer).toHaveValue("/Daily standup\n");
+  await expect(page.getByTestId("slash-picker")).toHaveCount(0);
+  const skillChip = page.getByTestId("skill-chip");
+  await expect(skillChip).toBeVisible();
+  await expect(skillChip).toContainText("Daily standup");
+  await expect(composer).toHaveValue("");
+  await composer.fill("focus on blockers");
   await captureScreenshot(page, testInfo, "slash-skills-inserted");
 
   await composer.fill("hello /");
   await expect(page.getByTestId("slash-picker")).toHaveCount(0);
+
+  await composer.fill("");
+  await page.keyboard.press("Backspace");
+  await expect(page.getByTestId("skill-chip")).toHaveCount(0);
 
   await composer.fill("@");
   await expect(page.getByTestId("slash-picker")).toHaveCount(0);
