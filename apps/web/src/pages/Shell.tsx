@@ -222,6 +222,7 @@ export function ShellPage() {
   const [pluginsOpen, setPluginsOpen] = useState(false);
   const [mcpOpen, setMcpOpen] = useState(false);
   const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
+  const [accountSettingsFocusUsage, setAccountSettingsFocusUsage] = useState(false);
   const [modelsOpen, setModelsOpen] = useState(false);
   const [memorySettingsOpen, setMemorySettingsOpen] = useState(false);
   const [memoryProviderConfig, setMemoryProviderConfig] = useState<
@@ -1642,6 +1643,7 @@ export function ShellPage() {
                 aria-label="Settings"
                 onClick={() => {
                   setMenuOpen(false);
+                  setAccountSettingsFocusUsage(false);
                   setAccountSettingsOpen(true);
                 }}
                 className="flex w-full items-center gap-3 rounded-[11px] px-3 py-2.5 hover:bg-[#232327]"
@@ -1854,11 +1856,13 @@ export function ShellPage() {
               return;
             }
             if (action === "settings-general") {
+              setAccountSettingsFocusUsage(false);
               setAccountSettingsOpen(true);
               return;
             }
             if (action === "settings-usage") {
-              setMenuOpen(true);
+              setAccountSettingsFocusUsage(true);
+              setAccountSettingsOpen(true);
               void rpc.usage
                 .summary()
                 .then(setUsage)
@@ -2398,7 +2402,12 @@ export function ShellPage() {
           <AccountSettingsOverlay
             name={userName}
             email={session.data?.user.email}
-            onClose={() => setAccountSettingsOpen(false)}
+            usage={usage}
+            focusUsage={accountSettingsFocusUsage}
+            onClose={() => {
+              setAccountSettingsOpen(false);
+              setAccountSettingsFocusUsage(false);
+            }}
           />
         ) : null}
         {modelsOpen ? <ModelSettingsOverlay onClose={() => setModelsOpen(false)} /> : null}

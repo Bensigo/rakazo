@@ -478,8 +478,9 @@ export default function Thread() {
       void rpc<{ runs: number; inputTokens: number; outputTokens: number }>("usage/summary")
         .then((summary) => {
           Alert.alert(
-            "Usage",
-            `${summary.runs} runs · ${summary.inputTokens + summary.outputTokens} tokens`,
+            "Usage & Billing",
+            `${summary.runs} runs · ${summary.inputTokens + summary.outputTokens} tokens this week.\nModel spend follows your connected provider accounts.`,
+            [{ text: "Account", onPress: () => router.push("/account") }, { text: "OK" }],
           );
         })
         .catch(() => router.push("/account"));
