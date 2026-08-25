@@ -401,9 +401,13 @@ export function ShellPage() {
     const snap = await rpc.threads.get({ groupId: id });
     markOnce("rk:renderer:thread-response");
     if (activeGroupId.current !== id || request !== groupRefreshEpoch.current) return snap;
-    updateSnapshot((prev) =>
-      mergeThreadSnapshot(prev, snap, expandedHistoryThread.current === snap.threadId),
+    const reconciled = reconcileRefreshedThread(
+      snapshotRef.current,
+      snap,
+      computerRef.current,
+      expandedHistoryThread.current === snap.threadId,
     );
+    commitSnapshot(reconciled.snapshot);
     commitComputer(null);
     setRoutines([]);
     setRoutinesBotId(null);
@@ -740,7 +744,12 @@ export function ShellPage() {
               }
               if (event.payload.role === "bot") markBotReadIfVisible(active.id);
             }
-            if (isRunTerminalEvent(event) || event.type === "skill.teaching.stopped") {
+            if (
+              isRunTerminalEvent(event) ||
+              event.type === "run.waiting_input" ||
+              event.type === "skill.teaching.stopped"
+            ) {
+              // waiting_input: reconcile ask cards if a stale post-send refresh raced SSE.
               void refreshThread(active.id).catch(() => undefined);
             } else if (isComputerStatusEvent(event)) {
               void refreshComputerScreen(active.id).catch(() => undefined);
@@ -809,7 +818,8 @@ export function ShellPage() {
               readVisibleGroups.current.delete(groupId);
               markVisibleGroupRead();
             }
-            if (isRunTerminalEvent(event)) {
+            if (isRunTerminalEvent(event) || event.type === "run.waiting_input") {
+              // waiting_input: reconcile ask cards if a stale post-send refresh raced SSE.
               void refreshGroupThread(groupId).catch(() => undefined);
             }
           }

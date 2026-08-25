@@ -60,6 +60,22 @@ describe("thread event reduction", () => {
     expect(next.olderCursor).toBeNull();
   });
 
+  it("ignores a stale thread refresh that is behind the live cursor", () => {
+    const live: ThreadSnapshot = {
+      ...snapshot([
+        message("ask-1", [{ kind: "ask", text: "Which city?", status: "pending" }], 11),
+      ]),
+      cursor: 12,
+    };
+    const stale: ThreadSnapshot = {
+      ...snapshot([message("m-1", [{ kind: "text", text: "older" }], 1)]),
+      cursor: 8,
+    };
+
+    expect(mergeThreadSnapshot(live, stale)).toBe(live);
+    expect(mergeThreadSnapshot(live, stale, true)).toBe(live);
+  });
+
   it("accumulates progress deltas and keeps only the active progress message", () => {
     const stale = message("progress:older", [{ kind: "progress", text: "old run" }]);
     const initial = snapshot([stale]);
@@ -518,6 +534,29 @@ describe("thread event reduction", () => {
     expect(
       reduceThreadSnapshot(waiting, event({ type: "run.waiting_input", seq: 7, runId: "run-1" })),
     ).toBe(waiting);
+  });
+
+  it("clears live progress when a run waits for input", () => {
+    const run = threadRun("run-1");
+    const initial: ThreadSnapshot = {
+      ...snapshot([
+        {
+          ...message("progress:run-1", [{ kind: "progress", text: "working…" }]),
+          runId: run.id,
+        },
+      ]),
+      run,
+      activeRuns: [run],
+    };
+
+    const waiting = reduceThreadSnapshot(
+      initial,
+      event({ type: "run.waiting_input", seq: 6, runId: run.id }),
+    );
+
+    expect(waiting?.messages).toEqual([]);
+    expect(waiting?.run?.status).toBe("waiting_input");
+    expect(waiting?.activeRuns?.[0]?.status).toBe("waiting_input");
   });
 
   it("accumulates tool-call steps and collapses repeats into a count", () => {
