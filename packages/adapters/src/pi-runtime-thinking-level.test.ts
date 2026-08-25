@@ -175,7 +175,9 @@ describe("Pi agent thinking level", () => {
     const removeEventListener = vi.spyOn(controller.signal, "removeEventListener");
     fakeAgentState.failPrompt = true;
 
-    await runWithModel("plain-model", "test", controller.signal);
+    await expect(runWithModel("plain-model", "test", controller.signal)).rejects.toThrow(
+      "prompt failed",
+    );
 
     expect(removeEventListener).toHaveBeenCalledWith("abort", expect.any(Function));
   });

@@ -5,6 +5,7 @@ import {
   type Model,
   type Models,
   type ModelThinkingLevel,
+  type SimpleStreamOptions,
   Type,
 } from "@earendil-works/pi-ai";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
@@ -129,7 +130,8 @@ export class PiAgentRuntime implements AgentRuntime {
         const history = toHistory(request.history, request.prompt);
 
         const agent = new Agent({
-          streamFn: (m, ctx, options) => models.streamSimple(m, ctx, options),
+          streamFn: (m, ctx, options) =>
+            models.streamSimple(m, ctx, reliableStreamOptions(m, options)),
           getApiKey: async () => apiKey,
           transformContext: async (messages) => pruneComputerScreenshotContext(messages),
           initialState: {
@@ -218,9 +220,7 @@ export class PiAgentRuntime implements AgentRuntime {
 
         const error = agent.state.errorMessage;
         if (error) {
-          queue.push({ type: "text", text: `I hit a problem: ${sanitizeError(error)}` });
-          queue.push({ type: "done", text: sanitizeError(error) });
-          return;
+          throw new Error(sanitizeError(error));
         }
         if (!streamed) {
           const fallback = assistantText(agent.state.messages.at(-1)) || "I finished the work.";
@@ -230,8 +230,7 @@ export class PiAgentRuntime implements AgentRuntime {
         queue.push({ type: "done", text: streamed });
       } catch (error) {
         const message = sanitizeError(error instanceof Error ? error.message : String(error));
-        queue.push({ type: "text", text: `I hit a problem: ${message}` });
-        queue.push({ type: "done", text: message });
+        queue.fail(new Error(message));
       } finally {
         queue.close();
       }
@@ -547,7 +546,8 @@ async function executeSubagent(host: ToolHost, executionId: string, args: Record
   );
   const nestedHost: ToolHost = { ...host, depth: 1 };
   const nested = new Agent({
-    streamFn: (m, ctx, options) => host.models.streamSimple(m, ctx, options),
+    streamFn: (m, ctx, options) =>
+      host.models.streamSimple(m, ctx, reliableStreamOptions(m, options)),
     getApiKey: async () => host.apiKey,
     transformContext: async (messages) => pruneComputerScreenshotContext(messages),
     initialState: {
@@ -836,6 +836,7 @@ function sanitizeError(message: string) {
 
 interface EventQueue {
   push(event: AgentRuntimeEvent): void;
+  fail(error: Error): void;
   close(): void;
   iterate(): AsyncIterable<AgentRuntimeEvent>;
 }
@@ -891,9 +892,15 @@ function createQueue(): EventQueue {
   const items: AgentRuntimeEvent[] = [];
   let wake: (() => void) | undefined;
   let closed = false;
+  let failure: Error | undefined;
   return {
     push(event) {
       items.push(event);
+      wake?.();
+    },
+    fail(error) {
+      failure = error;
+      closed = true;
       wake?.();
     },
     close() {
@@ -901,15 +908,30 @@ function createQueue(): EventQueue {
       wake?.();
     },
     async *iterate() {
-      while (!closed || items.length) {
+      while (true) {
         if (items.length) {
           yield items.shift()!;
           continue;
         }
+        if (failure) throw failure;
+        if (closed) return;
         await new Promise<void>((resolve) => {
           wake = resolve;
         });
       }
     },
   };
+}
+
+export function reliableStreamOptions(
+  model: Pick<Model<Api>, "api" | "provider">,
+  options?: SimpleStreamOptions,
+): SimpleStreamOptions | undefined {
+  if (model.provider !== "openai-codex" && model.api !== "openai-codex-responses") {
+    return options;
+  }
+  // Pi cannot fall back after a WebSocket has emitted its start event. Long tool
+  // runs then surface abnormal close 1006 as a terminal model error. SSE has
+  // bounded network retries and no long-lived connection between tool turns.
+  return { ...options, transport: "sse" };
 }
