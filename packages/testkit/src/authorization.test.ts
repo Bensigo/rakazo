@@ -592,6 +592,64 @@ describeWithDatabase("API authorization and resource isolation", () => {
     expect(await missing.text()).toMatch(/credential/i);
   });
 
+  it("validates per-bot model overrides against connected providers and catalog", async () => {
+    const cookie = await signup(app, `bot-model-${stamp}@rakazo.test`, "Bot Model");
+    const bot = await rpc<
+      Bot & {
+        modelProvider: string | null;
+        modelId: string | null;
+        thinkingLevel: string | null;
+      }
+    >(app, cookie, "bots/create", botInput("Model Bot"));
+    await rpc(app, cookie, "models/connect", {
+      provider: "xai",
+      apiKey: "fake-xai-key-not-real",
+      label: "xAI",
+      modelId: "grok-4.6",
+    });
+
+    const updated = await rpc<
+      Bot & {
+        modelProvider: string | null;
+        modelId: string | null;
+        thinkingLevel: string | null;
+      }
+    >(app, cookie, "bots/update", {
+      botId: bot.id,
+      modelProvider: "xai",
+      modelId: "grok-4.6",
+      thinkingLevel: "high",
+    });
+    expect(updated).toMatchObject({
+      modelProvider: "xai",
+      modelId: "grok-4.6",
+      thinkingLevel: "high",
+    });
+
+    const unknown = await raw(app, cookie, "bots/update", {
+      botId: bot.id,
+      modelProvider: "xai",
+      modelId: "not-a-real-grok",
+    });
+    expect(unknown.status).toBeGreaterThanOrEqual(400);
+    expect(await unknown.text()).toMatch(/unknown model/i);
+
+    const disconnected = await raw(app, cookie, "bots/update", {
+      botId: bot.id,
+      modelProvider: "anthropic",
+      modelId: "claude-opus-4-6",
+    });
+    expect(disconnected.status).toBeGreaterThanOrEqual(400);
+    expect(await disconnected.text()).toMatch(/connect/i);
+
+    const partialClear = await raw(app, cookie, "bots/update", {
+      botId: bot.id,
+      modelId: null,
+    });
+    expect(partialClear.status).toBeGreaterThanOrEqual(400);
+    expect(await partialClear.text()).toMatch(/both be set or both cleared/i);
+  });
+
   it("chooses the newest duplicate provider credential when selecting a default", async () => {
     const cookie = await signup(app, `model-duplicates-${stamp}@rakazo.test`, "Model Duplicates");
     const actor = await rpc<Actor>(app, cookie, "me");
