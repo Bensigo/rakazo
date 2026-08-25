@@ -124,6 +124,12 @@ import {
 import { loadAgentMemoryContext } from "./memory-context.js";
 import type { MemoryProviderResolver } from "./memory-provider-factory.js";
 import { selectMemoryTools } from "./memory-tools.js";
+import {
+  filterImageReturningComputerTools,
+  IMAGE_RETURNING_COMPUTER_TOOLS,
+  MODEL_CANNOT_SEE_MESSAGE,
+  modelAcceptsImageInput,
+} from "./model-vision.js";
 import { toOAuthCredential } from "./pi-credentials.js";
 import {
   parseModelSecret,
@@ -190,12 +196,6 @@ const MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS = 6;
 // Backstop for a stuck agent that varies its arguments each call (so the exact-match cap above
 // never trips) but keeps hammering the same tool without ever narrating progress in between.
 const MAX_CONSECUTIVE_SAME_TOOL_CALLS = 20;
-const GRAPHICAL_AGENT_TOOLS = new Set([
-  "computer_observe",
-  "computer_act",
-  "open_path",
-  "launch_app",
-]);
 const BUILTIN_AGENT_TOOL_NAMES = new Set(builtinAgentTools.map((tool) => tool.name));
 
 export interface ExecutorDeps {
@@ -768,13 +768,19 @@ export function createRunExecutor(deps: ExecutorDeps) {
         const attachedFilesPrompt = currentTurnFilesInstruction(currentTurnFiles);
         const graphical =
           computer.kind !== "desktop" && deps.sandbox.describe().capabilities.graphical;
+        const modelProvider = credential?.provider ?? settings?.defaultModelProvider ?? "scripted";
+        const modelId = credential?.defaultModel ?? settings?.defaultModelId ?? "scripted";
+        // Scripted runtime fixtures still need screenshot tools; for Pi, resolve
+        // the scripted placeholder the same way the runtime does before gating.
+        const acceptsImages =
+          deps.runtime.describe().capabilities.scripted ||
+          modelAcceptsImageInput(modelProvider, modelId);
         const groupContext = thread.groupId
           ? await loadGroupContext(deps.prisma, thread.groupId)
           : undefined;
+        const graphicalToolsAllowed = graphical && acceptsImages;
         const availableBuiltins = filterBuiltinToolsForThread(
-          graphical
-            ? builtinAgentTools
-            : builtinAgentTools.filter((tool) => !GRAPHICAL_AGENT_TOOLS.has(tool.name)),
+          filterImageReturningComputerTools(builtinAgentTools, graphicalToolsAllowed),
           thread.groupId,
         );
         const builtins = selectMemoryTools(availableBuiltins, semanticMemoryEnabled);
@@ -800,9 +806,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
           return approvalRulesPromise;
         };
         const tools = [...builtins, ...exposedConnectorTools];
-        const computerInstruction = graphical
+        const computerInstruction = graphicalToolsAllowed
           ? "You have a persistent computer. Use computer_observe and computer_act for its visible desktop, including browsers and installed applications. Use open_path and launch_app to open graphical files, URLs, and applications. Use the file tools and shell for precise filesystem and terminal work. On a Team Computer you have your own screen; other Team bots may run at the same time on theirs. Another user may interact with your screen while you run, so re-observe when it may have changed."
-          : "You have a persistent sandbox filesystem and shell. This backend does not provide model-visible graphical control, so use the file tools and shell.";
+          : graphical
+            ? `You have a persistent computer filesystem and shell. ${MODEL_CANNOT_SEE_MESSAGE} Desktop observe and act tools are unavailable until a vision-capable model is selected. Use the file tools and shell.`
+            : "You have a persistent sandbox filesystem and shell. This backend does not provide model-visible graphical control, so use the file tools and shell.";
         const workspaceInstruction =
           computerMode === "team"
             ? `Your Team Computer home is ${teamBotWorkspaceDirectory(bot.id)}. Relative file paths and shell working directories start there. Put intentionally shared work under shared/. Other bots' folders are visible under bots/; treat them as their working areas.`
@@ -875,6 +883,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
           args: Record<string, unknown>,
           executionId: string,
         ) => {
+          if (IMAGE_RETURNING_COMPUTER_TOOLS.has(name) && !acceptsImages) {
+            return { error: MODEL_CANNOT_SEE_MESSAGE };
+          }
           const viaConnector = !BUILTIN_AGENT_TOOL_NAMES.has(name);
           const requiresApprovalByDefault = toolRequiresApproval(name, viaConnector);
           const approvalDecision = resolveActionApproval({
