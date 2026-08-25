@@ -965,9 +965,20 @@ export function ShellPage() {
       : null;
   const currentRuns = activeThreadRuns(activeSnapshot);
   const answerableAskMessageId = latestAnswerableAskMessageId(activeSnapshot);
-  const transcriptRunning = currentRuns.some((run) =>
+  const workingRuns = currentRuns.filter((run) =>
     ["running", "queued", "leased"].includes(run.status),
   );
+  const transcriptRunning = workingRuns.length > 0;
+  const workingStartedAtMs = (() => {
+    let earliest: number | undefined;
+    for (const run of workingRuns) {
+      if (!run.startedAt) continue;
+      const ms = Date.parse(run.startedAt);
+      if (Number.isNaN(ms)) continue;
+      if (earliest === undefined || ms < earliest) earliest = ms;
+    }
+    return earliest;
+  })();
   const composerRunning = currentRuns.some((run) => isActive(run.status));
   const transcriptArtifactTarget = useMemo<ArtifactTarget>(
     () => (inGroup ? { groupId: groupId ?? "" } : { botId: active?.id ?? "" }),
@@ -1816,6 +1827,7 @@ export function ShellPage() {
           loadingOlder={loadingOlder}
           answerableAskMessageId={answerableAskMessageId}
           running={transcriptRunning}
+          workingStartedAt={workingStartedAtMs}
           onLoadOlder={loadOlder}
           onOpenBot={openBot}
           onAnswer={answerMessage}
@@ -2594,6 +2606,7 @@ const Transcript = memo(function Transcript({
   loadingOlder,
   answerableAskMessageId,
   running,
+  workingStartedAt,
   onLoadOlder,
   onOpenBot,
   onAnswer,
@@ -2613,6 +2626,7 @@ const Transcript = memo(function Transcript({
   loadingOlder: boolean;
   answerableAskMessageId: string | null;
   running: boolean;
+  workingStartedAt?: number;
   onLoadOlder: () => void | Promise<void>;
   onOpenBot: (botId: string) => void;
   onAnswer: (message: ThreadMessage, text: string) => Promise<void>;
@@ -2686,7 +2700,7 @@ const Transcript = memo(function Transcript({
           {/* Box metrics match the progress bubble exactly so swapping between
               them never changes height or text position. */}
           <div className="flex max-w-[74%] items-center rounded-[20px] bg-[#1A1A1D] px-[18px] py-3 text-[15.5px] leading-[1.5]">
-            <LoadingState label="working" />
+            <LoadingState label="working" startedAt={workingStartedAt} />
           </div>
         </div>
       ) : null}
