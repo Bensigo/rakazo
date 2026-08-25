@@ -256,7 +256,7 @@ export function expandSkillReferencesInPrompt(
     blocks.push(formatForcedSkillPrompt(skill.name, skill.content));
     // Strip the @mention token so the agent is not confused by a dangling pointer.
     remaining = remaining.replace(
-      new RegExp(`(^|[\\s(,])@${escapeRegExp(skill.name)}(?=[\\s,.)]|$)`, "i"),
+      new RegExp(`(^|[\\s(,])@${escapeRegExp(skill.name)}(?=[\\s,.)]|$)`, "gi"),
       "$1",
     );
   }

@@ -182,6 +182,14 @@ describe("skill prompt helpers", () => {
     const again = expandSkillReferencesInPrompt(mentioned, skills);
     expect(again).toBe(mentioned);
     expect(again.split(SAMPLE.trim()).length - 1).toBe(1);
+
+    const twice = expandSkillReferencesInPrompt(
+      "Run @Daily standup then repeat @Daily standup",
+      skills,
+    );
+    expect(twice).not.toMatch(/@Daily standup/i);
+    expect(twice.split(SAMPLE.trim()).length - 1).toBe(1);
+    expect(expandSkillReferencesInPrompt(twice, skills)).toBe(twice);
   });
 
   it("builds catalog instructions for auto-use", () => {

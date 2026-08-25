@@ -1389,48 +1389,54 @@ export function createRunExecutor(deps: ExecutorDeps) {
             );
           }
           if (name === "skill_create") {
-            return skillCreateFromTool(
-              deps.prisma,
-              {
-                workspaceId: run.workspaceId,
-                userId: run.userId,
-              },
-              {
-                name: args.name ? String(args.name) : undefined,
-                description: args.description ? String(args.description) : undefined,
-                body: args.body ? String(args.body) : undefined,
-                content: args.content ? String(args.content) : undefined,
-              },
+            return finish(
+              await skillCreateFromTool(
+                deps.prisma,
+                {
+                  workspaceId: run.workspaceId,
+                  userId: run.userId,
+                },
+                {
+                  name: args.name ? String(args.name) : undefined,
+                  description: args.description ? String(args.description) : undefined,
+                  body: args.body ? String(args.body) : undefined,
+                  content: args.content ? String(args.content) : undefined,
+                },
+              ),
             );
           }
           if (name === "skill_update") {
-            return skillUpdateFromTool(
-              deps.prisma,
-              {
-                workspaceId: run.workspaceId,
-                userId: run.userId,
-              },
-              {
-                name: args.name ? String(args.name) : undefined,
-                skillId: args.skillId ? String(args.skillId) : undefined,
-                newName: args.newName ? String(args.newName) : undefined,
-                description: args.description !== undefined ? String(args.description) : undefined,
-                body: args.body !== undefined ? String(args.body) : undefined,
-                content: args.content ? String(args.content) : undefined,
-              },
+            return finish(
+              await skillUpdateFromTool(
+                deps.prisma,
+                {
+                  workspaceId: run.workspaceId,
+                  userId: run.userId,
+                },
+                {
+                  name: args.name ? String(args.name) : undefined,
+                  skillId: args.skillId ? String(args.skillId) : undefined,
+                  newName: args.newName ? String(args.newName) : undefined,
+                  description: args.description !== undefined ? String(args.description) : undefined,
+                  body: args.body !== undefined ? String(args.body) : undefined,
+                  content: args.content ? String(args.content) : undefined,
+                },
+              ),
             );
           }
           if (name === "skill_delete") {
-            return skillDeleteFromTool(
-              deps.prisma,
-              {
-                workspaceId: run.workspaceId,
-                userId: run.userId,
-              },
-              {
-                name: args.name ? String(args.name) : undefined,
-                skillId: args.skillId ? String(args.skillId) : undefined,
-              },
+            return finish(
+              await skillDeleteFromTool(
+                deps.prisma,
+                {
+                  workspaceId: run.workspaceId,
+                  userId: run.userId,
+                },
+                {
+                  name: args.name ? String(args.name) : undefined,
+                  skillId: args.skillId ? String(args.skillId) : undefined,
+                },
+              ),
             );
           }
           if (name === "add_mcp_server") {

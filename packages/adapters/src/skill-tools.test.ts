@@ -141,6 +141,21 @@ describe("skill tools", () => {
   });
 
   it("scopes list to the owner workspace and injects catalog lines", async () => {
+    prisma = makePrisma([
+      {
+        id: "other-1",
+        workspaceId: "ws-2",
+        userId: "user-2",
+        name: "Other workspace skill",
+        description: "not visible",
+        content: buildSkillMd({
+          name: "Other workspace skill",
+          description: "not visible",
+          body: "x",
+        }),
+        source: "user",
+      },
+    ]);
     await skillCreateFromTool(prisma as never, owner, {
       name: "Daily standup",
       description: "Prepare standup notes",
@@ -148,6 +163,7 @@ describe("skill tools", () => {
     });
     const records = await listAgentSkillRecords(prisma as never, owner);
     expect(records.map((row) => row.name)).toContain("Daily standup");
+    expect(records.map((row) => row.name)).not.toContain("Other workspace skill");
     const catalog = formatSkillsCatalogInstruction(records);
     expect(catalog).toContain("- Daily standup: Prepare standup notes");
     expect(catalog).toContain("skill_read");

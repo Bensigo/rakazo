@@ -53,6 +53,15 @@ export function resolveSkillContent(input: {
   body?: string;
   prior?: { content: string };
 }): { name: string; description: string; content: string } {
+  const ensureContentLimit = (content: string): string => {
+    if (content.length > 100_000) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: "Skill content must be at most 100000 characters.",
+      });
+    }
+    return content;
+  };
+
   if (input.content?.trim()) {
     const parsed = parseSkillMd(input.content);
     if ("error" in parsed) {
@@ -61,7 +70,7 @@ export function resolveSkillContent(input: {
     return {
       name: parsed.name,
       description: parsed.description,
-      content: buildSkillMd(parsed),
+      content: ensureContentLimit(buildSkillMd(parsed)),
     };
   }
 
@@ -98,7 +107,7 @@ export function resolveSkillContent(input: {
   return {
     name: validated.name,
     description: validated.description,
-    content: buildSkillMd(validated),
+    content: ensureContentLimit(buildSkillMd(validated)),
   };
 }
 
