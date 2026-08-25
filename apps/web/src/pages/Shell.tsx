@@ -3625,50 +3625,65 @@ function BotSettings({
           className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
         />
       </label>
-      <label className="mt-4 block text-[14px] text-[#85858A]">
-        Model
-        <select
-          value={modelKey}
-          onChange={(event) => {
-            setModelKey(event.target.value);
-            setThinkingLevel("");
-          }}
-          className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
-        >
-          <option value="">
-            Workspace default
-            {me?.defaultModel
-              ? ` (${catalogLabel(catalog, me.defaultProvider, me.defaultModel) ?? me.defaultModel})`
-              : ""}
-          </option>
-          {modelKey && !connectedOptions.some((option) => option.key === modelKey) ? (
-            <option value={modelKey}>{parseModelOptionKey(modelKey)?.modelId ?? modelKey}</option>
-          ) : null}
-          {connectedOptions.map((option) => (
-            <option key={option.key} value={option.key}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      {thinkingOptions.length ? (
-        <label className="mt-4 block text-[14px] text-[#85858A]">
-          Thinking
-          <select
-            value={thinkingLevel}
-            onChange={(event) => setThinkingLevel(event.target.value)}
-            className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
-          >
-            <option value="">Default (medium)</option>
-            {thinkingOptions.map((level) => (
-              <option key={level} value={level}>
-                {level}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : null}
       <ComputerModePicker value={computerMode} onChange={setComputerMode} />
+      <details
+        data-testid="bot-settings-advanced"
+        className="group mt-5 rounded-[14px] border border-[#26262A] bg-[#101012]"
+      >
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-4 text-[14px] text-[#A8A8AD]">
+          <span className="text-[15px] text-[#ECECEE]">Advanced</span>
+          <span aria-hidden="true" className="transition-transform group-open:rotate-90">
+            ›
+          </span>
+        </summary>
+        <div className="border-t border-[#232326] px-4 pb-5">
+          <label className="mt-4 block text-[14px] text-[#85858A]">
+            Model
+            <select
+              value={modelKey}
+              onChange={(event) => {
+                setModelKey(event.target.value);
+                setThinkingLevel("");
+              }}
+              className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
+            >
+              <option value="">
+                Workspace default
+                {me?.defaultModel
+                  ? ` (${catalogLabel(catalog, me.defaultProvider, me.defaultModel) ?? me.defaultModel})`
+                  : ""}
+              </option>
+              {modelKey && !connectedOptions.some((option) => option.key === modelKey) ? (
+                <option value={modelKey}>
+                  {parseModelOptionKey(modelKey)?.modelId ?? modelKey}
+                </option>
+              ) : null}
+              {connectedOptions.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {thinkingOptions.length ? (
+            <label className="mt-4 block text-[14px] text-[#85858A]">
+              Thinking
+              <select
+                value={thinkingLevel}
+                onChange={(event) => setThinkingLevel(event.target.value)}
+                className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
+              >
+                <option value="">Default (medium)</option>
+                {thinkingOptions.map((level) => (
+                  <option key={level} value={level}>
+                    {thinkingLevelLabel(level)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </div>
+      </details>
       {memoryProviderConfigured ? (
         <div className="mt-4 text-[14px] text-[#85858A]">
           Memory scope
@@ -3773,6 +3788,11 @@ function BotSettings({
 
 function modelOptionKey(provider: string, modelId: string) {
   return `${provider}::${modelId}`;
+}
+
+function thinkingLevelLabel(level: ThinkingLevel) {
+  if (level === "xhigh") return "Extra high";
+  return `${level.slice(0, 1).toUpperCase()}${level.slice(1)}`;
 }
 
 function parseModelOptionKey(key: string) {
