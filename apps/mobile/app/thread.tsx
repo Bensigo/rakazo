@@ -942,6 +942,7 @@ export default function Thread() {
           <TextInput
             value={draft}
             onChangeText={updateDraft}
+            accessibilityLabel="Message"
             onKeyPress={(event) => {
               if (
                 event.nativeEvent.key === "Backspace" &&

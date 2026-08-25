@@ -50,14 +50,20 @@ export default function BotSettingsScreen() {
         name?: string;
         title?: string;
         description?: string;
+        instructions?: string;
       } = { botId };
       if (profile.name !== bot.name) input.name = profile.name;
       if (profile.title !== bot.title) input.title = profile.title;
-      if (profile.description !== (bot.description ?? "")) input.description = profile.description;
+      if (profile.description !== (bot.description ?? "")) {
+        input.description = profile.description;
+        // Keep instructions in sync with description (same as web BotSettings).
+        input.instructions = profile.instructions;
+      }
       if (computerMode !== bot.computerMode) {
         await rpc("bots/setComputer", { botId, mode: computerMode });
       }
-      if (input.name || input.title || input.description) {
+      // Use key presence so clearing title/description to "" still persists.
+      if (Object.keys(input).length > 1) {
         await rpc("bots/update", input);
       }
       router.back();
