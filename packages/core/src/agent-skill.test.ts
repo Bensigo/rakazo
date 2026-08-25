@@ -38,8 +38,11 @@ describe("parseSkillMd", () => {
     expect(parsed.body).toContain("# Daily standup");
     expect(parsed.frontmatter.compatibility).toBe("optional-extra");
     expect(parsed.frontmatter["allowed-tools"]).toEqual(["shell", "read_file"]);
-    expect(String(parsed.frontmatter["long-desc"])).toContain("Folded description");
+    expect(String(parsed.frontmatter["long-desc"])).toBe(
+      "Folded description that spans multiple lines with strip chomping.",
+    );
     expect(String(parsed.frontmatter.literal)).toContain("Keep trailing newlines");
+    expect(String(parsed.frontmatter.literal).endsWith("\n")).toBe(true);
   });
 
   it("parses block scalar indicators with chomping and indent hints", () => {
@@ -63,12 +66,10 @@ chomp-indent: |-2
     const parsed = parseSkillMd(doc);
     expect("error" in parsed).toBe(false);
     if ("error" in parsed) return;
-    expect(parsed.description).toContain("Multi-line description");
-    expect(parsed.frontmatter.notes).toEqual(expect.stringContaining("Keep trailing newlines"));
-    expect(parsed.frontmatter.indent).toEqual(expect.stringContaining("Indented block"));
-    expect(parsed.frontmatter["chomp-indent"]).toEqual(
-      expect.stringContaining("Chomp then indent"),
-    );
+    expect(parsed.description).toBe("Multi-line description that folds.");
+    expect(parsed.frontmatter.notes).toBe("Keep trailing newlines.\n\n\n");
+    expect(parsed.frontmatter.indent).toBe("Indented block\n");
+    expect(parsed.frontmatter["chomp-indent"]).toBe("Chomp then indent");
   });
 
   it("requires name and description", () => {

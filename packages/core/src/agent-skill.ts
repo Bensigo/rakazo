@@ -275,6 +275,89 @@ function stringifyScalar(value: unknown): string {
   return "";
 }
 
+type YamlBlockScalarHeader = {
+  style: "|" | ">";
+  chomp: "clip" | "strip" | "keep";
+  indent: number | null;
+};
+
+function parseYamlBlockScalarHeader(raw: string): YamlBlockScalarHeader | null {
+  const match = /^([>|])(?:([1-9]\d*)([+-]?)|([+-])([1-9]\d*)?)?$/.exec(raw);
+  if (!match) return null;
+  const style = match[1] as "|" | ">";
+  const indentToken = match[2] ?? match[5] ?? "";
+  const chompToken = match[3] || match[4] || "";
+  const chomp = chompToken === "+" ? "keep" : chompToken === "-" ? "strip" : "clip";
+  const indent = indentToken ? Number(indentToken) : null;
+  return { style, chomp, indent };
+}
+
+function leadingSpaces(line: string): number {
+  const match = /^( *)/.exec(line);
+  return match?.[1]?.length ?? 0;
+}
+
+function decodeYamlBlockScalar(rawLines: string[], header: YamlBlockScalarHeader): string {
+  let indent = header.indent;
+  if (indent == null) {
+    indent = 0;
+    for (const line of rawLines) {
+      if (line.trim() === "") continue;
+      const spaces = leadingSpaces(line);
+      if (indent === 0 || spaces < indent) indent = spaces;
+    }
+  }
+
+  const contentLines = rawLines.map((line) => {
+    if (line.trim() === "") return "";
+    if (leadingSpaces(line) < indent!) return line.trimStart();
+    return line.slice(indent!);
+  });
+
+  // Count trailing blank lines before they are folded away for chomp=keep.
+  let trailingBlanks = 0;
+  for (let i = contentLines.length - 1; i >= 0; i -= 1) {
+    if (contentLines[i] !== "") break;
+    trailingBlanks += 1;
+  }
+
+  let text: string;
+  if (header.style === "|") {
+    text = contentLines.join("\n");
+  } else {
+    // Folded: join adjacent non-empty lines with a space; blank lines become newlines.
+    const parts: string[] = [];
+    let paragraph: string[] = [];
+    const flush = () => {
+      if (paragraph.length === 0) return;
+      parts.push(paragraph.join(" "));
+      paragraph = [];
+    };
+    for (const line of contentLines) {
+      if (line === "") {
+        flush();
+        parts.push("");
+        continue;
+      }
+      paragraph.push(line);
+    }
+    flush();
+    text = parts.join("\n");
+  }
+
+  if (header.chomp === "strip") {
+    return text.replace(/\n+$/, "");
+  }
+  if (header.chomp === "keep") {
+    if (trailingBlanks === 0) return text.endsWith("\n") ? text : `${text}\n`;
+    const stripped = text.replace(/\n+$/, "");
+    return `${stripped}\n${"\n".repeat(trailingBlanks)}`;
+  }
+  // clip: exactly one trailing newline when the block had content.
+  const stripped = text.replace(/\n+$/, "");
+  return stripped === "" ? "" : `${stripped}\n`;
+}
+
 /**
  * Minimal YAML object parser for SKILL.md frontmatter.
  * Supports scalars, folded/literal block scalars (`>`, `|`, `>-`, `|+`, `|2`, …),
@@ -300,16 +383,15 @@ function parseSimpleYamlObject(text: string): Record<string, unknown> {
     }
     const key = keyed[1]!;
     const raw = keyed[2] ?? "";
-    // YAML block scalars: | / > with optional chomp (+/-) and/or indent digit, either order.
-    if (/^[>|](?:[1-9]\d*[+-]?|[+-](?:[1-9]\d*)?)?$/.test(raw)) {
+    const blockHeader = parseYamlBlockScalarHeader(raw);
+    if (blockHeader) {
       const blockLines: string[] = [];
       i += 1;
       while (i < lines.length && (/^\s+/.test(lines[i] ?? "") || (lines[i] ?? "").trim() === "")) {
-        const blockLine = lines[i] ?? "";
-        blockLines.push(blockLine.replace(/^\s{2}/, ""));
+        blockLines.push(lines[i] ?? "");
         i += 1;
       }
-      result[key] = blockLines.join("\n").replace(/\n+$/, "");
+      result[key] = decodeYamlBlockScalar(blockLines, blockHeader);
       continue;
     }
     if (raw === "") {
