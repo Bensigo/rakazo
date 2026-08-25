@@ -3,8 +3,11 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   COMPUTER_IMAGE,
+  computerNetworkNameFor,
+  computerNetworkNamesForCleanup,
   containerCreateOptions,
   containerNameFor,
+  resolveScreenPublishTarget,
   screenPorts,
   screenUrlFor,
   xdotoolCommand,
@@ -57,6 +60,37 @@ describe("graphical computer spec", () => {
     expect(options.HostConfig.NetworkMode).toBe("rakazo_default");
   });
 
+  it("still publishes host ports when NetworkMode is a per-bot isolated network", () => {
+    const networkMode = computerNetworkNameFor("bot_isolation");
+    const options = containerCreateOptions({
+      name: containerNameFor("bot_isolation"),
+      image: COMPUTER_IMAGE,
+      botId: "bot_isolation",
+      workspaceId: "ws",
+      homePath: "/var/rakazo/homes/bot_isolation",
+      networkMode,
+    });
+    expect(networkMode).toMatch(/^rakazo-computer-bot_isolation-[0-9a-f]{32}$/);
+    expect(options.HostConfig.NetworkMode).toBe(networkMode);
+    expect(options.HostConfig.PortBindings["6080/tcp"]).toEqual([
+      { HostIp: "127.0.0.1", HostPort: "0" },
+    ]);
+    expect(options.ExposedPorts["6080/tcp"]).toEqual({});
+  });
+
+  it("keeps sanitized network names unique when botIds only differ by stripped characters", () => {
+    expect(computerNetworkNameFor("a/b")).not.toBe(computerNetworkNameFor("ab"));
+    expect(computerNetworkNameFor("a/b")).toBe(computerNetworkNameFor("a/b"));
+  });
+
+  it("lists prior network name variants for cleanup", () => {
+    const names = computerNetworkNamesForCleanup("bot_1");
+    expect(names[0]).toBe(computerNetworkNameFor("bot_1"));
+    expect(names).toContain("rakazo-computer-bot_1");
+    expect(names.some((name) => /-[0-9a-f]{8}$/.test(name))).toBe(true);
+    expect(names.some((name) => /-[0-9a-f]{32}$/.test(name))).toBe(true);
+  });
+
   it("ships a browser desktop, not a fullscreen terminal", () => {
     const root = path.resolve(import.meta.dirname, "../../computer");
     const dockerfile = readFileSync(path.join(root, "Dockerfile"), "utf8");
@@ -76,6 +110,44 @@ describe("graphical computer spec", () => {
 
   it("points the screen at the chrome-less noVNC embed", () => {
     expect(screenUrlFor("16080")).toBe("http://127.0.0.1:16080/embed.html");
+  });
+
+  it("uses the published host mapping in the default topology even when a container IP exists", () => {
+    // Regression: per-bot NetworkMode always yields a 172.x address. Returning
+    // that to clients makes local/dev screens look dead — browsers cannot load
+    // docker-internal IPs. Probe and return the host mapping instead.
+    const networkMode = computerNetworkNameFor("bot_1");
+    expect(
+      resolveScreenPublishTarget({
+        screenNetwork: undefined,
+        networkMode,
+        networks: { [networkMode]: { IPAddress: "172.18.0.4" } },
+        hostPort: "49152",
+        containerPort: "6080",
+      }),
+    ).toEqual({ host: "127.0.0.1", port: "49152" });
+    expect(
+      resolveScreenPublishTarget({
+        screenNetwork: undefined,
+        networkMode,
+        networks: { [networkMode]: { IPAddress: "172.18.0.4" } },
+        hostPort: undefined,
+        containerPort: "6080",
+      }),
+    ).toBeUndefined();
+  });
+
+  it("uses the container IP only for the internal screen network topology", () => {
+    const networkMode = "rakazo_default";
+    expect(
+      resolveScreenPublishTarget({
+        screenNetwork: "internal",
+        networkMode,
+        networks: { [networkMode]: { IPAddress: "172.18.0.4" } },
+        hostPort: "49152",
+        containerPort: "6080",
+      }),
+    ).toEqual({ host: "172.18.0.4", port: "6080" });
   });
 
   it("turns takeover input into xdotool", () => {
