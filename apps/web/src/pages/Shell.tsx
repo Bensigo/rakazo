@@ -1793,14 +1793,12 @@ export function ShellPage() {
                 type="button"
                 title="Agent computer"
                 onClick={() => {
-                  setPanel((p) => {
-                    const next = p === "computer" ? null : "computer";
-                    if (next === "computer" && active) {
-                      // Refresh run/computer so Take control isn't stuck on a stale busyBotName.
-                      void refreshThread(active.id).catch(() => undefined);
-                    }
-                    return next;
-                  });
+                  const next = panel === "computer" ? null : "computer";
+                  setPanel(next);
+                  if (next === "computer" && active) {
+                    // Refresh run/computer so Take control isn't stuck on a stale busyBotName.
+                    void refreshThread(active.id).catch(() => undefined);
+                  }
                 }}
                 className="grid h-[30px] w-[34px] place-items-center rounded-[9px] hover:bg-[#1B1B1E]"
                 style={{ background: panel ? "#1B1B1E" : "transparent" }}
@@ -3020,7 +3018,7 @@ const Composer = memo(function Composer({
               </span>
               <button
                 type="button"
-                aria-label={`Remove ${selectedSkill.name}`}
+                aria-label={`Remove skill ${selectedSkill.name}`}
                 onClick={() => setSelectedSkill(null)}
                 className="text-[#85858A] hover:text-[#ECECEE]"
               >
@@ -3040,7 +3038,7 @@ const Composer = memo(function Composer({
               </span>
               <button
                 type="button"
-                aria-label={`Remove ${member.name}`}
+                aria-label={`Remove mention ${member.name}`}
                 onClick={() =>
                   setSelectedMentions((current) =>
                     current.filter((selected) => selected.botId !== member.botId),

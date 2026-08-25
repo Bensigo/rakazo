@@ -29,13 +29,11 @@ test("composer / picker lists skills above actions", async ({ page }, testInfo) 
   await expect(picker.getByRole("button", { name: "Settings: General" })).toBeVisible();
   await expect(picker.getByRole("button", { name: "Settings: Usage" })).toBeVisible();
 
-  const skillBox = skillButton.boundingBox();
-  const actionBox = chatSettings.boundingBox();
-  const skill = await skillBox;
-  const action = await actionBox;
-  expect(skill).toBeTruthy();
-  expect(action).toBeTruthy();
-  expect(skill!.y).toBeLessThan(action!.y);
+  const skillBox = await skillButton.boundingBox();
+  const actionBox = await chatSettings.boundingBox();
+  expect(skillBox).toBeTruthy();
+  expect(actionBox).toBeTruthy();
+  expect(skillBox!.y).toBeLessThan(actionBox!.y);
 
   await expect(skillButton).toContainText("Prepare a concise standup");
   await captureScreenshot(page, testInfo, "slash-skills-picker");
@@ -52,8 +50,7 @@ test("composer / picker lists skills above actions", async ({ page }, testInfo) 
   await composer.fill("hello /");
   await expect(page.getByTestId("slash-picker")).toHaveCount(0);
 
-  await composer.fill("");
-  await page.keyboard.press("Backspace");
+  await page.getByRole("button", { name: "Remove skill Daily standup" }).click();
   await expect(page.getByTestId("skill-chip")).toHaveCount(0);
 
   await composer.fill("@");

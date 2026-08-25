@@ -212,6 +212,7 @@ export async function skillUpdateFromTool(
   } else {
     const prior = parseSkillMd(existing.content);
     if ("error" in prior) return { error: prior.error };
+    // `name` is only a lookup key (see findOwnedSkill above); renames require `newName`.
     nextName = String(input.newName ?? existing.name).trim() || existing.name;
     nextDescription =
       input.description !== undefined ? String(input.description).trim() : existing.description;

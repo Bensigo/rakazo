@@ -1,5 +1,5 @@
 import { ChatMarkdown } from "@rakazo/chat-ui/native";
-import type { MessageBlock } from "@rakazo/contracts";
+import type { AgentSkillCatalogEntry, MessageBlock } from "@rakazo/contracts";
 import {
   abortableDelay,
   attachmentsForThread,
@@ -9,6 +9,7 @@ import {
   SLASH_ACTIONS,
   type SlashActionId,
   serializeComposerPrompt,
+  truncateSlashDescription,
 } from "@rakazo/core";
 import { Link, useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -88,17 +89,11 @@ export default function Thread() {
   const [draft, setDraft] = useState("");
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [slashQuery, setSlashQuery] = useState<string | null>(null);
-  const [agentSkills, setAgentSkills] = useState<
-    Array<{ id: string; name: string; description: string }>
-  >([]);
+  const [agentSkills, setAgentSkills] = useState<AgentSkillCatalogEntry[]>([]);
   const [selectedMentions, setSelectedMentions] = useState<
     Array<{ botId: string; name: string; color?: string }>
   >([]);
-  const [selectedSkill, setSelectedSkill] = useState<{
-    id: string;
-    name: string;
-    description: string;
-  } | null>(null);
+  const [selectedSkill, setSelectedSkill] = useState<AgentSkillCatalogEntry | null>(null);
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [replyTarget, setReplyTarget] = useState<MobileMessage | null>(null);
   const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
@@ -142,7 +137,7 @@ export default function Thread() {
       : [];
 
   useEffect(() => {
-    void rpc<Array<{ id: string; name: string; description: string }>>("agentSkills/list")
+    void rpc<AgentSkillCatalogEntry[]>("agentSkills/list")
       .then(setAgentSkills)
       .catch(() => setAgentSkills([]));
   }, []);
@@ -457,7 +452,7 @@ export default function Thread() {
     );
   }
 
-  function insertSkill(skill: { id: string; name: string; description: string }) {
+  function insertSkill(skill: AgentSkillCatalogEntry) {
     setSelectedSkill(skill);
     setDraft("");
     setSlashQuery(null);
@@ -491,6 +486,12 @@ export default function Thread() {
       params: action === "settings-usage" ? { focus: "usage" } : undefined,
     });
   }
+
+  const canSend =
+    Boolean(draft.trim()) ||
+    selectedSkill !== null ||
+    selectedMentions.length > 0 ||
+    activePendingAttachments.length > 0;
 
   async function send() {
     const targetBotId = botId;
@@ -818,7 +819,7 @@ export default function Thread() {
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={{ color: "#ECECEE", fontSize: 14 }}>{skill.name}</Text>
                 <Text numberOfLines={1} style={{ color: "#85858A", fontSize: 12.5, marginTop: 2 }}>
-                  {skill.description}
+                  {truncateSlashDescription(skill.description)}
                 </Text>
               </View>
             </Pressable>
@@ -891,7 +892,7 @@ export default function Thread() {
                 {selectedSkill.name}
               </Text>
               <Pressable
-                accessibilityLabel={`Remove ${selectedSkill.name}`}
+                accessibilityLabel={`Remove skill ${selectedSkill.name}`}
                 hitSlop={8}
                 onPress={() => setSelectedSkill(null)}
               >
@@ -926,7 +927,7 @@ export default function Thread() {
                 {member.name}
               </Text>
               <Pressable
-                accessibilityLabel={`Remove ${member.name}`}
+                accessibilityLabel={`Remove mention ${member.name}`}
                 hitSlop={8}
                 onPress={() =>
                   setSelectedMentions((current) =>
@@ -968,13 +969,7 @@ export default function Thread() {
           />
         </View>
         <Pressable
-          disabled={
-            sending ||
-            (!draft.trim() &&
-              !selectedSkill &&
-              selectedMentions.length === 0 &&
-              activePendingAttachments.length === 0)
-          }
+          disabled={sending || !canSend}
           onPress={() => void send()}
           style={{
             backgroundColor: "#F1F1EF",
@@ -983,14 +978,7 @@ export default function Thread() {
             height: 44,
             alignItems: "center",
             justifyContent: "center",
-            opacity:
-              sending ||
-              (!draft.trim() &&
-                !selectedSkill &&
-                selectedMentions.length === 0 &&
-                activePendingAttachments.length === 0)
-                ? 0.5
-                : 1,
+            opacity: sending || !canSend ? 0.5 : 1,
           }}
         >
           <NativeSymbol ios="arrow.up" android="arrow-up" size={18} color="#17171A" />
