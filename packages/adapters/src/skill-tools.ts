@@ -16,8 +16,10 @@ export const SKILL_TOOL_NAMES = new Set([
   "skill_delete",
 ]);
 
-/** Match CreateAgentSkillInput / UpdateAgentSkillInput content bounds. */
+/** Match CreateAgentSkillInput / UpdateAgentSkillInput / parseSkillMd bounds. */
 const MAX_SKILL_CONTENT_CHARS = 100_000;
+const MAX_SKILL_NAME_CHARS = 80;
+const MAX_SKILL_DESCRIPTION_CHARS = 2000;
 
 type SkillOwner = {
   workspaceId: string;
@@ -63,6 +65,18 @@ function builtinRecords(): Array<SkillRecord & { id: string }> {
 function rejectOversizedContent(content: string): string | undefined {
   if (content.length > MAX_SKILL_CONTENT_CHARS) {
     return `Skill content must be at most ${MAX_SKILL_CONTENT_CHARS} characters.`;
+  }
+  return undefined;
+}
+
+function rejectInvalidSkillFields(name: string, description: string): string | undefined {
+  if (!name) return "Skill name is required.";
+  if (!description) return "Skill description is required.";
+  if (name.length > MAX_SKILL_NAME_CHARS) {
+    return `Skill name must be at most ${MAX_SKILL_NAME_CHARS} characters.`;
+  }
+  if (description.length > MAX_SKILL_DESCRIPTION_CHARS) {
+    return `Skill description must be at most ${MAX_SKILL_DESCRIPTION_CHARS} characters.`;
   }
   return undefined;
 }
@@ -130,6 +144,8 @@ export async function skillCreateFromTool(
         error: "Provide name and description (and optional body), or full SKILL.md content.",
       };
     }
+    const invalid = rejectInvalidSkillFields(name, description);
+    if (invalid) return { error: invalid };
     content = buildSkillMd({ name, description, body });
   }
 
@@ -200,7 +216,6 @@ export async function skillUpdateFromTool(
     nextDescription =
       input.description !== undefined ? String(input.description).trim() : existing.description;
     const body = input.body !== undefined ? String(input.body) : prior.body;
-    if (!nextDescription) return { error: "description is required." };
     nextContent = buildSkillMd({
       name: nextName,
       description: nextDescription,
@@ -209,6 +224,8 @@ export async function skillUpdateFromTool(
     });
   }
 
+  const invalid = rejectInvalidSkillFields(nextName, nextDescription);
+  if (invalid) return { error: invalid };
   const oversized = rejectOversizedContent(nextContent);
   if (oversized) return { error: oversized };
 

@@ -13,6 +13,13 @@ name: Daily standup
 description: Prepare a concise standup update from recent work. Use when the user asks for standup notes or a status summary.
 compatibility: optional-extra
 allowed-tools: [shell, read_file]
+long-desc: >-
+  Folded description that spans
+  multiple lines with strip chomping.
+literal: |+
+  Keep trailing newlines
+
+  And blank lines.
 ---
 
 # Daily standup
@@ -31,6 +38,8 @@ describe("parseSkillMd", () => {
     expect(parsed.body).toContain("# Daily standup");
     expect(parsed.frontmatter.compatibility).toBe("optional-extra");
     expect(parsed.frontmatter["allowed-tools"]).toEqual(["shell", "read_file"]);
+    expect(String(parsed.frontmatter["long-desc"])).toContain("Folded description");
+    expect(String(parsed.frontmatter.literal)).toContain("Keep trailing newlines");
   });
 
   it("requires name and description", () => {

@@ -163,17 +163,24 @@ export function createAgentSkillsService(prisma: PrismaClient) {
       ) {
         throw new ORPCError("CONFLICT", { message: "A skill with that name already exists." });
       }
-      const row = await prisma.agentSkill.create({
-        data: {
-          workspaceId: actor.workspaceId,
-          userId: actor.userId,
-          name: resolved.name,
-          description: resolved.description,
-          content: resolved.content,
-          source: "user",
-        },
-      });
-      return mapAgentSkill(row);
+      try {
+        const row = await prisma.agentSkill.create({
+          data: {
+            workspaceId: actor.workspaceId,
+            userId: actor.userId,
+            name: resolved.name,
+            description: resolved.description,
+            content: resolved.content,
+            source: "user",
+          },
+        });
+        return mapAgentSkill(row);
+      } catch (error) {
+        if ((error as { code?: string }).code === "P2002") {
+          throw new ORPCError("CONFLICT", { message: "A skill with that name already exists." });
+        }
+        throw error;
+      }
     },
 
     async update(
@@ -208,20 +215,27 @@ export function createAgentSkillsService(prisma: PrismaClient) {
         }
       }
       // Mutate only owner-scoped user rows (never builtin/plugin), even if source was tampered.
-      const updated = await prisma.agentSkill.updateMany({
-        where: {
-          id: existing.id,
-          workspaceId: actor.workspaceId,
-          userId: actor.userId,
-          source: "user",
-        },
-        data: {
-          name: resolved.name,
-          description: resolved.description,
-          content: resolved.content,
-        },
-      });
-      if (updated.count !== 1) throw new IsolationError();
+      try {
+        const updated = await prisma.agentSkill.updateMany({
+          where: {
+            id: existing.id,
+            workspaceId: actor.workspaceId,
+            userId: actor.userId,
+            source: "user",
+          },
+          data: {
+            name: resolved.name,
+            description: resolved.description,
+            content: resolved.content,
+          },
+        });
+        if (updated.count !== 1) throw new IsolationError();
+      } catch (error) {
+        if ((error as { code?: string }).code === "P2002") {
+          throw new ORPCError("CONFLICT", { message: "A skill with that name already exists." });
+        }
+        throw error;
+      }
       const row = await prisma.agentSkill.findFirst({
         where: {
           id: existing.id,

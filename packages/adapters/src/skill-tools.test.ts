@@ -189,4 +189,27 @@ describe("skill tools", () => {
     });
     expect(created).toMatchObject({ error: expect.stringContaining("at most") });
   });
+
+  it("rejects overlong skill names on structured create and rename", async () => {
+    const longName = "N".repeat(81);
+    expect(
+      await skillCreateFromTool(prisma as never, owner, {
+        name: longName,
+        description: "ok description",
+        body: "steps",
+      }),
+    ).toEqual({ error: "Skill name must be at most 80 characters." });
+
+    await skillCreateFromTool(prisma as never, owner, {
+      name: "Short",
+      description: "ok description",
+      body: "steps",
+    });
+    expect(
+      await skillUpdateFromTool(prisma as never, owner, {
+        name: "Short",
+        newName: longName,
+      }),
+    ).toEqual({ error: "Skill name must be at most 80 characters." });
+  });
 });

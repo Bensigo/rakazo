@@ -271,7 +271,8 @@ function stringifyScalar(value: unknown): string {
 
 /**
  * Minimal YAML object parser for SKILL.md frontmatter.
- * Supports scalars, folded `>` / `|` blocks, inline arrays, and nested maps one level deep.
+ * Supports scalars, folded/literal block scalars (`>`, `|`, `>-`, `|+`, `|2`, …),
+ * inline arrays, and nested maps one level deep.
  * Unrecognized lines are kept as string values under their key when possible.
  */
 function parseSimpleYamlObject(text: string): Record<string, unknown> {
@@ -293,7 +294,8 @@ function parseSimpleYamlObject(text: string): Record<string, unknown> {
     }
     const key = keyed[1]!;
     const raw = keyed[2] ?? "";
-    if (raw === ">" || raw === "|") {
+    // YAML block scalars: | / > with optional chomping (+/-) and indent digit (|-, >+, |2, …).
+    if (/^[>|][+-]?\d*$/.test(raw)) {
       const blockLines: string[] = [];
       i += 1;
       while (i < lines.length && (/^\s+/.test(lines[i] ?? "") || (lines[i] ?? "").trim() === "")) {
