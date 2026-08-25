@@ -305,8 +305,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
         id,
         apiKey: resolved.oauth ? undefined : resolved.apiKey,
         baseUrl: resolved.baseUrl,
-        thinkingLevel:
-          (override?.thinkingLevel as AgentRunRequest["model"]["thinkingLevel"]) ?? null,
+        thinkingLevel: useOverride
+          ? ((override?.thinkingLevel as AgentRunRequest["model"]["thinkingLevel"]) ?? null)
+          : null,
         oauth: resolved.oauth
           ? { credential: resolved.oauth, persist: resolved.persistOAuth }
           : undefined,
@@ -1689,8 +1690,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 id: runModelId,
                 apiKey: resolved.oauth ? undefined : resolved.apiKey,
                 baseUrl: resolved.baseUrl,
-                thinkingLevel:
-                  (bot.thinkingLevel as AgentRunRequest["model"]["thinkingLevel"]) ?? null,
+                thinkingLevel: useModelOverride
+                  ? ((bot.thinkingLevel as AgentRunRequest["model"]["thinkingLevel"]) ?? null)
+                  : null,
                 oauth: resolved.oauth
                   ? { credential: resolved.oauth, persist: resolved.persistOAuth }
                   : undefined,

@@ -3536,9 +3536,11 @@ function BotSettings({
         setCredentials(nextCredentials);
         setCatalog(nextCatalog);
         setMe(nextMe);
+        // Only mark ready on success — a failed catalog load must not clear
+        // an existing thinkingLevel override on save.
+        setModelMetaReady(true);
       })
-      .catch(() => undefined)
-      .finally(() => setModelMetaReady(true));
+      .catch(() => undefined);
   }, []);
 
   const connectedOptions: Array<{

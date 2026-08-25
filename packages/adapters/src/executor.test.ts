@@ -342,7 +342,8 @@ describe("createRunExecutor", () => {
     expect(model).toMatchObject({
       provider: "openrouter",
       id: "deepseek/deepseek-v4-flash-0731",
-      thinkingLevel: "high",
+      // Override thinking must drop with the override provider/credential unit.
+      thinkingLevel: null,
     });
     expect(findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
