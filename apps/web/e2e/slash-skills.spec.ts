@@ -41,6 +41,9 @@ test("composer / picker lists skills above actions", async ({ page }) => {
   await skillButton.click();
   await expect(composer).toHaveValue("/Daily standup ");
 
+  await composer.fill("hello /");
+  await expect(page.getByTestId("slash-picker")).toHaveCount(0);
+
   await composer.fill("@");
   await expect(page.getByTestId("slash-picker")).toHaveCount(0);
 });

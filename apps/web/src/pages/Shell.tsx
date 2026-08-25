@@ -1858,7 +1858,7 @@ export function ShellPage() {
               return;
             }
             if (action === "settings-usage") {
-              setAccountSettingsOpen(true);
+              setMenuOpen(true);
               void rpc.usage
                 .summary()
                 .then(setUsage)
@@ -2738,8 +2738,8 @@ const Composer = memo(function Composer({
     );
     const mentionMatch = /(?:^|\s)@([\w-]*)$/.exec(value);
     setMentionQuery(mentionMatch ? (mentionMatch[1] ?? "") : null);
-    // `/` picker is separate from `@` mentions.
-    const slashMatch = /(?:^|\s)\/([^\n]*)$/.exec(value);
+    // `/` only at the start of the draft so forced skills expand (`Use skill:` / `/Name` prefix).
+    const slashMatch = /^\/([^\n]*)$/.exec(value);
     const nextSlash = slashMatch ? (slashMatch[1] ?? "") : null;
     if (nextSlash !== null && slashQuery === null) onSlashOpen?.();
     setSlashQuery(nextSlash);
@@ -2758,12 +2758,12 @@ const Composer = memo(function Composer({
   }
 
   function insertSkill(skill: AgentSkillCatalogEntry) {
-    setDraft((current) => current.replace(/\/([^\n]*)$/, `/${skill.name} `));
+    setDraft(`/${skill.name} `);
     setSlashQuery(null);
   }
 
   function runSlashAction(action: "chat-settings" | "settings-general" | "settings-usage") {
-    setDraft((current) => current.replace(/(^|\s)\/([^\n]*)$/, "$1").replace(/\s+$/, ""));
+    setDraft("");
     setSlashQuery(null);
     onSlashAction?.(action);
   }

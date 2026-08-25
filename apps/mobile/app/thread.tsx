@@ -442,7 +442,7 @@ export default function Thread() {
     );
     const match = /(?:^|\s)@([\w-]*)$/.exec(value);
     setMentionQuery(match ? (match[1] ?? "") : null);
-    const slashMatch = /(?:^|\s)\/([^\n]*)$/.exec(value);
+    const slashMatch = /^\/([^\n]*)$/.exec(value);
     setSlashQuery(slashMatch ? (slashMatch[1] ?? "") : null);
   }
 
@@ -459,12 +459,12 @@ export default function Thread() {
   }
 
   function insertSkill(skill: { name: string }) {
-    setDraft((current) => current.replace(/\/([^\n]*)$/, `/${skill.name} `));
+    setDraft(`/${skill.name} `);
     setSlashQuery(null);
   }
 
   function runSlashAction(action: "chat-settings" | "settings-general" | "settings-usage") {
-    setDraft((current) => current.replace(/(^|\s)\/([^\n]*)$/, "$1").replace(/\s+$/, ""));
+    setDraft("");
     setSlashQuery(null);
     if (action === "chat-settings") {
       if (inGroup && groupId) {
@@ -472,6 +472,17 @@ export default function Thread() {
       } else {
         showBotActions();
       }
+      return;
+    }
+    if (action === "settings-usage") {
+      void rpc<{ runs: number; inputTokens: number; outputTokens: number }>("usage/summary")
+        .then((summary) => {
+          Alert.alert(
+            "Usage",
+            `${summary.runs} runs · ${summary.inputTokens + summary.outputTokens} tokens`,
+          );
+        })
+        .catch(() => router.push("/account"));
       return;
     }
     router.push("/account");
