@@ -2,6 +2,44 @@ import type { AgentToolExecutionResult } from "@rakazo/adapter-kit";
 
 export type ApprovalPausedToolResult = AgentToolExecutionResult & { terminate: true };
 
+export interface ApprovedEffectReplay {
+  kind: string;
+  request: unknown;
+}
+
+export interface ApprovedEffectReplayQueue {
+  nextToolName(): string | undefined;
+  take(toolName: string): Record<string, unknown> | undefined;
+  assertDrained(): void;
+}
+
+export function createApprovedEffectReplayQueue(
+  effects: readonly ApprovedEffectReplay[],
+): ApprovedEffectReplayQueue {
+  const pending = [...effects];
+
+  return {
+    nextToolName() {
+      return pending[0]?.kind;
+    },
+    take(toolName) {
+      const next = pending[0];
+      if (!next || next.kind !== toolName) return undefined;
+      pending.shift();
+      const request = next.request;
+      if (!request || typeof request !== "object" || Array.isArray(request)) {
+        throw new TypeError(`Approved ${toolName} request is not a JSON object`);
+      }
+      return request as Record<string, unknown>;
+    },
+    assertDrained() {
+      if (pending.length > 0) {
+        throw new Error("Approved tool requests were not fully replayed");
+      }
+    },
+  };
+}
+
 export function approvalPausedToolResult(): ApprovalPausedToolResult {
   return {
     kind: "agent_tool_result",
