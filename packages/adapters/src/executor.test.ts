@@ -30,6 +30,9 @@ describe("createRunExecutor", () => {
           thread: { id: "thread-1" },
         })),
       },
+      agentSkill: {
+        findMany: vi.fn(async () => []),
+      },
       $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
         callback({
           routine: { updateMany },
@@ -57,6 +60,73 @@ describe("createRunExecutor", () => {
     expect(append).toHaveBeenCalledWith(
       expect.objectContaining({ type: "routine.fired", runId: "run-1" }),
     );
+  });
+
+  it("expands @skill mentions in the routine prompt at fire time", async () => {
+    const scheduledAt = new Date(Date.now() - 1_000);
+    const enqueue = vi.fn(async () => undefined);
+    let createdPrompt = "";
+    const taskCreate = vi.fn(async (args: { data: { prompt: string } }) => {
+      createdPrompt = args.data.prompt;
+      return { id: "task-1" };
+    });
+    const skillContent = `---
+name: Daily standup
+description: Prepare standup notes
+---
+
+1. Summarize wins.
+`;
+    const prisma = {
+      routine: {
+        findUnique: vi.fn(async () => ({
+          id: "routine-1",
+          workspaceId: "ws-1",
+          botId: "bot-1",
+          userId: "user-1",
+          prompt: "Run @Daily standup, then email me",
+          cron: ONCE_ROUTINE_CRON,
+          timezone: "UTC",
+          active: true,
+          nextRunAt: scheduledAt,
+        })),
+      },
+      bot: {
+        findUnique: vi.fn(async () => ({
+          id: "bot-1",
+          thread: { id: "thread-1" },
+        })),
+      },
+      agentSkill: {
+        findMany: vi.fn(async () => [
+          {
+            id: "skill-1",
+            name: "Daily standup",
+            description: "Prepare standup notes",
+            content: skillContent,
+            source: "user",
+          },
+        ]),
+      },
+      $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
+        callback({
+          routine: { updateMany: vi.fn(async () => ({ count: 1 })) },
+          task: { create: taskCreate },
+          run: { create: vi.fn(async () => ({ id: "run-1" })) },
+        }),
+      ),
+    } as unknown as PrismaClient;
+    const executor = createRunExecutor({
+      prisma,
+      jobs: { enqueue, cancel: vi.fn(async () => undefined), close: vi.fn(async () => undefined) },
+      events: { append: vi.fn(async () => undefined) },
+    } as unknown as Parameters<typeof createRunExecutor>[0]);
+
+    await executor.wakeRoutine("routine-1", scheduledAt.toISOString());
+
+    expect(createdPrompt).toContain("Use skill: Daily standup");
+    expect(createdPrompt).toContain("Summarize wins");
+    expect(createdPrompt).not.toMatch(/@Daily standup/);
   });
 
   it("still continues the run when routine.fired append fails", async () => {
@@ -87,6 +157,9 @@ describe("createRunExecutor", () => {
           id: "bot-1",
           thread: { id: "thread-1" },
         })),
+      },
+      agentSkill: {
+        findMany: vi.fn(async () => []),
       },
       $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
         callback({
@@ -140,6 +213,9 @@ describe("createRunExecutor", () => {
           id: "bot-1",
           thread: { id: "thread-1" },
         })),
+      },
+      agentSkill: {
+        findMany: vi.fn(async () => []),
       },
       $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) => {
         transactionCalls += 1;

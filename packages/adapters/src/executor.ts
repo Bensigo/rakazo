@@ -32,7 +32,9 @@ import {
   containsSecret,
   createStreamingRedactor,
   endsSentence,
+  expandSkillReferencesInPrompt,
   formatSkillRunPrompt,
+  formatSkillsCatalogInstruction,
   humanizeToolName,
   inferAttachmentMimeType,
   isTerminal,
@@ -155,6 +157,13 @@ import {
 } from "./scratchpad-tools.js";
 import { inferScript } from "./scripted-runtime.js";
 import type { EncryptedSecretStore } from "./secrets.js";
+import {
+  listAgentSkillRecords,
+  skillCreateFromTool,
+  skillDeleteFromTool,
+  skillReadFromTool,
+  skillUpdateFromTool,
+} from "./skill-tools.js";
 import { type TakeoverResumeCheckpoint, takeoverResumeFromRelease } from "./takeover-resume.js";
 import { getActiveTeachingSession, parsePlaybook } from "./teaching-session.js";
 import {
@@ -173,6 +182,7 @@ const READ_ONLY_AGENT_TOOLS = new Set([
   "recall_memory",
   "schedule_list",
   "scratchpad_list",
+  "skill_read",
 ]);
 const MAX_MODEL_FILE_BYTES = 250_000;
 // Same tool, same arguments, this many times in a row means the agent is stuck, not paginating.
@@ -344,6 +354,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
         }
       }
       const previousLastRunAt = routine.lastRunAt;
+      const skillRecords = await listAgentSkillRecords(deps.prisma, {
+        workspaceId: routine.workspaceId,
+        userId: routine.userId,
+      });
+      const routinePrompt = expandSkillReferencesInPrompt(routine.prompt, skillRecords);
       const claimed = await deps.prisma.$transaction(async (tx) => {
         const updated = await tx.routine.updateMany({
           where: { id: routine.id, active: true, nextRunAt: scheduledAt },
@@ -360,7 +375,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             botId: bot.id,
             threadId: bot.thread!.id,
             userId: routine.userId,
-            prompt: routine.prompt,
+            prompt: routinePrompt,
             status: "queued",
           },
         });
@@ -540,6 +555,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           settings,
           configuredMemory,
           savedSkills,
+          agentSkills,
         ] = await Promise.all([
           deps.prisma.bot.findUniqueOrThrow({
             where: { id: run.botId },
@@ -569,6 +585,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
           deps.memoryProviders.resolve(run.workspaceId),
           deps.prisma.taughtSkill.findMany({
             where: { botId: run.botId, workspaceId: run.workspaceId, status: "saved" },
+          }),
+          listAgentSkillRecords(deps.prisma, {
+            workspaceId: run.workspaceId,
+            userId: run.userId,
           }),
         ]);
         const hasModelOverride = Boolean(bot.modelProvider && bot.modelId);
@@ -1355,6 +1375,71 @@ export function createRunExecutor(deps: ExecutorDeps) {
             });
             return finish(cancelled);
           }
+          if (name === "skill_read") {
+            return skillReadFromTool(
+              deps.prisma,
+              {
+                workspaceId: run.workspaceId,
+                userId: run.userId,
+              },
+              {
+                name: args.name ? String(args.name) : undefined,
+                skillId: args.skillId ? String(args.skillId) : undefined,
+              },
+            );
+          }
+          if (name === "skill_create") {
+            return finish(
+              await skillCreateFromTool(
+                deps.prisma,
+                {
+                  workspaceId: run.workspaceId,
+                  userId: run.userId,
+                },
+                {
+                  name: args.name ? String(args.name) : undefined,
+                  description: args.description ? String(args.description) : undefined,
+                  body: args.body ? String(args.body) : undefined,
+                  content: args.content ? String(args.content) : undefined,
+                },
+              ),
+            );
+          }
+          if (name === "skill_update") {
+            return finish(
+              await skillUpdateFromTool(
+                deps.prisma,
+                {
+                  workspaceId: run.workspaceId,
+                  userId: run.userId,
+                },
+                {
+                  name: args.name ? String(args.name) : undefined,
+                  skillId: args.skillId ? String(args.skillId) : undefined,
+                  newName: args.newName ? String(args.newName) : undefined,
+                  description:
+                    args.description !== undefined ? String(args.description) : undefined,
+                  body: args.body !== undefined ? String(args.body) : undefined,
+                  content: args.content ? String(args.content) : undefined,
+                },
+              ),
+            );
+          }
+          if (name === "skill_delete") {
+            return finish(
+              await skillDeleteFromTool(
+                deps.prisma,
+                {
+                  workspaceId: run.workspaceId,
+                  userId: run.userId,
+                },
+                {
+                  name: args.name ? String(args.name) : undefined,
+                  skillId: args.skillId ? String(args.skillId) : undefined,
+                },
+              ),
+            );
+          }
           if (name === "add_mcp_server") {
             const parsed = parseMcpServerToolArgs(args);
             if (!parsed) {
@@ -1625,7 +1710,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   "\n",
                 )}\nWhen the user asks to run a taught skill by name, follow that skill's playbook exactly. The full playbook is included in the user task when they invoke it.`
             : undefined;
-        const taskPrompt = [task.prompt, attachedFilesPrompt].filter(Boolean).join("\n\n");
+        const agentSkillsLine = formatSkillsCatalogInstruction(agentSkills);
+        const taskPrompt = expandSkillReferencesInPrompt(
+          [task.prompt, attachedFilesPrompt].filter(Boolean).join("\n\n"),
+          agentSkills,
+        );
         const invokedSkill = savedSkills.find((skill) =>
           promptInvokesSkill(taskPrompt, skill.name || skill.goal),
         );
@@ -1678,6 +1767,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 "run_subagent is a short helper inside this turn only. It is not a bot, has no thread, and does not show in the list. Use it for parallel work you will summarize here.",
                 "archive_bot safely archives a bot this bot created, and only that bot. Use it when the user asks to remove that bot or when it is finished and unused. The user can restore it or permanently delete it later. confirm_name must exactly match its name.",
                 pluginLine,
+                agentSkillsLine,
                 taughtSkillsLine,
                 'For charts and data visualization, use the render_plot tool: it renders bar, line, scatter, histogram, heatmap, faceted and many more chart types from a JSON spec and attaches the PNG to the chat. Call render_plot with {"help": true} before your first chart to read the full guide.',
                 "When the user asks you to add or connect an MCP server (and gives you its details), use add_mcp_server. If it uses browser sign-in, an approval card appears in the chat — tell the user to click Authorize on it.",

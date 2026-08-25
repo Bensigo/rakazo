@@ -98,6 +98,7 @@ model Organization {
   routines    Routine[]
   scratchpadItems ScratchpadItem[]
   taughtSkills TaughtSkill[]
+  agentSkills AgentSkill[]
   connections Connection[]
   capabilities CapabilityInstall[]
   memoryDocuments MemoryDocument[]
@@ -547,6 +548,27 @@ model TaughtSkill {
   // Partial unique index taught_skills_botId_recording_key is created in SQL:
   // one recording session per bot.
   @@map("taught_skills")
+}
+
+/// Claude Agent Skills: SKILL.md recipes shared across assistants (not per-bot).
+/// The Pi runtime already understands this format; we persist and inject them.
+/// Distinct from TaughtSkill (demo/record playbooks).
+model AgentSkill {
+  id          String   @id @default(cuid())
+  workspaceId String
+  workspace   Organization @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId      String
+  name        String
+  description String
+  content     String
+  /// user | builtin | plugin — only user skills are writable via API/tools.
+  source      String   @default("user")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([workspaceId, userId])
+  // Case-insensitive unique index agent_skills_workspaceId_userId_name_lower_key is created in SQL.
+  @@map("agent_skills")
 }
 
 model Connection {
