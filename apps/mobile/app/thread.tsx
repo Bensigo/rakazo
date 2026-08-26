@@ -12,6 +12,7 @@ import {
   buildComposerMentionOptions,
   type ComposerMention,
   isApprovalAskBlock,
+  isSecretAskBlock,
   isRunTerminalEvent,
   latestAnswerableAskMessageId,
   mentionChipKey,
@@ -1705,6 +1706,7 @@ function AskBlock({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const answered = ask.status === "answered";
+  const secretInput = isSecretAskBlock(ask);
 
   async function submit() {
     const text = answer.trim();
@@ -1736,15 +1738,19 @@ function AskBlock({
       <Text style={{ color: "#ECECEE", fontSize: 15.5, fontWeight: "600" }}>{ask.text}</Text>
       {ask.detail ? <Text style={{ color: "#85858A", fontSize: 13.5 }}>{ask.detail}</Text> : null}
       {answered ? (
-        <Text style={{ color: "#4ECB71", fontSize: 14 }}>Answered: {ask.answer ?? "Done"}</Text>
+        <Text style={{ color: "#4ECB71", fontSize: 14 }}>
+          {secretInput ? "Submitted" : `Answered: ${ask.answer ?? "Done"}`}
+        </Text>
       ) : canAnswer ? (
         <>
           <TextInput
-            accessibilityLabel="Answer"
+            accessibilityLabel={secretInput ? "Protected value" : "Answer"}
             value={answer}
             onChangeText={setAnswer}
-            placeholder="Type your answer"
+            placeholder={secretInput ? "Enter protected value" : "Type your answer"}
             placeholderTextColor="#6C6C70"
+            secureTextEntry={secretInput}
+            autoComplete="off"
             onSubmitEditing={() => void submit()}
             style={{
               minHeight: 42,

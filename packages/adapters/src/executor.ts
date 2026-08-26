@@ -8,6 +8,7 @@ import type {
   ComputerRef,
   ConnectorProvider,
   JobPublisher,
+  ManagedConnectorProvider,
   MemoryStore,
   NotificationMessage,
   NotificationProvider,
@@ -167,6 +168,11 @@ import {
 import { inferScript } from "./scripted-runtime.js";
 import type { EncryptedSecretStore } from "./secrets.js";
 import {
+  runSecretKind,
+  secretPausedToolResult,
+  tryCompleteConnectionWithCode,
+} from "./run-secret.js";
+import {
   listAgentSkillRecords,
   skillCreateFromTool,
   skillDeleteFromTool,
@@ -215,6 +221,7 @@ export interface ExecutorDeps {
   home: AgentHomeStore;
   artifacts?: ArtifactStore;
   connector?: ConnectorProvider;
+  connectors?: { managed(id: string): ManagedConnectorProvider | undefined };
   secrets: string[];
   secretStore: EncryptedSecretStore;
   deploymentModelKey?: string;
@@ -933,7 +940,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           const needsApproval = approvalDecision === "ask";
           const bypassApproval = approvalDecision === "allow" && requiresApprovalByDefault;
           const effectKey =
-            needsApproval || requiresApprovalByDefault
+            name === "request_secret" || needsApproval || requiresApprovalByDefault
               ? approvalEffectKey(runId, name, args)
               : executionId;
           const applied =
@@ -1614,6 +1621,87 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 context,
               ),
             );
+          }
+          if (name === "request_secret") {
+            const secretKind = runSecretKind(runId);
+            const storedSecret = await deps.prisma.secret.findFirst({
+              where: {
+                workspaceId: run.workspaceId,
+                userId: run.userId,
+                kind: secretKind,
+              },
+            });
+            if (storedSecret) {
+              const plaintext = deps.secretStore.load(storedSecret.ciphertext);
+              runSecrets.push(plaintext);
+              await deps.prisma.secret.delete({ where: { id: storedSecret.id } });
+              const connectionId = args.connectionId ? String(args.connectionId) : undefined;
+              const purpose = String(args.purpose ?? "otp");
+              let connected: boolean | undefined;
+              if (connectionId) {
+                connected = await tryCompleteConnectionWithCode(
+                  deps.prisma,
+                  deps.connectors,
+                  run,
+                  context,
+                  connectionId,
+                  plaintext,
+                );
+              }
+              const applied = await recordEffect(deps, run, name, effectKey, args);
+              if (applied?.duplicate) {
+                const gate = resolveDuplicateEffectGate(applied.effect, name);
+                if (gate.action === "execute") {
+                  const early = await claimOrReturn("approved");
+                  if (early !== undefined) return early;
+                }
+              }
+              if (purpose === "password" && !connectionId) {
+                return finish({
+                  ok: true,
+                  submitted: true,
+                  note: "Use request_takeover for website logins; the secret was not typed onto the computer.",
+                });
+              }
+              return finish({
+                ok: true,
+                submitted: true,
+                ...(connected !== undefined ? { connected } : {}),
+              });
+            }
+            await recordEffect(deps, run, name, effectKey, args);
+            if (!(await renewRunLease(deps, runId, workerId, fence))) {
+              return secretPausedToolResult();
+            }
+            await checkpointAndRecordComputerWorkspace(deps, storedComputer, computer, context);
+            const paused = await deps.events.pauseRunForInput({
+              workspaceId: run.workspaceId,
+              threadId: run.threadId,
+              botId: run.botId,
+              runId,
+              attemptId: attempt.id,
+              leaseOwner: workerId,
+              leaseFence: fence,
+              blocks: [
+                {
+                  kind: "ask",
+                  text: String(args.label ?? "Enter the protected value"),
+                  input: "secret",
+                  status: "pending",
+                },
+              ],
+            });
+            if (!paused) {
+              throw new Error("Could not pause this run for protected input; try sending again.");
+            }
+            await notifyRun(deps, run, {
+              kind: "help",
+              title: `${bot.name} needs protected input`,
+              body: String(args.label ?? "Enter the protected value"),
+              botId: bot.id,
+              threadId: thread.id,
+            });
+            return secretPausedToolResult();
           }
           if (name === "request_takeover") return { ok: true };
           if (name === "run_subagent") {

@@ -1,11 +1,16 @@
 import { ChatMarkdown } from "@rakazo/chat-ui/web";
 import type { ThreadMessage } from "@rakazo/contracts";
-import { isApprovalAskBlock } from "@rakazo/core";
+import { isApprovalAskBlock, isSecretAskBlock } from "@rakazo/core";
 import { useState } from "react";
 
 export type AskBlock = Extract<ThreadMessage["blocks"][number], { kind: "ask" }>;
 
-function formatAnsweredState(answer: string | undefined, approval: boolean): string {
+function formatAnsweredState(
+  answer: string | undefined,
+  approval: boolean,
+  secret: boolean,
+): string {
+  if (secret) return "Submitted";
   if (!answer) return "Answered";
   if (!approval) return `Answered: ${answer}`;
   if (answer === "allow") return "Allowed once";
@@ -29,6 +34,7 @@ export function AskCard({
   const [error, setError] = useState<string | null>(null);
   const submitting = pendingAction !== null;
   const approvalActions = isApprovalAskBlock(block) ? block.actions : undefined;
+  const secretInput = isSecretAskBlock(block);
 
   async function submitAnswer(value: string) {
     const text = value.trim();
@@ -56,7 +62,7 @@ export function AskCard({
       ) : null}
       {block.status === "answered" ? (
         <div className="mt-3.5 text-[13.5px] font-medium text-[#4ECB71]">
-          {formatAnsweredState(block.answer, Boolean(approvalActions))}
+          {formatAnsweredState(block.answer, Boolean(approvalActions), secretInput)}
         </div>
       ) : !canAnswer ? (
         <div className="mt-3.5 text-[13.5px] font-medium text-[#85858A]">No longer active</div>
@@ -78,6 +84,31 @@ export function AskCard({
             </button>
           ))}
         </div>
+      ) : secretInput ? (
+        <form
+          className="mt-3.5 flex flex-col gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submitAnswer(answer);
+          }}
+        >
+          <input
+            aria-label="Protected value"
+            type="password"
+            autoComplete="off"
+            value={answer}
+            onChange={(event) => setAnswer(event.target.value)}
+            placeholder="Enter protected value"
+            className="rounded-[11px] border border-[#303035] bg-[#0E0E10] px-3.5 py-2.5 text-[14.5px] text-[#ECECEE] outline-none focus:border-[#66666D]"
+          />
+          <button
+            type="submit"
+            disabled={!answer.trim() || submitting}
+            className="self-start rounded-[11px] bg-[#F1F1EF] px-[17px] py-2 text-[14.5px] font-medium text-[#17171A] disabled:opacity-50"
+          >
+            {submitting ? "Sending…" : "Submit"}
+          </button>
+        </form>
       ) : editing ? (
         <form
           className="mt-3.5 flex flex-col gap-2"

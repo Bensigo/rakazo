@@ -10,6 +10,7 @@ import {
   createPostgresReconciliationLeadership,
   createRunExecutor,
   createRunSandbox,
+  createRunSecretWriter,
   EncryptedSecretStore,
   ExpoPushProvider,
   GraphileJobPublisher,
@@ -41,7 +42,10 @@ async function main() {
     connectionString: process.env.REALTIME_DATABASE_URL ?? databaseUrl,
     publisher: pool,
   });
-  const events = createThreadEvents(prisma, realtime);
+  const secrets = new EncryptedSecretStore(resolveEncryptionKey(process.env));
+  const events = createThreadEvents(prisma, realtime, {
+    runSecretWriter: createRunSecretWriter(secrets),
+  });
   const runtime =
     process.env.AGENT_RUNTIME === "scripted" ? new ScriptedAgentRuntime() : new PiAgentRuntime();
   const dataDir = process.env.DATA_DIR ?? "./data";
@@ -56,7 +60,6 @@ async function main() {
     dataDir,
     prisma,
   });
-  const secrets = new EncryptedSecretStore(resolveEncryptionKey(process.env));
   const mcpOAuth = new McpOAuthBroker(prisma, secrets);
   const mcp = new McpConnector(
     prisma,
@@ -102,6 +105,7 @@ async function main() {
     home,
     artifacts,
     connector: stack.connector,
+    connectors: stack.connector,
     listConnectedPluginSlugs: stack.composio?.listConnectedSlugs.bind(stack.composio),
     secrets: [process.env.OPENROUTER_API_KEY ?? "", process.env.COMPOSIO_API_KEY ?? ""].filter(
       Boolean,

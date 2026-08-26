@@ -434,6 +434,13 @@ function toAgentTool(tool: ConnectorTool, host: ToolHost, exposedName: string): 
       if (tool.name === "request_takeover") {
         return { reason: String(raw.reason ?? "I need you on the screen.") };
       }
+      if (tool.name === "request_secret") {
+        return {
+          label: String(raw.label ?? "Enter the protected value"),
+          purpose: String(raw.purpose ?? "otp"),
+          ...(raw.connectionId ? { connectionId: String(raw.connectionId) } : {}),
+        };
+      }
       if (tool.name === "write_file") {
         return {
           path: String(raw.path ?? "notes/result.txt"),
@@ -497,6 +504,21 @@ function toAgentTool(tool: ConnectorTool, host: ToolHost, exposedName: string): 
         });
         return {
           content: [{ type: "text", text: "Takeover requested." }],
+          details: args,
+          terminate: true,
+        };
+      }
+      if (tool.name === "request_secret") {
+        if (host.request.executeTool) {
+          const result = await host.request.executeTool(tool.name, args, executionId);
+          if (isAgentToolExecutionResult(result)) return result;
+          return {
+            content: [{ type: "text", text: summarizeToolResult(result) }],
+            details: result,
+          };
+        }
+        return {
+          content: [{ type: "text", text: "Protected input requested." }],
           details: args,
           terminate: true,
         };
@@ -676,6 +698,17 @@ function parametersFor(tool: ConnectorTool) {
   }
   if (tool.name === "request_takeover") {
     return Type.Object({ reason: Type.String() });
+  }
+  if (tool.name === "request_secret") {
+    return Type.Object({
+      label: Type.String(),
+      purpose: Type.Union([
+        Type.Literal("otp"),
+        Type.Literal("password"),
+        Type.Literal("api_key"),
+      ]),
+      connectionId: Type.Optional(Type.String()),
+    });
   }
   if (tool.name === "remember") {
     return Type.Object({ content: Type.String(), path: Type.String() });

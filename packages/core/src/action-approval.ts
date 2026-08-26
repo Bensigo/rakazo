@@ -11,6 +11,7 @@ const APPROVAL_EXEMPT_TOOLS = new Set([
   "launch_app",
   "remember",
   "request_takeover",
+  "request_secret",
   "run_subagent",
   "spawn_bot",
   "schedule_create",
@@ -116,6 +117,14 @@ export function resolveActionApproval(input: {
   )
     ? "ask"
     : "allow";
+}
+
+export function isSecretAskBlock(block: {
+  kind: string;
+  input?: string;
+  approvalEffectId?: string;
+}): boolean {
+  return block.kind === "ask" && block.input === "secret" && !block.approvalEffectId;
 }
 
 export function isApprovalAskBlock(block: {
