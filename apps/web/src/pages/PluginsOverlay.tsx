@@ -475,7 +475,7 @@ export function PluginsOverlay({
                                       ? "Revoking…"
                                       : "Connecting…"
                                     : connected
-                                      ? "Disconnect"
+                                      ? "Revoke"
                                       : "Connect"}
                                 </Button>
                               </div>
