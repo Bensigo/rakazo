@@ -194,6 +194,39 @@ describe("computer.peek", () => {
     expect(context.screenLeaseId).toBeUndefined();
     expect(leaseFindUnique).not.toHaveBeenCalled();
   });
+
+  it("maps the internal suspending state to a public peek state", async () => {
+    const target = {
+      id: "bot-other",
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      thread: { id: "thread-other" },
+      computer: {
+        id: "computer-1",
+        homeKey: "home-1",
+        kind: "fake",
+        scope: "team",
+        state: "suspending",
+        providerRef: "provider-1",
+        controlHolder: "none",
+        controlBotId: null,
+        controlLeaseId: null,
+        controlLeaseExpiresAt: null,
+        controlRunId: null,
+      },
+    };
+    const { handler, connectScreen } = peekDeps({
+      botFindFirst: vi.fn().mockResolvedValue(target),
+    });
+
+    const { matched, response } = await callPeek(handler, target.id);
+    expect(matched).toBe(true);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      json: { mode: "team", exists: true, state: "running", url: null },
+    });
+    expect(connectScreen).not.toHaveBeenCalled();
+  });
 });
 
 describe("MCP server deletion", () => {

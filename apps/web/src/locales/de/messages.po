@@ -1820,6 +1820,10 @@ msgstr "Oder einen API-Schlüssel einfügen"
 msgid "Organization API key"
 msgstr "Organisations-API-Schlüssel"
 
+#: src/pages/Shell.tsx:2355
+msgid "Other computer preview (view only)"
+msgstr "Vorschau eines anderen Computers (nur zur Ansicht)"
+
 #: src/pages/ModelSettingsOverlay.tsx:453
 #: src/pages/Onboarding.tsx:311
 msgid "Other model…"
@@ -2444,8 +2448,22 @@ msgstr "Prüfen und hinzufügen"
 msgid "Verifying…"
 msgstr "Wird geprüft…"
 
-#: src/pages/Shell.tsx:2010
-#: src/pages/Shell.tsx:4524
+#: src/pages/Shell.tsx:2293
+#: src/pages/Shell.tsx:2294
+msgid "View another computer"
+msgstr "Anderen Computer ansehen"
+
+#: src/pages/Shell.tsx:2298
+msgid "View…"
+msgstr "Ansehen…"
+
+#. placeholder {0}: peekTarget?.name ?? active.name
+#: src/pages/Shell.tsx:2413
+msgid "Viewing {0} (read only)"
+msgstr "Ansicht von {0} (nur zur Ansicht)"
+
+#: src/pages/Shell.tsx:2049
+#: src/pages/Shell.tsx:4576
 #: src/pages/VoiceSettingsOverlay.tsx:124
 #: src/pages/VoiceSettingsOverlay.tsx:264
 msgid "Voice"

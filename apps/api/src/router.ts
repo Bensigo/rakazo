@@ -194,6 +194,23 @@ function computerContext(actor: Actor, botId: string, operationId: string): Adap
   };
 }
 
+/** Public peek/status states omit the internal stop-transition value. */
+function peekComputerState(
+  state: string,
+): "stopped" | "booting" | "running" | "suspended" | "error" {
+  if (state === "suspending") return "running";
+  if (
+    state === "stopped" ||
+    state === "booting" ||
+    state === "running" ||
+    state === "suspended" ||
+    state === "error"
+  ) {
+    return state;
+  }
+  return "stopped";
+}
+
 function mcpServerDto(
   row: {
     id: string;
@@ -1455,7 +1472,7 @@ export function createRouter(deps: RouterDeps) {
         const other = target.computer;
         if (!other) return { mode, exists: false, state: null, url: null };
         if (!other.providerRef || (other.state !== "running" && other.state !== "booting")) {
-          return { mode, exists: true, state: other.state as never, url: null };
+          return { mode, exists: true, state: peekComputerState(other.state), url: null };
         }
         // Peek is strictly view-only: never attach the target bot's execution
         // lease. computerScreenContext would set screenLeaseId and let the
@@ -1468,14 +1485,14 @@ export function createRouter(deps: RouterDeps) {
           )
           .catch(() => ({ url: null }));
         if (!session.url) {
-          return { mode, exists: true, state: other.state as never, url: null };
+          return { mode, exists: true, state: peekComputerState(other.state), url: null };
         }
         scheduleComputerSleep(deps.jobs, other.id);
         const viewUrl = withViewOnly(session.url, true);
         return {
           mode,
           exists: true,
-          state: other.state as never,
+          state: peekComputerState(other.state),
           url: addScreenProxyCapability(
             viewUrl,
             deps.env.screenProxySecret,
