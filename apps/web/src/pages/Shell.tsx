@@ -1717,7 +1717,7 @@ export function ShellPage() {
               onClick={() => setCreateMenuOpen((open) => !open)}
               className="app-no-drag text-[21px] text-[#7A7A80] hover:text-[#C9C9CE]"
               title={uiCopy("Create")}
-              aria-label={uiCopy("Create")}
+              aria-label={uiCopy("Open create menu")}
             >
               +
             </button>

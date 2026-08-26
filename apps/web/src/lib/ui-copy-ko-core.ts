@@ -143,6 +143,7 @@ export const koreanCoreCopy = {
   "No MCP or API tool sources installed yet.": "아직 추가된 MCP 또는 API 도구가 없습니다.",
   "Not now": "나중에",
   "Open in full window": "전체 창으로 열기",
+  "Open create menu": "만들기 메뉴 열기",
   "Open computer": "컴퓨터 열기",
   "Open navigation": "메뉴 열기",
   "Opening your workspace…": "작업공간을 여는 중…",
