@@ -13,6 +13,7 @@ export function AuthPage({ mode }: { mode: "in" | "up" }) {
   const [pending, setPending] = useState(false);
   const title =
     mode === "in" ? <Trans>Sign in to Rakazo</Trans> : <Trans>Create your Rakazo</Trans>;
+  const preservedSearch = window.location.search;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -106,14 +107,14 @@ export function AuthPage({ mode }: { mode: "in" | "up" }) {
           {mode === "in" ? (
             <>
               <Trans>Don’t have an account?</Trans>{" "}
-              <Link to="/sign-up" className="font-medium text-[#1B1B1E]">
+              <Link to={`/sign-up${preservedSearch}`} className="font-medium text-[#1B1B1E]">
                 <Trans>Sign up</Trans>
               </Link>
             </>
           ) : (
             <>
               <Trans>Already have an account?</Trans>{" "}
-              <Link to="/sign-in" className="font-medium text-[#1B1B1E]">
+              <Link to={`/sign-in${preservedSearch}`} className="font-medium text-[#1B1B1E]">
                 <Trans>Sign in</Trans>
               </Link>
             </>
