@@ -23,7 +23,6 @@ import type {
   ThinkingLevel,
   ThreadMessage,
   ThreadSnapshot,
-  parseShareManifestPayload,
   VoiceInfo,
   VoiceStatus,
   WorkspaceMemoryConfig,
@@ -36,6 +35,7 @@ import {
   BOT_NAME_MAX_LENGTH,
   BOT_TITLE_MAX_LENGTH,
   normalizeCreateBotProfile,
+  parseShareManifestPayload,
 } from "@rakazo/contracts";
 import {
   abortableDelay,
@@ -4521,12 +4521,42 @@ function BotSettings({
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [shareToken, setShareToken] = useState<string | null>(null);
   const [shareNotice, setShareNotice] = useState<string | null>(null);
+  const shareStorageKey = `rakazo-share-link-${bot.id}`;
 
   useEffect(() => {
-    setShareLink(null);
-    setShareToken(null);
     setShareNotice(null);
-  }, [bot.id]);
+    try {
+      const stored = sessionStorage.getItem(shareStorageKey);
+      if (!stored) {
+        setShareLink(null);
+        setShareToken(null);
+        return;
+      }
+      const parsed = JSON.parse(stored) as { url?: string; token?: string };
+      if (parsed.url && parsed.token) {
+        setShareLink(parsed.url);
+        setShareToken(parsed.token);
+      } else {
+        setShareLink(null);
+        setShareToken(null);
+      }
+    } catch {
+      setShareLink(null);
+      setShareToken(null);
+    }
+  }, [shareStorageKey]);
+
+  function persistShareLink(link: { url: string; token: string } | null) {
+    if (link) {
+      sessionStorage.setItem(shareStorageKey, JSON.stringify(link));
+      setShareLink(link.url);
+      setShareToken(link.token);
+    } else {
+      sessionStorage.removeItem(shareStorageKey);
+      setShareLink(null);
+      setShareToken(null);
+    }
+  }
 
   useEffect(() => {
     void rpc.voice
@@ -4858,8 +4888,7 @@ function BotSettings({
               void rpc.bots
                 .shareCreate({ botId: bot.id })
                 .then(({ url, token }) => {
-                  setShareLink(url);
-                  setShareToken(token);
+                  persistShareLink({ url, token });
                   setShareNotice("Share link created");
                 })
                 .catch((err) =>
@@ -4880,8 +4909,7 @@ function BotSettings({
                 void rpc.bots
                   .shareRevoke({ token: shareToken })
                   .then(() => {
-                    setShareLink(null);
-                    setShareToken(null);
+                    persistShareLink(null);
                     setShareNotice("Share link revoked");
                   })
                   .catch((err) =>
