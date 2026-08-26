@@ -37,12 +37,12 @@ export function AskCard({
   const secretInput = isSecretAskBlock(block);
 
   async function submitAnswer(value: string) {
-    const text = value.trim();
-    if (!text || submitting) return;
-    setPendingAction(text);
+    if (submitting || !value.trim()) return;
+    const submitValue = secretInput ? value : value.trim();
+    setPendingAction(secretInput ? "submit" : submitValue);
     setError(null);
     try {
-      await onAnswer(text);
+      await onAnswer(submitValue);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not submit this answer");
     } finally {

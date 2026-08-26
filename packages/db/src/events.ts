@@ -148,8 +148,7 @@ export function createThreadEvents(
   options: { catchUpMs?: number; runSecretWriter?: RunSecretWriter } = {},
 ): ThreadEvents {
   return {
-    answerRunInput: (input) =>
-      answerRunInput(prisma, input, realtime, options.runSecretWriter),
+    answerRunInput: (input) => answerRunInput(prisma, input, realtime, options.runSecretWriter),
     append: (input) => appendEvent(prisma, input, realtime),
     clearThread: (input) => clearThread(prisma, input, realtime),
     finalizeComputerControlRelease: (input) =>

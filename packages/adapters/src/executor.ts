@@ -152,6 +152,11 @@ import {
   searchChartCatalog,
 } from "./plot-tool.js";
 import {
+  runSecretKind,
+  secretPausedToolResult,
+  tryCompleteConnectionWithCode,
+} from "./run-secret.js";
+import {
   cancelScheduleFromTool,
   createScheduleFromTool,
   filterBuiltinToolsForThread,
@@ -167,11 +172,6 @@ import {
 } from "./scratchpad-tools.js";
 import { inferScript } from "./scripted-runtime.js";
 import type { EncryptedSecretStore } from "./secrets.js";
-import {
-  runSecretKind,
-  secretPausedToolResult,
-  tryCompleteConnectionWithCode,
-} from "./run-secret.js";
 import {
   listAgentSkillRecords,
   skillCreateFromTool,
@@ -1651,9 +1651,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
               await deps.prisma.secret.delete({ where: { id: storedSecret.id } });
               const connectionId = args.connectionId ? String(args.connectionId) : undefined;
               const purpose = String(args.purpose ?? "otp");
-              let connected: boolean | undefined;
+              let connectionResult: { connected: boolean; error?: string } | undefined;
               if (connectionId) {
-                connected = await tryCompleteConnectionWithCode(
+                connectionResult = await tryCompleteConnectionWithCode(
                   deps.prisma,
                   deps.connectors,
                   run,
@@ -1680,7 +1680,14 @@ export function createRunExecutor(deps: ExecutorDeps) {
               return finish({
                 ok: true,
                 submitted: true,
-                ...(connected !== undefined ? { connected } : {}),
+                ...(connectionResult
+                  ? {
+                      connected: connectionResult.connected,
+                      ...(connectionResult.error
+                        ? { connectionError: connectionResult.error }
+                        : {}),
+                    }
+                  : {}),
               });
             }
             await recordEffect(deps, run, name, effectKey, args);

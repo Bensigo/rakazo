@@ -12,8 +12,8 @@ import {
   buildComposerMentionOptions,
   type ComposerMention,
   isApprovalAskBlock,
-  isSecretAskBlock,
   isRunTerminalEvent,
+  isSecretAskBlock,
   latestAnswerableAskMessageId,
   mentionChipKey,
   resolveComposerSendPlan,
@@ -1709,12 +1709,12 @@ function AskBlock({
   const secretInput = isSecretAskBlock(ask);
 
   async function submit() {
-    const text = answer.trim();
-    if (!text || submitting) return;
+    if (!answer.trim() || submitting) return;
+    const submitValue = secretInput ? answer : answer.trim();
     setSubmitting(true);
     setError(null);
     try {
-      await onAnswer(text);
+      await onAnswer(submitValue);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not send answer");
     } finally {

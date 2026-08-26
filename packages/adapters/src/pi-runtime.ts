@@ -17,8 +17,8 @@ import type {
   AgentToolExecutionResult,
   ConnectorTool,
 } from "@rakazo/adapter-kit";
-import { builtinAgentTools, DELEGATION_TOOL_NAMES } from "./builtin-tools.js";
 import { isToolPauseResult } from "./approval-effect.js";
+import { builtinAgentTools, DELEGATION_TOOL_NAMES } from "./builtin-tools.js";
 import { PiRuntimeCredentialStore, toOAuthCredential } from "./pi-credentials.js";
 import { registerLocalProvider } from "./pi-local-provider.js";
 import {
@@ -522,6 +522,7 @@ function toAgentTool(tool: ConnectorTool, host: ToolHost, exposedName: string): 
             details: result,
           };
         }
+        host.pausePending = true;
         return {
           content: [{ type: "text", text: "Protected input requested." }],
           details: args,
@@ -710,11 +711,7 @@ function parametersFor(tool: ConnectorTool) {
   if (tool.name === "request_secret") {
     return Type.Object({
       label: Type.String(),
-      purpose: Type.Union([
-        Type.Literal("otp"),
-        Type.Literal("password"),
-        Type.Literal("api_key"),
-      ]),
+      purpose: Type.Union([Type.Literal("otp"), Type.Literal("password"), Type.Literal("api_key")]),
       connectionId: Type.Optional(Type.String()),
     });
   }

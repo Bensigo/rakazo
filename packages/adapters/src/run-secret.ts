@@ -56,21 +56,33 @@ export async function tryCompleteConnectionWithCode(
   context: AdapterContext,
   connectionId: string,
   code: string,
-): Promise<boolean> {
+): Promise<{ connected: boolean; error?: string }> {
   const row = await prisma.connection.findFirst({
-    where: { id: connectionId, workspaceId: run.workspaceId, userId: run.userId },
+    where: {
+      id: connectionId,
+      workspaceId: run.workspaceId,
+      userId: run.userId,
+      status: "pending",
+    },
   });
-  if (!row) return false;
+  if (!row) return { connected: false };
   const connector = connectors?.managed(row.connectorId);
-  if (!connector) return false;
+  if (!connector) return { connected: false };
   const state = row.providerRef ?? row.provider;
-  await connector.complete({ state, code }, context);
-  const ready = await connector.connectionReady(context, row.provider);
-  if (ready && row.status !== "connected") {
-    await prisma.connection.update({
-      where: { id: row.id },
-      data: { status: "connected" },
-    });
+  try {
+    await connector.complete({ state, code }, context);
+    const ready = await connector.connectionReady(context, row.provider);
+    if (ready) {
+      await prisma.connection.update({
+        where: { id: row.id },
+        data: { status: "connected" },
+      });
+    }
+    return { connected: ready };
+  } catch (error) {
+    return {
+      connected: false,
+      error: error instanceof Error ? error.message : "Connection could not be completed.",
+    };
   }
-  return ready;
 }

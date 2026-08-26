@@ -80,7 +80,7 @@ export function CallView({
     if (pendingSecretAsk(current)) {
       setHeard("");
       setCaption("");
-      setError("Type the protected value in the masked field on screen.");
+      setError("Hang up and enter the protected value in the masked field on screen.");
       void listen();
       return;
     }
@@ -163,7 +163,7 @@ export function CallView({
         dictation.stop("cancel");
         void speaker.speak(
           secretAsk
-            ? `${text}. Enter the protected value in the masked field on screen.`
+            ? `${text}. Hang up first, then enter the protected value in the masked field on screen.`
             : ask
               ? `${text}. Say yes or no, or answer in a sentence.`
               : text,
