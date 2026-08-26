@@ -240,6 +240,22 @@ export function buildUserMessageBlocks(
 export function buildSendPrompt(
   text: string | undefined,
   artifacts: Array<{ name: string; mimeType: string; size: number }>,
+  connectorNames: string[] = [],
 ) {
-  return promptTextForAttachments(text, artifacts);
+  const prompt = promptTextForAttachments(text, artifacts);
+  if (connectorNames.length === 0) return prompt;
+  const marker = "Use these connectors if relevant:";
+  const existing = new RegExp(`^${marker} (.*)\\.$`, "m").exec(prompt);
+  const names = [
+    ...new Set([
+      ...(existing?.[1]
+        ?.split(",")
+        .map((name) => name.trim())
+        .filter(Boolean) ?? []),
+      ...connectorNames.map((name) => name.trim()).filter(Boolean),
+    ]),
+  ];
+  const line = `${marker} ${names.join(", ")}.`;
+  if (existing) return prompt.replace(existing[0], () => line);
+  return prompt ? `${prompt}\n\n${line}` : line;
 }

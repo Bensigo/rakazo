@@ -71,6 +71,16 @@ describe("resolveGroupTargetBotIds", () => {
     ).toEqual(["research", "edit", "anna"]);
   });
 
+  it("ignores explicit mentions for bots that are not group members", () => {
+    expect(
+      resolveGroupTargetBotIds({
+        text: "hello",
+        members,
+        explicitMentions: ["b", "outsider"],
+      }),
+    ).toEqual(["b"]);
+  });
+
   it("picks the first member when unmentioned", () => {
     expect(
       resolveGroupTargetBotIds({

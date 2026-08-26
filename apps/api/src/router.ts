@@ -1692,36 +1692,77 @@ export function createRouter(deps: RouterDeps) {
       }),
       testRun: authed.routines.testRun.handler(async ({ context, input }) => {
         const routine = await deps.prisma.routine.findFirst({
-          where: { id: input.routineId, workspaceId: context.actor.workspaceId },
+          where: {
+            id: input.routineId,
+            workspaceId: context.actor.workspaceId,
+            userId: context.actor.userId,
+          },
         });
         if (!routine) throw new IsolationError();
         const bot = await repos.getBot(context.actor, routine.botId);
         if (!bot.thread) throw new IsolationError();
+        const threadId = bot.thread.id;
+        const nonce = input.clientNonce ? `routine-test:${input.clientNonce}` : undefined;
+        if (nonce) {
+          const existing = await deps.prisma.run.findFirst({
+            where: { threadId, clientNonce: nonce },
+            select: { id: true },
+          });
+          if (existing) return { runId: existing.id };
+        }
         const skillRecords = await agentSkills.listWithContent(context.actor);
         const prompt = expandSkillReferencesInPrompt(routine.prompt, skillRecords);
-        const task = await deps.prisma.task.create({
-          data: {
-            workspaceId: context.actor.workspaceId,
-            botId: bot.id,
-            threadId: bot.thread.id,
-            userId: context.actor.userId,
-            prompt,
-            status: "queued",
-          },
+        let run: { id: string };
+        try {
+          // Task + run must commit together so a nonce collision cannot leave an orphan queued Task.
+          run = await deps.prisma.$transaction(async (tx) => {
+            if (nonce) {
+              const existing = await tx.run.findFirst({
+                where: { threadId, clientNonce: nonce },
+                select: { id: true },
+              });
+              if (existing) return existing;
+            }
+            const task = await tx.task.create({
+              data: {
+                workspaceId: context.actor.workspaceId,
+                botId: bot.id,
+                threadId,
+                userId: context.actor.userId,
+                prompt,
+                status: "queued",
+              },
+            });
+            return tx.run.create({
+              data: {
+                workspaceId: context.actor.workspaceId,
+                botId: bot.id,
+                threadId,
+                taskId: task.id,
+                userId: context.actor.userId,
+                status: "queued",
+                trigger: "routine",
+                routineId: routine.id,
+                clientNonce: nonce,
+              },
+              select: { id: true },
+            });
+          });
+        } catch (error) {
+          if (nonce) {
+            const existing = await deps.prisma.run.findFirst({
+              where: { threadId, clientNonce: nonce },
+              select: { id: true },
+            });
+            if (existing) return { runId: existing.id };
+          }
+          throw error;
+        }
+        // Keep enqueue outside the nonce-collision catch. The queued run is durable;
+        // log enqueue failures and still return success — the reconciler repairs a missed wake.
+        await deps.jobs.enqueue(runContinueJob(run.id)).catch((error) => {
+          console.error("routine testRun enqueue", error);
         });
-        const run = await deps.prisma.run.create({
-          data: {
-            workspaceId: context.actor.workspaceId,
-            botId: bot.id,
-            threadId: bot.thread.id,
-            taskId: task.id,
-            userId: context.actor.userId,
-            status: "queued",
-            trigger: "routine",
-            routineId: routine.id,
-          },
-        });
-        await deps.jobs.enqueue(runContinueJob(run.id));
         return { runId: run.id };
       }),
     },

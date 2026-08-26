@@ -24,7 +24,6 @@ import {
   CreateScratchpadItemInput,
   DeploymentSettingsSchema,
   ExportManifestSchema,
-  GROUP_MEMBER_MAX,
   GroupDetailSchema,
   GroupSchema,
   McpServerConfigInput,
@@ -79,11 +78,22 @@ const threadTarget = z
     }
   });
 
+const structuredMentionTarget = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("bot"), id: Id }),
+  z.object({ kind: z.literal("group"), id: Id }),
+  z.object({ kind: z.literal("routine"), id: Id }),
+  z.object({ kind: z.literal("connector"), id: Id }),
+]);
+
 const threadSendInput = threadTarget
   .safeExtend({
     text: z.string().optional(),
     artifactIds: z.array(Id).max(ATTACHMENT_MAX_COUNT).optional(),
-    mentions: z.array(Id).max(GROUP_MEMBER_MAX).optional(),
+    /** Bare bot ids (legacy) or typed mention chips from the composer. */
+    mentions: z
+      .array(z.union([Id, structuredMentionTarget]))
+      .max(64)
+      .optional(),
     replyToMessageId: Id.optional(),
     clientNonce: z.string().min(1).max(200).optional(),
   })
@@ -300,7 +310,14 @@ export const appContract = {
       )
       .output(RoutineSchema),
     remove: oc.input(z.object({ routineId: Id })).output(z.object({ ok: z.literal(true) })),
-    testRun: oc.input(z.object({ routineId: Id })).output(z.object({ runId: Id })),
+    testRun: oc
+      .input(
+        z.object({
+          routineId: Id,
+          clientNonce: z.string().min(1).max(200).optional(),
+        }),
+      )
+      .output(z.object({ runId: Id })),
   },
   scratchpad: {
     list: oc
