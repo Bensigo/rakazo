@@ -8,6 +8,7 @@ import {
   SafeAreaView,
 } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
+import { ComputerMaintenanceActions } from "../components/computer-maintenance-actions";
 import { ComputerModePicker } from "../components/computer-mode-picker";
 import { NativeSymbol } from "../components/native-symbol";
 import { currentApiBase, rpc } from "../lib/api";
@@ -233,6 +234,17 @@ export default function Computer() {
           </Pressable>
         )}
       </View>
+      {computer?.state === "error" ||
+      computer?.state === "stopped" ||
+      (computer?.state === "running" && !embeddedScreenUrl) ? (
+        <ComputerMaintenanceActions
+          botId={botId ?? ""}
+          computer={computer}
+          onChanged={async () => {
+            await refresh();
+          }}
+        />
+      ) : null}
       <ComputerModePicker
         value={computer?.mode}
         disabled={switching}

@@ -104,6 +104,7 @@ import {
   LoadingState,
   SuccessPop,
 } from "../components/beautiful-ui/primitives";
+import { ComputerMaintenanceActions } from "../components/ComputerMaintenanceActions";
 import { SkillDraftCard } from "../components/teach/SkillDraftCard";
 import { TeachCaptureOverlay } from "../components/teach/TeachCaptureOverlay";
 import { TeachComputerSection } from "../components/teach/TeachComputerSection";
@@ -123,6 +124,7 @@ import {
   activeThreadRuns,
   clearActiveThreadRuns,
   computerPanelAutoBoot,
+  computerPanelAutoUsesBoot,
   computerTakeoverBlocked,
   isComputerStatusEvent,
   isThreadSnapshotEvent,
@@ -1577,6 +1579,7 @@ export function ShellPage() {
       }
       if (action === "boot" && autoBooted.current === botId) return;
       autoBooted.current = botId;
+      if (!computerPanelAutoUsesBoot(action)) return;
       await bootComputer({
         takeControl: false,
         overlay: action === "boot",
@@ -2326,6 +2329,18 @@ export function ShellPage() {
                     </Button>
                   )}
                 </div>
+                {computer?.state === "error" ||
+                computer?.state === "stopped" ||
+                (computer?.state === "running" && !embeddedScreenUrl) ? (
+                  <ComputerMaintenanceActions
+                    botId={active.id}
+                    computer={computer}
+                    compact
+                    onChanged={async () => {
+                      await refreshThread(active.id);
+                    }}
+                  />
+                ) : null}
                 <div className="mt-[30px] mb-3 text-[14px] text-[#85858A]">
                   <Trans>Routines</Trans>
                 </div>
@@ -2448,6 +2463,7 @@ export function ShellPage() {
               <BotSettings
                 key={active.id}
                 bot={active}
+                computer={computer}
                 memoryProviderConfigured={memoryProviderConfig != null}
                 onSave={async ({ computerMode, ...patch }) => {
                   if (computerMode !== active.computerMode) {
@@ -2472,6 +2488,9 @@ export function ShellPage() {
                   URL.revokeObjectURL(url);
                 }}
                 onClear={() => setClearTarget(active)}
+                onComputerChanged={async () => {
+                  await refreshThread(active.id);
+                }}
               />
             ) : null}
             {panel === "routine" && active ? (
@@ -4283,12 +4302,15 @@ function CreateBotForm({
 
 function BotSettings({
   bot,
+  computer,
   memoryProviderConfigured,
   onSave,
   onExport,
   onClear,
+  onComputerChanged,
 }: {
   bot: Bot;
+  computer: ComputerStatus | null;
   memoryProviderConfigured: boolean;
   onSave: (patch: {
     name?: string;
@@ -4305,6 +4327,7 @@ function BotSettings({
   }) => Promise<void>;
   onExport: () => Promise<void>;
   onClear: () => void;
+  onComputerChanged: () => Promise<void>;
 }) {
   const { t } = useLingui();
   const [name, setName] = useState(bot.name);
@@ -4586,6 +4609,11 @@ function BotSettings({
         <button type="button" onClick={onClear} className="text-[14px] text-[#E65707]">
           <Trans>Clear conversation</Trans>
         </button>
+        <ComputerMaintenanceActions
+          botId={bot.id}
+          computer={computer}
+          onChanged={onComputerChanged}
+        />
       </div>
     </div>
   );
