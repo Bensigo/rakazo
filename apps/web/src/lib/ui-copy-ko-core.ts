@@ -275,7 +275,7 @@ export const koreanCoreCopy = {
   idle: "대기",
   working: "작업 중",
   running: "실행 중",
-  suspended: "절전",
+  suspended: "일시 중지됨",
   stopped: "중지됨",
   failed: "실패",
   "Stop the bot first": "먼저 Bot을 중지하세요",
