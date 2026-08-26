@@ -18,6 +18,7 @@ import type {
   ConnectorTool,
 } from "@rakazo/adapter-kit";
 import { builtinAgentTools, DELEGATION_TOOL_NAMES } from "./builtin-tools.js";
+import { isToolPauseResult } from "./approval-effect.js";
 import { PiRuntimeCredentialStore, toOAuthCredential } from "./pi-credentials.js";
 import { registerLocalProvider } from "./pi-local-provider.js";
 import {
@@ -126,6 +127,7 @@ export class PiAgentRuntime implements AgentRuntime {
           abortTurn: () => undefined,
           signal,
           depth: 0,
+          pausePending: false,
         };
         const tools = toAgentTools(toolDefs, host);
         const history = toHistory(request.history, request.prompt);
@@ -223,7 +225,7 @@ export class PiAgentRuntime implements AgentRuntime {
         if (error) {
           throw new Error(sanitizeError(error));
         }
-        if (!streamed) {
+        if (!streamed && !host.pausePending) {
           const fallback = assistantText(agent.state.messages.at(-1)) || "I finished the work.";
           queue.push({ type: "text", text: fallback });
           streamed = fallback;
@@ -511,7 +513,10 @@ function toAgentTool(tool: ConnectorTool, host: ToolHost, exposedName: string): 
       if (tool.name === "request_secret") {
         if (host.request.executeTool) {
           const result = await host.request.executeTool(tool.name, args, executionId);
-          if (isAgentToolExecutionResult(result)) return result;
+          if (isAgentToolExecutionResult(result)) {
+            if (isToolPauseResult(result)) host.pausePending = true;
+            return result;
+          }
           return {
             content: [{ type: "text", text: summarizeToolResult(result) }],
             details: result,
@@ -534,7 +539,10 @@ function toAgentTool(tool: ConnectorTool, host: ToolHost, exposedName: string): 
         const result = tool.route
           ? await host.request.executeTool(tool.name, args, executionId, tool.route)
           : await host.request.executeTool(tool.name, args, executionId);
-        if (isAgentToolExecutionResult(result)) return result;
+        if (isAgentToolExecutionResult(result)) {
+          if (isToolPauseResult(result)) host.pausePending = true;
+          return result;
+        }
         return {
           content: [{ type: "text", text: summarizeToolResult(result) }],
           details: result,
@@ -890,6 +898,7 @@ interface ToolHost {
   abortTurn(): void;
   signal: AbortSignal;
   depth: number;
+  pausePending: boolean;
 }
 
 function consumeToolCall(host: ToolHost): boolean {

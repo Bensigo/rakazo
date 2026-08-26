@@ -1,5 +1,5 @@
 import type { ThreadMessage, ThreadSnapshot } from "@rakazo/contracts";
-import { narrateTool, speechFromBlocks, spokenDecision } from "@rakazo/core";
+import { isSecretAskBlock, narrateTool, speechFromBlocks, spokenDecision } from "@rakazo/core";
 import { useEffect, useRef, useState } from "react";
 import { dictation } from "../lib/dictation";
 import { speaker } from "../lib/tts";
@@ -81,6 +81,14 @@ export function CallView({
     const current = snapshotRef.current;
     const askId = latestAskId(current);
     const askMessage = current?.messages.find((message) => message.id === askId);
+    const secretAsk = askMessage?.blocks.find(
+      (block) => block.kind === "ask" && isSecretAskBlock(block) && block.status !== "answered",
+    );
+    if (secretAsk) {
+      setError("Type the protected value in the masked field on screen.");
+      void listen();
+      return;
+    }
     try {
       if (askMessage) {
         const decision = spokenDecision(text);
@@ -148,13 +156,21 @@ export function CallView({
       const ask = lastBot.blocks.find(
         (block) => block.kind === "ask" && block.status !== "answered",
       );
+      const secretAsk = ask && isSecretAskBlock(ask);
       if (text) {
         spokenMessage.current = lastBot.id;
         dictation.stop("cancel");
-        void speaker.speak(ask ? `${text}. Say yes or no, or answer in a sentence.` : text, {
-          botId,
-          messageId: lastBot.id,
-        });
+        void speaker.speak(
+          secretAsk
+            ? `${text}. Enter the protected value in the masked field on screen.`
+            : ask
+              ? `${text}. Say yes or no, or answer in a sentence.`
+              : text,
+          {
+            botId,
+            messageId: lastBot.id,
+          },
+        );
         return;
       }
       const runActive =

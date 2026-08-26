@@ -7,6 +7,7 @@ import {
   completeExternalEffect,
   createApprovedEffectReplayQueue,
   isApprovalPausedResult,
+  isToolPauseResult,
   resolveDuplicateEffectGate,
   settleUncertainEffect,
 } from "./approval-effect.js";
@@ -257,6 +258,20 @@ describe("approved effect resume", () => {
 
     expect(second).toEqual({ executed: false, result: { ok: true, written: true } });
     expect(harness.getDestinationWrites()).toBe(1);
+  });
+});
+
+describe("isToolPauseResult", () => {
+  it("detects approval and secret pauses", () => {
+    expect(isToolPauseResult(approvalPausedToolResult())).toBe(true);
+    expect(
+      isToolPauseResult({
+        kind: "agent_tool_result",
+        terminate: true,
+        details: { secret: "paused" },
+      }),
+    ).toBe(true);
+    expect(isToolPauseResult({ ok: true })).toBe(false);
   });
 });
 

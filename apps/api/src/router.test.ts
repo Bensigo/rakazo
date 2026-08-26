@@ -124,3 +124,75 @@ describe("MCP server deletion", () => {
     });
   });
 });
+
+describe("connections.complete", () => {
+  it("forwards an optional code to the managed connector", async () => {
+    const complete = vi.fn().mockResolvedValue({ connectionRef: "gmail" });
+    const connectionReady = vi.fn().mockResolvedValue(true);
+    const update = vi.fn().mockResolvedValue({
+      id: "conn-1",
+      connectorId: "composio",
+      provider: "gmail",
+      displayName: "Gmail",
+      status: "connected",
+      createdAt: new Date("2026-08-26T00:00:00.000Z"),
+    });
+    const prisma = {
+      connection: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "conn-1",
+          connectorId: "composio",
+          provider: "gmail",
+          displayName: "Gmail",
+          providerRef: "gmail-state",
+          status: "pending",
+          createdAt: new Date("2026-08-26T00:00:00.000Z"),
+        }),
+        update,
+      },
+    } as unknown as PrismaClient;
+    const deps = {
+      prisma,
+      connectors: {
+        managed: vi.fn(() => ({ complete, connectionReady })),
+      },
+      env: {
+        defaultProvider: "fake",
+        defaultModel: "fake-model",
+        webOrigin: "http://127.0.0.1:5173",
+        screenProxySecret: "fake-test-secret",
+        sandboxProvider: "fake",
+      },
+      dataDir: "/tmp/rakazo-router-test",
+    } as unknown as RouterDeps;
+    const actor = {
+      workspaceId: "workspace-1",
+      userId: "user-1",
+      email: "user@rakazo.test",
+      isDeploymentOwner: true,
+    } satisfies Actor;
+    const handler = new RPCHandler(createRouter(deps));
+
+    const { matched, response } = await handler.handle(
+      new Request("http://127.0.0.1/rpc/connections/complete", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          json: {
+            connectionId: "conn-1",
+            code: "123456",
+          },
+        }),
+      }),
+      { prefix: "/rpc", context: { actor } },
+    );
+
+    expect(matched).toBe(true);
+    expect(response.status).toBe(200);
+    expect(complete).toHaveBeenCalledWith(
+      { state: "gmail-state", code: "123456" },
+      expect.objectContaining({ workspaceId: "workspace-1", userId: "user-1" }),
+    );
+    expect(connectionReady).toHaveBeenCalled();
+  });
+});

@@ -406,6 +406,7 @@ export async function answerRunInput(
     if (pendingAsk?.kind !== "ask") return null;
     const approvalAsk = isApprovalAskBlock(pendingAsk);
     const secretAsk = isSecretAskBlock(pendingAsk);
+    if (secretAsk && !runSecretWriter) return null;
     let approvalEffect: { id: string; kind: string } | null = null;
     let approvalUserId: string | null = null;
 
@@ -465,8 +466,7 @@ export async function answerRunInput(
         });
       }
     } else if (secretAsk) {
-      if (!runSecretWriter) return null;
-      await runSecretWriter.store({
+      await runSecretWriter!.store({
         runId: input.runId,
         userId: run.userId,
         workspaceId: input.workspaceId,

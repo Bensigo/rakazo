@@ -74,7 +74,7 @@ import {
   claimIntendedEffect,
   completeExternalEffect,
   createApprovedEffectReplayQueue,
-  isApprovalPausedResult,
+  isToolPauseResult,
   resolveDuplicateEffectGate,
   settleUncertainEffect,
   uncertainEffectResult,
@@ -874,7 +874,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
         let lastComputerFrameId: string | undefined;
         let terminalCheckpointComplete = false;
         let approvalPausePending = false;
-        const progressRedactor = createStreamingRedactor(runSecrets);
+        let progressRedactor = createStreamingRedactor(runSecrets);
         const scripted = deps.runtime.describe().capabilities.scripted;
         const script = scripted ? inferScript(task.prompt, takeoverResume?.checkpoint) : undefined;
         const flushProgress = async () => {
@@ -907,6 +907,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
         const pauseForApproval = () => {
           approvalPausePending = true;
           return approvalPausedToolResult();
+        };
+
+        const pauseForSecret = () => {
+          approvalPausePending = true;
+          return secretPausedToolResult();
         };
 
         const applyTool = async (
@@ -1006,7 +1011,15 @@ export function createRunExecutor(deps: ExecutorDeps) {
             const gate = resolveDuplicateEffectGate(applied.effect, name);
             if (gate.action === "return") return gate.result;
             if (gate.action === "paused") {
-              if (!needsApproval) {
+              if (name === "request_secret") {
+                const current = await deps.prisma.run.findUnique({
+                  where: { id: runId },
+                  select: { status: true },
+                });
+                if (current?.status === "waiting_input") {
+                  return pauseForSecret();
+                }
+              } else if (!needsApproval) {
                 const early = await claimOrReturn("intended");
                 if (early !== undefined) return early;
               } else {
@@ -1634,6 +1647,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             if (storedSecret) {
               const plaintext = deps.secretStore.load(storedSecret.ciphertext);
               runSecrets.push(plaintext);
+              progressRedactor = createStreamingRedactor(runSecrets);
               await deps.prisma.secret.delete({ where: { id: storedSecret.id } });
               const connectionId = args.connectionId ? String(args.connectionId) : undefined;
               const purpose = String(args.purpose ?? "otp");
@@ -1671,7 +1685,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             }
             await recordEffect(deps, run, name, effectKey, args);
             if (!(await renewRunLease(deps, runId, workerId, fence))) {
-              return secretPausedToolResult();
+              return pauseForSecret();
             }
             await checkpointAndRecordComputerWorkspace(deps, storedComputer, computer, context);
             const paused = await deps.events.pauseRunForInput({
@@ -1701,7 +1715,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               botId: bot.id,
               threadId: thread.id,
             });
-            return secretPausedToolResult();
+            return pauseForSecret();
           }
           if (name === "request_takeover") return { ok: true };
           if (name === "run_subagent") {
@@ -2144,7 +2158,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               }
               if (scripted) {
                 const result = await applyTool(event.name, event.args, event.executionId);
-                if (isApprovalPausedResult(result)) return;
+                if (isToolPauseResult(result)) return;
               }
             } else if (event.type === "subagent") {
               const safeTask = redactSecrets(event.task, runSecrets);
