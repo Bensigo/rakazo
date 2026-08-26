@@ -347,6 +347,7 @@ export function ShellPage() {
   const bootstrappedThread = useRef<ThreadSnapshot | null>(null);
   const expandedHistoryThread = useRef<string | null>(null);
   const historyEpoch = useRef(0);
+  const jumpGeneration = useRef(0);
   const initiallyScrolledThread = useRef<string | null>(null);
   const messageScroll = useRef<HTMLDivElement>(null);
   const pinnedAroundRef = useRef<{
@@ -981,13 +982,16 @@ export function ShellPage() {
   async function jumpToMessage(target: { botId?: string; groupId?: string; messageId: string }) {
     const threadTarget = searchHitThreadTarget(target);
     const epoch = historyEpoch.current;
+    jumpGeneration.current += 1;
+    const jumpId = jumpGeneration.current;
     const [snap, page] = await Promise.all([
       rpc.threads.get(threadTarget),
       rpc.threads.messages({ ...threadTarget, around: { messageId: target.messageId } }),
     ]);
     // The epoch check drops a jump that raced a conversation clear (or a bot switch): applying
     // the fetched page would pin deleted messages that every later refresh keeps restoring.
-    if (epoch !== historyEpoch.current) return;
+    // jumpId drops an older jump that finished after a newer click.
+    if (epoch !== historyEpoch.current || jumpId !== jumpGeneration.current) return;
     if (target.groupId && activeGroupId.current !== target.groupId) return;
     if (target.botId && activeBotId.current !== target.botId) return;
     expandedHistoryThread.current = page.threadId;
@@ -1013,6 +1017,7 @@ export function ShellPage() {
       setRoutines([]);
       setRoutinesBotId(null);
     }
+    if (jumpId !== jumpGeneration.current) return;
     window.requestAnimationFrame(() => {
       document
         .querySelector(`[data-message-id="${target.messageId}"]`)
@@ -1132,6 +1137,8 @@ export function ShellPage() {
   refreshGroupThreadRef.current = refreshGroupThread;
   const loadOlderMessagesRef = useRef(loadOlderMessages);
   loadOlderMessagesRef.current = loadOlderMessages;
+  const jumpToMessageRef = useRef(jumpToMessage);
+  jumpToMessageRef.current = jumpToMessage;
 
   const mentionBotsKey = useMemo(
     () => bots.map((bot) => `${bot.id}:${bot.name}`).join(","),
@@ -1241,6 +1248,22 @@ export function ShellPage() {
 
   const openBot = useCallback((id: string) => navigate(`/app/${id}`), [navigate]);
   const loadOlder = useCallback(() => loadOlderMessagesRef.current(), []);
+  const jumpToReplyMessage = useCallback((messageId: string) => {
+    const existing = document.querySelector(`[data-message-id="${CSS.escape(messageId)}"]`);
+    if (existing) {
+      // Cancel any in-flight around-fetch so it cannot overwrite this scroll.
+      jumpGeneration.current += 1;
+      existing.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    const groupId = activeGroupId.current;
+    if (groupId) {
+      void jumpToMessageRef.current({ groupId, messageId });
+      return;
+    }
+    const botId = activeBotId.current;
+    if (botId) void jumpToMessageRef.current({ botId, messageId });
+  }, []);
   const answerMessage = useCallback(async (message: ThreadMessage, text: string) => {
     const botId = activeBotId.current;
     const groupId = activeGroupId.current;
@@ -2144,6 +2167,7 @@ export function ShellPage() {
           onOpenBot={openBot}
           onAnswer={answerMessage}
           onReply={setReplyTarget}
+          onJumpToMessage={jumpToReplyMessage}
           onOpenPeerMessages={(peerBotId) => {
             setPeerMessagesFocusId(peerBotId);
             setPeerMessagesOpen(true);
@@ -2985,6 +3009,7 @@ const Transcript = memo(function Transcript({
   onOpenBot,
   onAnswer,
   onReply,
+  onJumpToMessage,
   onOpenPeerMessages,
   memberName,
   onRefresh,
@@ -3006,6 +3031,7 @@ const Transcript = memo(function Transcript({
   onOpenBot: (botId: string) => void;
   onAnswer: (message: ThreadMessage, text: string) => Promise<void>;
   onReply: (message: ThreadMessage) => void;
+  onJumpToMessage: (messageId: string) => void;
   onOpenPeerMessages: (peerBotId: string) => void;
   memberName?: (botId: string | undefined) => string | undefined;
   onRefresh: () => Promise<void>;
@@ -3055,11 +3081,8 @@ const Transcript = memo(function Transcript({
             replyPreview={
               message.replyToMessageId ? messageById.get(message.replyToMessageId) : undefined
             }
-            onJumpToMessage={(messageId) => {
-              document
-                .querySelector(`[data-message-id="${messageId}"]`)
-                ?.scrollIntoView({ behavior: "smooth", block: "center" });
-            }}
+            replyToMessageId={message.replyToMessageId}
+            onJumpToMessage={onJumpToMessage}
             onRefresh={onRefresh}
             onBotChanged={onBotChanged}
             onAddRoutine={onAddRoutine}
@@ -3765,6 +3788,7 @@ const MessageView = memo(function MessageView({
   speakerName,
   memberName,
   replyPreview,
+  replyToMessageId,
   onJumpToMessage,
   onRefresh,
   onBotChanged,
@@ -3782,6 +3806,7 @@ const MessageView = memo(function MessageView({
   speakerName?: string;
   memberName?: (botId: string | undefined) => string | undefined;
   replyPreview?: ThreadMessage;
+  replyToMessageId?: string;
   onJumpToMessage?: (messageId: string) => void;
   onRefresh: () => Promise<void>;
   onBotChanged: () => Promise<void>;
@@ -3798,6 +3823,7 @@ const MessageView = memo(function MessageView({
       (block) => block.kind === "text" || block.kind === "progress" || block.kind === "steps",
     );
   const isLive = message.id.startsWith("progress:");
+  const parentJumpId = replyPreview?.id ?? replyToMessageId;
   const messageContext = (
     <>
       {speakerName ? (
@@ -3805,16 +3831,16 @@ const MessageView = memo(function MessageView({
           {speakerName}
         </div>
       ) : null}
-      {replyPreview ? (
+      {parentJumpId ? (
         <button
           type="button"
           data-testid="reply-parent-preview"
           aria-label={t`Jump to replied message`}
-          onClick={() => onJumpToMessage?.(replyPreview.id)}
+          onClick={() => onJumpToMessage?.(parentJumpId)}
           className="mb-2 block max-w-[74%] truncate rounded-[14px] border border-[#26262A] bg-[#131315] px-3 py-2 text-start text-[12.5px] text-[#85858A] hover:border-[#34343B] hover:text-[#C9C9CE]"
           dir="auto"
         >
-          {previewMessageText(replyPreview)}
+          {replyPreview ? previewMessageText(replyPreview) : t`Earlier message`}
         </button>
       ) : null}
     </>
