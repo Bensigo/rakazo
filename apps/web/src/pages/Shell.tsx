@@ -110,6 +110,7 @@ import { authClient } from "../lib/auth";
 import { takeInitialBootstrap } from "../lib/bootstrap";
 import { chartViewport } from "../lib/chart-viewport";
 import { dictation } from "../lib/dictation";
+import { localTimezone } from "../lib/local-timezone";
 import { connectMcpOauth } from "../lib/mcp-connect";
 import { revokePendingAttachmentPreviews } from "../lib/pending-attachments";
 import { markAfterPaint, markOnce } from "../lib/performance";
@@ -1033,6 +1034,7 @@ export function ShellPage() {
           prompt: routine.prompt,
           schedules: routine.crons.map(presetFromCron),
         });
+        setEditingRoutine(routine);
         setPanel("routine");
       } else {
         setPanel("computer");
@@ -2467,6 +2469,9 @@ export function ShellPage() {
                 </label>
                 <div className="mt-5 text-[14px] text-[#85858A]">
                   When to run
+                  <span className="ml-2 text-[12.5px] text-[#6E6E74]">
+                    {editingRoutine?.timezone ?? localTimezone()}
+                  </span>
                   <Suspense fallback={null}>
                     <RoutineSchedules
                       value={routineDraft.schedules}
@@ -2502,7 +2507,7 @@ export function ShellPage() {
                             name: routineDraft.name || "Routine",
                             prompt: routineDraft.prompt || "Check in.",
                             crons,
-                            timezone: "UTC",
+                            timezone: localTimezone(),
                             active: true,
                             notify: true,
                           });
