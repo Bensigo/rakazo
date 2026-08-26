@@ -1034,6 +1034,7 @@ export function ShellPage() {
           prompt: routine.prompt,
           schedules: routine.crons.map(presetFromCron),
         });
+        setEditingRoutine(routine);
         setPanel("routine");
       } else {
         setPanel("computer");
