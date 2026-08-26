@@ -2,8 +2,8 @@ import type { MessageBlock } from "@rakazo/contracts";
 import { abortableDelay } from "@rakazo/core";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Linking, Pressable, Text, View } from "react-native";
-import { appConnectPresentation } from "../lib/app-connect";
 import { rpc } from "../lib/api";
+import { appConnectPresentation } from "../lib/app-connect";
 import { native } from "../lib/native";
 
 export function AppConnectCard({

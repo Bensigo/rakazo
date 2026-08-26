@@ -37,6 +37,15 @@ export default function Integrations() {
   const connectionAttempt = useRef<AbortController | null>(null);
 
   const featuredTiles = useMemo(() => buildFeaturedConnectorTiles(catalog), [catalog]);
+  const catalogApps = useMemo(() => {
+    const featuredKeys = new Set(
+      featuredTiles
+        .map((tile) => tile.item)
+        .filter((item): item is ConnectionCatalogItem => Boolean(item))
+        .map((item) => `${item.connectorId}:${item.slug}`),
+    );
+    return catalog.filter((item) => !featuredKeys.has(`${item.connectorId}:${item.slug}`));
+  }, [catalog, featuredTiles]);
 
   async function refresh() {
     const [nextCatalog, installs] = await Promise.all([
@@ -292,10 +301,7 @@ export default function Integrations() {
             const disabled = tile.missing;
             const connected = item?.connected ?? false;
             return (
-              <View
-                key={key}
-                style={[styles.row, disabled ? { opacity: 0.7 } : null]}
-              >
+              <View key={key} style={[styles.row, disabled ? { opacity: 0.7 } : null]}>
                 <View style={styles.grow}>
                   <Text style={styles.title}>{tile.label}</Text>
                   {disabled ? (
@@ -344,7 +350,7 @@ export default function Integrations() {
         {catalog.length === 0 ? (
           <Text style={styles.secondary}>No managed app catalog configured.</Text>
         ) : null}
-        {catalog.map((item) => {
+        {catalogApps.map((item) => {
           const key = `${item.connectorId}:${item.slug}`;
           return (
             <View key={key} style={styles.row}>

@@ -25,13 +25,7 @@ const FEATURED_ALIASES: Record<FeaturedConnectorId, readonly string[]> = {
   "google-calendar": ["googlecalendar", "google calendar", "google_calendar", "gcal"],
   "google-drive": ["googledrive", "google drive", "google_drive", "gdrive"],
   outlook: ["outlook", "microsoft outlook", "microsoft_outlook", "ms outlook"],
-  "microsoft-teams": [
-    "teams",
-    "microsoft teams",
-    "microsoft_teams",
-    "msteams",
-    "ms teams",
-  ],
+  "microsoft-teams": ["teams", "microsoft teams", "microsoft_teams", "msteams", "ms teams"],
   salesforce: ["salesforce", "sfdc"],
 };
 

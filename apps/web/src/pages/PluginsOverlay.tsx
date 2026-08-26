@@ -69,20 +69,33 @@ export function PluginsOverlay({
     return () => connectionAttempt.current?.abort();
   }, []);
 
+  const featuredTiles = useMemo(() => buildFeaturedConnectorTiles(catalog), [catalog]);
+  const showFeatured = view === "all" && !query.trim();
+  const featuredItemKeys = useMemo(
+    () =>
+      new Set(
+        featuredTiles
+          .map((tile) => tile.item)
+          .filter((item): item is ConnectionCatalogItem => Boolean(item))
+          .map((item) => itemKey(item)),
+      ),
+    [featuredTiles],
+  );
+
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     const scoped = view === "connected" ? catalog.filter((item) => item.connected) : catalog;
-    if (!needle) return scoped;
-    return scoped.filter(
+    const deduped = showFeatured
+      ? scoped.filter((item) => !featuredItemKeys.has(itemKey(item)))
+      : scoped;
+    if (!needle) return deduped;
+    return deduped.filter(
       (item) =>
         item.name.toLowerCase().includes(needle) ||
         item.slug.toLowerCase().includes(needle) ||
         item.connectorId.toLowerCase().includes(needle),
     );
-  }, [catalog, query, view]);
-
-  const featuredTiles = useMemo(() => buildFeaturedConnectorTiles(catalog), [catalog]);
-  const showFeatured = view === "all" && !query.trim();
+  }, [catalog, featuredItemKeys, query, showFeatured, view]);
 
   async function notifyAppConnected(item: ConnectionCatalogItem) {
     if (!activeBotId) return;
@@ -441,7 +454,9 @@ export function PluginsOverlay({
                                 : "border-[#2C2C30] bg-[#101012]"
                             }`}
                           >
-                            <div className="text-[15px] font-medium text-[#ECECEE]">{tile.label}</div>
+                            <div className="text-[15px] font-medium text-[#ECECEE]">
+                              {tile.label}
+                            </div>
                             {disabled ? (
                               <p className="mt-1 text-xs leading-5 text-[#707077]">
                                 Not in the plugin catalog

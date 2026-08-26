@@ -24,8 +24,8 @@ import {
 import { Link, useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Alert, AppState, Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import { AskActions } from "../components/AskActions";
 import { AppConnectCard } from "../components/AppConnectCard";
+import { AskActions } from "../components/AskActions";
 import {
   MarkdownArtifactPreview,
   type MarkdownArtifactPreviewTarget,
@@ -1511,36 +1511,12 @@ function MessageBubble({
     );
   }
   const appConnectBlocks = message.blocks.filter(
-    (block): block is Extract<MessageBlock, { kind: "app_connect" }> => block.kind === "app_connect",
+    (block): block is Extract<MessageBlock, { kind: "app_connect" }> =>
+      block.kind === "app_connect",
   );
-  if (appConnectBlocks.length > 0) {
-    const siblingBlocks = message.blocks.filter((block) => block.kind !== "app_connect");
-    if (siblingBlocks.length === 0) {
-      return (
-        <View style={{ gap: 8, width: "100%" }}>
-          {appConnectBlocks.map((block, index) => (
-            <AppConnectCard key={`${block.provider}-${index}`} botId={botId} block={block} />
-          ))}
-        </View>
-      );
-    }
-    const caption = siblingBlocks
-      .flatMap((block) => (block.kind === "text" && block.text ? [block.text] : []))
-      .join("\n");
+  if (appConnectBlocks.length > 0 && appConnectBlocks.length === message.blocks.length) {
     return (
       <View style={{ gap: 8, width: "100%" }}>
-        {caption ? (
-          <View
-            style={{
-              maxWidth: "100%",
-              backgroundColor: "#1A1A1D",
-              padding: 12,
-              borderRadius: 20,
-            }}
-          >
-            <ChatMarkdown>{caption}</ChatMarkdown>
-          </View>
-        ) : null}
         {appConnectBlocks.map((block, index) => (
           <AppConnectCard key={`${block.provider}-${index}`} botId={botId} block={block} />
         ))}
@@ -1687,47 +1663,55 @@ function MessageBubble({
             </Pressable>
           ),
         )}
+        {appConnectBlocks.map((block, index) => (
+          <AppConnectCard key={`${block.provider}-${index}`} botId={botId} block={block} />
+        ))}
       </View>
     );
   }
   const speaker = message.role === "bot" ? memberName(members, message.botId) : undefined;
   return (
-    <View
-      style={{
-        flexShrink: 1,
-        minWidth: 0,
-        maxWidth: "100%",
-        backgroundColor: message.role === "user" ? "#F1F1EF" : "#1A1A1D",
-        padding: 12,
-        borderRadius: 20,
-      }}
-    >
-      {speaker ? (
-        <Text style={{ color: "#85858A", fontSize: 12.5, fontWeight: "600", marginBottom: 4 }}>
-          {speaker}
-        </Text>
-      ) : null}
-      {replyPreview ? (
-        <Text style={{ color: "#85858A", fontSize: 12.5, marginBottom: 6 }} numberOfLines={2}>
-          {previewMessageText(replyPreview)}
-        </Text>
-      ) : null}
-      {message.role === "user" ? (
-        <Text style={{ color: "#1A1A1A", fontSize: 15.5, lineHeight: 23 }}>
-          {blockText(message)}
-        </Text>
-      ) : (
-        <>
-          <ChatMarkdown streaming={message.id.startsWith("progress:")}>
+    <View style={{ gap: 8, width: "100%" }}>
+      <View
+        style={{
+          flexShrink: 1,
+          minWidth: 0,
+          maxWidth: "100%",
+          backgroundColor: message.role === "user" ? "#F1F1EF" : "#1A1A1D",
+          padding: 12,
+          borderRadius: 20,
+        }}
+      >
+        {speaker ? (
+          <Text style={{ color: "#85858A", fontSize: 12.5, fontWeight: "600", marginBottom: 4 }}>
+            {speaker}
+          </Text>
+        ) : null}
+        {replyPreview ? (
+          <Text style={{ color: "#85858A", fontSize: 12.5, marginBottom: 6 }} numberOfLines={2}>
+            {previewMessageText(replyPreview)}
+          </Text>
+        ) : null}
+        {message.role === "user" ? (
+          <Text style={{ color: "#1A1A1A", fontSize: 15.5, lineHeight: 23 }}>
             {blockText(message)}
-          </ChatMarkdown>
-          {onSpeak ? (
-            <Pressable onPress={onSpeak} hitSlop={8} style={{ marginTop: 8 }}>
-              <Text style={{ color: "#85858A", fontSize: 13 }}>Speak</Text>
-            </Pressable>
-          ) : null}
-        </>
-      )}
+          </Text>
+        ) : (
+          <>
+            <ChatMarkdown streaming={message.id.startsWith("progress:")}>
+              {blockText(message)}
+            </ChatMarkdown>
+            {onSpeak ? (
+              <Pressable onPress={onSpeak} hitSlop={8} style={{ marginTop: 8 }}>
+                <Text style={{ color: "#85858A", fontSize: 13 }}>Speak</Text>
+              </Pressable>
+            ) : null}
+          </>
+        )}
+      </View>
+      {appConnectBlocks.map((block, index) => (
+        <AppConnectCard key={`${block.provider}-${index}`} botId={botId} block={block} />
+      ))}
     </View>
   );
 }

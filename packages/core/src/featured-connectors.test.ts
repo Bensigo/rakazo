@@ -7,11 +7,7 @@ import {
   resolveFeaturedCatalogItem,
 } from "./featured-connectors.js";
 
-function item(
-  slug: string,
-  name: string,
-  connected = false,
-): ConnectionCatalogItem {
+function item(slug: string, name: string, connected = false): ConnectionCatalogItem {
   return {
     connectorId: "composio",
     slug,
