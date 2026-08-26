@@ -1758,9 +1758,11 @@ export function createRouter(deps: RouterDeps) {
           }
           throw error;
         }
-        // Keep enqueue outside the nonce-collision catch so a failed enqueue is not
-        // reported as success by returning the run that this request just created.
-        await deps.jobs.enqueue(runContinueJob(run.id));
+        // Keep enqueue outside the nonce-collision catch. The queued run is durable;
+        // log enqueue failures and still return success — the reconciler repairs a missed wake.
+        await deps.jobs.enqueue(runContinueJob(run.id)).catch((error) => {
+          console.error("routine testRun enqueue", error);
+        });
         return { runId: run.id };
       }),
     },
