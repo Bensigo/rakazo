@@ -180,6 +180,7 @@ import {
   currentTurnFilesInstruction,
   materializeCurrentTurnFiles,
 } from "./thread-artifacts.js";
+import { textContentArg } from "./tool-text.js";
 
 const modelCredentialLocks = new Map<string, Promise<void>>();
 const READ_ONLY_AGENT_TOOLS = new Set([
@@ -1117,7 +1118,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           }
           if (name === "write_file") {
             const filePath = String(args.path ?? "notes/result.txt");
-            const content = String(args.content ?? "");
+            const content = textContentArg(args.content, "");
             await deps.sandbox.writeFile(
               computer,
               {
