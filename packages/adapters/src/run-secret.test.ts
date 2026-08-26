@@ -101,6 +101,6 @@ describe("tryCompleteConnectionWithCode", () => {
         "conn-1",
         "bad",
       ),
-    ).resolves.toEqual({ connected: false, error: "invalid code" });
+    ).resolves.toEqual({ connected: false, error: "Connection could not be completed." });
   });
 });

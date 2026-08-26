@@ -1009,7 +1009,21 @@ export function createRunExecutor(deps: ExecutorDeps) {
 
           if (applied?.duplicate) {
             const gate = resolveDuplicateEffectGate(applied.effect, name);
-            if (gate.action === "return") return gate.result;
+            if (gate.action === "return") {
+              if (name === "request_secret") {
+                const replacementSecret = await deps.prisma.secret.findFirst({
+                  where: {
+                    workspaceId: run.workspaceId,
+                    userId: run.userId,
+                    kind: runSecretKind(runId),
+                  },
+                  select: { id: true },
+                });
+                if (!replacementSecret) return gate.result;
+              } else {
+                return gate.result;
+              }
+            }
             if (gate.action === "paused") {
               if (name === "request_secret") {
                 const current = await deps.prisma.run.findUnique({

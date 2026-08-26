@@ -79,10 +79,10 @@ export async function tryCompleteConnectionWithCode(
       });
     }
     return { connected: ready };
-  } catch (error) {
+  } catch {
     return {
       connected: false,
-      error: error instanceof Error ? error.message : "Connection could not be completed.",
+      error: "Connection could not be completed.",
     };
   }
 }
