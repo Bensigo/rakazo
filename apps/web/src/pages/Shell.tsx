@@ -343,6 +343,7 @@ export function ShellPage() {
   const [peekLoading, setPeekLoading] = useState(false);
   const [peekMenuOpen, setPeekMenuOpen] = useState(false);
   const peekRequest = useRef(0);
+  const peekInvalidatedForBot = useRef<string | undefined>(undefined);
   const [usage, setUsage] = useState<{
     inputTokens: number;
     outputTokens: number;
@@ -374,6 +375,13 @@ export function ShellPage() {
 
   const inGroup = Boolean(groupId);
   const active = inGroup ? undefined : (bots.find((b) => b.id === botId) ?? bots[0]);
+  // Invalidate in-flight peeks during render when the active bot changes — waiting
+  // for the post-paint effect leaves a window where a late peek response can pass
+  // its generation check and commit under the newly selected bot.
+  if (active?.id !== peekInvalidatedForBot.current) {
+    peekInvalidatedForBot.current = active?.id;
+    peekRequest.current += 1;
+  }
   const activeGroup = groups.find((group) => group.id === groupId);
   const activePendingAttachments = useMemo(
     () => attachmentsForThread(pendingAttachments, inGroup ? groupId : active?.id),
