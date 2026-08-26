@@ -1,6 +1,10 @@
 import type { CapabilityInstall, Connection, ConnectionCatalogItem } from "@rakazo/contracts";
-import { abortableDelay } from "@rakazo/core";
-import { useEffect, useRef, useState } from "react";
+import {
+  abortableDelay,
+  buildFeaturedConnectorTiles,
+  EMPTY_PLUGIN_CATALOG_MESSAGE,
+} from "@rakazo/core";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -14,6 +18,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { rpc } from "../lib/api";
+import { loadLastBotId } from "../lib/last-bot";
 import { native } from "../lib/native";
 
 type SourceKind = "treg" | "mcp" | "api";
@@ -28,7 +33,10 @@ export default function Integrations() {
   const [requiresAuth, setRequiresAuth] = useState(true);
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lastBotId, setLastBotId] = useState("");
   const connectionAttempt = useRef<AbortController | null>(null);
+
+  const featuredTiles = useMemo(() => buildFeaturedConnectorTiles(catalog), [catalog]);
 
   async function refresh() {
     const [nextCatalog, installs] = await Promise.all([
@@ -43,8 +51,16 @@ export default function Integrations() {
     void refresh().catch((reason) =>
       setError(reason instanceof Error ? reason.message : "Could not load integrations"),
     );
+    void loadLastBotId().then(setLastBotId);
     return () => connectionAttempt.current?.abort();
   }, []);
+
+  async function notifyAppConnected(item: ConnectionCatalogItem) {
+    if (!lastBotId) return;
+    await rpc("onboarding/appConnected", { botId: lastBotId, provider: item.slug }).catch(
+      () => undefined,
+    );
+  }
 
   async function connect(item: ConnectionCatalogItem) {
     connectionAttempt.current?.abort();
@@ -70,6 +86,7 @@ export default function Integrations() {
         }).catch(() => undefined);
         if (row?.status === "connected") {
           if (controller.signal.aborted) return;
+          await notifyAppConnected(item);
           await refresh();
           return;
         }
@@ -264,6 +281,46 @@ export default function Integrations() {
         ) : null}
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
+
+        <Text style={styles.section}>Featured apps</Text>
+        {catalog.length === 0 ? (
+          <Text style={styles.secondary}>{EMPTY_PLUGIN_CATALOG_MESSAGE}</Text>
+        ) : (
+          featuredTiles.map((tile) => {
+            const item = tile.item;
+            const key = item ? `${item.connectorId}:${item.slug}` : tile.id;
+            const disabled = tile.missing;
+            const connected = item?.connected ?? false;
+            return (
+              <View
+                key={key}
+                style={[styles.row, disabled ? { opacity: 0.7 } : null]}
+              >
+                <View style={styles.grow}>
+                  <Text style={styles.title}>{tile.label}</Text>
+                  {disabled ? (
+                    <Text style={styles.secondary}>Not in the plugin catalog</Text>
+                  ) : item ? (
+                    <Text style={styles.secondary}>
+                      {item.connectorId} · {item.slug}
+                    </Text>
+                  ) : null}
+                </View>
+                {disabled || !item ? null : (
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={pending === key}
+                    onPress={() => void (connected ? revoke(item) : connect(item))}
+                  >
+                    <Text style={styles.link}>
+                      {pending === key ? "Working…" : connected ? "Disconnect" : "Connect"}
+                    </Text>
+                  </Pressable>
+                )}
+              </View>
+            );
+          })
+        )}
 
         <Text style={styles.section}>Tool sources</Text>
         {sources.length === 0 ? (

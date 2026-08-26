@@ -2704,6 +2704,7 @@ export function ShellPage() {
 
         {pluginsOpen ? (
           <PluginsOverlay
+            activeBotId={activeBotId.current}
             onClose={() => setPluginsOpen(false)}
             onOpenMcp={() => {
               setPluginsOpen(false);

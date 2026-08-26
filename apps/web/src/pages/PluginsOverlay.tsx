@@ -1,5 +1,9 @@
 import type { CapabilityInstall, ConnectionCatalogItem } from "@rakazo/contracts";
-import { abortableDelay } from "@rakazo/core";
+import {
+  abortableDelay,
+  buildFeaturedConnectorTiles,
+  EMPTY_PLUGIN_CATALOG_MESSAGE,
+} from "@rakazo/core";
 import { Button } from "@rakazo/ui-web";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { rpc } from "../lib/rpc";
@@ -25,9 +29,11 @@ function markConnected(
 export function PluginsOverlay({
   onClose,
   onOpenMcp,
+  activeBotId,
 }: {
   onClose: () => void;
   onOpenMcp?: () => void;
+  activeBotId?: string;
 }) {
   const [query, setQuery] = useState("");
   const [view, setView] = useState<CatalogView>("all");
@@ -75,6 +81,16 @@ export function PluginsOverlay({
     );
   }, [catalog, query, view]);
 
+  const featuredTiles = useMemo(() => buildFeaturedConnectorTiles(catalog), [catalog]);
+  const showFeatured = view !== "sources" && !query.trim();
+
+  async function notifyAppConnected(item: ConnectionCatalogItem) {
+    if (!activeBotId) return;
+    await rpc.onboarding
+      .appConnected({ botId: activeBotId, provider: item.slug })
+      .catch(() => undefined);
+  }
+
   function setItemConnected(item: ConnectionCatalogItem, connected: boolean) {
     setCatalog((prev) => markConnected(prev, item.connectorId, item.slug, connected));
   }
@@ -97,6 +113,7 @@ export function PluginsOverlay({
       if (item.noAuth && !started.authorizationUrl) {
         if (controller.signal.aborted) return;
         setItemConnected(item, true);
+        await notifyAppConnected(item);
         return;
       }
       for (let i = 0; i < 45; i += 1) {
@@ -107,6 +124,7 @@ export function PluginsOverlay({
         if (row?.status === "connected") {
           if (controller.signal.aborted) return;
           setItemConnected(item, true);
+          await notifyAppConnected(item);
           return;
         }
         await abortableDelay(2_000, controller.signal);
@@ -400,7 +418,61 @@ export function PluginsOverlay({
             </div>
           ) : (
             <>
-              {!loading && catalog.length === 0 ? (
+              {showFeatured ? (
+                <div className="mb-6">
+                  <div className="mb-3 text-sm font-medium text-[#A8A8AD]">Featured apps</div>
+                  {!loading && catalog.length === 0 ? (
+                    <p className="text-[13.5px] leading-6 text-[#6C6C70]">
+                      {EMPTY_PLUGIN_CATALOG_MESSAGE}
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3">
+                      {featuredTiles.map((tile) => {
+                        const item = tile.item;
+                        const key = item ? itemKey(item) : tile.id;
+                        const disabled = tile.missing;
+                        const connected = item?.connected ?? false;
+                        return (
+                          <div
+                            key={key}
+                            className={`rounded-[16px] border px-4 py-3.5 ${
+                              disabled
+                                ? "border-[#232326] bg-[#101012] opacity-70"
+                                : "border-[#2C2C30] bg-[#101012]"
+                            }`}
+                          >
+                            <div className="text-[15px] font-medium text-[#ECECEE]">{tile.label}</div>
+                            {disabled ? (
+                              <p className="mt-1 text-xs leading-5 text-[#707077]">
+                                Not in the plugin catalog
+                              </p>
+                            ) : item ? (
+                              <div className="mt-3">
+                                <Button
+                                  type="button"
+                                  variant="pill"
+                                  size="sm"
+                                  disabled={pending === key}
+                                  onClick={() => void (connected ? revoke(item) : connect(item))}
+                                >
+                                  {pending === key
+                                    ? connected
+                                      ? "Revoking…"
+                                      : "Connecting…"
+                                    : connected
+                                      ? "Disconnect"
+                                      : "Connect"}
+                                </Button>
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : null}
+              {!loading && catalog.length === 0 && !showFeatured ? (
                 <p className="text-[#6C6C70]">
                   No managed app catalog is configured on this deployment. You can still add Treg,
                   MCP, or OpenAPI sources.

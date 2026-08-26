@@ -25,6 +25,7 @@ import { Link, useFocusEffect, useLocalSearchParams, useNavigation, useRouter } 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Alert, AppState, Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { AskActions } from "../components/AskActions";
+import { AppConnectCard } from "../components/AppConnectCard";
 import {
   MarkdownArtifactPreview,
   type MarkdownArtifactPreviewTarget,
@@ -46,6 +47,7 @@ import {
 } from "../lib/api";
 import { type MobileArtifactTarget, openMobileArtifact } from "../lib/artifact-open";
 import { confirmDeleteBot } from "../lib/bot-lifecycle";
+import { saveLastBotId } from "../lib/last-bot";
 import {
   type PickedAttachment,
   pickDocuments,
@@ -449,8 +451,9 @@ export default function Thread() {
   // Covers returning from a pushed screen; the AppState listener covers returning from background.
   useFocusEffect(
     useCallback(() => {
+      if (botId) void saveLastBotId(botId);
       markReadIfVisible();
-    }, [markReadIfVisible]),
+    }, [botId, markReadIfVisible]),
   );
 
   useEffect(() => {
@@ -1505,6 +1508,18 @@ function MessageBubble({
             : special.title || "Opened its thread."}
         </Text>
       </Pressable>
+    );
+  }
+  const appConnectBlocks = message.blocks.filter(
+    (block): block is Extract<MessageBlock, { kind: "app_connect" }> => block.kind === "app_connect",
+  );
+  if (appConnectBlocks.length > 0) {
+    return (
+      <View style={{ gap: 8, width: "100%" }}>
+        {appConnectBlocks.map((block, index) => (
+          <AppConnectCard key={`${block.provider}-${index}`} botId={botId} block={block} />
+        ))}
+      </View>
     );
   }
   const askBlock = message.blocks.find(isApprovalAskBlock);
