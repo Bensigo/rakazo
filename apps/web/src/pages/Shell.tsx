@@ -1281,6 +1281,11 @@ export function ShellPage() {
         }
         if (!plan.shouldSend) {
           setReplyTarget(null);
+          revokePendingAttachmentPreviews(attachments);
+          setPendingAttachments((current) =>
+            current.filter((attachment) => attachment.threadKey !== originThreadKey),
+          );
+          setAttachmentNotice(null);
           if (plan.shouldOpenGroup && groupTarget) {
             navigate(`/app/g/${groupTarget}`);
             return;

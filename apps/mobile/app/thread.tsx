@@ -640,10 +640,20 @@ export default function Thread() {
           ),
         );
       }
-      if (!plan.shouldSend) {
+      const clearOriginComposer = () => {
         setPendingAttachments((current) =>
           current.filter((attachment) => attachment.threadKey !== originThreadKey),
         );
+        setDraft("");
+        setMentionQuery(null);
+        setSlashQuery(null);
+        setSelectedSkill(null);
+        setSelectedMentions([]);
+        setReplyTarget(null);
+        setAttachmentNotice(null);
+      };
+      if (!plan.shouldSend) {
+        clearOriginComposer();
         if (plan.shouldOpenGroup && groupTarget) {
           router.push({
             pathname: "/group-thread",
@@ -655,13 +665,6 @@ export default function Thread() {
           return;
         }
         if (isCurrentTarget(botTarget, groupTarget)) {
-          setDraft("");
-          setMentionQuery(null);
-          setSlashQuery(null);
-          setSelectedSkill(null);
-          setSelectedMentions([]);
-          setReplyTarget(null);
-          setAttachmentNotice(null);
           await refresh();
         }
         return;
@@ -694,9 +697,7 @@ export default function Thread() {
               replyToMessageId: replyTarget?.id,
             },
       );
-      setPendingAttachments((current) =>
-        current.filter((attachment) => attachment.threadKey !== originThreadKey),
-      );
+      clearOriginComposer();
       if (plan.shouldOpenGroup && groupTarget) {
         router.push({
           pathname: "/group-thread",
@@ -708,13 +709,6 @@ export default function Thread() {
         return;
       }
       if (isCurrentTarget(botTarget, groupTarget)) {
-        setDraft("");
-        setMentionQuery(null);
-        setSlashQuery(null);
-        setSelectedSkill(null);
-        setSelectedMentions([]);
-        setReplyTarget(null);
-        setAttachmentNotice(null);
         await refresh();
       }
     } catch (err) {
