@@ -5,10 +5,10 @@ import {
   claimApprovedEffect,
   claimIntendedEffect,
   completeExternalEffect,
-  replaceCompletedExternalEffectResult,
   createApprovedEffectReplayQueue,
   isApprovalPausedResult,
   isToolPauseResult,
+  replaceCompletedExternalEffectResult,
   resolveDuplicateEffectGate,
   settleUncertainEffect,
 } from "./approval-effect.js";
@@ -154,9 +154,9 @@ describe("replaceCompletedExternalEffectResult", () => {
     };
     const result = { ok: true, submitted: true, connected: true };
 
-    await expect(
-      replaceCompletedExternalEffectResult(store, "effect-1", result),
-    ).resolves.toBe(true);
+    await expect(replaceCompletedExternalEffectResult(store, "effect-1", result)).resolves.toBe(
+      true,
+    );
     expect(store.externalEffect.updateMany).toHaveBeenCalledWith({
       where: { id: "effect-1", status: "completed" },
       data: { result },
