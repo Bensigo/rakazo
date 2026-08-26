@@ -5,6 +5,7 @@ import {
   claimApprovedEffect,
   claimIntendedEffect,
   completeExternalEffect,
+  replaceCompletedExternalEffectResult,
   createApprovedEffectReplayQueue,
   isApprovalPausedResult,
   isToolPauseResult,
@@ -140,6 +141,25 @@ describe("claimIntendedEffect", () => {
     expect(store.externalEffect.updateMany).toHaveBeenCalledWith({
       where: { id: "effect-1", status: "intended" },
       data: { status: "executing" },
+    });
+  });
+});
+
+describe("replaceCompletedExternalEffectResult", () => {
+  it("updates the stored result for a completed effect", async () => {
+    const store = {
+      externalEffect: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    const result = { ok: true, submitted: true, connected: true };
+
+    await expect(
+      replaceCompletedExternalEffectResult(store, "effect-1", result),
+    ).resolves.toBe(true);
+    expect(store.externalEffect.updateMany).toHaveBeenCalledWith({
+      where: { id: "effect-1", status: "completed" },
+      data: { result },
     });
   });
 });

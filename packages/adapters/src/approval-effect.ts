@@ -181,3 +181,22 @@ export async function completeExternalEffect(
   });
   return completed.count === 1;
 }
+
+export async function replaceCompletedExternalEffectResult(
+  store: {
+    externalEffect: {
+      updateMany: (args: {
+        where: { id: string; status: string };
+        data: { result: never };
+      }) => Promise<{ count: number }>;
+    };
+  },
+  effectId: string,
+  result: unknown,
+): Promise<boolean> {
+  const replaced = await store.externalEffect.updateMany({
+    where: { id: effectId, status: "completed" },
+    data: { result: result as never },
+  });
+  return replaced.count === 1;
+}

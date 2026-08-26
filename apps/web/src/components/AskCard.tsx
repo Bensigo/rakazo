@@ -1,3 +1,5 @@
+import { t } from "@lingui/core/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
 import { ChatMarkdown } from "@rakazo/chat-ui/web";
 import type { ThreadMessage } from "@rakazo/contracts";
 import { isApprovalAskBlock, isSecretAskBlock } from "@rakazo/core";
@@ -10,13 +12,20 @@ function formatAnsweredState(
   approval: boolean,
   secret: boolean,
 ): string {
-  if (secret) return "Submitted";
-  if (!answer) return "Answered";
-  if (!approval) return `Answered: ${answer}`;
-  if (answer === "allow") return "Allowed once";
-  if (answer === "always") return "Always allowed";
-  if (answer === "deny") return "Denied";
-  return `Answered: ${answer}`;
+  if (secret) return t`Submitted`;
+  if (!answer) return t`Answered`;
+  if (!approval) return t`Answered: ${answer}`;
+  if (answer === "allow") return t`Allowed once`;
+  if (answer === "always") return t`Always allowed`;
+  if (answer === "deny") return t`Denied`;
+  return t`Answered: ${answer}`;
+}
+
+function approvalActionLabel(id: string, fallback: string): string {
+  if (id === "allow") return t`Allow once`;
+  if (id === "always") return t`Always allow this tool`;
+  if (id === "deny") return t`Deny`;
+  return fallback;
 }
 
 export function AskCard({
@@ -28,6 +37,7 @@ export function AskCard({
   canAnswer: boolean;
   onAnswer: (text: string) => Promise<void>;
 }) {
+  const { t } = useLingui();
   const [editing, setEditing] = useState(false);
   const [answer, setAnswer] = useState("");
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -44,7 +54,7 @@ export function AskCard({
     try {
       await onAnswer(submitValue);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not submit this answer");
+      setError(err instanceof Error ? err.message : t`Could not submit this answer`);
     } finally {
       setPendingAction(null);
     }
@@ -65,7 +75,9 @@ export function AskCard({
           {formatAnsweredState(block.answer, Boolean(approvalActions), secretInput)}
         </div>
       ) : !canAnswer ? (
-        <div className="mt-3.5 text-[13.5px] font-medium text-[#85858A]">No longer active</div>
+        <div className="mt-3.5 text-[13.5px] font-medium text-[#85858A]">
+          <Trans>No longer active</Trans>
+        </div>
       ) : approvalActions ? (
         <div className="mt-3.5 flex gap-2">
           {approvalActions.map((action) => (
@@ -80,7 +92,11 @@ export function AskCard({
                   : "rounded-[11px] border border-[#26262A] px-[17px] py-2 text-[14.5px] text-[#C9C9CE] disabled:opacity-50"
               }
             >
-              {pendingAction === action.id ? "Sending…" : action.label}
+              {pendingAction === action.id ? (
+                <Trans>Sending…</Trans>
+              ) : (
+                approvalActionLabel(action.id, action.label)
+              )}
             </button>
           ))}
         </div>
@@ -118,10 +134,10 @@ export function AskCard({
           }}
         >
           <input
-            aria-label="Answer"
+            aria-label={t`Answer`}
             value={answer}
             onChange={(event) => setAnswer(event.target.value)}
-            placeholder="Type your answer"
+            placeholder={t`Type your answer`}
             className="rounded-[11px] border border-[#303035] bg-[#0E0E10] px-3.5 py-2.5 text-[14.5px] text-[#ECECEE] outline-none focus:border-[#66666D]"
           />
           <div className="flex gap-2">
@@ -130,7 +146,7 @@ export function AskCard({
               disabled={!answer.trim() || submitting}
               className="rounded-[11px] bg-[#F1F1EF] px-[17px] py-2 text-[14.5px] font-medium text-[#17171A] disabled:opacity-50"
             >
-              {submitting ? "Sending…" : "Send answer"}
+              {submitting ? <Trans>Sending…</Trans> : <Trans>Send answer</Trans>}
             </button>
             <button
               type="button"
@@ -141,7 +157,7 @@ export function AskCard({
               }}
               className="rounded-[11px] border border-[#26262A] px-[17px] py-2 text-[14.5px] text-[#C9C9CE] disabled:opacity-50"
             >
-              Cancel
+              <Trans>Cancel</Trans>
             </button>
           </div>
         </form>
@@ -153,7 +169,7 @@ export function AskCard({
             onClick={() => void submitAnswer("approved")}
             className="rounded-[11px] bg-[#F1F1EF] px-[17px] py-2 text-[14.5px] font-medium text-[#17171A] disabled:opacity-50"
           >
-            {submitting ? "Sending…" : "Send it"}
+            {submitting ? <Trans>Sending…</Trans> : <Trans>Send it</Trans>}
           </button>
           <button
             type="button"
@@ -161,7 +177,7 @@ export function AskCard({
             onClick={() => setEditing(true)}
             className="rounded-[11px] border border-[#26262A] px-[17px] py-2 text-[14.5px] text-[#C9C9CE] disabled:opacity-50"
           >
-            Edit first
+            <Trans>Edit first</Trans>
           </button>
         </div>
       )}

@@ -75,6 +75,7 @@ import {
   completeExternalEffect,
   createApprovedEffectReplayQueue,
   isToolPauseResult,
+  replaceCompletedExternalEffectResult,
   resolveDuplicateEffectGate,
   settleUncertainEffect,
   uncertainEffectResult,
@@ -1676,33 +1677,43 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   plaintext,
                 );
               }
-              const applied = await recordEffect(deps, run, name, effectKey, args);
-              if (applied?.duplicate) {
-                const gate = resolveDuplicateEffectGate(applied.effect, name);
+              const recordedEffect = await recordEffect(deps, run, name, effectKey, args);
+              if (recordedEffect?.duplicate) {
+                const gate = resolveDuplicateEffectGate(recordedEffect.effect, name);
                 if (gate.action === "execute") {
                   const early = await claimOrReturn("approved");
                   if (early !== undefined) return early;
                 }
               }
-              if (purpose === "password" && !connectionId) {
-                return finish({
-                  ok: true,
-                  submitted: true,
-                  note: "Use request_takeover for website logins; the secret was not typed onto the computer.",
-                });
-              }
-              return finish({
-                ok: true,
-                submitted: true,
-                ...(connectionResult
+              const secretResult =
+                purpose === "password" && !connectionId
                   ? {
-                      connected: connectionResult.connected,
-                      ...(connectionResult.error
-                        ? { connectionError: connectionResult.error }
-                        : {}),
+                      ok: true,
+                      submitted: true,
+                      note: "Use request_takeover for website logins; the secret was not typed onto the computer.",
                     }
-                  : {}),
-              });
+                  : {
+                      ok: true,
+                      submitted: true,
+                      ...(connectionResult
+                        ? {
+                            connected: connectionResult.connected,
+                            ...(connectionResult.error
+                              ? { connectionError: connectionResult.error }
+                              : {}),
+                          }
+                        : {}),
+                    };
+              if (applied?.duplicate && applied.effect.status === "completed") {
+                return (await replaceCompletedExternalEffectResult(
+                  deps.prisma,
+                  applied.effect.id,
+                  secretResult,
+                ))
+                  ? secretResult
+                  : uncertainEffectResult(name);
+              }
+              return finish(secretResult);
             }
             await recordEffect(deps, run, name, effectKey, args);
             if (!(await renewRunLease(deps, runId, workerId, fence))) {
