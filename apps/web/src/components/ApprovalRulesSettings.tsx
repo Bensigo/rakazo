@@ -3,12 +3,18 @@ import { useEffect, useState } from "react";
 import { rpc } from "../lib/rpc";
 import { uiCopy } from "../lib/ui-copy";
 
+function categoryLabel(value: string) {
+  if (value === "email") return uiCopy("email");
+  if (value === "purchase") return uiCopy("purchase");
+  return value;
+}
+
 function describeRule(rule: ActionApprovalRule) {
   const target =
     rule.matchKind === "category"
-      ? rule.matchValue
+      ? uiCopy("{category} actions", { values: { category: categoryLabel(rule.matchValue) } })
       : rule.matchKind === "connector"
-        ? rule.matchValue
+        ? uiCopy("{name} connector", { values: { name: rule.matchValue } })
         : rule.matchValue;
   return rule.effect === "require_approval"
     ? uiCopy("Ask before {target}", { values: { target } })

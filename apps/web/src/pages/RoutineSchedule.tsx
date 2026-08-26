@@ -184,7 +184,7 @@ function RoutineSchedule({
         </select>
         {value.freq === "Interval" ? (
           <>
-            <span>{resolveUiLanguage() === "ko" ? "마다" : "every"}</span>
+            {resolveUiLanguage() === "ko" ? null : <span>every</span>}
             <select
               className="rk-schedule-select"
               value={String(value.n)}
@@ -209,11 +209,12 @@ function RoutineSchedule({
                 </option>
               ))}
             </select>
+            {resolveUiLanguage() === "ko" ? <span>마다</span> : null}
           </>
         ) : null}
         {TIMED.includes(value.freq) ? (
           <>
-            <span>{resolveUiLanguage() === "ko" ? "시간" : "at"}</span>
+            {resolveUiLanguage() === "ko" ? null : <span>at</span>}
             <select
               className="rk-schedule-select"
               value={value.time}
@@ -226,6 +227,7 @@ function RoutineSchedule({
                 </option>
               ))}
             </select>
+            {resolveUiLanguage() === "ko" ? <span>에</span> : null}
           </>
         ) : null}
         {value.freq === "Advanced" ? (

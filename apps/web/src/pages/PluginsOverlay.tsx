@@ -251,6 +251,7 @@ export function PluginsOverlay({
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
+              aria-label={uiCopy("Search apps")}
               placeholder={uiCopy("Search apps")}
               className="w-full rounded-[13px] border border-[#26262A] bg-[#101012] px-4 py-3 text-[15px] text-[#ECECEE] outline-none"
             />
@@ -350,7 +351,9 @@ export function PluginsOverlay({
                       autoComplete="new-password"
                       value={credential}
                       onChange={(event) => setCredential(event.target.value)}
-                      placeholder={sourceKind === "treg" ? "Treg token" : uiCopy("Credential")}
+                      placeholder={
+                        sourceKind === "treg" ? uiCopy("Treg token") : uiCopy("Credential")
+                      }
                       className="w-full rounded-xl border border-[#2C2C30] bg-[#171719] px-3 py-2.5 text-sm text-[#ECECEE] outline-none"
                     />
                   ) : null}

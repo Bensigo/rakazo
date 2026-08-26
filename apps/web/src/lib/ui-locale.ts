@@ -7,8 +7,13 @@ export function selectUiLocale(
 }
 
 export function resolveUiLocale(): string {
-  const savedLocale =
-    typeof localStorage === "undefined" ? null : localStorage.getItem("rakazo.uiLocale");
+  let savedLocale: string | null = null;
+  try {
+    savedLocale =
+      typeof localStorage === "undefined" ? null : localStorage.getItem("rakazo.uiLocale");
+  } catch {
+    // Storage can be unavailable in restricted browser contexts.
+  }
   const browserLocale = typeof navigator === "undefined" ? null : navigator.language;
   return selectUiLocale(import.meta.env.VITE_DEFAULT_UI_LOCALE, savedLocale, browserLocale);
 }

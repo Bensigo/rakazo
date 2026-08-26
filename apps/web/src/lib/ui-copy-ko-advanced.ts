@@ -223,7 +223,11 @@ export const koreanAdvancedCopy = {
   "Could not finish sign-in": "로그인을 완료하지 못했습니다.",
   "Could not create your bot": "Bot을 만들지 못했습니다.",
   "Could not create group": "그룹을 만들지 못했습니다.",
+  Failed: "실패",
   "Failed to send message": "메시지를 보내지 못했습니다.",
+  "Treg token": "Treg 토큰",
+  "Paste the OpenAI-compatible address from your server. Rakazo adds /v1 if needed.":
+    "서버의 OpenAI 호환 주소를 붙여넣으세요. 필요하면 Rakazo가 /v1을 붙입니다.",
   "Failed to stop": "작업을 중지하지 못했습니다.",
   "Could not save routine": "자동 실행을 저장하지 못했습니다.",
   "Could not create bot": "Bot을 만들지 못했습니다.",

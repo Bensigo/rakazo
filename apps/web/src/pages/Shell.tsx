@@ -1717,6 +1717,7 @@ export function ShellPage() {
               onClick={() => setCreateMenuOpen((open) => !open)}
               className="app-no-drag text-[21px] text-[#7A7A80] hover:text-[#C9C9CE]"
               title={uiCopy("Create")}
+              aria-label={uiCopy("Create")}
             >
               +
             </button>
@@ -2473,7 +2474,12 @@ export function ShellPage() {
                   <div className="text-[15.5px] font-medium text-[#F1F1F2]">
                     {uiCopy("Routine")}
                   </div>
-                  <button type="button" onClick={() => setPanel(null)} className="text-[#6C6C70]">
+                  <button
+                    type="button"
+                    aria-label={uiCopy("Close panel")}
+                    onClick={() => setPanel(null)}
+                    className="text-[#6C6C70]"
+                  >
                     <X size={16} strokeWidth={1.8} />
                   </button>
                 </div>
@@ -3855,7 +3861,11 @@ const MessageView = memo(function MessageView({
                     animation: running ? "rkPulse 1.2s ease-in-out infinite" : undefined,
                   }}
                 >
-                  {running ? uiCopy("subagent") : block.status === "failed" ? "실패" : "완료"}
+                  {running
+                    ? uiCopy("subagent")
+                    : block.status === "failed"
+                      ? uiCopy("Failed")
+                      : uiCopy("Completed")}
                 </span>
               </div>
               <div className="mt-2 text-[13.5px] text-[#85858A]">{block.task}</div>

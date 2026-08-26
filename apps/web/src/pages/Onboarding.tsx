@@ -1,5 +1,4 @@
 import {
-  OPENAI_COMPATIBLE_BASE_URL_HINT,
   OPENAI_COMPATIBLE_PROVIDER_ID,
   openAiCompatibleConnectReady,
   openAiCompatibleProbeSuccessMessage,
@@ -269,7 +268,11 @@ export function OnboardingPage() {
                     <summary className="w-fit cursor-pointer select-none">
                       {uiCopy("Setup help")}
                     </summary>
-                    <p className="mt-1">{OPENAI_COMPATIBLE_BASE_URL_HINT}</p>
+                    <p className="mt-1">
+                      {uiCopy(
+                        "Paste the OpenAI-compatible address from your server. Rakazo adds /v1 if needed.",
+                      )}
+                    </p>
                   </details>
                   <div className="mt-3">
                     <button
