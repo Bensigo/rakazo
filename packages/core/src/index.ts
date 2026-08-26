@@ -5,6 +5,7 @@ export * from "./async.js";
 export * from "./attachments.js";
 export * from "./avatar-shape.js";
 export * from "./bot-messages.js";
+export * from "./bot-share.js";
 export * from "./bot-sections.js";
 export * from "./compose-update.js";
 export * from "./composer-mentions.js";
