@@ -1712,9 +1712,10 @@ export function createRouter(deps: RouterDeps) {
         }
         const skillRecords = await agentSkills.listWithContent(context.actor);
         const prompt = expandSkillReferencesInPrompt(routine.prompt, skillRecords);
+        let run: { id: string };
         try {
           // Task + run must commit together so a nonce collision cannot leave an orphan queued Task.
-          const run = await deps.prisma.$transaction(async (tx) => {
+          run = await deps.prisma.$transaction(async (tx) => {
             if (nonce) {
               const existing = await tx.run.findFirst({
                 where: { threadId, clientNonce: nonce },
@@ -1747,8 +1748,6 @@ export function createRouter(deps: RouterDeps) {
               select: { id: true },
             });
           });
-          await deps.jobs.enqueue(runContinueJob(run.id));
-          return { runId: run.id };
         } catch (error) {
           if (nonce) {
             const existing = await deps.prisma.run.findFirst({
@@ -1759,6 +1758,10 @@ export function createRouter(deps: RouterDeps) {
           }
           throw error;
         }
+        // Keep enqueue outside the nonce-collision catch so a failed enqueue is not
+        // reported as success by returning the run that this request just created.
+        await deps.jobs.enqueue(runContinueJob(run.id));
+        return { runId: run.id };
       }),
     },
     scratchpad: {

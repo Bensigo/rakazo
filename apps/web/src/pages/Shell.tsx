@@ -1258,10 +1258,11 @@ export function ShellPage() {
         text,
         mentions,
         hasAttachments: attachments.length > 0,
-        alreadyInGroup: Boolean(initialGroupTarget),
       });
       if (plan.isNoOp) return;
-      const reroutedToGroup = Boolean(plan.rerouteGroupId);
+      const reroutedToGroup = Boolean(
+        plan.rerouteGroupId && plan.rerouteGroupId !== initialGroupTarget,
+      );
       const groupTarget = plan.rerouteGroupId ?? initialGroupTarget;
       const botTarget = reroutedToGroup ? undefined : initialBotTarget;
       const trimmed = plan.trimmed;
@@ -1286,7 +1287,7 @@ export function ShellPage() {
             current.filter((attachment) => attachment.threadKey !== originThreadKey),
           );
           setAttachmentNotice(null);
-          if (plan.shouldOpenGroup && groupTarget) {
+          if (reroutedToGroup && groupTarget) {
             navigate(`/app/g/${groupTarget}`);
             return;
           }
@@ -1333,7 +1334,7 @@ export function ShellPage() {
         setPendingAttachments((current) =>
           current.filter((attachment) => attachment.threadKey !== originThreadKey),
         );
-        if (plan.shouldOpenGroup && groupTarget) {
+        if (reroutedToGroup && groupTarget) {
           navigate(`/app/g/${groupTarget}`);
           return;
         }

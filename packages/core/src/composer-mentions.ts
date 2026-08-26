@@ -226,15 +226,14 @@ export function buildComposerMentionOptions(input: {
 
 /**
  * Shared send routing for web + mobile composers.
- * Chip-only `@Group` from a 1:1 opens that group (no fabricated body).
- * Routines always test-run; with a group chip, open the group after.
+ * Chip-only `@Group` opens that group (no fabricated body), including from
+ * another group thread. Routines always test-run; with a group chip, open after.
+ * Callers should omit the current group from the picker (`currentGroupId`).
  */
 export function resolveComposerSendPlan(input: {
   text: string;
   mentions: readonly ComposerMention[];
   hasAttachments: boolean;
-  /** True when the composer is already inside a group thread. */
-  alreadyInGroup: boolean;
 }): {
   trimmed: string;
   routineIds: string[];
@@ -247,7 +246,7 @@ export function resolveComposerSendPlan(input: {
   isNoOp: boolean;
 } {
   const parts = partitionComposerMentions(input.mentions);
-  const mentionedGroup = input.alreadyInGroup ? undefined : parts.groups[0];
+  const mentionedGroup = parts.groups[0];
   let trimmed = stripMentionKinds(input.text.trim(), input.mentions, [
     "group",
     "routine",

@@ -619,10 +619,11 @@ export default function Thread() {
       text: serializeComposerPromptText(),
       mentions: selectedMentions,
       hasAttachments: attachments.length > 0,
-      alreadyInGroup: Boolean(initialGroupTarget),
     });
     if (plan.isNoOp) return;
-    const reroutedToGroup = Boolean(plan.rerouteGroupId);
+    const reroutedToGroup = Boolean(
+      plan.rerouteGroupId && plan.rerouteGroupId !== initialGroupTarget,
+    );
     const groupTarget = plan.rerouteGroupId ?? initialGroupTarget;
     const botTarget = reroutedToGroup ? undefined : initialBotTarget;
     const trimmed = plan.trimmed;
@@ -654,7 +655,7 @@ export default function Thread() {
       };
       if (!plan.shouldSend) {
         clearOriginComposer();
-        if (plan.shouldOpenGroup && groupTarget) {
+        if (reroutedToGroup && groupTarget) {
           router.push({
             pathname: "/group-thread",
             params: {
@@ -698,7 +699,7 @@ export default function Thread() {
             },
       );
       clearOriginComposer();
-      if (plan.shouldOpenGroup && groupTarget) {
+      if (reroutedToGroup && groupTarget) {
         router.push({
           pathname: "/group-thread",
           params: {

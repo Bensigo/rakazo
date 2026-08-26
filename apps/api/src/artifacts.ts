@@ -256,6 +256,6 @@ export function buildSendPrompt(
     ]),
   ];
   const line = `${marker} ${names.join(", ")}.`;
-  if (existing) return prompt.replace(existing[0], line);
+  if (existing) return prompt.replace(existing[0], () => line);
   return prompt ? `${prompt}\n\n${line}` : line;
 }

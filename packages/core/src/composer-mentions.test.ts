@@ -117,7 +117,6 @@ describe("resolveComposerSendPlan", () => {
       text: "@Planning",
       mentions: [{ kind: "group", id: "g1", name: "Planning" }],
       hasAttachments: false,
-      alreadyInGroup: false,
     });
     expect(plan.isNoOp).toBe(false);
     expect(plan.shouldSend).toBe(false);
@@ -131,7 +130,6 @@ describe("resolveComposerSendPlan", () => {
       text: "@Planning follow up",
       mentions: [{ kind: "group", id: "g1", name: "Planning" }],
       hasAttachments: false,
-      alreadyInGroup: false,
     });
     expect(plan.shouldSend).toBe(true);
     expect(plan.shouldOpenGroup).toBe(true);
@@ -146,7 +144,6 @@ describe("resolveComposerSendPlan", () => {
         { kind: "routine", id: "r1", name: "Digest" },
       ],
       hasAttachments: false,
-      alreadyInGroup: false,
     });
     expect(plan.shouldRunRoutines).toBe(true);
     expect(plan.routineIds).toEqual(["r1"]);
@@ -155,15 +152,16 @@ describe("resolveComposerSendPlan", () => {
     expect(plan.isNoOp).toBe(false);
   });
 
-  it("does not reroute when already in a group thread", () => {
+  it("opens another group from inside a group thread", () => {
     const plan = resolveComposerSendPlan({
       text: "@Other",
       mentions: [{ kind: "group", id: "g2", name: "Other" }],
       hasAttachments: false,
-      alreadyInGroup: true,
     });
-    expect(plan.shouldOpenGroup).toBe(false);
-    expect(plan.isNoOp).toBe(true);
+    expect(plan.shouldOpenGroup).toBe(true);
+    expect(plan.rerouteGroupId).toBe("g2");
+    expect(plan.shouldSend).toBe(false);
+    expect(plan.isNoOp).toBe(false);
   });
 });
 
