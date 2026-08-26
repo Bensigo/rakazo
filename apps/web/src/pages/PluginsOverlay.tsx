@@ -311,6 +311,7 @@ export function PluginsOverlay({
                   <input
                     value={sourceName}
                     onChange={(event) => setSourceName(event.target.value)}
+                    aria-label={uiCopy("Display name")}
                     placeholder={uiCopy("Display name")}
                     className="w-full rounded-xl border border-[#2C2C30] bg-[#171719] px-3 py-2.5 text-sm text-[#ECECEE] outline-none"
                   />
@@ -318,6 +319,7 @@ export function PluginsOverlay({
                     <input
                       value={sourceUrl}
                       onChange={(event) => setSourceUrl(event.target.value)}
+                      aria-label={uiCopy("Source URL")}
                       placeholder={
                         sourceKind === "mcp"
                           ? "https://example.com/mcp"
@@ -330,6 +332,7 @@ export function PluginsOverlay({
                     <select
                       value={authType}
                       onChange={(event) => setAuthType(event.target.value as typeof authType)}
+                      aria-label={uiCopy("Authentication type")}
                       className="w-full rounded-xl border border-[#2C2C30] bg-[#171719] px-3 py-2.5 text-sm text-[#ECECEE] outline-none"
                     >
                       <option value="none">{uiCopy("No authentication")}</option>
@@ -341,6 +344,7 @@ export function PluginsOverlay({
                     <input
                       value={authName}
                       onChange={(event) => setAuthName(event.target.value)}
+                      aria-label={uiCopy("Header name")}
                       placeholder={uiCopy("Header name")}
                       className="w-full rounded-xl border border-[#2C2C30] bg-[#171719] px-3 py-2.5 text-sm text-[#ECECEE] outline-none"
                     />
@@ -351,6 +355,9 @@ export function PluginsOverlay({
                       autoComplete="new-password"
                       value={credential}
                       onChange={(event) => setCredential(event.target.value)}
+                      aria-label={
+                        sourceKind === "treg" ? uiCopy("Treg token") : uiCopy("Credential")
+                      }
                       placeholder={
                         sourceKind === "treg" ? uiCopy("Treg token") : uiCopy("Credential")
                       }

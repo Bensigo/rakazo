@@ -1696,9 +1696,9 @@ export function ShellPage() {
           <div className="relative flex items-center gap-2.5">
             <button
               type="button"
-              aria-label="Activity"
+              aria-label={uiCopy("Activity")}
               aria-pressed={activityMode}
-              title="Activity"
+              title={uiCopy("Activity")}
               data-activity-mode={activityMode ? "on" : "off"}
               onClick={toggleActivityMode}
               className={`app-no-drag flex h-7 w-7 items-center justify-center rounded-full ${
@@ -1914,7 +1914,7 @@ export function ShellPage() {
                         }
                         className="text-[12.5px] text-[#C9C9CE] hover:text-white"
                       >
-                        Restore
+                        {uiCopy("Restore")}
                       </button>
                       <button
                         type="button"
@@ -1922,7 +1922,7 @@ export function ShellPage() {
                         onClick={() => setDeleteTarget(bot)}
                         className="text-[12.5px] text-[#FF5364]"
                       >
-                        Delete
+                        {uiCopy("Delete")}
                       </button>
                     </div>
                   ))
@@ -2011,7 +2011,12 @@ export function ShellPage() {
               </button>
               {usage ? (
                 <p className="px-3 pb-2 text-[12.5px] text-[#85858A]">
-                  {usage.runs} runs · {usage.inputTokens + usage.outputTokens} tokens
+                  {uiCopy("{runs} runs · {tokens} tokens", {
+                    values: {
+                      runs: usage.runs,
+                      tokens: usage.inputTokens + usage.outputTokens,
+                    },
+                  })}
                 </p>
               ) : null}
               <button
@@ -2095,6 +2100,7 @@ export function ShellPage() {
               <button
                 type="button"
                 title={uiCopy("Agent computer")}
+                aria-label={uiCopy("Agent computer")}
                 onClick={() => {
                   const next = panel === "computer" ? null : "computer";
                   setPanel(next);
@@ -2213,8 +2219,8 @@ export function ShellPage() {
                   {panel === "settings"
                     ? uiCopy("Settings")
                     : active
-                      ? (computer?.state ?? active.status)
-                      : "group"}
+                      ? localizeStatus(computer?.state ?? active.status)
+                      : uiCopy("group")}
                 </span>
                 <div className="flex gap-3.5">
                   {active ? (
@@ -2306,7 +2312,7 @@ export function ShellPage() {
                       variant="outline"
                       size="sm"
                       disabled={takeoverBlocked}
-                      title={takeoverBlocked ? "Stop the bot first" : undefined}
+                      title={takeoverBlocked ? uiCopy("Stop the bot first") : undefined}
                       onClick={() => void openComputer()}
                     >
                       {uiCopy("Take control")}
@@ -2466,6 +2472,7 @@ export function ShellPage() {
                 <div className="mb-5 flex items-center justify-between">
                   <button
                     type="button"
+                    aria-label={uiCopy("Back")}
                     onClick={() => setPanel("computer")}
                     className="text-[#9A9AA0]"
                   >
@@ -2875,7 +2882,7 @@ export function ShellPage() {
                   variant="outline"
                   size="sm"
                   disabled={takeoverBlocked}
-                  title={takeoverBlocked ? "Stop the bot first" : undefined}
+                  title={takeoverBlocked ? uiCopy("Stop the bot first") : undefined}
                   onClick={() =>
                     void bootComputer({ takeControl: true, overlay: false }).catch(() => undefined)
                   }
@@ -3785,7 +3792,9 @@ const MessageView = memo(function MessageView({
           const sent = block.kind === "bot_message_sent";
           const peer = sent ? block.toBotName : block.fromBotName;
           const peerBotId = sent ? block.toBotId : block.fromBotId;
-          const label = sent ? `Messaged ${peer}` : `Message from ${peer}`;
+          const label = sent
+            ? uiCopy("Messaged {peer}", { values: { peer } })
+            : uiCopy("Message from {peer}", { values: { peer } });
           return (
             <button
               key={i}
@@ -4506,6 +4515,20 @@ function modelOptionKey(provider: string, modelId: string) {
   return `${provider}::${modelId}`;
 }
 
+function localizeStatus(status: string | null | undefined) {
+  if (!status) return "";
+  const known = {
+    idle: uiCopy("idle"),
+    working: uiCopy("working"),
+    running: uiCopy("running"),
+    suspended: uiCopy("suspended"),
+    stopped: uiCopy("stopped"),
+    failed: uiCopy("failed"),
+    Asleep: uiCopy("Asleep"),
+  } as const;
+  return known[status as keyof typeof known] ?? status;
+}
+
 function thinkingLevelLabel(level: ThinkingLevel) {
   switch (level) {
     case "off":
@@ -5056,7 +5079,7 @@ function AppConnectCard({
   return (
     <BuiCard
       role="group"
-      aria-label={`${block.name} connection`}
+      aria-label={uiCopy("{name} connection", { values: { name: block.name } })}
       className="w-[min(420px,80%)] px-4 py-3.5"
     >
       <div className="flex items-center gap-3.5">
@@ -5145,7 +5168,11 @@ function ChartCanvas({
     };
   }, [spec, data, width, height]);
   if (error)
-    return <div className="text-[13px] text-[#F3A2AA]">Chart failed to render: {error}</div>;
+    return (
+      <div className="text-[13px] text-[#F3A2AA]">
+        {uiCopy("Chart failed to render: {error}", { values: { error } })}
+      </div>
+    );
   return (
     <div className="text-[#C9C9CE]">
       {meta.title ? (

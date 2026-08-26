@@ -218,6 +218,7 @@ export function OnboardingPage() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              aria-label={uiCopy("Search providers and models")}
               placeholder={uiCopy("Search providers and models")}
               className="mt-8 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
             />
