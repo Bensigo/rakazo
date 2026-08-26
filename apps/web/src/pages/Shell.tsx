@@ -1810,7 +1810,9 @@ export function ShellPage() {
                             }`}
                           >
                             {bot.name}
-                            {bot.unread ? <span className="sr-only">{uiCopy(" (unread)")}</span> : null}
+                            {bot.unread ? (
+                              <span className="sr-only">{uiCopy(" (unread)")}</span>
+                            ) : null}
                           </span>
                           <span className="flex shrink-0 items-center gap-1.5 text-[12.5px] text-[#6C6C70]">
                             {bot.status === "idle" ? "" : bot.status}
