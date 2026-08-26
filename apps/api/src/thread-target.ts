@@ -390,7 +390,7 @@ function mapRun(run: {
     taskId: run.taskId,
     status: run.status as never,
     trigger: run.trigger as never,
-    routineId: run.routineId,
+    routineId: run.routineId ?? null,
     modelProvider: run.modelProvider,
     modelId: run.modelId,
     error: run.error,
