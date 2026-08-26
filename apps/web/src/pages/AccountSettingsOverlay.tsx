@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { ApprovalRulesSettings } from "../components/ApprovalRulesSettings";
+import { uiCopy } from "../lib/ui-copy";
 
 export function AccountSettingsOverlay({
   email,
@@ -48,15 +49,15 @@ export function AccountSettingsOverlay({
         <div className="flex items-start justify-between gap-6">
           <div>
             <h2 id="account-settings-title" className="text-2xl font-medium text-[#F1F1F2]">
-              Settings
+              {uiCopy("Settings")}
             </h2>
             <p className="mt-1 text-[13.5px] text-[#7A7A80]">
-              Account preferences apply across all your bots.
+              {uiCopy("Account preferences apply across all your bots.")}
             </p>
           </div>
           <button
             type="button"
-            aria-label="Close user settings"
+            aria-label={uiCopy("Close user settings")}
             onClick={onClose}
             className="text-[#85858A]"
           >
@@ -65,7 +66,7 @@ export function AccountSettingsOverlay({
         </div>
 
         <section className="mt-8 rounded-[14px] border border-[#26262A] bg-[#101012] px-4 py-4">
-          <h3 className="text-[15px] font-medium text-[#ECECEE]">Account</h3>
+          <h3 className="text-[15px] font-medium text-[#ECECEE]">{uiCopy("Account")}</h3>
           <p className="mt-3 text-[14px] text-[#C9C9CE]">{name}</p>
           {email ? <p className="mt-1 text-[13px] text-[#7A7A80]">{email}</p> : null}
         </section>
@@ -93,9 +94,9 @@ export function AccountSettingsOverlay({
         >
           <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-4 text-[14px] text-[#A8A8AD]">
             <span>
-              <span className="block text-[15px] text-[#ECECEE]">Advanced</span>
+              <span className="block text-[15px] text-[#ECECEE]">{uiCopy("Advanced")}</span>
               <span className="mt-1 block text-[12.5px] text-[#6C6C70]">
-                Optional controls most people never need
+                {uiCopy("Optional controls most people never need")}
               </span>
             </span>
             <span aria-hidden="true" className="transition-transform group-open:rotate-90">

@@ -9,6 +9,7 @@ import {
   sessionRetryDelayMs,
   showSessionUnavailable,
 } from "./lib/session-gate";
+import { uiCopy } from "./lib/ui-copy";
 import { McpOAuthCallbackPage } from "./pages/McpOAuthCallback";
 import { ShellPage } from "./pages/Shell";
 
@@ -46,7 +47,7 @@ export function App() {
         className="grid h-full place-items-center text-[#6C6C70]"
         data-rakazo-app-state="session-pending"
       >
-        Loading…
+        {uiCopy("Loading…")}
       </div>
     );
   }
@@ -118,8 +119,8 @@ function SessionUnavailable({ refetch }: { refetch: () => Promise<void> }) {
   return (
     <div className="grid h-full place-items-center bg-[#050506] px-6 text-center">
       <div className="flex flex-col items-center">
-        <LoadingState label="Reconnecting" />
-        <p className="mt-3 text-[13.5px] text-[#6C6C70]">Can&apos;t reach the server.</p>
+        <LoadingState label={uiCopy("Reconnecting")} />
+        <p className="mt-3 text-[13.5px] text-[#6C6C70]">{uiCopy("Can't reach the server.")}</p>
         <div className="mt-4">
           <BuiButton
             onClick={() => {
@@ -128,7 +129,7 @@ function SessionUnavailable({ refetch }: { refetch: () => Promise<void> }) {
               setRetryKey((key) => key + 1);
             }}
           >
-            Retry now
+            {uiCopy("Retry now")}
           </BuiButton>
         </div>
       </div>
@@ -159,7 +160,7 @@ function ShellSkeleton() {
       <main className="flex flex-1 flex-col">
         <div className="h-[74px] border-b border-[#141416]" />
         <div className="flex flex-1 items-center justify-center text-[14px] text-[#55555A]">
-          Opening your workspace…
+          {uiCopy("Opening your workspace…")}
         </div>
         <div className="mx-6 mb-6 h-[54px] rounded-full border border-[#202023] bg-[#131315]" />
       </main>
