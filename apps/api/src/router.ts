@@ -609,7 +609,7 @@ export function createRouter(deps: RouterDeps) {
         const manifest = input.token
           ? await loadShareManifestSnapshot(deps.prisma, input.token)
           : input.manifest!;
-        return importShareManifest(deps, repos, context.actor, manifest);
+        return importShareManifest(repos, context.actor, manifest);
       }),
       shareCreate: authed.bots.shareCreate.handler(async ({ context, input }) => {
         const bot = await repos.getBot(context.actor, input.botId);
@@ -3380,7 +3380,6 @@ async function loadShareManifestSnapshot(
 }
 
 async function importShareManifest(
-  deps: RouterDeps,
   repos: ReturnType<typeof createRepos>,
   actor: Actor,
   manifest: ShareManifest,
@@ -3393,7 +3392,7 @@ async function importShareManifest(
     });
   }
   validateShareRoutineTemplates(manifest.routines);
-  const bot = await repos.createBot(actor, {
+  return repos.createBot(actor, {
     name: manifest.name,
     title: manifest.title,
     description: manifest.description,
@@ -3401,61 +3400,8 @@ async function importShareManifest(
     notifyOnFinish: manifest.notifyOnFinish,
     color: manifest.color,
     computerMode: manifest.computerMode,
+    shareRoutineTemplates: manifest.routines.length > 0 ? manifest.routines : undefined,
   });
-  if (!manifest.routines.length) return bot;
-  try {
-    await deps.prisma.routine.createMany({
-      data: manifest.routines.map((routine) => ({
-        workspaceId: actor.workspaceId,
-        botId: bot.id,
-        userId: actor.userId,
-        name: routine.name,
-        prompt: routine.prompt,
-        crons: routine.crons,
-        timezone: routine.timezone,
-        notify: true,
-        active: false,
-        nextRunAt: null,
-      })),
-    });
-  } catch (error) {
-    const row = await deps.prisma.bot.findFirst({
-      where: { id: bot.id, workspaceId: actor.workspaceId, userId: actor.userId },
-      select: { id: true, workspaceId: true, name: true, archivedAt: true, computerId: true },
-    });
-    if (row) {
-      try {
-        await destroyBot(
-          {
-            prisma: deps.prisma,
-            sandbox: deps.sandbox,
-            home: deps.home,
-            jobs: deps.jobs,
-            artifacts: deps.artifacts,
-            dataDir: deps.dataDir,
-          },
-          row,
-          {
-            operationId: "import-share-cleanup",
-            traceId: "import-share-cleanup",
-            workspaceId: actor.workspaceId,
-            userId: actor.userId,
-            signal: new AbortController().signal,
-          },
-          { deleteMemories: true },
-        );
-      } catch {
-        throw new ORPCError("BAD_REQUEST", {
-          message:
-            "Could not import share routines and rollback failed; remove the partial bot before retrying.",
-        });
-      }
-    }
-    throw error instanceof ORPCError
-      ? error
-      : new ORPCError("BAD_REQUEST", { message: "Could not import share routines" });
-  }
-  return bot;
 }
 
 function validateShareRoutineTemplates(routines: ShareManifest["routines"]) {
