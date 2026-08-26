@@ -76,19 +76,18 @@ export function CallView({
       return;
     }
     dictation.stop("submit");
-    setHeard(text);
-    setCallPhase("thinking");
     const current = snapshotRef.current;
-    const askId = latestAskId(current);
-    const askMessage = current?.messages.find((message) => message.id === askId);
-    const secretAsk = askMessage?.blocks.find(
-      (block) => block.kind === "ask" && isSecretAskBlock(block) && block.status !== "answered",
-    );
-    if (secretAsk) {
+    if (pendingSecretAsk(current)) {
+      setHeard("");
+      setCaption("");
       setError("Type the protected value in the masked field on screen.");
       void listen();
       return;
     }
+    setHeard(text);
+    setCallPhase("thinking");
+    const askId = latestAskId(current);
+    const askMessage = current?.messages.find((message) => message.id === askId);
     try {
       if (askMessage) {
         const decision = spokenDecision(text);
@@ -119,7 +118,9 @@ export function CallView({
       if (state.error) setError(state.error);
     });
     const unsubDictation = dictation.subscribe((state) => {
-      if (state.status === "listening") setHeard(state.transcript);
+      if (state.status === "listening") {
+        setHeard(pendingSecretAsk(snapshotRef.current) ? "" : state.transcript);
+      }
       if (state.error) setError(state.error);
     });
     void listen();
@@ -239,6 +240,14 @@ export function CallView({
         <p className="mt-4 text-[12px] text-[#6C6C70]">Space interrupts · Esc hangs up</p>
       </div>
     </div>
+  );
+}
+
+function pendingSecretAsk(snapshot: ThreadSnapshot | null) {
+  const askId = latestAskId(snapshot);
+  const askMessage = snapshot?.messages.find((message) => message.id === askId);
+  return askMessage?.blocks.some(
+    (block) => block.kind === "ask" && isSecretAskBlock(block) && block.status !== "answered",
   );
 }
 
