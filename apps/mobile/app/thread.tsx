@@ -1514,8 +1514,33 @@ function MessageBubble({
     (block): block is Extract<MessageBlock, { kind: "app_connect" }> => block.kind === "app_connect",
   );
   if (appConnectBlocks.length > 0) {
+    const siblingBlocks = message.blocks.filter((block) => block.kind !== "app_connect");
+    if (siblingBlocks.length === 0) {
+      return (
+        <View style={{ gap: 8, width: "100%" }}>
+          {appConnectBlocks.map((block, index) => (
+            <AppConnectCard key={`${block.provider}-${index}`} botId={botId} block={block} />
+          ))}
+        </View>
+      );
+    }
+    const caption = siblingBlocks
+      .flatMap((block) => (block.kind === "text" && block.text ? [block.text] : []))
+      .join("\n");
     return (
       <View style={{ gap: 8, width: "100%" }}>
+        {caption ? (
+          <View
+            style={{
+              maxWidth: "100%",
+              backgroundColor: "#1A1A1D",
+              padding: 12,
+              borderRadius: 20,
+            }}
+          >
+            <ChatMarkdown>{caption}</ChatMarkdown>
+          </View>
+        ) : null}
         {appConnectBlocks.map((block, index) => (
           <AppConnectCard key={`${block.provider}-${index}`} botId={botId} block={block} />
         ))}

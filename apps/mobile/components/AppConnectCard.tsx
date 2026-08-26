@@ -35,13 +35,17 @@ export function AppConnectCard({
           provider: block.provider,
           displayName: block.name,
         },
+        { signal: controller.signal },
       );
+      if (controller.signal.aborted) return;
       if (started.authorizationUrl) await Linking.openURL(started.authorizationUrl);
       for (let attempt = 0; attempt < 60; attempt += 1) {
         if (controller.signal.aborted) return;
-        const row = await rpc<{ status: string }>("connections/complete", {
-          connectionId: started.connectionId,
-        }).catch(() => undefined);
+        const row = await rpc<{ status: string }>(
+          "connections/complete",
+          { connectionId: started.connectionId },
+          { signal: controller.signal },
+        ).catch(() => undefined);
         if (row?.status === "connected") {
           if (controller.signal.aborted) return;
           setLocalStatus("connected");

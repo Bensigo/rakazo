@@ -82,7 +82,7 @@ export function PluginsOverlay({
   }, [catalog, query, view]);
 
   const featuredTiles = useMemo(() => buildFeaturedConnectorTiles(catalog), [catalog]);
-  const showFeatured = view !== "sources" && !query.trim();
+  const showFeatured = view === "all" && !query.trim();
 
   async function notifyAppConnected(item: ConnectionCatalogItem) {
     if (!activeBotId) return;
