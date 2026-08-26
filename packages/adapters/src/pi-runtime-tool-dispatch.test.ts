@@ -9,6 +9,10 @@ const fakeAgentState = vi.hoisted(() => ({
     prepareArguments?: (args: unknown) => Record<string, unknown>;
     execute: (toolCallId: string, params: Record<string, unknown>) => Promise<unknown>;
   }>,
+  invoke: {
+    name: "destination_write",
+    args: { collection: "notes", title: "Result", body: "Done" } as Record<string, unknown>,
+  },
 }));
 
 vi.mock("@earendil-works/pi-agent-core", () => ({
@@ -29,11 +33,12 @@ vi.mock("@earendil-works/pi-agent-core", () => ({
 
     async prompt() {
       if (fakeAgentState.mode === "dispatch") {
-        const destination = this.tools.find((tool) => tool.name === "destination_write");
-        if (!destination) throw new Error("sanitized destination tool was not exposed");
-        const rawArgs = { collection: "notes", title: "Result", body: "Done" };
-        const args = destination.prepareArguments?.(rawArgs) ?? rawArgs;
-        await destination.execute("call-1", args);
+        const target =
+          this.tools.find((tool) => tool.name === fakeAgentState.invoke.name) ?? this.tools[0];
+        if (!target) throw new Error("expected tool was not exposed");
+        const rawArgs = fakeAgentState.invoke.args;
+        const args = target.prepareArguments?.(rawArgs) ?? rawArgs;
+        await target.execute("call-1", args);
         return;
       }
 
@@ -104,11 +109,27 @@ const destinationTool: ConnectorTool = {
   route: { connectorId: "destination", toolName: "destination.write" },
 };
 
+const writeFileTool: ConnectorTool = {
+  name: "write_file",
+  description: "Write a UTF-8 file into this bot's home.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      path: { type: "string" },
+      content: { type: "string" },
+    },
+  },
+};
+
 describe("Pi connector tool dispatch", () => {
   beforeEach(() => {
     fakeAgentState.mode = "dispatch";
     fakeAgentState.abortCount = 0;
     fakeAgentState.tools = [];
+    fakeAgentState.invoke = {
+      name: "destination_write",
+      args: { collection: "notes", title: "Result", body: "Done" },
+    };
   });
 
   it("exposes a provider-safe name while executing the original connector name", async () => {
@@ -193,5 +214,46 @@ describe("Pi connector tool dispatch", () => {
       type: "progress",
       text: "Stopped: more than 80 tool calls in one turn.",
     });
+  });
+
+  it("serialises object content instead of writing [object Object] for write_file", async () => {
+    fakeAgentState.invoke = {
+      name: "write_file",
+      args: { path: "shared/state.json", content: { last_run: 1_787_648_953 } },
+    };
+    const executeTool = vi.fn(async () => ({ ok: true }));
+    const runtime = new PiAgentRuntime();
+
+    for await (const _event of runtime.run(
+      {
+        botId: "b",
+        threadId: "t",
+        runId: "r",
+        prompt: "save the state file",
+        instructions: "Use write_file to save state.",
+        history: [],
+        tools: [writeFileTool],
+        model: { provider: "test", id: "dispatch-test-model" },
+        executeTool,
+      },
+      {
+        operationId: "3",
+        traceId: "3",
+        workspaceId: "w",
+        userId: "u",
+        signal: new AbortController().signal,
+      },
+    )) {
+      // Exhaust the runtime event stream so tool execution completes.
+    }
+
+    expect(executeTool).toHaveBeenCalledWith(
+      "write_file",
+      {
+        path: "shared/state.json",
+        content: '{\n  "last_run": 1787648953\n}',
+      },
+      "call-1",
+    );
   });
 });

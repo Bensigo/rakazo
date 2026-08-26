@@ -25,6 +25,7 @@ import {
   registerOpenAiCompatibleCatalog,
   registerOpenAiCompatibleRuntime,
 } from "./pi-openai-compatible-provider.js";
+import { textContentArg } from "./tool-text.js";
 
 const running = new Map<string, AbortController>();
 // Built on first use, not at module load: entry points call loadRootEnv() after
@@ -434,7 +435,10 @@ function toAgentTool(tool: ConnectorTool, host: ToolHost, exposedName: string): 
         return { reason: String(raw.reason ?? "I need you on the screen.") };
       }
       if (tool.name === "write_file") {
-        return { path: String(raw.path ?? "notes/result.txt"), content: String(raw.content ?? "") };
+        return {
+          path: String(raw.path ?? "notes/result.txt"),
+          content: textContentArg(raw.content, ""),
+        };
       }
       if (tool.name === "computer_act") {
         return {
