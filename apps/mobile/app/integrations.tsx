@@ -22,12 +22,14 @@ export default function Integrations() {
   const [catalog, setCatalog] = useState<ConnectionCatalogItem[]>([]);
   const [sources, setSources] = useState<CapabilityInstall[]>([]);
   const [sourceKind, setSourceKind] = useState<SourceKind | null>(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [credential, setCredential] = useState("");
   const [requiresAuth, setRequiresAuth] = useState(true);
   const [pending, setPending] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [sourceError, setSourceError] = useState<string | null>(null);
   const connectionAttempt = useRef<AbortController | null>(null);
 
   async function refresh() {
@@ -41,10 +43,20 @@ export default function Integrations() {
 
   useEffect(() => {
     void refresh().catch((reason) =>
-      setError(reason instanceof Error ? reason.message : "Could not load integrations"),
+      setCatalogError(reason instanceof Error ? reason.message : "Could not load integrations"),
     );
     return () => connectionAttempt.current?.abort();
   }, []);
+
+  function closeAdvanced() {
+    setAdvancedOpen(false);
+    setSourceKind(null);
+    setSourceError(null);
+    setName("");
+    setUrl("");
+    setCredential("");
+    setRequiresAuth(true);
+  }
 
   async function connect(item: ConnectionCatalogItem) {
     connectionAttempt.current?.abort();
@@ -52,7 +64,7 @@ export default function Integrations() {
     connectionAttempt.current = controller;
     const key = `${item.connectorId}:${item.slug}`;
     setPending(key);
-    setError(null);
+    setCatalogError(null);
     try {
       const started = await rpc<{ connectionId: string; authorizationUrl: string | null }>(
         "connections/begin",
@@ -82,7 +94,7 @@ export default function Integrations() {
       );
     } catch (reason) {
       if (controller.signal.aborted) return;
-      setError(reason instanceof Error ? reason.message : "Could not connect");
+      setCatalogError(reason instanceof Error ? reason.message : "Could not connect");
     } finally {
       if (connectionAttempt.current === controller) {
         connectionAttempt.current = null;
@@ -94,7 +106,7 @@ export default function Integrations() {
   async function revoke(item: ConnectionCatalogItem) {
     const key = `${item.connectorId}:${item.slug}`;
     setPending(key);
-    setError(null);
+    setCatalogError(null);
     const connections = await rpc<Connection[]>("connections/list").catch(() => []);
     const matches = connections.filter(
       (connection) =>
@@ -109,7 +121,7 @@ export default function Integrations() {
       await rpc("connections/revoke", { connectionId: row.id });
       await refresh();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not revoke connection");
+      setCatalogError(reason instanceof Error ? reason.message : "Could not revoke connection");
     } finally {
       setPending(null);
     }
@@ -117,6 +129,7 @@ export default function Integrations() {
 
   function beginSource(kind: SourceKind) {
     setSourceKind(kind);
+    setSourceError(null);
     setName(kind === "treg" ? "Treg" : "");
     setUrl(kind === "treg" ? "https://treg.to/mcp/" : "");
     setCredential("");
@@ -126,7 +139,7 @@ export default function Integrations() {
   async function addSource() {
     if (!sourceKind) return;
     setPending("source");
-    setError(null);
+    setSourceError(null);
     try {
       await rpc("capabilities/install", {
         kind: sourceKind === "api" ? "api" : "mcp",
@@ -144,7 +157,7 @@ export default function Integrations() {
       setSourceKind(null);
       await refresh();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not add source");
+      setSourceError(reason instanceof Error ? reason.message : "Could not add source");
     } finally {
       setPending(null);
     }
@@ -152,11 +165,12 @@ export default function Integrations() {
 
   async function removeSource(source: CapabilityInstall) {
     setPending(source.id);
+    setSourceError(null);
     try {
       await rpc("capabilities/remove", { id: source.id });
       setSources((current) => current.filter((item) => item.id !== source.id));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not remove source");
+      setSourceError(reason instanceof Error ? reason.message : "Could not remove source");
     } finally {
       setPending(null);
     }
@@ -165,123 +179,9 @@ export default function Integrations() {
   return (
     <SafeAreaView edges={["bottom"]} style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.explanation}>
-          Connect managed apps or install a remote tool source. Credentials are encrypted and never
-          shown to bots.
-        </Text>
+        <Text style={styles.explanation}>Connect apps.</Text>
 
-        <View style={styles.actions}>
-          {(["treg", "mcp", "api"] as const).map((kind) => (
-            <Pressable
-              key={kind}
-              accessibilityRole="button"
-              onPress={() => beginSource(kind)}
-              style={styles.smallButton}
-            >
-              <Text style={styles.buttonLabel}>
-                {kind === "treg" ? "Add Treg" : kind === "mcp" ? "Add MCP" : "Add OpenAPI"}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-
-        {sourceKind ? (
-          <View style={styles.card}>
-            <Text style={styles.title}>
-              {sourceKind === "treg"
-                ? "Connect Treg"
-                : sourceKind === "mcp"
-                  ? "Remote MCP server"
-                  : "OpenAPI JSON"}
-            </Text>
-            <TextInput
-              value={name}
-              onChangeText={setName}
-              placeholder="Display name"
-              placeholderTextColor={native.tertiaryLabel}
-              style={styles.input}
-            />
-            {sourceKind !== "treg" ? (
-              <TextInput
-                value={url}
-                onChangeText={setUrl}
-                autoCapitalize="none"
-                autoCorrect={false}
-                placeholder={
-                  sourceKind === "mcp"
-                    ? "https://example.com/mcp"
-                    : "https://example.com/openapi.json"
-                }
-                placeholderTextColor={native.tertiaryLabel}
-                style={styles.input}
-              />
-            ) : null}
-            {sourceKind !== "treg" ? (
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => setRequiresAuth((value) => !value)}
-                style={styles.authToggle}
-              >
-                <Text style={styles.secondary}>
-                  {requiresAuth ? "Bearer authentication" : "No authentication"}
-                </Text>
-              </Pressable>
-            ) : null}
-            {sourceKind === "treg" || requiresAuth ? (
-              <TextInput
-                value={credential}
-                onChangeText={setCredential}
-                secureTextEntry
-                autoCapitalize="none"
-                autoCorrect={false}
-                placeholder={sourceKind === "treg" ? "Treg token" : "Bearer token"}
-                placeholderTextColor={native.tertiaryLabel}
-                style={styles.input}
-              />
-            ) : null}
-            <View style={styles.actions}>
-              <Pressable
-                accessibilityRole="button"
-                disabled={pending === "source"}
-                onPress={() => void addSource()}
-                style={styles.smallButton}
-              >
-                {pending === "source" ? (
-                  <ActivityIndicator color={native.label} />
-                ) : (
-                  <Text style={styles.buttonLabel}>Verify and add</Text>
-                )}
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => setSourceKind(null)}
-                style={styles.smallButton}
-              >
-                <Text style={styles.buttonLabel}>Cancel</Text>
-              </Pressable>
-            </View>
-          </View>
-        ) : null}
-
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-
-        <Text style={styles.section}>Tool sources</Text>
-        {sources.length === 0 ? (
-          <Text style={styles.secondary}>No custom sources installed.</Text>
-        ) : null}
-        {sources.map((source) => (
-          <View key={source.id} style={styles.row}>
-            <View style={styles.grow}>
-              <Text style={styles.title}>{source.name}</Text>
-              <Text numberOfLines={1} style={styles.secondary}>
-                {source.kind.toUpperCase()} · {source.source}
-              </Text>
-            </View>
-            <Pressable accessibilityRole="button" onPress={() => void removeSource(source)}>
-              <Text style={styles.remove}>{pending === source.id ? "Removing…" : "Remove"}</Text>
-            </Pressable>
-          </View>
-        ))}
+        {catalogError ? <Text style={styles.error}>{catalogError}</Text> : null}
 
         <Text style={styles.section}>Apps</Text>
         {catalog.length === 0 ? (
@@ -293,9 +193,6 @@ export default function Integrations() {
             <View key={key} style={styles.row}>
               <View style={styles.grow}>
                 <Text style={styles.title}>{item.name}</Text>
-                <Text style={styles.secondary}>
-                  {item.connectorId} · {item.slug}
-                </Text>
               </View>
               <Pressable
                 accessibilityRole="button"
@@ -303,12 +200,149 @@ export default function Integrations() {
                 onPress={() => void (item.connected ? revoke(item) : connect(item))}
               >
                 <Text style={styles.link}>
-                  {pending === key ? "Working…" : item.connected ? "Revoke" : "Connect"}
+                  {pending === key ? "Working…" : item.connected ? "Remove" : "Add"}
                 </Text>
               </Pressable>
             </View>
           );
         })}
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: advancedOpen }}
+          testID="integrations-advanced"
+          onPress={() => {
+            if (advancedOpen) closeAdvanced();
+            else setAdvancedOpen(true);
+          }}
+          style={styles.advancedToggle}
+        >
+          <Text style={styles.advancedLabel}>Advanced</Text>
+          <Text style={styles.chevron}>›</Text>
+        </Pressable>
+
+        {advancedOpen ? (
+          <View style={styles.advancedBody}>
+            <View style={styles.actions}>
+              {(["mcp", "api", "treg"] as const).map((kind) => (
+                <Pressable
+                  key={kind}
+                  accessibilityRole="button"
+                  onPress={() => beginSource(kind)}
+                  style={styles.smallButton}
+                >
+                  <Text style={styles.buttonLabel}>
+                    {kind === "treg"
+                      ? "Add Treg"
+                      : kind === "mcp"
+                        ? "Add MCP server"
+                        : "Add OpenAPI"}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {sourceError ? <Text style={styles.error}>{sourceError}</Text> : null}
+
+            {sourceKind ? (
+              <View style={styles.card}>
+                <Text style={styles.title}>
+                  {sourceKind === "treg"
+                    ? "Connect Treg"
+                    : sourceKind === "mcp"
+                      ? "Remote MCP server"
+                      : "OpenAPI JSON"}
+                </Text>
+                <TextInput
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="Display name"
+                  placeholderTextColor={native.tertiaryLabel}
+                  style={styles.input}
+                />
+                {sourceKind !== "treg" ? (
+                  <TextInput
+                    value={url}
+                    onChangeText={setUrl}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    placeholder={
+                      sourceKind === "mcp"
+                        ? "https://example.com/mcp"
+                        : "https://example.com/openapi.json"
+                    }
+                    placeholderTextColor={native.tertiaryLabel}
+                    style={styles.input}
+                  />
+                ) : null}
+                {sourceKind !== "treg" ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => setRequiresAuth((value) => !value)}
+                    style={styles.authToggle}
+                  >
+                    <Text style={styles.secondary}>
+                      {requiresAuth ? "Bearer authentication" : "No authentication"}
+                    </Text>
+                  </Pressable>
+                ) : null}
+                {sourceKind === "treg" || requiresAuth ? (
+                  <TextInput
+                    value={credential}
+                    onChangeText={setCredential}
+                    secureTextEntry
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    placeholder={sourceKind === "treg" ? "Treg token" : "Bearer token"}
+                    placeholderTextColor={native.tertiaryLabel}
+                    style={styles.input}
+                  />
+                ) : null}
+                <View style={styles.actions}>
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={pending === "source"}
+                    onPress={() => void addSource()}
+                    style={styles.smallButton}
+                  >
+                    {pending === "source" ? (
+                      <ActivityIndicator color={native.label} />
+                    ) : (
+                      <Text style={styles.buttonLabel}>Verify and add</Text>
+                    )}
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => setSourceKind(null)}
+                    style={styles.smallButton}
+                  >
+                    <Text style={styles.buttonLabel}>Cancel</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : null}
+
+            <Text style={styles.section}>Tool sources</Text>
+            {sources.length === 0 ? (
+              <Text style={styles.secondary}>No custom sources installed.</Text>
+            ) : null}
+            {sources.map((source) => (
+              <View key={source.id} style={styles.row}>
+                <View style={styles.grow}>
+                  <Text style={styles.title}>{source.name}</Text>
+                  <Text numberOfLines={1} style={styles.secondary}>
+                    {source.kind.toUpperCase()} · {source.source}
+                  </Text>
+                </View>
+                <Pressable accessibilityRole="button" onPress={() => void removeSource(source)}>
+                  <Text style={styles.remove}>
+                    {pending === source.id ? "Removing…" : "Remove"}
+                  </Text>
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -354,4 +388,14 @@ const styles = StyleSheet.create({
   link: { color: native.label, fontSize: 14, fontWeight: "600" },
   remove: { color: "#E96B6B", fontSize: 14, fontWeight: "600" },
   error: { color: "#E96B6B", fontSize: 14 },
+  advancedToggle: {
+    marginTop: 8,
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  advancedLabel: { color: native.secondaryLabel, fontSize: 14 },
+  advancedBody: { gap: 14 },
+  chevron: { color: native.secondaryLabel, fontSize: 18 },
 });
