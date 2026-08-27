@@ -7,4 +7,10 @@ describe("organic avatar geometry", () => {
     expect(first).toBe(organicAvatarPath(avatarIdentitySeed("research")));
     expect(first).not.toBe(organicAvatarPath(avatarIdentitySeed("health")));
   });
+
+  it("emits only path geometry from a numeric seed", () => {
+    const path = organicAvatarPath(42);
+    expect(path).toMatch(/^M[-0-9. ]+(?:C[-0-9. ]+)+Z$/);
+    expect(path).not.toMatch(/<|>|javascript:|url\(/i);
+  });
 });

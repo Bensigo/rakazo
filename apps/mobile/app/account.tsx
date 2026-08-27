@@ -78,10 +78,8 @@ export default function Account() {
     setAvatarError(null);
     try {
       await updateAvatarStyle(next);
-    } catch (updateError) {
-      setAvatarError(
-        updateError instanceof Error ? updateError.message : "Could not update avatar style",
-      );
+    } catch {
+      setAvatarError("Couldn't update avatars");
     } finally {
       setAvatarPending(false);
     }

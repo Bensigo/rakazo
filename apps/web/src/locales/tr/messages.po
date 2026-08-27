@@ -418,7 +418,7 @@ msgstr "Yetkilendir"
 
 #: src/pages/AccountSettingsOverlay.tsx:133
 msgid "Avatars"
-msgstr "Avatarlar"
+msgstr ""
 
 #: src/pages/memory-providers/SupermemorySettingsForm.tsx:48
 msgid "Base URL"
@@ -953,10 +953,6 @@ msgstr "Güncellenemedi"
 msgid "Could not update agent access"
 msgstr "Agent erişimi güncellenemedi"
 
-#: src/pages/AccountSettingsOverlay.tsx:80
-msgid "Could not update avatar style"
-msgstr "Avatar stili güncellenemedi"
-
 #: src/components/ComputerMaintenanceActions.tsx:46
 msgid "Could not update computer"
 msgstr ""
@@ -964,6 +960,10 @@ msgstr ""
 #: src/pages/MemorySettingsOverlay.tsx:122
 msgid "Could not update the default memory scope"
 msgstr "Varsayılan hafıza kapsamı güncellenemedi"
+
+#: src/pages/AccountSettingsOverlay.tsx:80
+msgid "Couldn't update avatars"
+msgstr ""
 
 #: src/pages/Shell.tsx:1761
 #: src/pages/Shell.tsx:4361
@@ -1832,7 +1832,7 @@ msgstr "Veya bir API anahtarı yapıştır"
 
 #: src/pages/AccountSettingsOverlay.tsx:157
 msgid "Organic"
-msgstr "Organik"
+msgstr ""
 
 #: src/pages/memory-providers/SupermemorySettingsForm.tsx:60
 msgid "Organization API key"
@@ -2045,7 +2045,7 @@ msgstr "Rakazo'ya dön"
 
 #: src/pages/AccountSettingsOverlay.tsx:157
 msgid "Robot"
-msgstr "Robot"
+msgstr ""
 
 #: src/pages/Shell.tsx:2554
 #: src/pages/Shell.tsx:2607

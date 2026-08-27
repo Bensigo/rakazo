@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createRouter, type RouterDeps } from "./router.js";
 
 describe("account preferences", () => {
-  it("persists and returns the selected avatar style", async () => {
+  function preferencesDeps(avatarStyle: string) {
     const update = vi.fn().mockResolvedValue({});
     const prisma = {
       user: {
@@ -13,7 +13,7 @@ describe("account preferences", () => {
         findUniqueOrThrow: vi.fn().mockResolvedValue({
           email: "user@rakazo.test",
           name: "Test User",
-          avatarStyle: "organic",
+          avatarStyle,
         }),
       },
       userModelCredential: { findFirst: vi.fn().mockResolvedValue(null) },
@@ -36,7 +36,11 @@ describe("account preferences", () => {
       email: "user@rakazo.test",
       isDeploymentOwner: true,
     } satisfies Actor;
-    const handler = new RPCHandler(createRouter(deps));
+    return { update, deps, actor, handler: new RPCHandler(createRouter(deps)) };
+  }
+
+  it("persists and returns the selected avatar style", async () => {
+    const { update, actor, handler } = preferencesDeps("organic");
 
     const { response } = await handler.handle(
       new Request("http://127.0.0.1/rpc/preferences/update", {
@@ -54,6 +58,40 @@ describe("account preferences", () => {
     });
     await expect(response.json()).resolves.toEqual({
       json: expect.objectContaining({ avatarStyle: "organic" }),
+    });
+  });
+
+  it("rejects avatar styles outside robot|organic", async () => {
+    const { update, actor, handler } = preferencesDeps("robot");
+
+    const { response } = await handler.handle(
+      new Request("http://127.0.0.1/rpc/preferences/update", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ json: { avatarStyle: "dicebear" } }),
+      }),
+      { prefix: "/rpc", context: { actor } },
+    );
+
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("coerces unknown stored avatar styles to robot on me", async () => {
+    const { actor, handler } = preferencesDeps("custom-cdn");
+
+    const { response } = await handler.handle(
+      new Request("http://127.0.0.1/rpc/me", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ json: null }),
+      }),
+      { prefix: "/rpc", context: { actor } },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      json: expect.objectContaining({ avatarStyle: "robot" }),
     });
   });
 });

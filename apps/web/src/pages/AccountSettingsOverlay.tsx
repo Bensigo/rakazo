@@ -76,8 +76,8 @@ export function AccountSettingsOverlay({
     setAvatarError(null);
     try {
       await onAvatarStyleChange(next);
-    } catch (error) {
-      setAvatarError(error instanceof Error ? error.message : t`Could not update avatar style`);
+    } catch {
+      setAvatarError(t`Couldn't update avatars`);
     } finally {
       setAvatarPending(false);
     }

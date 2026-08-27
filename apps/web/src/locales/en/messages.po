@@ -953,10 +953,6 @@ msgstr "Could not update"
 msgid "Could not update agent access"
 msgstr "Could not update agent access"
 
-#: src/pages/AccountSettingsOverlay.tsx:80
-msgid "Could not update avatar style"
-msgstr "Could not update avatar style"
-
 #: src/components/ComputerMaintenanceActions.tsx:46
 msgid "Could not update computer"
 msgstr "Could not update computer"
@@ -964,6 +960,10 @@ msgstr "Could not update computer"
 #: src/pages/MemorySettingsOverlay.tsx:122
 msgid "Could not update the default memory scope"
 msgstr "Could not update the default memory scope"
+
+#: src/pages/AccountSettingsOverlay.tsx:80
+msgid "Couldn't update avatars"
+msgstr "Couldn't update avatars"
 
 #: src/pages/Shell.tsx:1761
 #: src/pages/Shell.tsx:4361

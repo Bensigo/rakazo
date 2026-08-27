@@ -418,7 +418,7 @@ msgstr "ऑथराइज़ करें"
 
 #: src/pages/AccountSettingsOverlay.tsx:133
 msgid "Avatars"
-msgstr "अवतार"
+msgstr ""
 
 #: src/pages/memory-providers/SupermemorySettingsForm.tsx:48
 msgid "Base URL"
@@ -953,10 +953,6 @@ msgstr "अपडेट नहीं हो सका"
 msgid "Could not update agent access"
 msgstr "एजेंट एक्सेस अपडेट नहीं हो सका"
 
-#: src/pages/AccountSettingsOverlay.tsx:80
-msgid "Could not update avatar style"
-msgstr "अवतार शैली अपडेट नहीं की जा सकी"
-
 #: src/components/ComputerMaintenanceActions.tsx:46
 msgid "Could not update computer"
 msgstr "कंप्यूटर अपडेट नहीं हो सका"
@@ -964,6 +960,10 @@ msgstr "कंप्यूटर अपडेट नहीं हो सका"
 #: src/pages/MemorySettingsOverlay.tsx:122
 msgid "Could not update the default memory scope"
 msgstr "डिफ़ॉल्ट मेमोरी स्कोप अपडेट नहीं हो सका"
+
+#: src/pages/AccountSettingsOverlay.tsx:80
+msgid "Couldn't update avatars"
+msgstr ""
 
 #: src/pages/Shell.tsx:1761
 #: src/pages/Shell.tsx:4361
@@ -1832,7 +1832,7 @@ msgstr "या एक API कुंजी पेस्ट करें"
 
 #: src/pages/AccountSettingsOverlay.tsx:157
 msgid "Organic"
-msgstr "ऑर्गेनिक"
+msgstr ""
 
 #: src/pages/memory-providers/SupermemorySettingsForm.tsx:60
 msgid "Organization API key"
@@ -2045,7 +2045,7 @@ msgstr "Rakazo पर लौटें"
 
 #: src/pages/AccountSettingsOverlay.tsx:157
 msgid "Robot"
-msgstr "रोबोट"
+msgstr ""
 
 #: src/pages/Shell.tsx:2554
 #: src/pages/Shell.tsx:2607
