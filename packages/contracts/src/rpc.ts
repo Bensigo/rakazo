@@ -8,6 +8,7 @@ import {
   AppBootstrapSchema,
   ArtifactSchema,
   ArtifactWithContentSchema,
+  AvatarStyleSchema,
   BotMcpServerSchema,
   BotSchema,
   BotSectionSchema,
@@ -38,6 +39,7 @@ import {
   RoutineSchema,
   ScratchpadItemSchema,
   ScratchpadItemStatusSchema,
+  ShareManifestSchema,
   SkillPlaybookSchema,
   TaughtSkillSchema,
   TeachRecordingEventSchema,
@@ -54,7 +56,7 @@ import {
   WorkspaceMemoryConfigSchema,
 } from "./domain.js";
 import { ProductEventSchema } from "./events.js";
-import { Id } from "./ids.js";
+import { Id, IsoDate } from "./ids.js";
 import { RunsListOutputSchema } from "./runs.js";
 import { SearchQueryOutputSchema } from "./search.js";
 
@@ -109,9 +111,37 @@ const threadSendInput = threadTarget
     }
   });
 
+const importShareInput = z
+  .object({
+    manifest: ShareManifestSchema.optional(),
+    token: z.string().min(8).max(200).optional(),
+  })
+  .superRefine((input, ctx) => {
+    if (!input.manifest && !input.token) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Provide manifest or token",
+        path: ["manifest"],
+      });
+    }
+    if (input.manifest && input.token) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Provide only one of manifest or token",
+        path: ["token"],
+      });
+    }
+  });
+
 export const appContract = {
   health: oc.output(z.object({ ok: z.literal(true), version: z.string() })),
+  share: {
+    preview: oc.input(z.object({ token: z.string().min(8).max(200) })).output(ShareManifestSchema),
+  },
   me: oc.output(MeSchema),
+  preferences: {
+    update: oc.input(z.object({ avatarStyle: AvatarStyleSchema })).output(MeSchema),
+  },
   bootstrap: oc.input(z.object({ botId: Id.optional() })).output(AppBootstrapSchema),
   deployment: {
     get: oc.output(DeploymentSettingsSchema),
@@ -178,6 +208,25 @@ export const appContract = {
     restore: oc.input(botId).output(z.object({ ok: z.literal(true) })),
     remove: oc
       .input(z.object({ botId: Id, deleteMemories: z.boolean().default(false) }))
+      .output(z.object({ ok: z.literal(true) })),
+    shareManifest: oc.input(botId).output(ShareManifestSchema),
+    importShare: oc.input(importShareInput).output(BotSchema),
+    shareCreate: oc
+      .input(
+        z.object({
+          botId: Id,
+          ttlDays: z.number().int().min(1).max(365).optional(),
+        }),
+      )
+      .output(
+        z.object({
+          token: z.string(),
+          url: z.string(),
+          expiresAt: z.string(),
+        }),
+      ),
+    shareRevoke: oc
+      .input(z.object({ token: z.string().min(8).max(200) }))
       .output(z.object({ ok: z.literal(true) })),
   },
   groups: {
@@ -309,6 +358,8 @@ export const appContract = {
           timezone: z.string().optional(),
           active: z.boolean().optional(),
           notify: z.boolean().optional(),
+          /** ISO datetime to arm a never-run one-shot (e.g. imported share template). */
+          runAt: IsoDate.optional(),
         }),
       )
       .output(RoutineSchema),

@@ -22,6 +22,9 @@ const OnboardingPage = lazy(() =>
 const WelcomePage = lazy(() =>
   import("./pages/Welcome").then((module) => ({ default: module.WelcomePage })),
 );
+const SharePage = lazy(() =>
+  import("./pages/Share").then((module) => ({ default: module.SharePage })),
+);
 
 export function App() {
   const session = authClient.useSession();
@@ -36,10 +39,11 @@ export function App() {
     markAfterPaint("rk:renderer:session-painted");
   }, [session.isPending]);
 
-  if (showSessionUnavailable(gate, nextHolding)) {
+  const onPublicShareRoute = window.location.pathname.startsWith("/share/");
+  if (showSessionUnavailable(gate, nextHolding) && !onPublicShareRoute) {
     return <SessionUnavailable refetch={session.refetch} />;
   }
-  if (gate === "loading") {
+  if (gate === "loading" && !onPublicShareRoute) {
     return window.location.pathname.startsWith("/app") ? (
       <ShellSkeleton />
     ) : (
@@ -74,6 +78,7 @@ export function App() {
             path="/mcp/oauth/callback"
             element={user ? <McpOAuthCallbackPage /> : <Navigate to="/sign-in" replace />}
           />
+          <Route path="/share/:token" element={<SharePage />} />
           <Route path="/app" element={user ? <ShellPage /> : <Navigate to="/sign-in" replace />} />
           <Route
             path="/app/g/:groupId"

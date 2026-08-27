@@ -18,6 +18,7 @@ import type {
   ProductEvent,
   Routine,
   SearchHit,
+  ShareManifest,
   TaughtSkill,
   ThinkingLevel,
   ThreadMessage,
@@ -34,6 +35,7 @@ import {
   BOT_NAME_MAX_LENGTH,
   BOT_TITLE_MAX_LENGTH,
   normalizeCreateBotProfile,
+  parseShareManifestPayload,
 } from "@rakazo/contracts";
 import {
   abortableDelay,
@@ -46,6 +48,7 @@ import {
   groupBotsForSidebar,
   inferAttachmentMimeType,
   isActive,
+  isOneShotRoutineCrons,
   isRunTerminalEvent,
   latestAnswerableAskMessageId,
   mentionChipKey,
@@ -58,8 +61,15 @@ import {
   speechFromBlocks,
   truncateSlashDescription,
 } from "@rakazo/core";
-import { BotAvatar, Button, GroupAvatar } from "@rakazo/ui-web";
 import {
+  AvatarStyleProvider,
+  BotAvatar,
+  Button,
+  GroupAvatar,
+  type GroupAvatarMember,
+} from "@rakazo/ui-web";
+import {
+  ArrowDown,
   ArrowUp,
   Bell,
   Box,
@@ -99,11 +109,10 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArtifactFileCard } from "../components/ArtifactFileCard";
 import { AskCard } from "../components/AskCard";
 import {
-  BuiButton,
-  BuiCard,
-  LoadingState,
-  SuccessPop,
-} from "../components/beautiful-ui/primitives";
+  ActiveBotGlyph,
+  CollaborationMarker,
+} from "../components/beautiful-ui/CollaborationMarker";
+import { BuiButton, BuiCard, SuccessPop } from "../components/beautiful-ui/primitives";
 import { ComputerMaintenanceActions } from "../components/ComputerMaintenanceActions";
 import { SkillDraftCard } from "../components/teach/SkillDraftCard";
 import { TeachCaptureOverlay } from "../components/teach/TeachCaptureOverlay";
@@ -134,6 +143,7 @@ import {
   reduceThreadSnapshot,
   userHoldsComputerControl,
 } from "../lib/thread-events";
+import { transcriptIsNearEnd } from "../lib/transcript-scroll";
 import { speaker } from "../lib/tts";
 import { ActivityList } from "./ActivityList";
 import type { ContextMenuPosition } from "./BotContextMenu";
@@ -195,6 +205,35 @@ type PendingAttachment = {
 };
 
 const ATTACHMENT_ACCEPT = ATTACHMENT_ALLOWED_MIME_TYPES.join(",");
+
+function toDatetimeLocalValue(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function defaultArmRunAtLocal(): string {
+  return toDatetimeLocalValue(new Date(Date.now() + 60 * 60 * 1000));
+}
+
+function routineNeedsOneShotArm(
+  routine: Pick<Routine, "nextRunAt" | "lastRunAt">,
+  crons: string[],
+) {
+  return isOneShotRoutineCrons(crons) && !routine.nextRunAt && !routine.lastRunAt;
+}
+
+function emptyRoutineDraft() {
+  return { name: "", prompt: "", schedules: [defaultCronPreset()], runAtLocal: "" };
+}
+
+function draftFromRoutine(routine: Routine) {
+  return {
+    name: routine.name,
+    prompt: routine.prompt,
+    schedules: routine.crons.map(presetFromCron),
+    runAtLocal: routineNeedsOneShotArm(routine, routine.crons) ? defaultArmRunAtLocal() : "",
+  };
+}
 
 export function ShellPage() {
   const { t } = useLingui();
@@ -322,11 +361,7 @@ export function ShellPage() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [initialBotsLoaded, setInitialBotsLoaded] = useState(false);
   const [bootstrapMe, setBootstrapMe] = useState<Me | null>();
-  const [routineDraft, setRoutineDraft] = useState({
-    name: "",
-    prompt: "",
-    schedules: [defaultCronPreset()],
-  });
+  const [routineDraft, setRoutineDraft] = useState(emptyRoutineDraft);
   const [editingRoutine, setEditingRoutine] = useState<Routine | null>(null);
   const [deleteRoutineTarget, setDeleteRoutineTarget] = useState<Routine | null>(null);
   const [savingRoutine, setSavingRoutine] = useState(false);
@@ -469,9 +504,7 @@ export function ShellPage() {
 
   async function refreshGroupThread(id: string) {
     const scrollElement = messageScroll.current;
-    const stickToEnd =
-      !scrollElement ||
-      scrollElement.scrollHeight - scrollElement.scrollTop - scrollElement.clientHeight < 80;
+    const stickToEnd = !scrollElement || transcriptIsNearEnd(scrollElement);
     markOnce("rk:renderer:thread-request-start");
     const request = ++groupRefreshEpoch.current;
     const snap = await rpc.threads.get({ groupId: id });
@@ -488,7 +521,11 @@ export function ShellPage() {
     setRoutines([]);
     setRoutinesBotId(null);
     // Keep the search-jump viewport; expandedHistoryThread merge still accepts live messages.
-    if (stickToEnd && expandedHistoryThread.current !== snap.threadId) {
+    if (
+      stickToEnd &&
+      (!scrollElement || transcriptIsNearEnd(scrollElement)) &&
+      expandedHistoryThread.current !== snap.threadId
+    ) {
       window.requestAnimationFrame(() => {
         const element = messageScroll.current;
         if (element) element.scrollTop = element.scrollHeight;
@@ -499,9 +536,7 @@ export function ShellPage() {
 
   async function refreshThread(id: string) {
     const scrollElement = messageScroll.current;
-    const stickToEnd =
-      !scrollElement ||
-      scrollElement.scrollHeight - scrollElement.scrollTop - scrollElement.clientHeight < 80;
+    const stickToEnd = !scrollElement || transcriptIsNearEnd(scrollElement);
     markOnce("rk:renderer:thread-request-start");
     const epoch = historyEpoch.current;
     const request = ++threadRefreshEpoch.current;
@@ -525,7 +560,11 @@ export function ShellPage() {
     commitSnapshot(reconciled.snapshot);
     commitComputer(reconciled.computer);
     cacheComputerFor(id, { computer: reconciled.computer });
-    if (stickToEnd && expandedHistoryThread.current !== snap.threadId) {
+    if (
+      stickToEnd &&
+      (!scrollElement || transcriptIsNearEnd(scrollElement)) &&
+      expandedHistoryThread.current !== snap.threadId
+    ) {
       window.requestAnimationFrame(() => {
         const element = messageScroll.current;
         if (element) element.scrollTop = element.scrollHeight;
@@ -1049,11 +1088,7 @@ export function ShellPage() {
     if (routineId && routinesBotId === active.id) {
       const routine = routines.find((item) => item.id === routineId);
       if (routine) {
-        setRoutineDraft({
-          name: routine.name,
-          prompt: routine.prompt,
-          schedules: routine.crons.map(presetFromCron),
-        });
+        setRoutineDraft(draftFromRoutine(routine));
         setEditingRoutine(routine);
         setPanel("routine");
       } else {
@@ -1088,24 +1123,29 @@ export function ShellPage() {
     ["running", "queued", "leased"].includes(run.status),
   );
   const transcriptRunning = workingRuns.length > 0;
-  const workingStartedAtMs = (() => {
-    let earliest: number | undefined;
-    for (const run of workingRuns) {
-      // Prefer startedAt; fall back to createdAt so queued/leased runs keep a
-      // stable clock across remounts before the executor sets startedAt.
-      const iso = run.startedAt ?? run.createdAt;
-      const ms = Date.parse(iso);
-      if (Number.isNaN(ms)) continue;
-      if (earliest === undefined || ms < earliest) earliest = ms;
-    }
-    return earliest;
-  })();
   const composerRunning = currentRuns.some((run) => isActive(run.status));
   const transcriptArtifactTarget = useMemo<ArtifactTarget>(
     () => (inGroup ? { groupId: groupId ?? "" } : { botId: active?.id ?? "" }),
     [active?.id, groupId, inGroup],
   );
   const transcriptMembers = activeSnapshot?.members ?? activeGroup?.members;
+  const resolveTranscriptBot = useCallback(
+    (botId: string) => {
+      const bot = bots.find((candidate) => candidate.id === botId);
+      if (bot) return bot;
+      return transcriptMembers?.find((member) => member.botId === botId);
+    },
+    [bots, transcriptMembers],
+  );
+  const workingBots: GroupAvatarMember[] = workingRuns.map((run) => {
+    const bot = resolveTranscriptBot(run.botId);
+    return {
+      botId: run.botId,
+      color: bot?.color ?? "#85858A",
+      name: bot?.name,
+      status: run.status,
+    };
+  });
   const resolveTranscriptMemberName = useCallback(
     (botId: string | undefined) => memberName(transcriptMembers, botId),
     [transcriptMembers],
@@ -1517,7 +1557,7 @@ export function ShellPage() {
     await refreshThreadRef.current(id);
   }, []);
   const addSkillRoutine = useCallback((name: string, prompt: string) => {
-    setRoutineDraft({ name, prompt, schedules: [defaultCronPreset()] });
+    setRoutineDraft({ ...emptyRoutineDraft(), name, prompt });
     setEditingRoutine(null);
     setPanel("routine");
   }, []);
@@ -1554,6 +1594,18 @@ export function ShellPage() {
       notifyOnFinish: true,
       computerMode: input.computerMode,
     });
+    setBots((current) =>
+      current.some((item) => item.id === bot.id) ? current : [bot, ...current],
+    );
+    navigate(`/app/${bot.id}`);
+    setPanel(null);
+    await refreshBots().catch(() => undefined);
+  }
+
+  async function importShareBot(input: { manifest?: ShareManifest; token?: string }) {
+    const bot = await rpc.bots.importShare(
+      input.token ? { token: input.token } : { manifest: input.manifest! },
+    );
     setBots((current) =>
       current.some((item) => item.id === bot.id) ? current : [bot, ...current],
     );
@@ -1711,7 +1763,7 @@ export function ShellPage() {
     .slice(0, 2)
     .toUpperCase();
 
-  return (
+  const shell = (
     <div
       data-testid="shell-root"
       data-ready={shellReady}
@@ -1842,7 +1894,12 @@ export function ShellPage() {
                         background: !inGroup && active?.id === bot.id ? "#161618" : "transparent",
                       }}
                     >
-                      <BotAvatar color={bot.color} size={38} status={bot.status} />
+                      <BotAvatar
+                        color={bot.color}
+                        identity={bot.id}
+                        size={38}
+                        status={bot.status}
+                      />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline justify-between gap-2">
                           <span
@@ -1945,7 +2002,12 @@ export function ShellPage() {
               {archivedOpen
                 ? archivedBots.map((bot) => (
                     <div key={bot.id} className="flex items-center gap-2 rounded-lg px-2.5 py-2">
-                      <BotAvatar color={bot.color} size={28} status={bot.status} />
+                      <BotAvatar
+                        color={bot.color}
+                        identity={bot.id}
+                        size={28}
+                        status={bot.status}
+                      />
                       <span
                         className="min-w-0 flex-1 truncate text-[14px] text-[#A8A8AD]"
                         dir="auto"
@@ -2112,7 +2174,12 @@ export function ShellPage() {
                   size={26}
                 />
               ) : active ? (
-                <BotAvatar color={active.color} size={26} status={active.status} />
+                <BotAvatar
+                  color={active.color}
+                  identity={active.id}
+                  size={26}
+                  status={active.status}
+                />
               ) : null}
               <span className="min-w-0">
                 <span className="block truncate text-[16px] font-medium text-[#ECECEE]" dir="auto">
@@ -2163,6 +2230,7 @@ export function ShellPage() {
           </div>
         </div>
         <Transcript
+          key={activeSnapshot?.threadId}
           scrollRef={messageScroll}
           artifactTarget={transcriptArtifactTarget}
           messages={activeSnapshot?.messages ?? []}
@@ -2170,7 +2238,7 @@ export function ShellPage() {
           loadingOlder={loadingOlder}
           answerableAskMessageId={answerableAskMessageId}
           running={transcriptRunning}
-          workingStartedAt={workingStartedAtMs}
+          workingBots={workingBots}
           onLoadOlder={loadOlder}
           onOpenBot={openBot}
           onAnswer={answerMessage}
@@ -2181,6 +2249,7 @@ export function ShellPage() {
             setPeerMessagesOpen(true);
           }}
           memberName={resolveTranscriptMemberName}
+          peerBot={resolveTranscriptBot}
           onRefresh={refreshActiveThread}
           onBotChanged={refreshBots}
           onAddRoutine={addSkillRoutine}
@@ -2387,11 +2456,7 @@ export function ShellPage() {
                       <button
                         type="button"
                         onClick={() => {
-                          setRoutineDraft({
-                            name: routine.name,
-                            prompt: routine.prompt,
-                            schedules: routine.crons.map(presetFromCron),
-                          });
+                          setRoutineDraft(draftFromRoutine(routine));
                           setEditingRoutine(routine);
                           setPanel("routine");
                         }}
@@ -2423,7 +2488,7 @@ export function ShellPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    setRoutineDraft({ name: "", prompt: "", schedules: [defaultCronPreset()] });
+                    setRoutineDraft(emptyRoutineDraft());
                     setEditingRoutine(null);
                     setPanel("routine");
                   }}
@@ -2442,9 +2507,9 @@ export function ShellPage() {
                     onStopTeaching={stopTeaching}
                     onAddRoutine={(skill) => {
                       setRoutineDraft({
+                        ...emptyRoutineDraft(),
                         name: skill.name || skill.goal.slice(0, 80),
                         prompt: `Run taught skill: ${skill.name || skill.goal}\n${skill.playbook.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")}`,
-                        schedules: [defaultCronPreset()],
                       });
                       setEditingRoutine(null);
                       setPanel("routine");
@@ -2489,6 +2554,7 @@ export function ShellPage() {
               <CreateBotForm
                 onCancel={() => setPanel(null)}
                 onCreate={(input) => createBot(input)}
+                onImportShare={(input) => importShareBot(input)}
               />
             ) : null}
             {panel === "settings" && active ? (
@@ -2571,6 +2637,24 @@ export function ShellPage() {
                     />
                   </Suspense>
                 </div>
+                {editingRoutine &&
+                routineNeedsOneShotArm(
+                  editingRoutine,
+                  routineDraft.schedules.map(cronFromPreset),
+                ) ? (
+                  <label className="mt-5 block text-[14px] text-[#85858A]">
+                    <Trans>Run at</Trans>
+                    <input
+                      type="datetime-local"
+                      value={routineDraft.runAtLocal}
+                      onChange={(e) =>
+                        setRoutineDraft((s) => ({ ...s, runAtLocal: e.target.value }))
+                      }
+                      aria-label={t`Run at`}
+                      className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
+                    />
+                  </label>
+                ) : null}
                 <div className="mt-5 flex items-center gap-3">
                   <button
                     type="button"
@@ -2587,11 +2671,32 @@ export function ShellPage() {
                       try {
                         const crons = routineDraft.schedules.map(cronFromPreset);
                         if (targetRoutine) {
+                          const armOneShot = routineNeedsOneShotArm(targetRoutine, crons);
+                          let runAt: string | undefined;
+                          if (armOneShot) {
+                            if (!routineDraft.runAtLocal) {
+                              setRoutineError(t`Add a run time for this one-shot.`);
+                              return;
+                            }
+                            const parsed = new Date(routineDraft.runAtLocal);
+                            if (
+                              !Number.isFinite(parsed.getTime()) ||
+                              parsed.getTime() <= Date.now()
+                            ) {
+                              setRoutineError(t`Run time must be in the future.`);
+                              return;
+                            }
+                            runAt = parsed.toISOString();
+                          }
                           await rpc.routines.update({
                             routineId: targetRoutine.id,
                             name: routineDraft.name || t`Routine`,
                             prompt: routineDraft.prompt || t`Check in.`,
                             crons,
+                            ...(!targetRoutine.active && !targetRoutine.lastRunAt
+                              ? { active: true }
+                              : {}),
+                            ...(runAt ? { runAt } : {}),
                           });
                         } else {
                           await rpc.routines.create({
@@ -2819,6 +2924,11 @@ export function ShellPage() {
             email={session.data?.user.email}
             usage={usage}
             focusUsage={accountSettingsFocusUsage}
+            avatarStyle={bootstrapMe?.avatarStyle ?? "robot"}
+            onAvatarStyleChange={async (avatarStyle) => {
+              const nextMe = await rpc.preferences.update({ avatarStyle });
+              setBootstrapMe(nextMe);
+            }}
             onClose={() => {
               setAccountSettingsOpen(false);
               setAccountSettingsFocusUsage(false);
@@ -2890,7 +3000,12 @@ export function ShellPage() {
         <div className="absolute inset-0 z-30 flex flex-col bg-[#050506]">
           <div className="flex items-center justify-between gap-4 border-b border-[#171719] px-[18px] py-3.5">
             <div className="flex min-w-0 flex-1 items-center gap-3">
-              <BotAvatar color={active.color} size={28} status={active.status} />
+              <BotAvatar
+                color={active.color}
+                identity={active.id}
+                size={28}
+                status={active.status}
+              />
               {recordingSkill ? (
                 <TeachRecordingChrome
                   recording={recordingSkill}
@@ -3003,6 +3118,10 @@ export function ShellPage() {
       ) : null}
     </div>
   );
+
+  return (
+    <AvatarStyleProvider value={bootstrapMe?.avatarStyle ?? "robot"}>{shell}</AvatarStyleProvider>
+  );
 }
 
 const Transcript = memo(function Transcript({
@@ -3013,7 +3132,7 @@ const Transcript = memo(function Transcript({
   loadingOlder,
   answerableAskMessageId,
   running,
-  workingStartedAt,
+  workingBots,
   onLoadOlder,
   onOpenBot,
   onAnswer,
@@ -3021,6 +3140,7 @@ const Transcript = memo(function Transcript({
   onJumpToMessage,
   onOpenPeerMessages,
   memberName,
+  peerBot,
   onRefresh,
   onBotChanged,
   onAddRoutine,
@@ -3035,7 +3155,7 @@ const Transcript = memo(function Transcript({
   loadingOlder: boolean;
   answerableAskMessageId: string | null;
   running: boolean;
-  workingStartedAt?: number;
+  workingBots: GroupAvatarMember[];
   onLoadOlder: () => void | Promise<void>;
   onOpenBot: (botId: string) => void;
   onAnswer: (message: ThreadMessage, text: string) => Promise<void>;
@@ -3043,6 +3163,7 @@ const Transcript = memo(function Transcript({
   onJumpToMessage: (messageId: string) => void;
   onOpenPeerMessages: (peerBotId: string) => void;
   memberName?: (botId: string | undefined) => string | undefined;
+  peerBot: (botId: string) => { color: string; status?: string } | undefined;
   onRefresh: () => Promise<void>;
   onBotChanged: () => Promise<void>;
   onAddRoutine: (name: string, prompt: string) => void;
@@ -3051,71 +3172,186 @@ const Transcript = memo(function Transcript({
   onSpeak: (message: ThreadMessage) => void;
 }) {
   const { t } = useLingui();
+  const [atEnd, setAtEnd] = useState(true);
+  const following = useRef(true);
+  const autoScrolling = useRef(false);
+  const lastScrollTop = useRef(0);
+  const autoScrollTimer = useRef<number | undefined>(undefined);
+  const jumpButtonRef = useRef<HTMLButtonElement>(null);
   const messageById = useMemo(
     () => new Map(messages.map((message) => [message.id, message])),
     [messages],
   );
+  const workingBotName = workingBots.length === 1 ? workingBots[0]?.name : undefined;
+  const workingLabel =
+    workingBotName != null && workingBotName !== ""
+      ? t`${workingBotName} is working`
+      : t`Bots are working`;
+  const snapToEnd = useCallback(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    following.current = true;
+    autoScrolling.current = false;
+    setAtEnd(true);
+    element.scrollTo({ top: element.scrollHeight, behavior: "auto" });
+  }, [scrollRef]);
+
+  const jumpToLatest = useCallback(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    following.current = true;
+    autoScrolling.current = !reducedMotion;
+    setAtEnd(true);
+    element.scrollTo({
+      top: element.scrollHeight,
+      behavior: reducedMotion ? "auto" : "smooth",
+    });
+    window.clearTimeout(autoScrollTimer.current);
+    // Fallback only: onScroll clears autoScrolling once near-end is reached.
+    autoScrollTimer.current = window.setTimeout(
+      () => {
+        autoScrolling.current = false;
+      },
+      reducedMotion ? 0 : 2_000,
+    );
+  }, [scrollRef]);
+
+  useLayoutEffect(() => {
+    if (following.current) snapToEnd();
+  }, [messages, running, snapToEnd]);
+
+  useLayoutEffect(() => {
+    const button = jumpButtonRef.current;
+    if (atEnd && button && document.activeElement === button) {
+      button.blur();
+    }
+  }, [atEnd]);
+
+  const loadOlder = useCallback(() => {
+    const wasFollowing = following.current;
+    // Prepend must not race the messages-driven snap-to-end follow path.
+    following.current = false;
+    autoScrolling.current = false;
+    const pending = onLoadOlder();
+    if (!pending) return;
+    return Promise.resolve(pending).catch((error) => {
+      const element = scrollRef.current;
+      if (wasFollowing && element && transcriptIsNearEnd(element)) {
+        following.current = true;
+        setAtEnd(true);
+      }
+      throw error;
+    });
+  }, [onLoadOlder, scrollRef]);
+
+  useEffect(
+    () => () => {
+      window.clearTimeout(autoScrollTimer.current);
+    },
+    [],
+  );
+
   return (
-    <div
-      ref={scrollRef}
-      data-testid="transcript"
-      className="rk-scroll flex flex-1 flex-col gap-2 overflow-y-auto px-4 py-5 md:px-7 md:py-6"
-    >
-      {olderCursor != null ? (
-        <button
-          type="button"
-          disabled={loadingOlder}
-          onClick={() => void onLoadOlder()}
-          className="self-center rounded-lg px-3 py-1.5 text-[13px] text-[#85858A] hover:bg-[#1A1A1D] hover:text-[#C9C9CE] disabled:opacity-50"
-        >
-          {loadingOlder ? t`Loading…` : t`Load earlier messages`}
-        </button>
-      ) : null}
-      {messages.map((message) => (
-        <div
-          key={message.id}
-          data-message-id={message.id}
-          className="group/message relative pt-9 hover:z-20"
-        >
-          <MessageHoverActions message={message} onReply={onReply} />
-          <MessageView
-            artifactTarget={artifactTarget}
-            message={message}
-            canAnswer={message.id === answerableAskMessageId}
-            onOpenBot={onOpenBot}
-            onOpenPeerMessages={onOpenPeerMessages}
-            onAnswer={onAnswer}
-            speakerName={message.role === "bot" ? memberName?.(message.botId) : undefined}
-            memberName={memberName}
-            replyPreview={
-              message.replyToMessageId ? messageById.get(message.replyToMessageId) : undefined
+    <div className="relative flex min-h-0 flex-1">
+      <div
+        ref={scrollRef}
+        data-testid="transcript"
+        onPointerDown={() => {
+          autoScrolling.current = false;
+          following.current = false;
+        }}
+        onTouchStart={() => {
+          autoScrolling.current = false;
+          following.current = false;
+        }}
+        onWheel={(event) => {
+          if (event.deltaY < 0) {
+            autoScrolling.current = false;
+            following.current = false;
+          }
+        }}
+        onScroll={(event) => {
+          const scrolledDown = event.currentTarget.scrollTop >= lastScrollTop.current;
+          lastScrollTop.current = event.currentTarget.scrollTop;
+          const nearEnd = transcriptIsNearEnd(event.currentTarget);
+          setAtEnd(nearEnd);
+          if (nearEnd) {
+            if (scrolledDown) following.current = true;
+            if (autoScrolling.current) {
+              autoScrolling.current = false;
+              window.clearTimeout(autoScrollTimer.current);
             }
-            replyToMessageId={message.replyToMessageId}
-            onJumpToMessage={onJumpToMessage}
-            onRefresh={onRefresh}
-            onBotChanged={onBotChanged}
-            onAddRoutine={onAddRoutine}
-            voiceReady={voiceReady}
-            speaking={speakingMessageId === message.id}
-            onSpeak={() => onSpeak(message)}
-          />
-        </div>
-      ))}
-      {running &&
-      !messages.some(
-        (message) =>
-          message.id.startsWith("progress:") &&
-          message.blocks[0]?.kind === "progress" &&
-          message.blocks[0].text,
-      ) ? (
-        <div className="flex justify-start">
-          {/* Box metrics match the progress bubble exactly so swapping between
-              them never changes height or text position. */}
-          <div className="flex max-w-[74%] items-center rounded-[20px] bg-[#1A1A1D] px-[18px] py-3 text-[15.5px] leading-[1.5]">
-            <LoadingState label="working" startedAt={workingStartedAt} />
+          } else if (!autoScrolling.current) {
+            following.current = false;
+          }
+        }}
+        className="rk-scroll flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-5 md:px-7 md:py-6"
+      >
+        {olderCursor != null ? (
+          <button
+            type="button"
+            disabled={loadingOlder}
+            onClick={() => void loadOlder()}
+            className="self-center rounded-lg px-3 py-1.5 text-[13px] text-[#85858A] hover:bg-[#1A1A1D] hover:text-[#C9C9CE] disabled:opacity-50"
+          >
+            {loadingOlder ? t`Loading…` : t`Load earlier messages`}
+          </button>
+        ) : null}
+        {messages.map((message) => (
+          <div
+            key={message.id}
+            data-message-id={message.id}
+            className="group/message relative pt-9 hover:z-20"
+          >
+            <MessageHoverActions message={message} onReply={onReply} />
+            <MessageView
+              artifactTarget={artifactTarget}
+              message={message}
+              canAnswer={message.id === answerableAskMessageId}
+              onOpenBot={onOpenBot}
+              onOpenPeerMessages={onOpenPeerMessages}
+              onAnswer={onAnswer}
+              speakerName={message.role === "bot" ? memberName?.(message.botId) : undefined}
+              memberName={memberName}
+              peerBot={peerBot}
+              replyPreview={
+                message.replyToMessageId ? messageById.get(message.replyToMessageId) : undefined
+              }
+              replyToMessageId={message.replyToMessageId}
+              onJumpToMessage={onJumpToMessage}
+              onRefresh={onRefresh}
+              onBotChanged={onBotChanged}
+              onAddRoutine={onAddRoutine}
+              voiceReady={voiceReady}
+              speaking={speakingMessageId === message.id}
+              onSpeak={() => onSpeak(message)}
+            />
           </div>
-        </div>
-      ) : null}
+        ))}
+        {running &&
+        !messages.some(
+          (message) =>
+            message.id.startsWith("progress:") &&
+            message.blocks[0]?.kind === "progress" &&
+            message.blocks[0].text,
+        ) ? (
+          <ActiveBotGlyph bots={workingBots} label={workingLabel} />
+        ) : null}
+      </div>
+      <button
+        ref={jumpButtonRef}
+        type="button"
+        aria-label={t`Jump to latest`}
+        aria-hidden={atEnd}
+        tabIndex={atEnd ? -1 : 0}
+        onClick={jumpToLatest}
+        className={`absolute bottom-4 left-1/2 z-20 grid h-9 w-9 -translate-x-1/2 place-items-center rounded-full border border-[#303034] bg-[#1A1A1D]/95 text-[#C9C9CE] shadow-[0_8px_24px_rgba(0,0,0,.45)] backdrop-blur transition-[opacity,transform,background-color] duration-200 ease-[cubic-bezier(.22,1,.36,1)] hover:bg-[#242428] motion-reduce:transition-none ${
+          atEnd ? "pointer-events-none translate-y-2 opacity-0" : "translate-y-0 opacity-100"
+        }`}
+      >
+        <ArrowDown size={17} strokeWidth={1.8} />
+      </button>
     </div>
   );
 });
@@ -3610,7 +3846,7 @@ function MentionOptionIcon({ mention }: { mention: ComposerMention }) {
       </span>
     );
   }
-  return <BotAvatar color={mention.color ?? "#85858A"} size={16} />;
+  return <BotAvatar color={mention.color ?? "#85858A"} identity={mention.id} size={16} />;
 }
 
 function MentionChipIcon({ mention }: { mention: ComposerMention }) {
@@ -3627,7 +3863,7 @@ function MentionChipIcon({ mention }: { mention: ComposerMention }) {
       </span>
     );
   }
-  return <BotAvatar color={mention.color ?? "#85858A"} size={16} />;
+  return <BotAvatar color={mention.color ?? "#85858A"} identity={mention.id} size={16} />;
 }
 
 function previewMessageText(message: ThreadMessage): string {
@@ -3796,6 +4032,7 @@ const MessageView = memo(function MessageView({
   onOpenPeerMessages,
   speakerName,
   memberName,
+  peerBot,
   replyPreview,
   replyToMessageId,
   onJumpToMessage,
@@ -3814,6 +4051,7 @@ const MessageView = memo(function MessageView({
   onOpenPeerMessages: (peerBotId: string) => void;
   speakerName?: string;
   memberName?: (botId: string | undefined) => string | undefined;
+  peerBot: (botId: string) => { color: string; status?: string } | undefined;
   replyPreview?: ThreadMessage;
   replyToMessageId?: string;
   onJumpToMessage?: (messageId: string) => void;
@@ -3924,16 +4162,14 @@ const MessageView = memo(function MessageView({
           const peerBotId = sent ? block.toBotId : block.fromBotId;
           const label = sent ? t`Messaged ${peer}` : t`Message from ${peer}`;
           return (
-            <button
+            <CollaborationMarker
               key={i}
-              type="button"
-              aria-label={label}
+              ariaLabel={label}
+              color={peerBot(peerBotId)?.color ?? "#85858A"}
+              identity={peerBotId}
+              label={label}
               onClick={() => onOpenPeerMessages(peerBotId)}
-              className="flex items-center justify-center gap-2 self-center rounded-full border border-[#26262A] px-3 py-1 text-[13px] text-[#85858A] hover:bg-[#161618]"
-            >
-              <span aria-hidden>↔</span>
-              <span>{label}</span>
-            </button>
+            />
           );
         }
         if (block.kind === "meta") {
@@ -4245,6 +4481,7 @@ function ComputerModePicker({
 
 function CreateBotForm({
   onCreate,
+  onImportShare,
   onCancel,
 }: {
   onCreate: (input: {
@@ -4253,6 +4490,7 @@ function CreateBotForm({
     description: string;
     computerMode: ComputerMode;
   }) => Promise<void>;
+  onImportShare: (input: { manifest?: ShareManifest; token?: string }) => Promise<void>;
   onCancel: () => void;
 }) {
   const { t } = useLingui();
@@ -4262,6 +4500,9 @@ function CreateBotForm({
   const [computerMode, setComputerMode] = useState<ComputerMode>("team");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [shareJson, setShareJson] = useState("");
+  const [shareToken, setShareToken] = useState("");
+  const [importingShare, setImportingShare] = useState(false);
 
   async function handleSubmit() {
     if (!name.trim() || submitting) return;
@@ -4276,6 +4517,45 @@ function CreateBotForm({
     }
   }
 
+  async function handleImportShare() {
+    if (importingShare) return;
+    setError(null);
+    setImportingShare(true);
+    try {
+      const token = shareToken.trim();
+      if (token) {
+        await onImportShare({ token });
+        return;
+      }
+      const raw = shareJson.trim();
+      if (!raw) {
+        setError("Paste share JSON or a link token");
+        return;
+      }
+      const manifest = parseShareManifestPayload(JSON.parse(raw) as unknown);
+      await onImportShare({ manifest });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not import share");
+    } finally {
+      setImportingShare(false);
+    }
+  }
+
+  async function handleShareFile(file: File) {
+    if (importingShare) return;
+    setError(null);
+    setImportingShare(true);
+    try {
+      const text = await file.text();
+      const manifest = parseShareManifestPayload(JSON.parse(text) as unknown);
+      await onImportShare({ manifest });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not import share file");
+    } finally {
+      setImportingShare(false);
+    }
+  }
+
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
@@ -4286,6 +4566,50 @@ function CreateBotForm({
           <X size={16} strokeWidth={1.8} />
         </button>
       </div>
+      <details className="mb-5 rounded-[11px] border border-[#26262A] px-3.5 py-3">
+        <summary className="cursor-pointer text-[14px] text-[#85858A]">Import from share</summary>
+        <p className="mt-3 text-[13px] text-[#6C6C70]">Config only. Not the computer or logins.</p>
+        <label className="mt-3 block text-[13px] text-[#85858A]">
+          Share JSON
+          <textarea
+            value={shareJson}
+            onChange={(e) => setShareJson(e.target.value)}
+            rows={4}
+            placeholder="Paste rakazo.share/v1 JSON"
+            className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3 py-2.5 text-[13px] text-[#ECECEE]"
+          />
+        </label>
+        <label className="mt-3 block text-[13px] text-[#85858A]">
+          Or link token
+          <input
+            value={shareToken}
+            onChange={(e) => setShareToken(e.target.value)}
+            placeholder="Token from a share URL"
+            className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3 py-2.5 text-[13px] text-[#ECECEE]"
+          />
+        </label>
+        <label className="mt-3 block text-[13px] text-[#85858A]">
+          Or file
+          <input
+            type="file"
+            accept="application/json,.json"
+            className="mt-2 block w-full text-[13px] text-[#85858A]"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) void handleShareFile(file);
+            }}
+          />
+        </label>
+        <button
+          type="button"
+          disabled={importingShare}
+          onClick={() => void handleImportShare()}
+          className="mt-4 rounded-[11px] border border-[#3A3A3F] px-4 py-2 text-[14px] text-[#ECECEE] disabled:opacity-40"
+        >
+          {importingShare ? "Importing…" : "Import share"}
+        </button>
+      </details>
       {error ? (
         <p role="alert" data-testid="create-bot-error" className="mb-3 text-[13px] text-[#C94244]">
           {error}
@@ -4383,6 +4707,46 @@ function BotSettings({
   const [modelMetaReady, setModelMetaReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareLink, setShareLink] = useState<string | null>(null);
+  const [shareToken, setShareToken] = useState<string | null>(null);
+  const [shareNotice, setShareNotice] = useState<string | null>(null);
+  const shareStorageKey = `rakazo-share-link-${bot.id}`;
+
+  useEffect(() => {
+    setShareNotice(null);
+    try {
+      const stored = sessionStorage.getItem(shareStorageKey);
+      if (!stored) {
+        setShareLink(null);
+        setShareToken(null);
+        return;
+      }
+      const parsed = JSON.parse(stored) as { url?: string; token?: string };
+      if (parsed.url && parsed.token) {
+        setShareLink(parsed.url);
+        setShareToken(parsed.token);
+      } else {
+        setShareLink(null);
+        setShareToken(null);
+      }
+    } catch {
+      setShareLink(null);
+      setShareToken(null);
+    }
+  }, [shareStorageKey]);
+
+  function persistShareLink(link: { url: string; token: string } | null) {
+    if (link) {
+      sessionStorage.setItem(shareStorageKey, JSON.stringify(link));
+      setShareLink(link.url);
+      setShareToken(link.token);
+    } else {
+      sessionStorage.removeItem(shareStorageKey);
+      setShareLink(null);
+      setShareToken(null);
+    }
+  }
 
   useEffect(() => {
     void rpc.voice
@@ -4457,7 +4821,7 @@ function BotSettings({
   return (
     <div data-testid="bot-settings">
       <div className="flex justify-center">
-        <BotAvatar color={bot.color} size={64} status={bot.status} />
+        <BotAvatar color={bot.color} identity={bot.id} size={64} status={bot.status} />
       </div>
       <label className="mt-6 block text-[14px] text-[#85858A]">
         <Trans>Name</Trans>
@@ -4649,6 +5013,104 @@ function BotSettings({
           computer={computer}
           onChanged={onComputerChanged}
         />
+      </div>
+      <div className="mt-6 border-t border-[#26262A] pt-5" data-testid="bot-share">
+        <p className="text-[14px] text-[#85858A]">Share bot</p>
+        <p className="mt-2 text-[13px] text-[#6C6C70]">Config only. Not the computer or logins.</p>
+        <div className="mt-3 flex flex-wrap gap-3">
+          <button
+            type="button"
+            disabled={shareBusy}
+            onClick={() => {
+              setShareBusy(true);
+              setShareNotice(null);
+              void rpc.bots
+                .shareManifest({ botId: bot.id })
+                .then(async (manifest) => {
+                  await navigator.clipboard.writeText(JSON.stringify(manifest, null, 2));
+                  setShareNotice("Copied");
+                })
+                .catch((err) => setError(err instanceof Error ? err.message : "Could not copy"))
+                .finally(() => setShareBusy(false));
+            }}
+            className="text-[14px] text-[#85858A] disabled:opacity-40"
+          >
+            Copy JSON
+          </button>
+          <button
+            type="button"
+            disabled={shareBusy}
+            onClick={() => {
+              setShareBusy(true);
+              setShareNotice(null);
+              void rpc.bots
+                .shareManifest({ botId: bot.id })
+                .then((manifest) => {
+                  const blob = new Blob([JSON.stringify(manifest, null, 2)], {
+                    type: "application/json",
+                  });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `${bot.name.toLowerCase().replace(/\s+/g, "-")}.rakazo-bot.json`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                })
+                .catch((err) => setError(err instanceof Error ? err.message : "Could not download"))
+                .finally(() => setShareBusy(false));
+            }}
+            className="text-[14px] text-[#85858A] disabled:opacity-40"
+          >
+            Download
+          </button>
+          <button
+            type="button"
+            disabled={shareBusy}
+            onClick={() => {
+              setShareBusy(true);
+              setShareNotice(null);
+              void rpc.bots
+                .shareCreate({ botId: bot.id })
+                .then(({ url, token }) => {
+                  persistShareLink({ url, token });
+                  setShareNotice("Link created");
+                })
+                .catch((err) =>
+                  setError(err instanceof Error ? err.message : "Could not create link"),
+                )
+                .finally(() => setShareBusy(false));
+            }}
+            className="text-[14px] text-[#85858A] disabled:opacity-40"
+          >
+            Create link
+          </button>
+          {shareToken ? (
+            <button
+              type="button"
+              disabled={shareBusy}
+              onClick={() => {
+                setShareBusy(true);
+                void rpc.bots
+                  .shareRevoke({ token: shareToken })
+                  .then(() => {
+                    persistShareLink(null);
+                    setShareNotice("Link revoked");
+                  })
+                  .catch((err) =>
+                    setError(err instanceof Error ? err.message : "Could not revoke link"),
+                  )
+                  .finally(() => setShareBusy(false));
+              }}
+              className="text-[14px] text-[#E65707] disabled:opacity-40"
+            >
+              Revoke link
+            </button>
+          ) : null}
+        </div>
+        {shareNotice ? <p className="mt-2 text-[13px] text-[#6C6C70]">{shareNotice}</p> : null}
+        {shareLink ? (
+          <p className="mt-2 break-all text-[13px] text-[#9A9AA0]">{shareLink}</p>
+        ) : null}
       </div>
     </div>
   );

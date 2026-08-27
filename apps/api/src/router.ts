@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { implement, ORPCError } from "@orpc/server";
 import {
   type AdapterContext,
@@ -71,14 +71,19 @@ import {
   type McpServer,
   type Me,
   OPENAI_COMPATIBLE_PROVIDER_ID,
+  parseShareManifestPayload,
+  type ShareManifest,
+  ShareManifestSchema,
 } from "@rakazo/contracts";
 import {
   ACTIVE_RUN_STATUSES,
   AttachmentValidationError,
+  buildShareManifest,
   containsSecret,
   expandSkillReferencesInPrompt,
   hasMixedOneShotSchedule,
   isOneShotRoutineCrons,
+  isValidTimezone,
   nextCronDateAcrossStrict,
 } from "@rakazo/core";
 import {
@@ -332,7 +337,22 @@ export function createRouter(deps: RouterDeps) {
 
   return os.router({
     health: os.health.handler(async () => ({ ok: true as const, version: "0.1.0" })),
+    share: {
+      preview: os.share.preview.handler(async ({ input }) => {
+        const manifest = await loadShareManifestSnapshot(deps.prisma, input.token);
+        return manifest;
+      }),
+    },
     me: authed.me.handler(async ({ context }): Promise<Me> => meDto(deps, context.actor)),
+    preferences: {
+      update: authed.preferences.update.handler(async ({ context, input }): Promise<Me> => {
+        await deps.prisma.user.update({
+          where: { id: context.actor.userId },
+          data: { avatarStyle: input.avatarStyle },
+        });
+        return meDto(deps, context.actor);
+      }),
+    },
     bootstrap: authed.bootstrap.handler(async ({ context, input }) => {
       const actor = context.actor;
       const [me, bots, botSections, archivedBots] = await Promise.all([
@@ -570,6 +590,76 @@ export function createRouter(deps: RouterDeps) {
           });
         }
         return duplicate;
+      }),
+      shareManifest: authed.bots.shareManifest.handler(async ({ context, input }) => {
+        const bot = await repos.getBot(context.actor, input.botId);
+        const routines = await deps.prisma.routine.findMany({
+          where: { botId: input.botId, workspaceId: context.actor.workspaceId },
+        });
+        return buildShareManifest(
+          shareBotConfigFromRecord(bot),
+          routines.map((routine) => ({
+            name: routine.name,
+            prompt: routine.prompt,
+            crons: routine.crons,
+            timezone: routine.timezone,
+          })),
+        );
+      }),
+      importShare: authed.bots.importShare.handler(async ({ context, input }) => {
+        const manifest = input.token
+          ? await loadShareManifestSnapshot(deps.prisma, input.token)
+          : input.manifest!;
+        return importShareManifest(repos, context.actor, manifest);
+      }),
+      shareCreate: authed.bots.shareCreate.handler(async ({ context, input }) => {
+        const bot = await repos.getBot(context.actor, input.botId);
+        const routines = await deps.prisma.routine.findMany({
+          where: { botId: input.botId, workspaceId: context.actor.workspaceId },
+        });
+        const snapshot = buildShareManifest(
+          shareBotConfigFromRecord(bot),
+          routines.map((routine) => ({
+            name: routine.name,
+            prompt: routine.prompt,
+            crons: routine.crons,
+            timezone: routine.timezone,
+          })),
+        );
+        const token = randomBytes(32).toString("base64url");
+        const ttlDays = input.ttlDays ?? 30;
+        const expiresAt = new Date(Date.now() + ttlDays * 86_400_000);
+        await deps.prisma.botShare.create({
+          data: {
+            token,
+            workspaceId: context.actor.workspaceId,
+            createdByUserId: context.actor.userId,
+            snapshot,
+            expiresAt,
+          },
+        });
+        return {
+          token,
+          url: new URL(`/share/${token}`, deps.env.webOrigin).toString(),
+          expiresAt: expiresAt.toISOString(),
+        };
+      }),
+      shareRevoke: authed.bots.shareRevoke.handler(async ({ context, input }) => {
+        const row = await deps.prisma.botShare.findFirst({
+          where: {
+            token: input.token,
+            workspaceId: context.actor.workspaceId,
+            createdByUserId: context.actor.userId,
+          },
+        });
+        if (!row) throw new IsolationError();
+        if (!row.revokedAt) {
+          await deps.prisma.botShare.update({
+            where: { token: input.token },
+            data: { revokedAt: new Date() },
+          });
+        }
+        return { ok: true as const };
       }),
       update: authed.bots.update.handler(async ({ context, input }) => {
         const existing = await repos.getBot(context.actor, input.botId);
@@ -1638,9 +1728,9 @@ export function createRouter(deps: RouterDeps) {
               message: "One-shot schedules must be created from chat.",
             });
           }
-          if (!existing.nextRunAt) {
+          if (!existing.nextRunAt && existing.lastRunAt) {
             throw new ORPCError("BAD_REQUEST", {
-              message: "One-shot schedules cannot be reactivated after they fire.",
+              message: "This one-shot already ran.",
             });
           }
         }
@@ -1653,10 +1743,29 @@ export function createRouter(deps: RouterDeps) {
           !isOneShotRoutineCrons(crons) && (scheduleChanged || (active && !existing.nextRunAt))
             ? nextRoutineDate(crons, timezone)
             : null;
+        let armedOneShotAt: Date | null = null;
+        if (active && isOneShotRoutineCrons(crons) && !existing.nextRunAt && !existing.lastRunAt) {
+          if (!input.runAt) {
+            throw new ORPCError("BAD_REQUEST", {
+              message: "Add a run time for this one-shot.",
+            });
+          }
+          const parsed = new Date(input.runAt);
+          if (!Number.isFinite(parsed.getTime()) || parsed.getTime() <= Date.now()) {
+            throw new ORPCError("BAD_REQUEST", {
+              message: "Run time must be in the future.",
+            });
+          }
+          armedOneShotAt = parsed;
+        } else if (input.runAt !== undefined) {
+          throw new ORPCError("BAD_REQUEST", {
+            message: "A run time is only for one-shots that have not run yet.",
+          });
+        }
         const nextRunAt = !active
           ? null
           : isOneShotRoutineCrons(crons)
-            ? existing.nextRunAt
+            ? (armedOneShotAt ?? existing.nextRunAt)
             : (recalculatedNextRunAt ?? existing.nextRunAt);
         const row = await deps.prisma.routine.update({
           where: { id: existing.id },
@@ -2922,6 +3031,7 @@ async function meDto(deps: RouterDeps, actor: Actor): Promise<Me> {
     defaultModel: cred?.defaultModel ?? settings?.defaultModelId ?? deps.env.defaultModel,
     computerHost: computerHostFor(settings?.computerHost, deps.env.sandboxProvider),
     canChooseHostComputer: actor.isDeploymentOwner && deps.env.sandboxProvider === "docker",
+    avatarStyle: user.avatarStyle === "organic" ? "organic" : "robot",
   };
 }
 
@@ -3287,6 +3397,83 @@ async function listRoutinesDto(deps: RouterDeps, actor: Actor, botId: string) {
     where: { botId, workspaceId: actor.workspaceId },
   });
   return rows.map(mapRoutine);
+}
+
+async function loadShareManifestSnapshot(
+  prisma: PrismaClient,
+  token: string,
+): Promise<ShareManifest> {
+  const row = await prisma.botShare.findUnique({ where: { token } });
+  if (!row || row.revokedAt || row.expiresAt <= new Date()) {
+    throw new ORPCError("NOT_FOUND", { message: "Share link not found" });
+  }
+  return ShareManifestSchema.parse(row.snapshot);
+}
+
+async function importShareManifest(
+  repos: ReturnType<typeof createRepos>,
+  actor: Actor,
+  manifest: ShareManifest,
+) {
+  try {
+    parseShareManifestPayload(manifest);
+  } catch (error) {
+    throw new ORPCError("BAD_REQUEST", {
+      message: error instanceof Error ? error.message : "Invalid share manifest",
+    });
+  }
+  validateShareRoutineTemplates(manifest.routines);
+  return repos.createBot(actor, {
+    name: manifest.name,
+    title: manifest.title,
+    description: manifest.description,
+    instructions: manifest.instructions,
+    notifyOnFinish: manifest.notifyOnFinish,
+    color: manifest.color,
+    computerMode: manifest.computerMode,
+    shareRoutineTemplates: manifest.routines.length > 0 ? manifest.routines : undefined,
+  });
+}
+
+function validateShareRoutineTemplates(routines: ShareManifest["routines"]) {
+  for (const routine of routines) {
+    if (!isValidTimezone(routine.timezone)) {
+      throw new ORPCError("BAD_REQUEST", { message: "Enter a valid timezone." });
+    }
+    if (hasMixedOneShotSchedule(routine.crons)) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: "A one-time schedule can't be combined with other schedules.",
+      });
+    }
+    if (!isOneShotRoutineCrons(routine.crons)) {
+      try {
+        const next = nextCronDateAcrossStrict(routine.crons, new Date(), routine.timezone);
+        if (!next) throw new Error("invalid cron");
+      } catch {
+        throw new ORPCError("BAD_REQUEST", { message: "Enter a valid cron expression." });
+      }
+    }
+  }
+}
+
+function shareBotConfigFromRecord(bot: {
+  name: string;
+  title: string;
+  description: string;
+  instructions: string;
+  color: string;
+  notifyOnFinish: boolean;
+  computer: { scope: string } | null;
+}) {
+  return {
+    name: bot.name,
+    title: bot.title,
+    description: bot.description,
+    instructions: bot.instructions,
+    color: bot.color,
+    notifyOnFinish: bot.notifyOnFinish,
+    computerMode: bot.computer?.scope === "dedicated" ? ("dedicated" as const) : ("team" as const),
+  };
 }
 
 function withViewOnly(url: string, viewOnly: boolean) {
