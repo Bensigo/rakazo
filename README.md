@@ -20,7 +20,7 @@ Rakazo is in beta. Learn more at [rakazo.com](https://rakazo.com).
 - Bots that can delegate to peer bots or short-lived subagents
 - Bring-your-own model credentials through Pi
 - App integrations through Composio or Pipedream Connect, plus user-installed Treg, remote MCP, and OpenAPI tool sources
-- Docker, E2B, Daytona, and Box computers, plus trusted Mac access through Electron's Docker-backed setup
+- Docker, E2B, Daytona, Box, and trusted local-computer support
 
 ## Demo
 
@@ -36,13 +36,10 @@ https://github.com/user-attachments/assets/dccdeddb-2134-4a56-8eed-b2e591736b1c
 - Better Auth
 - Graphile Worker
 - Pi
-- Docker, E2B, Daytona, and Box, plus trusted Mac access through Electron's Docker-backed setup
-- Composio and Pipedream Connect app catalogs, plus Treg, MCP, and OpenAPI integrations
 
 ## Quick start
 
-You need Node.js 22.22.2+ on the 22.x line, any 24.x release, or Node.js 26+, plus pnpm 9 and
-Docker Desktop.
+You need Node.js 22+, pnpm 9, and Docker Desktop.
 
 ```bash
 git clone https://github.com/elie222/rakazo.git
@@ -102,9 +99,9 @@ Mobile build and release instructions live in [docs/mobile-release.md](./docs/mo
 
 ## Web UI language
 
-The web (and Electron-hosted) UI supports English, Deutsch, 한국어, Türkçe, हिन्दी, and Português
-(Brasil). Change it under **Settings → Language**. The marketing homepage (`apps/www`) is available
-in en/de/ko via footer language links (`/`, `/de/`, `/ko/`); other marketing pages stay English.
+The web (and Electron-hosted) UI supports English, Deutsch, and 한국어. Change it under
+**Settings → Language**. The marketing homepage (`apps/www`) is available in en/de/ko via
+footer language links (`/`, `/de/`, `/ko/`); other marketing pages stay English.
 
 ## Development
 
