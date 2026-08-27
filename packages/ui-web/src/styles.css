@@ -28,23 +28,23 @@
   animation: rakazo-organic-idle 5.6s ease-in-out infinite;
 }
 
-.rakazo-organic-avatar[data-eye-pattern="0"] .rakazo-organic-avatar-eyes {
+.rakazo-organic-avatar[data-working="false"][data-eye-pattern="0"] .rakazo-organic-avatar-eyes {
   animation: rakazo-eyes-idle-0 5.8s ease-in-out infinite;
 }
 
-.rakazo-organic-avatar[data-eye-pattern="1"] .rakazo-organic-avatar-eyes {
+.rakazo-organic-avatar[data-working="false"][data-eye-pattern="1"] .rakazo-organic-avatar-eyes {
   animation: rakazo-eyes-idle-1 6.4s ease-in-out -1.7s infinite;
 }
 
-.rakazo-organic-avatar[data-eye-pattern="2"] .rakazo-organic-avatar-eyes {
+.rakazo-organic-avatar[data-working="false"][data-eye-pattern="2"] .rakazo-organic-avatar-eyes {
   animation: rakazo-eyes-idle-2 5.2s ease-in-out -3.1s infinite;
 }
 
-.rakazo-organic-avatar[data-eye-pattern="3"] .rakazo-organic-avatar-eyes {
+.rakazo-organic-avatar[data-working="false"][data-eye-pattern="3"] .rakazo-organic-avatar-eyes {
   animation: rakazo-eyes-idle-3 6.8s ease-in-out -2.3s infinite;
 }
 
-.rakazo-organic-avatar[data-working="true"] .rakazo-organic-avatar-eyes {
+.rakazo-organic-avatar[data-working="true"][data-eye-pattern="0"] .rakazo-organic-avatar-eyes {
   animation: rakazo-organic-eyes-loop-0 6.6s ease-in-out infinite;
 }
 
