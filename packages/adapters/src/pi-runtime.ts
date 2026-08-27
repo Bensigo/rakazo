@@ -170,10 +170,12 @@ export class PiAgentRuntime implements AgentRuntime {
         signal.addEventListener("abort", onAbort);
 
         let streamed = "";
+        let toolCalls = 0;
         let toolActivityShowing = false;
         agent.subscribe((event) => {
           if (event.type === "tool_execution_start") {
             if (!consumeToolCall(host)) return;
+            toolCalls += 1;
             // Live activity feedback: without this the thread shows a bare
             // "working…" for the whole tool call with nothing actionable.
             toolActivityShowing = true;
@@ -247,12 +249,19 @@ export class PiAgentRuntime implements AgentRuntime {
             queue.push({ type: "text", text: budgetMessage });
             streamed = budgetMessage;
           }
-        } else if (!streamed) {
-          const fallback = assistantText(agent.state.messages.at(-1)) || "I finished the work.";
-          queue.push({ type: "text", text: fallback });
-          streamed = fallback;
+        } else if (!streamed.trim()) {
+          streamed = "";
+          const lastMessage = agent.state.messages.at(-1);
+          const fallback = lastMessage?.role === "assistant" ? assistantText(lastMessage) : "";
+          if (fallback.trim()) {
+            queue.push({ type: "text", text: fallback });
+            streamed = fallback;
+          } else if (toolCalls === 0 && !request.allowSilentEmpty) {
+            streamed = "No response. Try again.";
+            queue.push({ type: "text", text: streamed });
+          }
         }
-        queue.push({ type: "done", text: streamed });
+        queue.push(streamed.trim() ? { type: "done", text: streamed } : { type: "done" });
       } catch (error) {
         const message = sanitizeError(error instanceof Error ? error.message : String(error));
         queue.fail(new Error(message));

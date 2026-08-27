@@ -79,7 +79,7 @@ export function renderBotDirectory(bots: readonly BotAddress[]): string | undefi
     "<teammate_directory>",
     ...lines,
     "</teammate_directory>",
-    "Use message_bot to send one of them a message. Delivery is asynchronous: the tool returns as soon as it is sent, and any reply arrives later as a new message that wakes you. Never wait for a reply in this turn.",
+    "Use message_bot for useful updates, questions, and results. Delivery is async and does not end your turn. Continue independent work; do not poll or send ack-only messages. Later updates only if they add something new.",
   ].join("\n");
 }
 
@@ -112,6 +112,6 @@ export function buildBotMessageWakePrompt(args: { from: BotAddress; text: string
     escapePromptData(args.text),
     "</bot_message>",
     "",
-    `If it needs a reply or an action, handle it: reply to ${name} with message_bot using bot_id ${id}. That reaches them on a later turn, not as a live back-and-forth. Tell your user only when you have a real result to share. If it is just an FYI with nothing for you to do, staying silent is fine — do not reply only to acknowledge it.`,
+    `If it needs a reply or an action, handle it: reply to ${name} with message_bot using bot_id ${id}. Sending does not end your turn: continue independent work, and send another update later only if it adds something new. Tell your user only when you have a real result. For an FYI with nothing to do, staying silent is fine; do not reply only to acknowledge.`,
   ].join("\n");
 }
