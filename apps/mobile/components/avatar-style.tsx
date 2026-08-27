@@ -1,6 +1,6 @@
 import type { AvatarStyle, Me } from "@rakazo/contracts";
 import { usePathname } from "expo-router";
-import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
+import { createContext, type ReactNode, useContext, useEffect, useRef, useState } from "react";
 import { rpc } from "../lib/api";
 
 const AvatarStyleContext = createContext<{
@@ -14,15 +14,23 @@ const AvatarStyleContext = createContext<{
 export function AvatarStyleProvider({ children }: { children: ReactNode }) {
   const [avatarStyle, setAvatarStyle] = useState<AvatarStyle>("robot");
   const pathname = usePathname();
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
+    const requestId = ++requestIdRef.current;
     void rpc<Me>("me")
-      .then((me) => setAvatarStyle(me.avatarStyle))
+      .then((me) => {
+        if (requestId !== requestIdRef.current) return;
+        setAvatarStyle(me.avatarStyle);
+      })
       .catch(() => undefined);
   }, [pathname]);
 
   async function updateAvatarStyle(next: AvatarStyle) {
+    const requestId = ++requestIdRef.current;
+    setAvatarStyle(next);
     const me = await rpc<Me>("preferences/update", { avatarStyle: next });
+    if (requestId !== requestIdRef.current) return;
     setAvatarStyle(me.avatarStyle);
   }
 
