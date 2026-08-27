@@ -1,3 +1,4 @@
+import { avatarIdentitySeed } from "@rakazo/core";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { AvatarStyleProvider } from "./avatar-style.js";
@@ -43,6 +44,8 @@ describe("BotAvatar", () => {
 
     expect(html).toContain("rakazo-organic-avatar");
     expect(html).toContain('data-working="true"');
+    expect(html).toMatch(/data-shape-family="\d"/);
+    expect(html).toMatch(/data-eye-pattern="[0-3]"/);
     expect(html).toContain("<animate");
     expect(html).not.toContain("rakazo-bot-avatar-visor");
   });
@@ -54,6 +57,23 @@ describe("BotAvatar", () => {
     );
 
     expect(maya).not.toEqual(github);
+  });
+
+  it("assigns animation hooks across every organic shape family", () => {
+    const identities = new Map<number, string>();
+    for (let index = 0; identities.size < 10; index++) {
+      const identity = `avatar-${index}`;
+      identities.set(avatarIdentitySeed(identity) % 10, identity);
+    }
+
+    for (const [family, identity] of identities) {
+      const html = renderToString(
+        <BotAvatar color="#D9508A" identity={identity} status="running" variant="organic" />,
+      );
+      expect(html).toContain(`data-shape-family="${family}"`);
+      expect(html).toMatch(/data-eye-pattern="[0-3]"/);
+      expect(html).toContain('data-working="true"');
+    }
   });
 
   it("uses the account avatar preference when no local variant is provided", () => {
