@@ -25,6 +25,7 @@ const runTriggers = new Set<Run["trigger"]>([
   "spawn",
   "skill",
   "bot_message",
+  "webhook",
 ]);
 
 function runFromStartedEvent(event: ProductEvent, previous: Run | undefined): Run {
