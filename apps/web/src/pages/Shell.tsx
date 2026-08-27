@@ -104,6 +104,7 @@ import {
   LoadingState,
   SuccessPop,
 } from "../components/beautiful-ui/primitives";
+import { ComputerMaintenanceActions } from "../components/ComputerMaintenanceActions";
 import { SkillDraftCard } from "../components/teach/SkillDraftCard";
 import { TeachCaptureOverlay } from "../components/teach/TeachCaptureOverlay";
 import { TeachComputerSection } from "../components/teach/TeachComputerSection";
@@ -123,6 +124,7 @@ import {
   activeThreadRuns,
   clearActiveThreadRuns,
   computerPanelAutoBoot,
+  computerPanelAutoUsesBoot,
   computerTakeoverBlocked,
   isComputerStatusEvent,
   isThreadSnapshotEvent,
@@ -345,6 +347,7 @@ export function ShellPage() {
   const bootstrappedThread = useRef<ThreadSnapshot | null>(null);
   const expandedHistoryThread = useRef<string | null>(null);
   const historyEpoch = useRef(0);
+  const jumpGeneration = useRef(0);
   const initiallyScrolledThread = useRef<string | null>(null);
   const messageScroll = useRef<HTMLDivElement>(null);
   const pinnedAroundRef = useRef<{
@@ -979,13 +982,16 @@ export function ShellPage() {
   async function jumpToMessage(target: { botId?: string; groupId?: string; messageId: string }) {
     const threadTarget = searchHitThreadTarget(target);
     const epoch = historyEpoch.current;
+    jumpGeneration.current += 1;
+    const jumpId = jumpGeneration.current;
     const [snap, page] = await Promise.all([
       rpc.threads.get(threadTarget),
       rpc.threads.messages({ ...threadTarget, around: { messageId: target.messageId } }),
     ]);
     // The epoch check drops a jump that raced a conversation clear (or a bot switch): applying
     // the fetched page would pin deleted messages that every later refresh keeps restoring.
-    if (epoch !== historyEpoch.current) return;
+    // jumpId drops an older jump that finished after a newer click.
+    if (epoch !== historyEpoch.current || jumpId !== jumpGeneration.current) return;
     if (target.groupId && activeGroupId.current !== target.groupId) return;
     if (target.botId && activeBotId.current !== target.botId) return;
     expandedHistoryThread.current = page.threadId;
@@ -1004,14 +1010,23 @@ export function ShellPage() {
     });
     if (threadTarget.botId) {
       commitComputer(snap.computer ?? null);
-      setRoutines(await rpc.routines.list({ botId: threadTarget.botId }));
-      setRoutinesBotId(threadTarget.botId);
+      // Don't block parent-scroll on routines metadata; a list failure must not abort the jump.
+      void rpc.routines
+        .list({ botId: threadTarget.botId })
+        .then((routines) => {
+          if (epoch !== historyEpoch.current || jumpId !== jumpGeneration.current) return;
+          if (activeBotId.current !== threadTarget.botId) return;
+          setRoutines(routines);
+          setRoutinesBotId(threadTarget.botId);
+        })
+        .catch(() => undefined);
     } else {
       commitComputer(null);
       setRoutines([]);
       setRoutinesBotId(null);
     }
     window.requestAnimationFrame(() => {
+      if (epoch !== historyEpoch.current || jumpId !== jumpGeneration.current) return;
       document
         .querySelector(`[data-message-id="${target.messageId}"]`)
         ?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -1130,6 +1145,8 @@ export function ShellPage() {
   refreshGroupThreadRef.current = refreshGroupThread;
   const loadOlderMessagesRef = useRef(loadOlderMessages);
   loadOlderMessagesRef.current = loadOlderMessages;
+  const jumpToMessageRef = useRef(jumpToMessage);
+  jumpToMessageRef.current = jumpToMessage;
 
   const mentionBotsKey = useMemo(
     () => bots.map((bot) => `${bot.id}:${bot.name}`).join(","),
@@ -1239,6 +1256,22 @@ export function ShellPage() {
 
   const openBot = useCallback((id: string) => navigate(`/app/${id}`), [navigate]);
   const loadOlder = useCallback(() => loadOlderMessagesRef.current(), []);
+  const jumpToReplyMessage = useCallback((messageId: string) => {
+    const existing = document.querySelector(`[data-message-id="${CSS.escape(messageId)}"]`);
+    if (existing) {
+      // Cancel any in-flight around-fetch so it cannot overwrite this scroll.
+      jumpGeneration.current += 1;
+      existing.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    const groupId = activeGroupId.current;
+    if (groupId) {
+      void jumpToMessageRef.current({ groupId, messageId });
+      return;
+    }
+    const botId = activeBotId.current;
+    if (botId) void jumpToMessageRef.current({ botId, messageId });
+  }, []);
   const answerMessage = useCallback(async (message: ThreadMessage, text: string) => {
     const botId = activeBotId.current;
     const groupId = activeGroupId.current;
@@ -1577,6 +1610,7 @@ export function ShellPage() {
       }
       if (action === "boot" && autoBooted.current === botId) return;
       autoBooted.current = botId;
+      if (!computerPanelAutoUsesBoot(action)) return;
       await bootComputer({
         takeControl: false,
         overlay: action === "boot",
@@ -2141,6 +2175,7 @@ export function ShellPage() {
           onOpenBot={openBot}
           onAnswer={answerMessage}
           onReply={setReplyTarget}
+          onJumpToMessage={jumpToReplyMessage}
           onOpenPeerMessages={(peerBotId) => {
             setPeerMessagesFocusId(peerBotId);
             setPeerMessagesOpen(true);
@@ -2326,6 +2361,18 @@ export function ShellPage() {
                     </Button>
                   )}
                 </div>
+                {computer?.state === "error" ||
+                computer?.state === "stopped" ||
+                (computer?.state === "running" && !embeddedScreenUrl) ? (
+                  <ComputerMaintenanceActions
+                    botId={active.id}
+                    computer={computer}
+                    compact
+                    onChanged={async () => {
+                      await refreshThread(active.id);
+                    }}
+                  />
+                ) : null}
                 <div className="mt-[30px] mb-3 text-[14px] text-[#85858A]">
                   <Trans>Routines</Trans>
                 </div>
@@ -2448,6 +2495,7 @@ export function ShellPage() {
               <BotSettings
                 key={active.id}
                 bot={active}
+                computer={computer}
                 memoryProviderConfigured={memoryProviderConfig != null}
                 onSave={async ({ computerMode, ...patch }) => {
                   if (computerMode !== active.computerMode) {
@@ -2472,6 +2520,9 @@ export function ShellPage() {
                   URL.revokeObjectURL(url);
                 }}
                 onClear={() => setClearTarget(active)}
+                onComputerChanged={async () => {
+                  await refreshThread(active.id);
+                }}
               />
             ) : null}
             {panel === "routine" && active ? (
@@ -2750,6 +2801,7 @@ export function ShellPage() {
 
         {pluginsOpen ? (
           <PluginsOverlay
+            activeBotId={activeBotId.current}
             onClose={() => setPluginsOpen(false)}
             onOpenMcp={() => {
               setPluginsOpen(false);
@@ -2966,6 +3018,7 @@ const Transcript = memo(function Transcript({
   onOpenBot,
   onAnswer,
   onReply,
+  onJumpToMessage,
   onOpenPeerMessages,
   memberName,
   onRefresh,
@@ -2987,6 +3040,7 @@ const Transcript = memo(function Transcript({
   onOpenBot: (botId: string) => void;
   onAnswer: (message: ThreadMessage, text: string) => Promise<void>;
   onReply: (message: ThreadMessage) => void;
+  onJumpToMessage: (messageId: string) => void;
   onOpenPeerMessages: (peerBotId: string) => void;
   memberName?: (botId: string | undefined) => string | undefined;
   onRefresh: () => Promise<void>;
@@ -3036,11 +3090,8 @@ const Transcript = memo(function Transcript({
             replyPreview={
               message.replyToMessageId ? messageById.get(message.replyToMessageId) : undefined
             }
-            onJumpToMessage={(messageId) => {
-              document
-                .querySelector(`[data-message-id="${messageId}"]`)
-                ?.scrollIntoView({ behavior: "smooth", block: "center" });
-            }}
+            replyToMessageId={message.replyToMessageId}
+            onJumpToMessage={onJumpToMessage}
             onRefresh={onRefresh}
             onBotChanged={onBotChanged}
             onAddRoutine={onAddRoutine}
@@ -3746,6 +3797,7 @@ const MessageView = memo(function MessageView({
   speakerName,
   memberName,
   replyPreview,
+  replyToMessageId,
   onJumpToMessage,
   onRefresh,
   onBotChanged,
@@ -3763,6 +3815,7 @@ const MessageView = memo(function MessageView({
   speakerName?: string;
   memberName?: (botId: string | undefined) => string | undefined;
   replyPreview?: ThreadMessage;
+  replyToMessageId?: string;
   onJumpToMessage?: (messageId: string) => void;
   onRefresh: () => Promise<void>;
   onBotChanged: () => Promise<void>;
@@ -3779,6 +3832,7 @@ const MessageView = memo(function MessageView({
       (block) => block.kind === "text" || block.kind === "progress" || block.kind === "steps",
     );
   const isLive = message.id.startsWith("progress:");
+  const parentJumpId = replyPreview?.id ?? replyToMessageId;
   const messageContext = (
     <>
       {speakerName ? (
@@ -3786,16 +3840,16 @@ const MessageView = memo(function MessageView({
           {speakerName}
         </div>
       ) : null}
-      {replyPreview ? (
+      {parentJumpId ? (
         <button
           type="button"
           data-testid="reply-parent-preview"
           aria-label={t`Jump to replied message`}
-          onClick={() => onJumpToMessage?.(replyPreview.id)}
+          onClick={() => onJumpToMessage?.(parentJumpId)}
           className="mb-2 block max-w-[74%] truncate rounded-[14px] border border-[#26262A] bg-[#131315] px-3 py-2 text-start text-[12.5px] text-[#85858A] hover:border-[#34343B] hover:text-[#C9C9CE]"
           dir="auto"
         >
-          {previewMessageText(replyPreview)}
+          {replyPreview ? previewMessageText(replyPreview) : t`Earlier message`}
         </button>
       ) : null}
     </>
@@ -4283,12 +4337,15 @@ function CreateBotForm({
 
 function BotSettings({
   bot,
+  computer,
   memoryProviderConfigured,
   onSave,
   onExport,
   onClear,
+  onComputerChanged,
 }: {
   bot: Bot;
+  computer: ComputerStatus | null;
   memoryProviderConfigured: boolean;
   onSave: (patch: {
     name?: string;
@@ -4305,6 +4362,7 @@ function BotSettings({
   }) => Promise<void>;
   onExport: () => Promise<void>;
   onClear: () => void;
+  onComputerChanged: () => Promise<void>;
 }) {
   const { t } = useLingui();
   const [name, setName] = useState(bot.name);
@@ -4586,6 +4644,11 @@ function BotSettings({
         <button type="button" onClick={onClear} className="text-[14px] text-[#E65707]">
           <Trans>Clear conversation</Trans>
         </button>
+        <ComputerMaintenanceActions
+          botId={bot.id}
+          computer={computer}
+          onChanged={onComputerChanged}
+        />
       </div>
     </div>
   );

@@ -200,9 +200,9 @@ export async function createApp(
     connector: stack.connector,
     connectors: stack.connector,
     listConnectedPluginSlugs: stack.composio?.listConnectedSlugs.bind(stack.composio),
-    secrets: [env.openRouterKey ?? "", env.composioApiKey ?? ""].filter(Boolean),
+    secrets: [env.deploymentModelKey ?? "", env.composioApiKey ?? ""].filter(Boolean),
     secretStore: secrets,
-    deploymentModelKey: env.openRouterKey,
+    deploymentModelKey: env.deploymentModelKey,
     dataDir: env.dataDir,
     notifications,
     jobs,
@@ -220,7 +220,7 @@ export async function createApp(
     runtime,
     secretStore: secrets,
     memoryProviders,
-    deploymentModelKey: env.openRouterKey,
+    deploymentModelKey: env.deploymentModelKey,
   });
   if (inMemoryJobs) {
     await inMemoryJobs.start(jobHandlers);
@@ -248,7 +248,7 @@ export async function createApp(
     env: {
       defaultProvider: env.defaultProvider,
       defaultModel: env.defaultModel,
-      openRouterKey: env.openRouterKey,
+      deploymentModelKey: env.deploymentModelKey,
       webOrigin: env.webOrigin,
       screenProxySecret: env.authSecret,
       sandboxProvider: env.sandboxProvider,

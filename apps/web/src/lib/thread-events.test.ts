@@ -9,6 +9,7 @@ import {
   activeThreadRuns,
   clearActiveThreadRuns,
   computerPanelAutoBoot,
+  computerPanelAutoUsesBoot,
   computerTakeoverBlocked,
   isThreadSnapshotEvent,
   mergeThreadSnapshot,
@@ -1151,6 +1152,12 @@ describe("computer event reduction", () => {
     expect(computerPanelAutoBoot("booting")).toBe("wait");
     expect(computerPanelAutoBoot("suspended")).toBe("wait");
   });
+
+  it("maps recover-screen to computer.boot, not computer.recover", () => {
+    expect(computerPanelAutoUsesBoot("recover-screen")).toBe(true);
+    expect(computerPanelAutoUsesBoot("boot")).toBe(true);
+    expect(computerPanelAutoUsesBoot("wait")).toBe(false);
+  });
 });
 
 function snapshot(messages: ThreadMessage[], olderCursor: number | null = null): ThreadSnapshot {
@@ -1197,6 +1204,7 @@ function computer(overrides: Partial<ComputerStatus> = {}): ComputerStatus {
     screenHeight: 800,
     homeRevision: null,
     busyBotName: null,
+    updateAvailable: true,
     ...overrides,
   };
 }
