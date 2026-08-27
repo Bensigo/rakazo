@@ -1,6 +1,6 @@
 import type { AdapterContext, ManagedConnectorProvider } from "@rakazo/adapter-kit";
 import type { Prisma, PrismaClient } from "@rakazo/db";
-import type { ApprovalPausedToolResult } from "./approval-effect.js";
+import { type ApprovalPausedToolResult, resolveDuplicateEffectGate } from "./approval-effect.js";
 import type { EncryptedSecretStore } from "./secrets.js";
 
 export function runSecretKind(runId: string): string {
@@ -30,6 +30,24 @@ export async function commitConsumedRunSecret<TResult, TFailed>(input: {
   if (!persisted) return input.onPersistFailed;
   await input.deleteSecret();
   return input.result;
+}
+
+/**
+ * When the stored run secret is already gone, decide whether to reuse a settled
+ * effect result or ask again. Prevents re-prompting after persist+delete if the
+ * worker crashes before the tool result reaches the runtime.
+ */
+export function resolveMissingRunSecretAction(
+  effect: { status: string; result?: unknown } | null | undefined,
+):
+  | { action: "return"; result: unknown }
+  | { action: "uncertain"; toolName: string }
+  | { action: "ask" } {
+  if (!effect) return { action: "ask" };
+  const gate = resolveDuplicateEffectGate(effect, "request_secret");
+  if (gate.action === "return") return { action: "return", result: gate.result };
+  if (gate.action === "uncertain") return { action: "uncertain", toolName: gate.toolName };
+  return { action: "ask" };
 }
 
 export interface RunSecretWriter {

@@ -152,6 +152,7 @@ import {
 } from "./plot-tool.js";
 import {
   commitConsumedRunSecret,
+  resolveMissingRunSecretAction,
   runSecretKind,
   secretPausedToolResult,
   tryCompleteConnectionWithCode,
@@ -1724,7 +1725,16 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 onPersistFailed: uncertainEffectResult(name),
               });
             }
-            await recordEffect(deps, run, name, effectKey, args);
+            const recordedForAsk = await recordEffect(deps, run, name, effectKey, args);
+            const missingSecretAction = resolveMissingRunSecretAction(recordedForAsk.effect);
+            if (missingSecretAction.action === "return") return missingSecretAction.result;
+            if (missingSecretAction.action === "uncertain") {
+              return settleUncertainEffect(
+                deps.prisma,
+                recordedForAsk.effect.id,
+                missingSecretAction.toolName,
+              );
+            }
             if (!(await renewRunLease(deps, runId, workerId, fence))) {
               return pauseForSecret();
             }

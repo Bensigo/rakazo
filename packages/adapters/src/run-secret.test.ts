@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   commitConsumedRunSecret,
+  resolveMissingRunSecretAction,
   runSecretKind,
   secretPausedToolResult,
   tryCompleteConnectionWithCode,
@@ -58,6 +59,21 @@ describe("commitConsumedRunSecret", () => {
     ).resolves.toBe(onPersistFailed);
 
     expect(deleteSecret).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveMissingRunSecretAction", () => {
+  it("replays a completed effect instead of asking again after the secret was deleted", () => {
+    const result = { ok: true, submitted: true, connected: true };
+    expect(resolveMissingRunSecretAction({ status: "completed", result })).toEqual({
+      action: "return",
+      result,
+    });
+  });
+
+  it("asks again when the effect is still waiting for input", () => {
+    expect(resolveMissingRunSecretAction({ status: "intended" })).toEqual({ action: "ask" });
+    expect(resolveMissingRunSecretAction(undefined)).toEqual({ action: "ask" });
   });
 });
 
