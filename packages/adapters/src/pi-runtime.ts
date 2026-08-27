@@ -462,7 +462,7 @@ function toAgentTool(tool: ConnectorTool, host: ToolHost, exposedName: string): 
       }
       if (tool.name === "request_secret") {
         return {
-          label: String(raw.label ?? "Enter the protected value"),
+          label: String(raw.label ?? "Code"),
           purpose: String(raw.purpose ?? "otp"),
           ...(raw.connectionId ? { connectionId: String(raw.connectionId) } : {}),
         };

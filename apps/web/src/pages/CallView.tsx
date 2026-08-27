@@ -39,10 +39,8 @@ export function CallView({
   snapshotRef.current = snapshot;
   const askPromptRef = useRef(t`Say yes or no, or answer in a sentence.`);
   askPromptRef.current = t`Say yes or no, or answer in a sentence.`;
-  const secretPromptRef = useRef(
-    t`Hang up first, then enter the protected value in the masked field on screen.`,
-  );
-  secretPromptRef.current = t`Hang up first, then enter the protected value in the masked field on screen.`;
+  const secretPromptRef = useRef(t`Hang up first, then enter the code on screen.`);
+  secretPromptRef.current = t`Hang up first, then enter the code on screen.`;
 
   function setCallPhase(next: Phase) {
     phaseRef.current = next;
@@ -88,7 +86,7 @@ export function CallView({
     if (pendingSecretAsk(current)) {
       setHeard("");
       setCaption("");
-      setError("Hang up and enter the protected value in the masked field on screen.");
+      setError(t`Hang up, then enter the code on screen.`);
       void listen();
       return;
     }

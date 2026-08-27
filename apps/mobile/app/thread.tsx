@@ -1793,10 +1793,10 @@ function AskBlock({
       ) : canAnswer ? (
         <>
           <TextInput
-            accessibilityLabel={secretInput ? "Protected value" : "Answer"}
+            accessibilityLabel={secretInput ? "Code" : "Answer"}
             value={answer}
             onChangeText={setAnswer}
-            placeholder={secretInput ? "Enter protected value" : "Type your answer"}
+            placeholder={secretInput ? "Code" : "Type your answer"}
             placeholderTextColor="#6C6C70"
             secureTextEntry={secretInput}
             autoComplete="off"

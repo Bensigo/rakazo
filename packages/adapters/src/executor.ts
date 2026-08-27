@@ -1733,7 +1733,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               blocks: [
                 {
                   kind: "ask",
-                  text: String(args.label ?? "Enter the protected value"),
+                  text: String(args.label ?? "Code"),
                   input: "secret",
                   status: "pending",
                 },
@@ -1744,8 +1744,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
             }
             await notifyRun(deps, run, {
               kind: "help",
-              title: `${bot.name} needs protected input`,
-              body: String(args.label ?? "Enter the protected value"),
+              title: `${bot.name} needs a code`,
+              body: String(args.label ?? "Code"),
               botId: bot.id,
               threadId: thread.id,
             });

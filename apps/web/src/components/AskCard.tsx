@@ -109,12 +109,12 @@ export function AskCard({
           }}
         >
           <input
-            aria-label="Protected value"
+            aria-label={t`Code`}
             type="password"
             autoComplete="off"
             value={answer}
             onChange={(event) => setAnswer(event.target.value)}
-            placeholder="Enter protected value"
+            placeholder={t`Code`}
             className="rounded-[11px] border border-[#303035] bg-[#0E0E10] px-3.5 py-2.5 text-[14.5px] text-[#ECECEE] outline-none focus:border-[#66666D]"
           />
           <button
@@ -122,7 +122,7 @@ export function AskCard({
             disabled={!answer.trim() || submitting}
             className="self-start rounded-[11px] bg-[#F1F1EF] px-[17px] py-2 text-[14.5px] font-medium text-[#17171A] disabled:opacity-50"
           >
-            {submitting ? "Sending…" : "Submit"}
+            {submitting ? <Trans>Sending…</Trans> : <Trans>Submit</Trans>}
           </button>
         </form>
       ) : editing ? (
