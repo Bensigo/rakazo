@@ -5,15 +5,13 @@ import {
   BOT_TITLE_MAX_LENGTH,
   type ComputerMode,
   normalizeCreateBotProfile,
-  type ShareManifest,
 } from "@rakazo/contracts";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { Pressable, ScrollView, Share, Text, TextInput } from "react-native";
+import { Pressable, ScrollView, Text, TextInput } from "react-native";
 import { ComputerMaintenanceActions } from "../components/computer-maintenance-actions";
 import { ComputerModePicker } from "../components/computer-mode-picker";
 import { type MobileBot, rpc } from "../lib/api";
-import { clearShareLink, loadShareLink, saveShareLink } from "../lib/share-link";
 
 type BotSettingsRecord = MobileBot & {
   description?: string;
@@ -30,35 +28,20 @@ export default function BotSettingsScreen() {
   const [computer, setComputer] = useState<ComputerStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const [shareBusy, setShareBusy] = useState(false);
-  const [shareLink, setShareLink] = useState<string | null>(null);
-  const [shareToken, setShareToken] = useState<string | null>(null);
-  const [shareNotice, setShareNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (!botId) return;
-    setShareLink(null);
-    setShareToken(null);
-    setShareNotice(null);
     void Promise.all([
       rpc<BotSettingsRecord>("bots/get", { botId }),
       rpc<ComputerStatus>("computer/status", { botId }).catch(() => null),
-      loadShareLink(botId),
     ])
-      .then(([next, status, storedShare]) => {
+      .then(([next, status]) => {
         setBot(next);
         setName(next.name);
         setTitle(next.title);
         setDescription(next.description ?? "");
         setComputerMode(next.computerMode);
         setComputer(status);
-        if (storedShare) {
-          setShareToken(storedShare.token);
-          setShareLink(storedShare.url);
-        } else {
-          setShareToken(null);
-          setShareLink(null);
-        }
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Could not load bot"));
   }, [botId]);
@@ -164,105 +147,6 @@ export default function BotSettingsScreen() {
             setComputer(status);
           }}
         />
-        <Text style={{ color: "#85858A", marginTop: 24, fontSize: 14 }}>Share bot</Text>
-        <Text style={{ color: "#6C6C70", marginTop: 8, fontSize: 13 }}>
-          Config only. Not the computer or logins.
-        </Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Share JSON"
-          onPress={() => {
-            if (!botId || shareBusy) return;
-            setShareBusy(true);
-            void rpc<ShareManifest>("bots/shareManifest", { botId })
-              .then(async (manifest) => {
-                await Share.share({ message: JSON.stringify(manifest, null, 2) });
-              })
-              .catch((err) => setError(err instanceof Error ? err.message : "Could not share"))
-              .finally(() => setShareBusy(false));
-          }}
-          disabled={shareBusy || !bot}
-          style={{
-            marginTop: 12,
-            borderRadius: 11,
-            borderWidth: 1,
-            borderColor: "#3A3A3F",
-            padding: 14,
-            alignItems: "center",
-            opacity: shareBusy || !bot ? 0.4 : 1,
-          }}
-        >
-          <Text style={{ color: "#ECECEE" }}>Share JSON</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Create share link"
-          onPress={() => {
-            if (!botId || shareBusy) return;
-            setShareBusy(true);
-            setShareNotice(null);
-            void rpc<{ url: string; token: string }>("bots/shareCreate", { botId })
-              .then(async ({ url, token }) => {
-                setShareLink(url);
-                setShareToken(token);
-                await saveShareLink(botId, { token, url });
-                setShareNotice("Link created");
-              })
-              .catch((err) =>
-                setError(err instanceof Error ? err.message : "Could not create link"),
-              )
-              .finally(() => setShareBusy(false));
-          }}
-          disabled={shareBusy || !bot}
-          style={{
-            marginTop: 8,
-            borderRadius: 11,
-            borderWidth: 1,
-            borderColor: "#3A3A3F",
-            padding: 14,
-            alignItems: "center",
-            opacity: shareBusy || !bot ? 0.4 : 1,
-          }}
-        >
-          <Text style={{ color: "#ECECEE" }}>Create share link</Text>
-        </Pressable>
-        {shareLink ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Share link"
-            onPress={() => void Share.share({ message: shareLink })}
-            style={{ marginTop: 8 }}
-          >
-            <Text style={{ color: "#0A84FF", fontSize: 14 }}>{shareLink}</Text>
-          </Pressable>
-        ) : null}
-        {shareToken ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Revoke share link"
-            onPress={() => {
-              if (!shareToken || shareBusy) return;
-              setShareBusy(true);
-              void rpc("bots/shareRevoke", { token: shareToken })
-                .then(async () => {
-                  setShareLink(null);
-                  setShareToken(null);
-                  if (botId) await clearShareLink(botId);
-                  setShareNotice("Link revoked");
-                })
-                .catch((err) =>
-                  setError(err instanceof Error ? err.message : "Could not revoke link"),
-                )
-                .finally(() => setShareBusy(false));
-            }}
-            style={{ marginTop: 8 }}
-          >
-            <Text style={{ color: "#E65707", fontSize: 14 }}>Revoke link</Text>
-          </Pressable>
-        ) : null}
-        {shareNotice ? (
-          <Text style={{ color: "#6C6C70", marginTop: 8, fontSize: 13 }}>{shareNotice}</Text>
-        ) : null}
         {error ? <Text style={{ color: "#E65707", marginTop: 16 }}>{error}</Text> : null}
         <Pressable
           onPress={() => void save()}

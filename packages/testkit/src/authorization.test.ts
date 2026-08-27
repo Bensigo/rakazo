@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ComposioEmulator } from "@rakazo/adapters";
-import type { appContract, ShareManifest } from "@rakazo/contracts";
+import type { appContract } from "@rakazo/contracts";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { sessionCookieHeader } from "./index.js";
 
@@ -15,7 +15,7 @@ type RpcPath<T, Prefix extends string = ""> = T extends { "~orpc": unknown }
         [Key in keyof T & string]: RpcPath<T[Key], Prefix extends "" ? Key : `${Prefix}/${Key}`>;
       }[keyof T & string]
     : never;
-type ProtectedRpcPath = Exclude<RpcPath<typeof appContract>, "health" | "share/preview">;
+type ProtectedRpcPath = Exclude<RpcPath<typeof appContract>, "health">;
 
 process.env.WAKEUP_DRIVER = "memory";
 process.env.SANDBOX_PROVIDER = "fake";
@@ -72,10 +72,6 @@ describeWithDatabase("API authorization and resource isolation", () => {
       ["bots/archive", { botId: "missing-bot" }],
       ["bots/restore", { botId: "missing-bot" }],
       ["bots/remove", { botId: "missing-bot" }],
-      ["bots/shareManifest", { botId: "missing-bot" }],
-      ["bots/importShare", { manifest: sampleShareManifest() }],
-      ["bots/shareCreate", { botId: "missing-bot" }],
-      ["bots/shareRevoke", { token: "missing-share-token" }],
       ["groups/create", { name: "Nope", botIds: ["missing-a", "missing-b"] }],
       ["groups/list"],
       ["groups/get", { groupId: "missing-group" }],
@@ -340,8 +336,6 @@ describeWithDatabase("API authorization and resource isolation", () => {
       ],
       ["artifacts/get", { botId: ownerBot.id, artifactId: ownerArtifact.id }],
       ["export/bot", { botId: ownerBot.id }],
-      ["bots/shareManifest", { botId: ownerBot.id }],
-      ["bots/shareCreate", { botId: ownerBot.id }],
       ["voice/prepare", { text: "stolen speech", botId: ownerBot.id }],
     ];
     await Promise.all(
@@ -421,21 +415,6 @@ describeWithDatabase("API authorization and resource isolation", () => {
     expect(
       await rpc<{ hits: unknown[] }>(app, intruder, "search/query", { q: ownerBot.name }),
     ).toEqual({ hits: [] });
-
-    const ownerShareManifest = await rpc<ShareManifest>(app, owner, "bots/shareManifest", {
-      botId: ownerBot.id,
-    });
-    const intruderImported = await rpc<Bot>(app, intruder, "bots/importShare", {
-      manifest: ownerShareManifest,
-    });
-    expect(intruderImported.id).not.toBe(ownerBot.id);
-    const importedRow = await handles.prisma.bot.findUniqueOrThrow({
-      where: { id: intruderImported.id },
-    });
-    expect(importedRow.userId).toBe(intruderActor.userId);
-    expect(importedRow.workspaceId).toBe(intruderActor.workspaceId);
-    const ownerRow = await handles.prisma.bot.findUniqueOrThrow({ where: { id: ownerBot.id } });
-    expect(importedRow.computerId).not.toBe(ownerRow.computerId);
 
     // These endpoints are deliberately idempotent for unknown IDs. Success must not mutate
     // a row in a different workspace or disclose whether it exists.
@@ -794,21 +773,6 @@ function botInput(name: string) {
     description: "",
     instructions: "",
     notifyOnFinish: false,
-  };
-}
-
-function sampleShareManifest() {
-  return {
-    version: "rakazo.share/v1",
-    sharedAt: new Date().toISOString(),
-    name: "Shared",
-    title: "",
-    description: "",
-    instructions: "",
-    color: "#2965EC",
-    notifyOnFinish: false,
-    computerMode: "team",
-    routines: [],
   };
 }
 

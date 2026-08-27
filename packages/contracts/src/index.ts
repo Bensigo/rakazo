@@ -7,5 +7,4 @@ export * from "./mcp.js";
 export * from "./openai-compatible-ui.js";
 export * from "./rpc.js";
 export * from "./runs.js";
-export * from "./safe-navigation.js";
 export * from "./search.js";
