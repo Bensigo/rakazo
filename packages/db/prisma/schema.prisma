@@ -26,6 +26,7 @@ model User {
   mcpServers       McpServer[]
   botSections      BotSection[]
   actionApprovalRules ActionApprovalRule[]
+  botShares        BotShare[]
 
   @@unique([email])
   @@map("user")
@@ -114,6 +115,7 @@ model Organization {
   actionApprovalRules ActionApprovalRule[]
   workspaceMemoryConfig WorkspaceMemoryConfig?
   chatGroups  ChatGroup[]
+  botShares   BotShare[]
 
   @@unique([slug])
   @@map("organization")
@@ -264,6 +266,21 @@ model Bot {
   @@index([parentBotId])
   @@unique([workspaceId, spawnKey])
   @@map("bots")
+}
+
+model BotShare {
+  token            String       @id
+  workspaceId      String
+  workspace        Organization @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdByUserId  String
+  createdByUser    User         @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
+  snapshot         Json
+  createdAt        DateTime     @default(now())
+  expiresAt        DateTime
+  revokedAt        DateTime?
+
+  @@index([workspaceId, createdByUserId])
+  @@map("bot_shares")
 }
 
 model BotSection {

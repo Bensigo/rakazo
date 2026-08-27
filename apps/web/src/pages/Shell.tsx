@@ -18,6 +18,7 @@ import type {
   ProductEvent,
   Routine,
   SearchHit,
+  ShareManifest,
   TaughtSkill,
   ThinkingLevel,
   ThreadMessage,
@@ -34,6 +35,7 @@ import {
   BOT_NAME_MAX_LENGTH,
   BOT_TITLE_MAX_LENGTH,
   normalizeCreateBotProfile,
+  parseShareManifestPayload,
 } from "@rakazo/contracts";
 import {
   abortableDelay,
@@ -46,6 +48,7 @@ import {
   groupBotsForSidebar,
   inferAttachmentMimeType,
   isActive,
+  isOneShotRoutineCrons,
   isRunTerminalEvent,
   latestAnswerableAskMessageId,
   mentionChipKey,
@@ -203,6 +206,35 @@ type PendingAttachment = {
 
 const ATTACHMENT_ACCEPT = ATTACHMENT_ALLOWED_MIME_TYPES.join(",");
 
+function toDatetimeLocalValue(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function defaultArmRunAtLocal(): string {
+  return toDatetimeLocalValue(new Date(Date.now() + 60 * 60 * 1000));
+}
+
+function routineNeedsOneShotArm(
+  routine: Pick<Routine, "nextRunAt" | "lastRunAt">,
+  crons: string[],
+) {
+  return isOneShotRoutineCrons(crons) && !routine.nextRunAt && !routine.lastRunAt;
+}
+
+function emptyRoutineDraft() {
+  return { name: "", prompt: "", schedules: [defaultCronPreset()], runAtLocal: "" };
+}
+
+function draftFromRoutine(routine: Routine) {
+  return {
+    name: routine.name,
+    prompt: routine.prompt,
+    schedules: routine.crons.map(presetFromCron),
+    runAtLocal: routineNeedsOneShotArm(routine, routine.crons) ? defaultArmRunAtLocal() : "",
+  };
+}
+
 export function ShellPage() {
   const { t } = useLingui();
   const { botId, groupId } = useParams();
@@ -329,11 +361,7 @@ export function ShellPage() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [initialBotsLoaded, setInitialBotsLoaded] = useState(false);
   const [bootstrapMe, setBootstrapMe] = useState<Me | null>();
-  const [routineDraft, setRoutineDraft] = useState({
-    name: "",
-    prompt: "",
-    schedules: [defaultCronPreset()],
-  });
+  const [routineDraft, setRoutineDraft] = useState(emptyRoutineDraft);
   const [editingRoutine, setEditingRoutine] = useState<Routine | null>(null);
   const [deleteRoutineTarget, setDeleteRoutineTarget] = useState<Routine | null>(null);
   const [savingRoutine, setSavingRoutine] = useState(false);
@@ -1060,11 +1088,7 @@ export function ShellPage() {
     if (routineId && routinesBotId === active.id) {
       const routine = routines.find((item) => item.id === routineId);
       if (routine) {
-        setRoutineDraft({
-          name: routine.name,
-          prompt: routine.prompt,
-          schedules: routine.crons.map(presetFromCron),
-        });
+        setRoutineDraft(draftFromRoutine(routine));
         setEditingRoutine(routine);
         setPanel("routine");
       } else {
@@ -1533,7 +1557,7 @@ export function ShellPage() {
     await refreshThreadRef.current(id);
   }, []);
   const addSkillRoutine = useCallback((name: string, prompt: string) => {
-    setRoutineDraft({ name, prompt, schedules: [defaultCronPreset()] });
+    setRoutineDraft({ ...emptyRoutineDraft(), name, prompt });
     setEditingRoutine(null);
     setPanel("routine");
   }, []);
@@ -1570,6 +1594,18 @@ export function ShellPage() {
       notifyOnFinish: true,
       computerMode: input.computerMode,
     });
+    setBots((current) =>
+      current.some((item) => item.id === bot.id) ? current : [bot, ...current],
+    );
+    navigate(`/app/${bot.id}`);
+    setPanel(null);
+    await refreshBots().catch(() => undefined);
+  }
+
+  async function importShareBot(input: { manifest?: ShareManifest; token?: string }) {
+    const bot = await rpc.bots.importShare(
+      input.token ? { token: input.token } : { manifest: input.manifest! },
+    );
     setBots((current) =>
       current.some((item) => item.id === bot.id) ? current : [bot, ...current],
     );
@@ -2420,11 +2456,7 @@ export function ShellPage() {
                       <button
                         type="button"
                         onClick={() => {
-                          setRoutineDraft({
-                            name: routine.name,
-                            prompt: routine.prompt,
-                            schedules: routine.crons.map(presetFromCron),
-                          });
+                          setRoutineDraft(draftFromRoutine(routine));
                           setEditingRoutine(routine);
                           setPanel("routine");
                         }}
@@ -2456,7 +2488,7 @@ export function ShellPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    setRoutineDraft({ name: "", prompt: "", schedules: [defaultCronPreset()] });
+                    setRoutineDraft(emptyRoutineDraft());
                     setEditingRoutine(null);
                     setPanel("routine");
                   }}
@@ -2475,9 +2507,9 @@ export function ShellPage() {
                     onStopTeaching={stopTeaching}
                     onAddRoutine={(skill) => {
                       setRoutineDraft({
+                        ...emptyRoutineDraft(),
                         name: skill.name || skill.goal.slice(0, 80),
                         prompt: `Run taught skill: ${skill.name || skill.goal}\n${skill.playbook.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")}`,
-                        schedules: [defaultCronPreset()],
                       });
                       setEditingRoutine(null);
                       setPanel("routine");
@@ -2522,6 +2554,7 @@ export function ShellPage() {
               <CreateBotForm
                 onCancel={() => setPanel(null)}
                 onCreate={(input) => createBot(input)}
+                onImportShare={(input) => importShareBot(input)}
               />
             ) : null}
             {panel === "settings" && active ? (
@@ -2604,6 +2637,24 @@ export function ShellPage() {
                     />
                   </Suspense>
                 </div>
+                {editingRoutine &&
+                routineNeedsOneShotArm(
+                  editingRoutine,
+                  routineDraft.schedules.map(cronFromPreset),
+                ) ? (
+                  <label className="mt-5 block text-[14px] text-[#85858A]">
+                    <Trans>Run at</Trans>
+                    <input
+                      type="datetime-local"
+                      value={routineDraft.runAtLocal}
+                      onChange={(e) =>
+                        setRoutineDraft((s) => ({ ...s, runAtLocal: e.target.value }))
+                      }
+                      aria-label={t`Run at`}
+                      className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
+                    />
+                  </label>
+                ) : null}
                 <div className="mt-5 flex items-center gap-3">
                   <button
                     type="button"
@@ -2620,11 +2671,32 @@ export function ShellPage() {
                       try {
                         const crons = routineDraft.schedules.map(cronFromPreset);
                         if (targetRoutine) {
+                          const armOneShot = routineNeedsOneShotArm(targetRoutine, crons);
+                          let runAt: string | undefined;
+                          if (armOneShot) {
+                            if (!routineDraft.runAtLocal) {
+                              setRoutineError(t`Add a run time for this one-shot.`);
+                              return;
+                            }
+                            const parsed = new Date(routineDraft.runAtLocal);
+                            if (
+                              !Number.isFinite(parsed.getTime()) ||
+                              parsed.getTime() <= Date.now()
+                            ) {
+                              setRoutineError(t`Run time must be in the future.`);
+                              return;
+                            }
+                            runAt = parsed.toISOString();
+                          }
                           await rpc.routines.update({
                             routineId: targetRoutine.id,
                             name: routineDraft.name || t`Routine`,
                             prompt: routineDraft.prompt || t`Check in.`,
                             crons,
+                            ...(!targetRoutine.active && !targetRoutine.lastRunAt
+                              ? { active: true }
+                              : {}),
+                            ...(runAt ? { runAt } : {}),
                           });
                         } else {
                           await rpc.routines.create({
@@ -4409,6 +4481,7 @@ function ComputerModePicker({
 
 function CreateBotForm({
   onCreate,
+  onImportShare,
   onCancel,
 }: {
   onCreate: (input: {
@@ -4417,6 +4490,7 @@ function CreateBotForm({
     description: string;
     computerMode: ComputerMode;
   }) => Promise<void>;
+  onImportShare: (input: { manifest?: ShareManifest; token?: string }) => Promise<void>;
   onCancel: () => void;
 }) {
   const { t } = useLingui();
@@ -4426,6 +4500,9 @@ function CreateBotForm({
   const [computerMode, setComputerMode] = useState<ComputerMode>("team");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [shareJson, setShareJson] = useState("");
+  const [shareToken, setShareToken] = useState("");
+  const [importingShare, setImportingShare] = useState(false);
 
   async function handleSubmit() {
     if (!name.trim() || submitting) return;
@@ -4440,6 +4517,45 @@ function CreateBotForm({
     }
   }
 
+  async function handleImportShare() {
+    if (importingShare) return;
+    setError(null);
+    setImportingShare(true);
+    try {
+      const token = shareToken.trim();
+      if (token) {
+        await onImportShare({ token });
+        return;
+      }
+      const raw = shareJson.trim();
+      if (!raw) {
+        setError("Paste share JSON or a link token");
+        return;
+      }
+      const manifest = parseShareManifestPayload(JSON.parse(raw) as unknown);
+      await onImportShare({ manifest });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not import share");
+    } finally {
+      setImportingShare(false);
+    }
+  }
+
+  async function handleShareFile(file: File) {
+    if (importingShare) return;
+    setError(null);
+    setImportingShare(true);
+    try {
+      const text = await file.text();
+      const manifest = parseShareManifestPayload(JSON.parse(text) as unknown);
+      await onImportShare({ manifest });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not import share file");
+    } finally {
+      setImportingShare(false);
+    }
+  }
+
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
@@ -4450,6 +4566,50 @@ function CreateBotForm({
           <X size={16} strokeWidth={1.8} />
         </button>
       </div>
+      <details className="mb-5 rounded-[11px] border border-[#26262A] px-3.5 py-3">
+        <summary className="cursor-pointer text-[14px] text-[#85858A]">Import from share</summary>
+        <p className="mt-3 text-[13px] text-[#6C6C70]">Config only. Not the computer or logins.</p>
+        <label className="mt-3 block text-[13px] text-[#85858A]">
+          Share JSON
+          <textarea
+            value={shareJson}
+            onChange={(e) => setShareJson(e.target.value)}
+            rows={4}
+            placeholder="Paste rakazo.share/v1 JSON"
+            className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3 py-2.5 text-[13px] text-[#ECECEE]"
+          />
+        </label>
+        <label className="mt-3 block text-[13px] text-[#85858A]">
+          Or link token
+          <input
+            value={shareToken}
+            onChange={(e) => setShareToken(e.target.value)}
+            placeholder="Token from a share URL"
+            className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3 py-2.5 text-[13px] text-[#ECECEE]"
+          />
+        </label>
+        <label className="mt-3 block text-[13px] text-[#85858A]">
+          Or file
+          <input
+            type="file"
+            accept="application/json,.json"
+            className="mt-2 block w-full text-[13px] text-[#85858A]"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) void handleShareFile(file);
+            }}
+          />
+        </label>
+        <button
+          type="button"
+          disabled={importingShare}
+          onClick={() => void handleImportShare()}
+          className="mt-4 rounded-[11px] border border-[#3A3A3F] px-4 py-2 text-[14px] text-[#ECECEE] disabled:opacity-40"
+        >
+          {importingShare ? "Importing…" : "Import share"}
+        </button>
+      </details>
       {error ? (
         <p role="alert" data-testid="create-bot-error" className="mb-3 text-[13px] text-[#C94244]">
           {error}
@@ -4547,6 +4707,46 @@ function BotSettings({
   const [modelMetaReady, setModelMetaReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareLink, setShareLink] = useState<string | null>(null);
+  const [shareToken, setShareToken] = useState<string | null>(null);
+  const [shareNotice, setShareNotice] = useState<string | null>(null);
+  const shareStorageKey = `rakazo-share-link-${bot.id}`;
+
+  useEffect(() => {
+    setShareNotice(null);
+    try {
+      const stored = sessionStorage.getItem(shareStorageKey);
+      if (!stored) {
+        setShareLink(null);
+        setShareToken(null);
+        return;
+      }
+      const parsed = JSON.parse(stored) as { url?: string; token?: string };
+      if (parsed.url && parsed.token) {
+        setShareLink(parsed.url);
+        setShareToken(parsed.token);
+      } else {
+        setShareLink(null);
+        setShareToken(null);
+      }
+    } catch {
+      setShareLink(null);
+      setShareToken(null);
+    }
+  }, [shareStorageKey]);
+
+  function persistShareLink(link: { url: string; token: string } | null) {
+    if (link) {
+      sessionStorage.setItem(shareStorageKey, JSON.stringify(link));
+      setShareLink(link.url);
+      setShareToken(link.token);
+    } else {
+      sessionStorage.removeItem(shareStorageKey);
+      setShareLink(null);
+      setShareToken(null);
+    }
+  }
 
   useEffect(() => {
     void rpc.voice
@@ -4813,6 +5013,104 @@ function BotSettings({
           computer={computer}
           onChanged={onComputerChanged}
         />
+      </div>
+      <div className="mt-6 border-t border-[#26262A] pt-5" data-testid="bot-share">
+        <p className="text-[14px] text-[#85858A]">Share bot</p>
+        <p className="mt-2 text-[13px] text-[#6C6C70]">Config only. Not the computer or logins.</p>
+        <div className="mt-3 flex flex-wrap gap-3">
+          <button
+            type="button"
+            disabled={shareBusy}
+            onClick={() => {
+              setShareBusy(true);
+              setShareNotice(null);
+              void rpc.bots
+                .shareManifest({ botId: bot.id })
+                .then(async (manifest) => {
+                  await navigator.clipboard.writeText(JSON.stringify(manifest, null, 2));
+                  setShareNotice("Copied");
+                })
+                .catch((err) => setError(err instanceof Error ? err.message : "Could not copy"))
+                .finally(() => setShareBusy(false));
+            }}
+            className="text-[14px] text-[#85858A] disabled:opacity-40"
+          >
+            Copy JSON
+          </button>
+          <button
+            type="button"
+            disabled={shareBusy}
+            onClick={() => {
+              setShareBusy(true);
+              setShareNotice(null);
+              void rpc.bots
+                .shareManifest({ botId: bot.id })
+                .then((manifest) => {
+                  const blob = new Blob([JSON.stringify(manifest, null, 2)], {
+                    type: "application/json",
+                  });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `${bot.name.toLowerCase().replace(/\s+/g, "-")}.rakazo-bot.json`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                })
+                .catch((err) => setError(err instanceof Error ? err.message : "Could not download"))
+                .finally(() => setShareBusy(false));
+            }}
+            className="text-[14px] text-[#85858A] disabled:opacity-40"
+          >
+            Download
+          </button>
+          <button
+            type="button"
+            disabled={shareBusy}
+            onClick={() => {
+              setShareBusy(true);
+              setShareNotice(null);
+              void rpc.bots
+                .shareCreate({ botId: bot.id })
+                .then(({ url, token }) => {
+                  persistShareLink({ url, token });
+                  setShareNotice("Link created");
+                })
+                .catch((err) =>
+                  setError(err instanceof Error ? err.message : "Could not create link"),
+                )
+                .finally(() => setShareBusy(false));
+            }}
+            className="text-[14px] text-[#85858A] disabled:opacity-40"
+          >
+            Create link
+          </button>
+          {shareToken ? (
+            <button
+              type="button"
+              disabled={shareBusy}
+              onClick={() => {
+                setShareBusy(true);
+                void rpc.bots
+                  .shareRevoke({ token: shareToken })
+                  .then(() => {
+                    persistShareLink(null);
+                    setShareNotice("Link revoked");
+                  })
+                  .catch((err) =>
+                    setError(err instanceof Error ? err.message : "Could not revoke link"),
+                  )
+                  .finally(() => setShareBusy(false));
+              }}
+              className="text-[14px] text-[#E65707] disabled:opacity-40"
+            >
+              Revoke link
+            </button>
+          ) : null}
+        </div>
+        {shareNotice ? <p className="mt-2 text-[13px] text-[#6C6C70]">{shareNotice}</p> : null}
+        {shareLink ? (
+          <p className="mt-2 break-all text-[13px] text-[#9A9AA0]">{shareLink}</p>
+        ) : null}
       </div>
     </div>
   );
