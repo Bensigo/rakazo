@@ -277,9 +277,7 @@ export default function Integrations() {
                   </View>
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel={
-                      item.connected ? `Remove ${item.name}` : `Add ${item.name}`
-                    }
+                    accessibilityLabel={item.connected ? `Remove ${item.name}` : `Add ${item.name}`}
                     disabled={pending === key}
                     onPress={() => void (item.connected ? revoke(item) : connect(item))}
                   >
