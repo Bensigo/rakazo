@@ -3123,8 +3123,9 @@ const Transcript = memo(function Transcript({
   }, [messages, running, snapToEnd]);
 
   useLayoutEffect(() => {
-    if (atEnd && document.activeElement === jumpButtonRef.current) {
-      jumpButtonRef.current.blur();
+    const button = jumpButtonRef.current;
+    if (atEnd && button && document.activeElement === button) {
+      button.blur();
     }
   }, [atEnd]);
 
