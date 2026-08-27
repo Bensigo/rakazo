@@ -414,8 +414,8 @@
     animation: none;
   }
 
-  .rakazo-organic-avatar-body animate {
-    display: none;
+  .rakazo-organic-avatar-body {
+    d: var(--rakazo-organic-path);
   }
 
   .rakazo-organic-avatar[data-working="true"][data-shape-family] .rakazo-organic-avatar-body,
