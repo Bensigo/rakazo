@@ -56,7 +56,7 @@ import {
   WorkspaceMemoryConfigSchema,
 } from "./domain.js";
 import { ProductEventSchema } from "./events.js";
-import { Id } from "./ids.js";
+import { Id, IsoDate } from "./ids.js";
 import { RunsListOutputSchema } from "./runs.js";
 import { SearchQueryOutputSchema } from "./search.js";
 
@@ -358,6 +358,8 @@ export const appContract = {
           timezone: z.string().optional(),
           active: z.boolean().optional(),
           notify: z.boolean().optional(),
+          /** ISO datetime to arm a never-run one-shot (e.g. imported share template). */
+          runAt: IsoDate.optional(),
         }),
       )
       .output(RoutineSchema),

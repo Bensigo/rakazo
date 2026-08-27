@@ -93,6 +93,74 @@ describeShare("bot share import and links", () => {
     expect(rejected.status).toBeGreaterThanOrEqual(400);
   });
 
+  it("lets imported one-shot templates be armed with a future runAt", async () => {
+    const owner = await signup(app, `share-once-${stamp}@rakazo.test`, "Once Owner");
+    const source = await rpc<Bot>(app, owner, "bots/create", botInput("Once Bot"));
+    await handles.prisma.routine.create({
+      data: {
+        workspaceId: (await rpc<{ workspaceId: string }>(app, owner, "me")).workspaceId,
+        userId: (await rpc<{ userId: string }>(app, owner, "me")).userId,
+        botId: source.id,
+        name: "Remind once",
+        prompt: "Ping me once",
+        crons: ["@once"],
+        timezone: "UTC",
+        notify: true,
+        active: true,
+        nextRunAt: new Date(Date.now() + 60_000),
+      },
+    });
+
+    const manifest = await rpc<ShareManifest>(app, owner, "bots/shareManifest", {
+      botId: source.id,
+    });
+    expect(manifest.routines).toEqual([
+      expect.objectContaining({ name: "Remind once", crons: ["@once"] }),
+    ]);
+
+    const imported = await rpc<Bot>(app, owner, "bots/importShare", { manifest });
+    const importedRoutines = await rpc<
+      Array<{ id: string; name: string; active: boolean; nextRunAt: string | null }>
+    >(app, owner, "routines/list", { botId: imported.id });
+    expect(importedRoutines).toHaveLength(1);
+    expect(importedRoutines[0]).toMatchObject({
+      name: "Remind once",
+      active: false,
+      nextRunAt: null,
+    });
+
+    const withoutTime = await raw(app, owner, "routines/update", {
+      routineId: importedRoutines[0]!.id,
+      active: true,
+    });
+    expect(withoutTime.status).toBeGreaterThanOrEqual(400);
+
+    const runAt = new Date(Date.now() + 120_000).toISOString();
+    const armed = await rpc<{ active: boolean; nextRunAt: string | null }>(
+      app,
+      owner,
+      "routines/update",
+      {
+        routineId: importedRoutines[0]!.id,
+        active: true,
+        runAt,
+      },
+    );
+    expect(armed.active).toBe(true);
+    expect(armed.nextRunAt).toBe(runAt);
+
+    await handles.prisma.routine.update({
+      where: { id: importedRoutines[0]!.id },
+      data: { active: false, nextRunAt: null, lastRunAt: new Date() },
+    });
+    const afterFire = await raw(app, owner, "routines/update", {
+      routineId: importedRoutines[0]!.id,
+      active: true,
+      runAt: new Date(Date.now() + 180_000).toISOString(),
+    });
+    expect(afterFire.status).toBeGreaterThanOrEqual(400);
+  });
+
   it("rejects share manifests with invalid routine schedules", async () => {
     const owner = await signup(app, `share-cron-${stamp}@rakazo.test`, "Cron Owner");
     const manifest = await rpc<ShareManifest>(app, owner, "bots/shareManifest", {
