@@ -249,9 +249,10 @@ export class PiAgentRuntime implements AgentRuntime {
             queue.push({ type: "text", text: budgetMessage });
             streamed = budgetMessage;
           }
-        } else if (!streamed) {
+        } else if (!streamed.trim()) {
+          streamed = "";
           const fallback = assistantText(agent.state.messages.at(-1));
-          if (fallback) {
+          if (fallback.trim()) {
             queue.push({ type: "text", text: fallback });
             streamed = fallback;
           } else if (toolCalls === 0) {
@@ -259,7 +260,7 @@ export class PiAgentRuntime implements AgentRuntime {
             queue.push({ type: "text", text: streamed });
           }
         }
-        queue.push(streamed ? { type: "done", text: streamed } : { type: "done" });
+        queue.push(streamed.trim() ? { type: "done", text: streamed } : { type: "done" });
       } catch (error) {
         const message = sanitizeError(error instanceof Error ? error.message : String(error));
         queue.fail(new Error(message));
