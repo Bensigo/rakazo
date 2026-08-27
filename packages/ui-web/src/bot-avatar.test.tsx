@@ -61,10 +61,11 @@ describe("BotAvatar", () => {
 
   it("assigns animation hooks across every organic shape family", () => {
     const identities = new Map<number, string>();
-    for (let index = 0; identities.size < 10; index++) {
+    for (let index = 0; index < 500 && identities.size < 10; index++) {
       const identity = `avatar-${index}`;
       identities.set(avatarIdentitySeed(identity) % 10, identity);
     }
+    expect(identities.size).toBe(10);
 
     for (const [family, identity] of identities) {
       const html = renderToString(
