@@ -36,6 +36,8 @@ https://github.com/user-attachments/assets/dccdeddb-2134-4a56-8eed-b2e591736b1c
 - Better Auth
 - Graphile Worker
 - Pi
+- Docker, E2B, Daytona, and Box
+- Composio, Pipedream Connect, MCP, and OpenAPI integrations
 
 ## Quick start
 
