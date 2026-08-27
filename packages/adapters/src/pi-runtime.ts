@@ -251,7 +251,9 @@ export class PiAgentRuntime implements AgentRuntime {
           }
         } else if (!streamed.trim()) {
           streamed = "";
-          const fallback = assistantText(agent.state.messages.at(-1));
+          const lastMessage = agent.state.messages.at(-1);
+          const fallback =
+            lastMessage?.role === "assistant" ? assistantText(lastMessage) : "";
           if (fallback.trim()) {
             queue.push({ type: "text", text: fallback });
             streamed = fallback;
