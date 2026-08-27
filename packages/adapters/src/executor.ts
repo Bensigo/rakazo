@@ -1883,6 +1883,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               },
               resumeFromCheckpoint: takeoverResume?.checkpoint,
               script,
+              allowSilentEmpty: run.trigger === "bot_message",
               executeTool: scripted ? undefined : applyTool,
             },
             context,
@@ -2156,7 +2157,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
           terminalCheckpointComplete = true;
 
           flushPendingTools();
-          if (!assembled) messageSegments = completionMessageSegments(messageSegments);
+          if (!assembled) {
+            messageSegments = completionMessageSegments(messageSegments, {
+              allowSilentEmpty: run.trigger === "bot_message",
+            });
+          }
           const blocks = redactBlocks(messageSegments, runSecrets);
           const text = redactSecrets(completionNotificationBody(assembled, blocks), runSecrets);
           if (containsSecret(text, runSecrets)) {
@@ -2347,8 +2352,13 @@ function computerRetryDelay(fence: number): number {
   return Math.min(10_000, 250 * 2 ** Math.min(Math.max(fence - 1, 0), 5));
 }
 
-export function completionMessageSegments(segments: MessageBlock[]): MessageBlock[] {
-  return segments.length > 0 ? segments : [{ kind: "text", text: "done." }];
+export function completionMessageSegments(
+  segments: MessageBlock[],
+  options?: { allowSilentEmpty?: boolean },
+): MessageBlock[] {
+  if (segments.length > 0) return segments;
+  if (options?.allowSilentEmpty) return [];
+  return [{ kind: "text", text: "done." }];
 }
 
 /** User-facing text for completion notifications; empty when only tool/step activity remains. */

@@ -256,7 +256,7 @@ export class PiAgentRuntime implements AgentRuntime {
           if (fallback.trim()) {
             queue.push({ type: "text", text: fallback });
             streamed = fallback;
-          } else if (toolCalls === 0) {
+          } else if (toolCalls === 0 && !request.allowSilentEmpty) {
             streamed = "No response. Try again.";
             queue.push({ type: "text", text: streamed });
           }
