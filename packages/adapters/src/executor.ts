@@ -151,6 +151,7 @@ import {
   searchChartCatalog,
 } from "./plot-tool.js";
 import {
+  commitConsumedRunSecret,
   runSecretKind,
   secretPausedToolResult,
   tryCompleteConnectionWithCode,
@@ -1665,7 +1666,6 @@ export function createRunExecutor(deps: ExecutorDeps) {
               const plaintext = deps.secretStore.load(storedSecret.ciphertext);
               runSecrets.push(plaintext);
               progressRedactor = createStreamingRedactor(runSecrets);
-              await deps.prisma.secret.delete({ where: { id: storedSecret.id } });
               const connectionId = args.connectionId ? String(args.connectionId) : undefined;
               const purpose = String(args.purpose ?? "otp");
               let connectionResult: { connected: boolean; error?: string } | undefined;
@@ -1706,16 +1706,23 @@ export function createRunExecutor(deps: ExecutorDeps) {
                           }
                         : {}),
                     };
-              if (applied?.duplicate && applied.effect.status === "completed") {
-                return (await replaceCompletedExternalEffectResult(
-                  deps.prisma,
-                  applied.effect.id,
-                  secretResult,
-                ))
-                  ? secretResult
-                  : uncertainEffectResult(name);
-              }
-              return finish(secretResult);
+              // Delete only after the effect result is durable so a crash/retry can still
+              // reuse a single-use OTP that was never successfully completed.
+              return commitConsumedRunSecret({
+                persist: () =>
+                  applied?.duplicate && applied.effect.status === "completed"
+                    ? replaceCompletedExternalEffectResult(
+                        deps.prisma,
+                        applied.effect.id,
+                        secretResult,
+                      )
+                    : persistEffectResult(secretResult),
+                deleteSecret: async () => {
+                  await deps.prisma.secret.delete({ where: { id: storedSecret.id } });
+                },
+                result: secretResult,
+                onPersistFailed: uncertainEffectResult(name),
+              });
             }
             await recordEffect(deps, run, name, effectKey, args);
             if (!(await renewRunLease(deps, runId, workerId, fence))) {

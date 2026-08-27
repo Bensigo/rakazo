@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  commitConsumedRunSecret,
   runSecretKind,
   secretPausedToolResult,
   tryCompleteConnectionWithCode,
@@ -17,6 +18,46 @@ describe("secretPausedToolResult", () => {
       terminate: true,
       details: { secret: "paused" },
     });
+  });
+});
+
+describe("commitConsumedRunSecret", () => {
+  it("deletes the stored secret only after persist succeeds", async () => {
+    const order: string[] = [];
+    const result = { ok: true, submitted: true };
+    const onPersistFailed = { error: "uncertain", uncertain: true as const };
+
+    await expect(
+      commitConsumedRunSecret({
+        persist: async () => {
+          order.push("persist");
+          return true;
+        },
+        deleteSecret: async () => {
+          order.push("delete");
+        },
+        result,
+        onPersistFailed,
+      }),
+    ).resolves.toBe(result);
+
+    expect(order).toEqual(["persist", "delete"]);
+  });
+
+  it("keeps the stored secret when persist fails so a retry can reuse it", async () => {
+    const deleteSecret = vi.fn();
+    const onPersistFailed = { error: "uncertain", uncertain: true as const };
+
+    await expect(
+      commitConsumedRunSecret({
+        persist: async () => false,
+        deleteSecret,
+        result: { ok: true, submitted: true },
+        onPersistFailed,
+      }),
+    ).resolves.toBe(onPersistFailed);
+
+    expect(deleteSecret).not.toHaveBeenCalled();
   });
 });
 

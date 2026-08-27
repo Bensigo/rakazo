@@ -16,6 +16,22 @@ export function secretPausedToolResult(): ApprovalPausedToolResult {
   };
 }
 
+/**
+ * Persist the secret tool result first, then delete the stored ciphertext.
+ * Deleting before persist loses single-use OTPs if the worker crashes mid-flight.
+ */
+export async function commitConsumedRunSecret<TResult, TFailed>(input: {
+  persist: () => Promise<boolean>;
+  deleteSecret: () => Promise<void>;
+  result: TResult;
+  onPersistFailed: TFailed;
+}): Promise<TResult | TFailed> {
+  const persisted = await input.persist();
+  if (!persisted) return input.onPersistFailed;
+  await input.deleteSecret();
+  return input.result;
+}
+
 export interface RunSecretWriter {
   store(input: {
     runId: string;
