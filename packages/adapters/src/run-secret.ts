@@ -17,19 +17,20 @@ export function secretPausedToolResult(): ApprovalPausedToolResult {
 }
 
 /**
- * Persist the secret tool result first, then delete the stored ciphertext.
- * Deleting before persist loses single-use OTPs if the worker crashes mid-flight.
+ * Delete the stored secret before connector side effects, then persist the tool result.
+ * Keeping the ciphertext until after complete() lets a crash retry resubmit a single-use OTP.
+ * If persist fails after the connector already succeeded, retry reconciles via connection status.
  */
 export async function commitConsumedRunSecret<TResult, TFailed>(input: {
-  persist: () => Promise<boolean>;
   deleteSecret: () => Promise<void>;
-  result: TResult;
+  afterSecretTaken: () => Promise<TResult>;
+  persist: (result: TResult) => Promise<boolean>;
   onPersistFailed: TFailed;
 }): Promise<TResult | TFailed> {
-  const persisted = await input.persist();
-  if (!persisted) return input.onPersistFailed;
   await input.deleteSecret();
-  return input.result;
+  const result = await input.afterSecretTaken();
+  if (!(await input.persist(result))) return input.onPersistFailed;
+  return result;
 }
 
 /**
@@ -47,8 +48,8 @@ export function resolveCompletedSecretLeftover(input: {
 
 /**
  * When the stored run secret is already gone, decide whether to reuse a settled
- * effect result or ask again. Prevents re-prompting after persist+delete if the
- * worker crashes before the tool result reaches the runtime.
+ * effect result or ask again. Prevents re-prompting after persist if the worker
+ * crashes before the tool result reaches the runtime.
  */
 export function resolveMissingRunSecretAction(
   effect: { status: string; result?: unknown } | null | undefined,
@@ -61,6 +62,23 @@ export function resolveMissingRunSecretAction(
   if (gate.action === "return") return { action: "return", result: gate.result };
   if (gate.action === "uncertain") return { action: "uncertain", toolName: gate.toolName };
   return { action: "ask" };
+}
+
+export async function connectionAlreadyConnected(
+  prisma: PrismaClient,
+  run: { workspaceId: string; userId: string },
+  connectionId: string,
+): Promise<boolean> {
+  const row = await prisma.connection.findFirst({
+    where: {
+      id: connectionId,
+      workspaceId: run.workspaceId,
+      userId: run.userId,
+      status: "connected",
+    },
+    select: { id: true },
+  });
+  return row != null;
 }
 
 export interface RunSecretWriter {
@@ -109,10 +127,12 @@ export async function tryCompleteConnectionWithCode(
       id: connectionId,
       workspaceId: run.workspaceId,
       userId: run.userId,
-      status: "pending",
+      status: { in: ["pending", "connected"] },
     },
   });
   if (!row) return { connected: false };
+  // Already finished on a prior attempt; do not resubmit the OTP.
+  if (row.status === "connected") return { connected: true };
   const connector = connectors?.managed(row.connectorId);
   if (!connector) return { connected: false };
   const state = row.providerRef ?? row.provider;

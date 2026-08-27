@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   commitConsumedRunSecret,
+  connectionAlreadyConnected,
   resolveCompletedSecretLeftover,
   resolveMissingRunSecretAction,
   runSecretKind,
@@ -24,42 +25,45 @@ describe("secretPausedToolResult", () => {
 });
 
 describe("commitConsumedRunSecret", () => {
-  it("deletes the stored secret only after persist succeeds", async () => {
+  it("deletes the stored secret before connector side effects, then persists", async () => {
     const order: string[] = [];
     const result = { ok: true, submitted: true };
     const onPersistFailed = { error: "uncertain", uncertain: true as const };
 
     await expect(
       commitConsumedRunSecret({
+        deleteSecret: async () => {
+          order.push("delete");
+        },
+        afterSecretTaken: async () => {
+          order.push("side-effect");
+          return result;
+        },
         persist: async () => {
           order.push("persist");
           return true;
         },
-        deleteSecret: async () => {
-          order.push("delete");
-        },
-        result,
         onPersistFailed,
       }),
     ).resolves.toBe(result);
 
-    expect(order).toEqual(["persist", "delete"]);
+    expect(order).toEqual(["delete", "side-effect", "persist"]);
   });
 
-  it("keeps the stored secret when persist fails so a retry can reuse it", async () => {
+  it("does not keep the secret for a retry after side effects when persist fails", async () => {
     const deleteSecret = vi.fn();
     const onPersistFailed = { error: "uncertain", uncertain: true as const };
 
     await expect(
       commitConsumedRunSecret({
-        persist: async () => false,
         deleteSecret,
-        result: { ok: true, submitted: true },
+        afterSecretTaken: async () => ({ ok: true, submitted: true }),
+        persist: async () => false,
         onPersistFailed,
       }),
     ).resolves.toBe(onPersistFailed);
 
-    expect(deleteSecret).not.toHaveBeenCalled();
+    expect(deleteSecret).toHaveBeenCalledOnce();
   });
 });
 
@@ -95,6 +99,34 @@ describe("resolveMissingRunSecretAction", () => {
   it("asks again when the effect is still waiting for input", () => {
     expect(resolveMissingRunSecretAction({ status: "intended" })).toEqual({ action: "ask" });
     expect(resolveMissingRunSecretAction(undefined)).toEqual({ action: "ask" });
+  });
+});
+
+describe("connectionAlreadyConnected", () => {
+  it("is true only for a connected row owned by the run user", async () => {
+    const prisma = {
+      connection: {
+        findFirst: vi.fn().mockResolvedValue({ id: "conn-1" }),
+      },
+    };
+
+    await expect(
+      connectionAlreadyConnected(
+        prisma as never,
+        { workspaceId: "workspace-1", userId: "user-1" },
+        "conn-1",
+      ),
+    ).resolves.toBe(true);
+
+    expect(prisma.connection.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: "conn-1",
+        workspaceId: "workspace-1",
+        userId: "user-1",
+        status: "connected",
+      },
+      select: { id: true },
+    });
   });
 });
 
@@ -142,7 +174,7 @@ describe("tryCompleteConnectionWithCode", () => {
         id: "conn-1",
         workspaceId: "workspace-1",
         userId: "user-1",
-        status: "pending",
+        status: { in: ["pending", "connected"] },
       },
     });
     expect(complete).toHaveBeenCalledWith({ state: "gmail-state", code: "123456" }, context);
@@ -150,6 +182,39 @@ describe("tryCompleteConnectionWithCode", () => {
       where: { id: "conn-1" },
       data: { status: "connected" },
     });
+  });
+
+  it("does not resubmit a code when the connection is already connected", async () => {
+    const complete = vi.fn();
+    const prisma = {
+      connection: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "conn-1",
+          connectorId: "composio",
+          provider: "gmail",
+          providerRef: "gmail-state",
+          status: "connected",
+        }),
+        update: vi.fn(),
+      },
+    };
+    const connectors = {
+      managed: vi.fn(() => ({ complete, connectionReady: vi.fn() })),
+    };
+
+    await expect(
+      tryCompleteConnectionWithCode(
+        prisma as never,
+        connectors as never,
+        { workspaceId: "workspace-1", userId: "user-1" },
+        context,
+        "conn-1",
+        "123456",
+      ),
+    ).resolves.toEqual({ connected: true });
+
+    expect(complete).not.toHaveBeenCalled();
+    expect(prisma.connection.update).not.toHaveBeenCalled();
   });
 
   it("returns a connector error instead of throwing", async () => {

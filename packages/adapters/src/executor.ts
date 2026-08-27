@@ -152,6 +152,7 @@ import {
 } from "./plot-tool.js";
 import {
   commitConsumedRunSecret,
+  connectionAlreadyConnected,
   resolveCompletedSecretLeftover,
   resolveMissingRunSecretAction,
   runSecretKind,
@@ -1683,17 +1684,6 @@ export function createRunExecutor(deps: ExecutorDeps) {
               progressRedactor = createStreamingRedactor(runSecrets);
               const connectionId = args.connectionId ? String(args.connectionId) : undefined;
               const purpose = String(args.purpose ?? "otp");
-              let connectionResult: { connected: boolean; error?: string } | undefined;
-              if (connectionId) {
-                connectionResult = await tryCompleteConnectionWithCode(
-                  deps.prisma,
-                  deps.connectors,
-                  run,
-                  context,
-                  connectionId,
-                  plaintext,
-                );
-              }
               const recordedEffect = await recordEffect(deps, run, name, effectKey, args);
               if (recordedEffect?.duplicate) {
                 const gate = resolveDuplicateEffectGate(recordedEffect.effect, name);
@@ -1702,29 +1692,45 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   if (early !== undefined) return early;
                 }
               }
-              const secretResult =
-                purpose === "password" && !connectionId
-                  ? {
-                      ok: true,
-                      submitted: true,
-                      note: "Use request_takeover for website logins; the secret was not typed onto the computer.",
-                    }
-                  : {
-                      ok: true,
-                      submitted: true,
-                      ...(connectionResult
-                        ? {
-                            connected: connectionResult.connected,
-                            ...(connectionResult.error
-                              ? { connectionError: connectionResult.error }
-                              : {}),
-                          }
-                        : {}),
-                    };
-              // Delete only after the effect result is durable so a crash/retry can still
-              // reuse a single-use OTP that was never successfully completed.
+              // Take the secret before connector complete() so a crash retry cannot
+              // resubmit a single-use OTP. Persist follows; missing-secret retries
+              // reconcile via connection status when the connector already succeeded.
               return commitConsumedRunSecret({
-                persist: () =>
+                deleteSecret: async () => {
+                  await deps.prisma.secret.delete({ where: { id: storedSecret.id } });
+                },
+                afterSecretTaken: async () => {
+                  let connectionResult: { connected: boolean; error?: string } | undefined;
+                  if (connectionId) {
+                    connectionResult = await tryCompleteConnectionWithCode(
+                      deps.prisma,
+                      deps.connectors,
+                      run,
+                      context,
+                      connectionId,
+                      plaintext,
+                    );
+                  }
+                  return purpose === "password" && !connectionId
+                    ? {
+                        ok: true,
+                        submitted: true,
+                        note: "Use request_takeover for website logins; the secret was not typed onto the computer.",
+                      }
+                    : {
+                        ok: true,
+                        submitted: true,
+                        ...(connectionResult
+                          ? {
+                              connected: connectionResult.connected,
+                              ...(connectionResult.error
+                                ? { connectionError: connectionResult.error }
+                                : {}),
+                            }
+                          : {}),
+                      };
+                },
+                persist: (secretResult) =>
                   applied?.duplicate && applied.effect.status === "completed"
                     ? replaceCompletedExternalEffectResult(
                         deps.prisma,
@@ -1732,10 +1738,6 @@ export function createRunExecutor(deps: ExecutorDeps) {
                         secretResult,
                       )
                     : persistEffectResult(secretResult),
-                deleteSecret: async () => {
-                  await deps.prisma.secret.delete({ where: { id: storedSecret.id } });
-                },
-                result: secretResult,
                 onPersistFailed: uncertainEffectResult(name),
               });
             }
@@ -1748,6 +1750,16 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 recordedForAsk.effect.id,
                 missingSecretAction.toolName,
               );
+            }
+            const connectionId = args.connectionId ? String(args.connectionId) : undefined;
+            if (
+              connectionId &&
+              (await connectionAlreadyConnected(deps.prisma, run, connectionId))
+            ) {
+              const connectedResult = { ok: true, submitted: true, connected: true };
+              return (await persistEffectResult(connectedResult))
+                ? connectedResult
+                : uncertainEffectResult(name);
             }
             if (!(await renewRunLease(deps, runId, workerId, fence))) {
               return pauseForSecret();
