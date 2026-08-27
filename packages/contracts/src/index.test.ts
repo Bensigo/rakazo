@@ -153,6 +153,7 @@ describe("contracts", () => {
         updatedAt: "2026-08-26T00:00:01.000Z",
       }).success,
     ).toBe(true);
+    expect(RunSchema.safeParse({ ...run, trigger: "webhook" }).success).toBe(true);
   });
 
   it("caps remote MCP headers", () => {

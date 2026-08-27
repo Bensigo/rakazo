@@ -49,6 +49,7 @@ export const BotSchema = z.object({
   modelProvider: z.string().nullable(),
   modelId: z.string().nullable(),
   thinkingLevel: ThinkingLevelSchema.nullable(),
+  webhookConfigured: z.boolean(),
 });
 export type Bot = z.infer<typeof BotSchema>;
 
@@ -528,7 +529,16 @@ export const RunSchema = z.object({
   threadId: Id,
   taskId: Id,
   status: RunStatus,
-  trigger: z.enum(["user", "routine", "resume", "follow_up", "spawn", "skill", "bot_message", "webhook"]),
+  trigger: z.enum([
+    "user",
+    "routine",
+    "resume",
+    "follow_up",
+    "spawn",
+    "skill",
+    "bot_message",
+    "webhook",
+  ]),
   routineId: Id.nullable(),
   modelProvider: z.string().nullable(),
   modelId: z.string().nullable(),

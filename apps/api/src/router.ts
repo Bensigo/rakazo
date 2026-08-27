@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { implement, ORPCError } from "@orpc/server";
 import {
   type AdapterContext,
@@ -758,6 +758,48 @@ export function createRouter(deps: RouterDeps) {
           { deleteMemories: input.deleteMemories },
         );
         return { ok: true as const };
+      }),
+      rotateWebhookSecret: authed.bots.rotateWebhookSecret.handler(async ({ context, input }) => {
+        const bot = await repos.getBot(context.actor, input.botId);
+        const plaintext = randomBytes(32).toString("base64url");
+        const stored = await deps.secrets.put(plaintext, {
+          operationId: "bots.rotateWebhookSecret",
+          traceId: "bots.rotateWebhookSecret",
+          workspaceId: context.actor.workspaceId,
+          userId: context.actor.userId,
+          signal: context.signal ?? new AbortController().signal,
+        });
+        await deps.prisma.$transaction(async (tx) => {
+          const previousSecretId = bot.webhookSecretId;
+          await tx.secret.create({
+            data: {
+              id: stored.id,
+              userId: context.actor.userId,
+              workspaceId: context.actor.workspaceId,
+              kind: "webhook",
+              ciphertext: stored.ciphertext,
+            },
+          });
+          await tx.bot.update({
+            where: { id: bot.id },
+            data: { webhookSecretId: stored.id },
+          });
+          if (previousSecretId) {
+            await tx.secret.deleteMany({
+              where: {
+                id: previousSecretId,
+                workspaceId: context.actor.workspaceId,
+                userId: context.actor.userId,
+                kind: "webhook",
+              },
+            });
+          }
+        });
+        return {
+          secret: plaintext,
+          path: `/api/v1/bots/${bot.id}/webhook`,
+          webhookConfigured: true as const,
+        };
       }),
     },
     groups: {
