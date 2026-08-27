@@ -1721,7 +1721,13 @@ function MessageBubble({
               {blockText(message)}
             </ChatMarkdown>
             {onSpeak ? (
-              <Pressable onPress={onSpeak} hitSlop={8} style={{ marginTop: 8 }}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Speak message"
+                onPress={onSpeak}
+                hitSlop={8}
+                style={{ marginTop: 8 }}
+              >
                 <Text style={{ color: "#85858A", fontSize: 13 }}>Speak</Text>
               </Pressable>
             ) : null}
