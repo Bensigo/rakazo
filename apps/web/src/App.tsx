@@ -42,7 +42,8 @@ export function App() {
   if (showSessionUnavailable(gate, nextHolding)) {
     return <SessionUnavailable refetch={session.refetch} />;
   }
-  if (gate === "loading") {
+  const onPublicShareRoute = window.location.pathname.startsWith("/share/");
+  if (gate === "loading" && !onPublicShareRoute) {
     return window.location.pathname.startsWith("/app") ? (
       <ShellSkeleton />
     ) : (

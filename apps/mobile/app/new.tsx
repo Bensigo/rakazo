@@ -9,7 +9,7 @@ import {
 } from "@rakazo/contracts";
 import * as DocumentPicker from "expo-document-picker";
 import { Stack, useRouter } from "expo-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput } from "react-native";
 import { ComputerModePicker } from "../components/computer-mode-picker";
 import { type MobileBot, rpc } from "../lib/api";
@@ -25,6 +25,7 @@ export default function NewBot() {
   const [shareJson, setShareJson] = useState("");
   const [shareToken, setShareToken] = useState("");
   const [importingShare, setImportingShare] = useState(false);
+  const importingShareRef = useRef(false);
 
   function close() {
     if (router.canDismiss()) {
@@ -57,6 +58,8 @@ export default function NewBot() {
   }
 
   async function importShare(input: { manifest?: ShareManifest; token?: string }) {
+    if (importingShareRef.current) return;
+    importingShareRef.current = true;
     setImportingShare(true);
     setError(null);
     try {
@@ -68,11 +71,13 @@ export default function NewBot() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not import share");
     } finally {
+      importingShareRef.current = false;
       setImportingShare(false);
     }
   }
 
   async function importFromShareFields() {
+    if (importingShareRef.current) return;
     const token = shareToken.trim();
     if (token) {
       await importShare({ token });
@@ -92,17 +97,25 @@ export default function NewBot() {
   }
 
   async function pickShareFile() {
-    const result = await DocumentPicker.getDocumentAsync({
-      type: ["application/json", "text/json", "public.json"],
-      copyToCacheDirectory: true,
-    });
-    if (result.canceled || !result.assets?.[0]) return;
+    if (importingShareRef.current) return;
+    importingShareRef.current = true;
+    setImportingShare(true);
+    setError(null);
     try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ["application/json", "text/json", "public.json"],
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
       const text = await fetch(result.assets[0].uri).then((res) => res.text());
       const manifest = parseShareManifestPayload(JSON.parse(text) as unknown);
-      await importShare({ manifest });
+      const bot = await rpc<MobileBot>("bots/importShare", { manifest });
+      router.replace({ pathname: "/thread", params: { botId: bot.id, name: bot.name } });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not import share file");
+    } finally {
+      importingShareRef.current = false;
+      setImportingShare(false);
     }
   }
 
@@ -134,6 +147,7 @@ export default function NewBot() {
           onChangeText={setShareJson}
           placeholder="Paste share JSON"
           placeholderTextColor="#6C6C70"
+          accessibilityLabel="Share JSON"
           multiline
           style={{
             marginTop: 12,
@@ -150,6 +164,7 @@ export default function NewBot() {
           onChangeText={setShareToken}
           placeholder="Or paste link token"
           placeholderTextColor="#6C6C70"
+          accessibilityLabel="Share link token"
           style={{
             marginTop: 8,
             backgroundColor: "#1A1A1D",
@@ -159,6 +174,8 @@ export default function NewBot() {
           }}
         />
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Pick share JSON file"
           onPress={() => void pickShareFile()}
           disabled={importingShare}
           style={{
@@ -174,6 +191,8 @@ export default function NewBot() {
           <Text style={{ color: "#ECECEE" }}>Pick .json file</Text>
         </Pressable>
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Import share"
           onPress={() => void importFromShareFields()}
           disabled={importingShare}
           style={{

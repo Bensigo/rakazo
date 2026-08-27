@@ -13,6 +13,7 @@ import { Pressable, ScrollView, Share, Text, TextInput } from "react-native";
 import { ComputerMaintenanceActions } from "../components/computer-maintenance-actions";
 import { ComputerModePicker } from "../components/computer-mode-picker";
 import { type MobileBot, rpc } from "../lib/api";
+import { clearShareLink, loadShareLink, saveShareLink } from "../lib/share-link";
 
 type BotSettingsRecord = MobileBot & {
   description?: string;
@@ -39,14 +40,19 @@ export default function BotSettingsScreen() {
     void Promise.all([
       rpc<BotSettingsRecord>("bots/get", { botId }),
       rpc<ComputerStatus>("computer/status", { botId }).catch(() => null),
+      loadShareLink(botId),
     ])
-      .then(([next, status]) => {
+      .then(([next, status, storedShare]) => {
         setBot(next);
         setName(next.name);
         setTitle(next.title);
         setDescription(next.description ?? "");
         setComputerMode(next.computerMode);
         setComputer(status);
+        if (storedShare) {
+          setShareToken(storedShare.token);
+          setShareLink(storedShare.url);
+        }
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Could not load bot"));
   }, [botId]);
@@ -190,9 +196,10 @@ export default function BotSettingsScreen() {
             setShareBusy(true);
             setShareNotice(null);
             void rpc<{ url: string; token: string }>("bots/shareCreate", { botId })
-              .then(({ url, token }) => {
+              .then(async ({ url, token }) => {
                 setShareLink(url);
                 setShareToken(token);
+                await saveShareLink(botId, { token, url });
                 setShareNotice("Link created");
               })
               .catch((err) =>
@@ -231,9 +238,10 @@ export default function BotSettingsScreen() {
               if (!shareToken || shareBusy) return;
               setShareBusy(true);
               void rpc("bots/shareRevoke", { token: shareToken })
-                .then(() => {
+                .then(async () => {
                   setShareLink(null);
                   setShareToken(null);
+                  if (botId) await clearShareLink(botId);
                   setShareNotice("Link revoked");
                 })
                 .catch((err) =>

@@ -1,7 +1,7 @@
 import { parseShareManifestPayload, type ShareManifest } from "@rakazo/contracts";
 import * as DocumentPicker from "expo-document-picker";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { loadSessionToken, type MobileBot, rpc } from "../../lib/api";
 
@@ -12,6 +12,7 @@ export default function ShareImportScreen() {
   const [shareToken, setShareToken] = useState(routeToken ?? "");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const pendingRef = useRef(false);
   const [authReady, setAuthReady] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
 
@@ -27,6 +28,8 @@ export default function ShareImportScreen() {
   }, [routeToken, router]);
 
   async function importShare(input: { manifest?: ShareManifest; token?: string }) {
+    if (pendingRef.current) return;
+    pendingRef.current = true;
     setPending(true);
     setError(null);
     try {
@@ -38,11 +41,13 @@ export default function ShareImportScreen() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not import share");
     } finally {
+      pendingRef.current = false;
       setPending(false);
     }
   }
 
   async function importFromFields() {
+    if (pendingRef.current) return;
     const token = shareToken.trim();
     if (token) {
       await importShare({ token });
@@ -62,17 +67,25 @@ export default function ShareImportScreen() {
   }
 
   async function pickFile() {
-    const result = await DocumentPicker.getDocumentAsync({
-      type: ["application/json", "text/json", "public.json"],
-      copyToCacheDirectory: true,
-    });
-    if (result.canceled || !result.assets?.[0]) return;
+    if (pendingRef.current) return;
+    pendingRef.current = true;
+    setPending(true);
+    setError(null);
     try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ["application/json", "text/json", "public.json"],
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
       const text = await fetch(result.assets[0].uri).then((res) => res.text());
       const manifest = parseShareManifestPayload(JSON.parse(text) as unknown);
-      await importShare({ manifest });
+      const bot = await rpc<MobileBot>("bots/importShare", { manifest });
+      router.replace({ pathname: "/thread", params: { botId: bot.id, name: bot.name } });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not import share file");
+    } finally {
+      pendingRef.current = false;
+      setPending(false);
     }
   }
 
@@ -101,6 +114,7 @@ export default function ShareImportScreen() {
           onChangeText={setShareJson}
           placeholder="Paste rakazo.share/v1 JSON"
           placeholderTextColor="#6C6C70"
+          accessibilityLabel="Share JSON"
           multiline
           style={{
             marginTop: 8,
@@ -118,6 +132,7 @@ export default function ShareImportScreen() {
           onChangeText={setShareToken}
           placeholder="Token from a share URL"
           placeholderTextColor="#6C6C70"
+          accessibilityLabel="Share link token"
           style={{
             marginTop: 8,
             backgroundColor: "#1A1A1D",
@@ -127,6 +142,8 @@ export default function ShareImportScreen() {
           }}
         />
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Pick share JSON file"
           onPress={() => void pickFile()}
           disabled={pending}
           style={{
@@ -143,6 +160,8 @@ export default function ShareImportScreen() {
         </Pressable>
         {error ? <Text style={{ color: "#E65707", marginTop: 16 }}>{error}</Text> : null}
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Import share"
           onPress={() => void importFromFields()}
           disabled={pending}
           style={{
