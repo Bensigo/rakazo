@@ -122,8 +122,8 @@ describe("messaging another bot", () => {
       bot_id: "bot-target",
       message: "ping",
     });
-    expect(sent.ok && sent.note).toContain("asynchronous");
-    expect(sent.ok && sent.note).toContain("Continue any work that does not depend on their reply");
+    expect(sent.ok && sent.note).toContain("async");
+    expect(sent.ok && sent.note).toContain("Continue independent work");
   });
 
   it("refuses a bot messaging itself", async () => {

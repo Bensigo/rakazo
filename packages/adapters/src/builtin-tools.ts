@@ -509,7 +509,7 @@ export const builtinAgentTools: ConnectorTool[] = [
   {
     name: "message_bot",
     description:
-      "Send a useful update, question, or result to one of the user's other bots. Delivery is asynchronous and does not end your turn: continue work that does not depend on the reply, and send later updates when they add new information. Never poll or send acknowledgement-only messages.",
+      "Send a useful update, question, or result to another of the user's bots. Delivery is async and does not end your turn. Continue independent work; do not poll or send ack-only messages. Later updates only if they add something new.",
     inputSchema: {
       type: "object",
       properties: {
