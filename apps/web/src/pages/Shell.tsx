@@ -493,7 +493,11 @@ export function ShellPage() {
     setRoutines([]);
     setRoutinesBotId(null);
     // Keep the search-jump viewport; expandedHistoryThread merge still accepts live messages.
-    if (stickToEnd && expandedHistoryThread.current !== snap.threadId) {
+    if (
+      stickToEnd &&
+      (!scrollElement || transcriptIsNearEnd(scrollElement)) &&
+      expandedHistoryThread.current !== snap.threadId
+    ) {
       window.requestAnimationFrame(() => {
         const element = messageScroll.current;
         if (element) element.scrollTop = element.scrollHeight;
@@ -528,7 +532,11 @@ export function ShellPage() {
     commitSnapshot(reconciled.snapshot);
     commitComputer(reconciled.computer);
     cacheComputerFor(id, { computer: reconciled.computer });
-    if (stickToEnd && expandedHistoryThread.current !== snap.threadId) {
+    if (
+      stickToEnd &&
+      (!scrollElement || transcriptIsNearEnd(scrollElement)) &&
+      expandedHistoryThread.current !== snap.threadId
+    ) {
       window.requestAnimationFrame(() => {
         const element = messageScroll.current;
         if (element) element.scrollTop = element.scrollHeight;
@@ -3095,6 +3103,7 @@ const Transcript = memo(function Transcript({
   const [atEnd, setAtEnd] = useState(true);
   const following = useRef(true);
   const autoScrolling = useRef(false);
+  const lastScrollTop = useRef(0);
   const autoScrollTimer = useRef<number | undefined>(undefined);
   const jumpButtonRef = useRef<HTMLButtonElement>(null);
   const messageById = useMemo(
@@ -3178,9 +3187,11 @@ const Transcript = memo(function Transcript({
         data-testid="transcript"
         onPointerDown={() => {
           autoScrolling.current = false;
+          following.current = false;
         }}
         onTouchStart={() => {
           autoScrolling.current = false;
+          following.current = false;
         }}
         onWheel={(event) => {
           if (event.deltaY < 0) {
@@ -3189,10 +3200,12 @@ const Transcript = memo(function Transcript({
           }
         }}
         onScroll={(event) => {
+          const scrolledDown = event.currentTarget.scrollTop >= lastScrollTop.current;
+          lastScrollTop.current = event.currentTarget.scrollTop;
           const nearEnd = transcriptIsNearEnd(event.currentTarget);
           setAtEnd(nearEnd);
           if (nearEnd) {
-            following.current = true;
+            if (scrolledDown) following.current = true;
             if (autoScrolling.current) {
               autoScrolling.current = false;
               window.clearTimeout(autoScrollTimer.current);
