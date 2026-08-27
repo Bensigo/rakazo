@@ -112,7 +112,7 @@ msgstr "{title}, {label}"
 
 #: src/pages/Shell.tsx:3097
 msgid "{workingBotName} is working"
-msgstr ""
+msgstr "{workingBotName} 작업 중"
 
 #. placeholder {0}: mention.name
 #: src/pages/Shell.tsx:3407
@@ -469,7 +469,7 @@ msgstr "Bot은 기본적으로 묻지 않고 작업합니다. 먼저 확인하�
 
 #: src/pages/Shell.tsx:3098
 msgid "Bots are working"
-msgstr ""
+msgstr "봇 작업 중"
 
 #: src/pages/VoiceSettingsOverlay.tsx:130
 msgid "Bring your own key. The provider is swappable; your bots keep the same speak and call buttons."
@@ -1536,7 +1536,7 @@ msgstr "{activeName}에게 메시지 보내기"
 
 #: src/pages/Shell.tsx:3967
 msgid "Message from"
-msgstr ""
+msgstr "메시지"
 
 #: src/pages/Shell.tsx:3963
 msgid "Message from {peer}"
@@ -1548,7 +1548,7 @@ msgstr "메시지를 입력하세요"
 
 #: src/pages/Shell.tsx:3967
 msgid "Messaged"
-msgstr ""
+msgstr "메시지 보냄"
 
 #: src/pages/Shell.tsx:3963
 msgid "Messaged {peer}"
