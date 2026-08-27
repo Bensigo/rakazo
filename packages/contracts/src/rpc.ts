@@ -8,7 +8,6 @@ import {
   AppBootstrapSchema,
   ArtifactSchema,
   ArtifactWithContentSchema,
-  AvatarStyleSchema,
   BotMcpServerSchema,
   BotSchema,
   BotSectionSchema,
@@ -113,9 +112,6 @@ const threadSendInput = threadTarget
 export const appContract = {
   health: oc.output(z.object({ ok: z.literal(true), version: z.string() })),
   me: oc.output(MeSchema),
-  preferences: {
-    update: oc.input(z.object({ avatarStyle: AvatarStyleSchema })).output(MeSchema),
-  },
   bootstrap: oc.input(z.object({ botId: Id.optional() })).output(AppBootstrapSchema),
   deployment: {
     get: oc.output(DeploymentSettingsSchema),

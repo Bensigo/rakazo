@@ -163,13 +163,7 @@ export type MobileBotSection = BotSection;
 
 export type MobileMe = Pick<
   Me,
-  | "name"
-  | "email"
-  | "workspaceId"
-  | "defaultProvider"
-  | "defaultModel"
-  | "needsModel"
-  | "avatarStyle"
+  "name" | "email" | "workspaceId" | "defaultProvider" | "defaultModel" | "needsModel"
 >;
 
 export type MobileModel = ModelCatalogEntry;
