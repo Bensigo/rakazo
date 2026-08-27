@@ -20,7 +20,7 @@ Rakazo is in beta. Learn more at [rakazo.com](https://rakazo.com).
 - Bots that can delegate to peer bots or short-lived subagents
 - Bring-your-own model credentials through Pi
 - App integrations through Composio or Pipedream Connect, plus user-installed Treg, remote MCP, and OpenAPI tool sources
-- Docker, E2B, Daytona, Box, and trusted local-computer support
+- Docker, E2B, Daytona, and Box computers, plus trusted Mac access through Electron's Docker-backed setup
 
 ## Demo
 
@@ -36,7 +36,7 @@ https://github.com/user-attachments/assets/dccdeddb-2134-4a56-8eed-b2e591736b1c
 - Better Auth
 - Graphile Worker
 - Pi
-- Docker, E2B, Daytona, Box, and trusted local computers
+- Docker, E2B, Daytona, and Box, plus trusted Mac access through Electron's Docker-backed setup
 - Composio and Pipedream Connect app catalogs, plus Treg, MCP, and OpenAPI integrations
 
 ## Quick start
