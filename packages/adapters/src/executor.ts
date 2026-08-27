@@ -45,6 +45,7 @@ import {
   redactSecrets,
   renderBotDirectory,
   resolveActionApproval,
+  resolveDeploymentModel,
   sandboxCommandTimeoutMs,
   type ToolCallStreak,
   toolRequiresApproval,
@@ -312,18 +313,21 @@ export function createRunExecutor(deps: ExecutorDeps) {
       const useOverride = Boolean(hasOverride && overrideCredential);
       const credential = useOverride ? overrideCredential : defaultCredential;
       const resolved = await resolveModelKey(deps, scope.userId, scope.workspaceId, credential);
+      // Provider and model come from one resolver, so the deployment key can never be
+      // offered to a provider it does not belong to.
+      const deployment = deps.deploymentModelKey ? resolveDeploymentModel() : null;
       const provider =
         (useOverride ? override!.modelProvider : null) ??
         credential?.provider ??
         settings?.defaultModelProvider ??
-        (deps.deploymentModelKey ? "openrouter" : "scripted");
+        deployment?.provider ??
+        "scripted";
       const id =
         (useOverride ? override!.modelId : null) ??
         credential?.defaultModel ??
         settings?.defaultModelId ??
-        (deps.deploymentModelKey
-          ? (process.env.PI_DEFAULT_MODEL ?? "deepseek/deepseek-v4-flash-0731")
-          : "scripted");
+        deployment?.model ??
+        "scripted";
       return {
         provider,
         id,
@@ -747,18 +751,19 @@ export function createRunExecutor(deps: ExecutorDeps) {
           (values) => runSecrets.push(...values),
         );
         runSecrets.push(...resolved.redact);
+        const runDeployment = deps.deploymentModelKey ? resolveDeploymentModel() : null;
         const runModelProvider =
           (useModelOverride ? bot.modelProvider : null) ??
           credential?.provider ??
           settings?.defaultModelProvider ??
-          (deps.deploymentModelKey ? "openrouter" : "scripted");
+          runDeployment?.provider ??
+          "scripted";
         const runModelId =
           (useModelOverride ? bot.modelId : null) ??
           credential?.defaultModel ??
           settings?.defaultModelId ??
-          (deps.deploymentModelKey
-            ? (process.env.PI_DEFAULT_MODEL ?? "deepseek/deepseek-v4-flash-0731")
-            : "scripted");
+          runDeployment?.model ??
+          "scripted";
         await deps.prisma.run.updateMany({
           where: { id: runId, status: "running", leaseOwner: workerId, leaseFence: fence },
           data: { modelProvider: runModelProvider, modelId: runModelId },
@@ -779,13 +784,14 @@ export function createRunExecutor(deps: ExecutorDeps) {
         const attachedFilesPrompt = currentTurnFilesInstruction(currentTurnFiles);
         const graphical =
           computer.kind !== "desktop" && deps.sandbox.describe().capabilities.graphical;
-        const modelProvider = credential?.provider ?? settings?.defaultModelProvider ?? "scripted";
-        const modelId = credential?.defaultModel ?? settings?.defaultModelId ?? "scripted";
-        // Scripted runtime fixtures still need screenshot tools; for Pi, resolve
-        // the scripted placeholder the same way the runtime does before gating.
+        // Gate on the model this run will actually call — the same pair written to the
+        // run row above. Re-deriving it here without the deployment fallback gated the
+        // wrong model: a deployment default resolved to "scripted", whose vision lookup
+        // is openrouter/PI_DEFAULT_MODEL, so a vision-capable default lost its screenshot
+        // tools.
         const acceptsImages =
           deps.runtime.describe().capabilities.scripted ||
-          modelAcceptsImageInput(modelProvider, modelId);
+          modelAcceptsImageInput(runModelProvider, runModelId);
         const groupContext = thread.groupId
           ? await loadGroupContext(deps.prisma, thread.groupId)
           : undefined;
