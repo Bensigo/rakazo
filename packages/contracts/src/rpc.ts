@@ -197,6 +197,13 @@ export const appContract = {
     remove: oc
       .input(z.object({ botId: Id, deleteMemories: z.boolean().default(false) }))
       .output(z.object({ ok: z.literal(true) })),
+    rotateWebhookSecret: oc.input(botId).output(
+      z.object({
+        secret: z.string(),
+        path: z.string(),
+        webhookConfigured: z.literal(true),
+      }),
+    ),
   },
   groups: {
     create: oc.input(CreateGroupInput).output(GroupSchema),

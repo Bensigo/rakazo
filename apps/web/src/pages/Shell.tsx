@@ -4653,6 +4653,9 @@ function BotSettings({
   const [modelMetaReady, setModelMetaReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [webhookConfigured, setWebhookConfigured] = useState(bot.webhookConfigured);
+  const [webhookSecret, setWebhookSecret] = useState<string | null>(null);
+  const [webhookBusy, setWebhookBusy] = useState(false);
 
   useEffect(() => {
     void rpc.voice
@@ -4866,6 +4869,41 @@ function BotSettings({
             </select>
           </label>
         ) : null}
+        <div className="mt-5 text-[14px] text-[#85858A]">
+          <Trans>Webhook</Trans>
+          <p className="mt-2 break-all font-mono text-[12px] text-[#C9C9CE]">
+            {`POST /api/v1/bots/${bot.id}/webhook`}
+          </p>
+          <p className="mt-1 text-[12px] text-[#85858A]">
+            {webhookConfigured ? t`Secret saved. Send it as a Bearer token.` : t`No secret yet.`}
+          </p>
+          {webhookSecret ? (
+            <p className="mt-2 break-all rounded-[11px] border border-[#26262A] bg-[#141416] px-3 py-2 font-mono text-[12px] text-[#ECECEE]">
+              {webhookSecret}
+            </p>
+          ) : null}
+          <button
+            type="button"
+            disabled={webhookBusy}
+            className="mt-2 rounded-[11px] border border-[#26262A] px-3 py-2 text-[13px] text-[#C9C9CE] disabled:opacity-50"
+            onClick={() => {
+              setWebhookBusy(true);
+              setError(null);
+              void rpc.bots
+                .rotateWebhookSecret({ botId: bot.id })
+                .then((result) => {
+                  setWebhookConfigured(true);
+                  setWebhookSecret(result.secret);
+                })
+                .catch((err: unknown) => {
+                  setError(err instanceof Error ? err.message : t`Could not create webhook secret`);
+                })
+                .finally(() => setWebhookBusy(false));
+            }}
+          >
+            {webhookConfigured ? t`Rotate secret` : t`Create secret`}
+          </button>
+        </div>
       </details>
       {error ? <p className="mt-2 text-[13px] text-[#E65707]">{error}</p> : null}
       <div className="mt-5 flex flex-col items-start gap-3">

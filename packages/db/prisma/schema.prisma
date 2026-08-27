@@ -245,6 +245,7 @@ model Bot {
   modelProvider  String?
   modelId        String?
   thinkingLevel  String?
+  webhookSecretId String?
   routines       Routine[]
   scratchpadItems ScratchpadItem[]
   taughtSkills   TaughtSkill[]

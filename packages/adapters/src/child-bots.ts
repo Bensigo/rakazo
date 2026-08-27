@@ -199,6 +199,7 @@ type LifecycleBot = {
   name: string;
   archivedAt: Date | null;
   computerId?: string | null;
+  webhookSecretId?: string | null;
 };
 
 export async function archiveSpawnedBot(
@@ -398,7 +399,20 @@ export async function destroyBot(
           memoriesPreserved: !options.deleteMemories,
         },
       });
+      const webhookSecretId =
+        bot.webhookSecretId ??
+        (
+          await tx.bot.findUnique({
+            where: { id: bot.id },
+            select: { webhookSecretId: true },
+          })
+        )?.webhookSecretId;
       await tx.bot.delete({ where: { id: bot.id } });
+      if (webhookSecretId) {
+        await tx.secret.deleteMany({
+          where: { id: webhookSecretId, kind: "webhook", workspaceId: bot.workspaceId },
+        });
+      }
       if (dedicated) await tx.computer.delete({ where: { id: dedicated.id } });
       return {
         artifactKeys: [
