@@ -4,7 +4,6 @@ import {
   type Bot,
   type BotSection,
   type MessageBlock,
-  type ShareRoutineTemplate,
 } from "@rakazo/contracts";
 import type { PrismaClient } from "./client.js";
 import { type ComputerMode, ensureComputerRecord, parseComputerMode } from "./computers.js";
@@ -202,7 +201,6 @@ export function createRepos(prisma: PrismaClient) {
           blocks: MessageBlock[];
           runId?: string;
         };
-        shareRoutineTemplates?: ShareRoutineTemplate[];
       },
     ): Promise<Bot> {
       let color = input.color;
@@ -299,22 +297,6 @@ export function createRepos(prisma: PrismaClient) {
             content: `# ${input.name}\n\n`,
           },
         });
-        if (input.shareRoutineTemplates?.length) {
-          await tx.routine.createMany({
-            data: input.shareRoutineTemplates.map((routine) => ({
-              workspaceId: actor.workspaceId,
-              botId: created.id,
-              userId: actor.userId,
-              name: routine.name,
-              prompt: routine.prompt,
-              crons: routine.crons,
-              timezone: routine.timezone,
-              notify: true,
-              active: false,
-              nextRunAt: null,
-            })),
-          });
-        }
         return tx.bot.findFirstOrThrow({
           where: { id: created.id },
           include: { thread: true, computer: true },
