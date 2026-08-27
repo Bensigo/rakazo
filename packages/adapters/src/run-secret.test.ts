@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   commitConsumedRunSecret,
-  connectionAlreadyConnected,
+  reconcileManagedConnection,
   resolveCompletedSecretLeftover,
   resolveMissingRunSecretAction,
   runSecretKind,
@@ -96,36 +96,58 @@ describe("resolveMissingRunSecretAction", () => {
     });
   });
 
+  it("settles an in-flight attempt instead of re-asking for a consumed OTP", () => {
+    expect(resolveMissingRunSecretAction({ status: "executing" })).toEqual({
+      action: "settle_attempt",
+    });
+  });
+
   it("asks again when the effect is still waiting for input", () => {
     expect(resolveMissingRunSecretAction({ status: "intended" })).toEqual({ action: "ask" });
     expect(resolveMissingRunSecretAction(undefined)).toEqual({ action: "ask" });
   });
 });
 
-describe("connectionAlreadyConnected", () => {
-  it("is true only for a connected row owned by the run user", async () => {
+describe("reconcileManagedConnection", () => {
+  const context = {
+    operationId: "run-1",
+    traceId: "run-1",
+    workspaceId: "workspace-1",
+    userId: "user-1",
+    signal: new AbortController().signal,
+  };
+
+  it("marks a pending connection connected when the provider is already ready", async () => {
+    const connectionReady = vi.fn().mockResolvedValue(true);
     const prisma = {
       connection: {
-        findFirst: vi.fn().mockResolvedValue({ id: "conn-1" }),
+        findFirst: vi.fn().mockResolvedValue({
+          id: "conn-1",
+          connectorId: "composio",
+          provider: "gmail",
+          status: "pending",
+        }),
+        update: vi.fn().mockResolvedValue({}),
       },
+    };
+    const connectors = {
+      managed: vi.fn(() => ({ connectionReady })),
     };
 
     await expect(
-      connectionAlreadyConnected(
+      reconcileManagedConnection(
         prisma as never,
+        connectors as never,
         { workspaceId: "workspace-1", userId: "user-1" },
+        context,
         "conn-1",
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe("connected");
 
-    expect(prisma.connection.findFirst).toHaveBeenCalledWith({
-      where: {
-        id: "conn-1",
-        workspaceId: "workspace-1",
-        userId: "user-1",
-        status: "connected",
-      },
-      select: { id: true },
+    expect(connectionReady).toHaveBeenCalled();
+    expect(prisma.connection.update).toHaveBeenCalledWith({
+      where: { id: "conn-1" },
+      data: { status: "connected" },
     });
   });
 });

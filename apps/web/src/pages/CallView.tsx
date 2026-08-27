@@ -62,6 +62,12 @@ export function CallView({
 
   async function listen() {
     if (closing.current) return;
+    if (pendingSecretAsk(snapshotRef.current)) {
+      dictation.stop("cancel");
+      setCallPhase("listening");
+      setHeard("");
+      return;
+    }
     setCallPhase("listening");
     speaker.stop();
     setHeard("");
@@ -87,7 +93,6 @@ export function CallView({
       setHeard("");
       setCaption("");
       setError(t`Hang up, then enter the code on screen.`);
-      void listen();
       return;
     }
     setHeard(text);
@@ -211,6 +216,12 @@ export function CallView({
       }
     }
   }, [snapshot, botId]);
+
+  useEffect(() => {
+    if (!pendingSecretAsk(snapshot)) return;
+    dictation.stop("cancel");
+    setHeard("");
+  }, [snapshot]);
 
   return (
     <div className="absolute inset-0 z-40 grid place-items-center bg-[rgba(4,4,5,.82)] px-5">

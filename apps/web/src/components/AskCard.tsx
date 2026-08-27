@@ -47,7 +47,8 @@ export function AskCard({
   const secretInput = isSecretAskBlock(block);
 
   async function submitAnswer(value: string) {
-    if (submitting || !value.trim()) return;
+    if (submitting) return;
+    if (secretInput ? value.length === 0 : !value.trim()) return;
     const submitValue = secretInput ? value : value.trim();
     setPendingAction(secretInput ? "submit" : submitValue);
     setError(null);
@@ -119,7 +120,7 @@ export function AskCard({
           />
           <button
             type="submit"
-            disabled={!answer.trim() || submitting}
+            disabled={(secretInput ? answer.length === 0 : !answer.trim()) || submitting}
             className="self-start rounded-[11px] bg-[#F1F1EF] px-[17px] py-2 text-[14.5px] font-medium text-[#17171A] disabled:opacity-50"
           >
             {submitting ? <Trans>Sending…</Trans> : <Trans>Submit</Trans>}

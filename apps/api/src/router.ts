@@ -2537,10 +2537,14 @@ export function createRouter(deps: RouterDeps) {
         if (existing.status !== "connected") {
           if (input.code) {
             const state = existing.providerRef ?? existing.provider;
-            await connector.complete(
-              { state, code: input.code },
-              connectionContext(context.actor, "connections.complete", context.signal),
-            );
+            try {
+              await connector.complete(
+                { state, code: input.code },
+                connectionContext(context.actor, "connections.complete", context.signal),
+              );
+            } catch (error) {
+              throw new ORPCError("BAD_REQUEST", { message: sanitizeComposioError(error) });
+            }
           }
           const ready = await connector.connectionReady(
             connectionContext(context.actor, "connections.complete", context.signal),

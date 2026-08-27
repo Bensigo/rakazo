@@ -152,7 +152,7 @@ import {
 } from "./plot-tool.js";
 import {
   commitConsumedRunSecret,
-  connectionAlreadyConnected,
+  reconcileManagedConnection,
   resolveCompletedSecretLeftover,
   resolveMissingRunSecretAction,
   runSecretKind,
@@ -1681,9 +1681,20 @@ export function createRunExecutor(deps: ExecutorDeps) {
             if (storedSecret) {
               const plaintext = deps.secretStore.load(storedSecret.ciphertext);
               runSecrets.push(plaintext);
+              // Keep the tail the old redactor still holds; a fresh instance drops it.
+              pendingProgress += progressRedactor.finish();
               progressRedactor = createStreamingRedactor(runSecrets);
               const connectionId = args.connectionId ? String(args.connectionId) : undefined;
               const purpose = String(args.purpose ?? "otp");
+              if (applied && !claimedEffect) {
+                if (applied.effect.status === "intended") {
+                  const early = await claimOrReturn("intended");
+                  if (early !== undefined) return early;
+                } else if (applied.effect.status === "approved") {
+                  const early = await claimOrReturn("approved");
+                  if (early !== undefined) return early;
+                }
+              }
               const recordedEffect = await recordEffect(deps, run, name, effectKey, args);
               if (recordedEffect?.duplicate) {
                 const gate = resolveDuplicateEffectGate(recordedEffect.effect, name);
@@ -1692,9 +1703,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   if (early !== undefined) return early;
                 }
               }
-              // Take the secret before connector complete() so a crash retry cannot
-              // resubmit a single-use OTP. Persist follows; missing-secret retries
-              // reconcile via connection status when the connector already succeeded.
+              // Claim executing (above), take the secret, then connector complete().
+              // Retries without a secret reconcile via connectionReady / settle_attempt.
               return commitConsumedRunSecret({
                 deleteSecret: async () => {
                   await deps.prisma.secret.delete({ where: { id: storedSecret.id } });
@@ -1744,22 +1754,51 @@ export function createRunExecutor(deps: ExecutorDeps) {
             const recordedForAsk = await recordEffect(deps, run, name, effectKey, args);
             const missingSecretAction = resolveMissingRunSecretAction(recordedForAsk.effect);
             if (missingSecretAction.action === "return") return missingSecretAction.result;
-            if (missingSecretAction.action === "uncertain") {
-              return settleUncertainEffect(
-                deps.prisma,
-                recordedForAsk.effect.id,
-                missingSecretAction.toolName,
-              );
-            }
             const connectionId = args.connectionId ? String(args.connectionId) : undefined;
-            if (
-              connectionId &&
-              (await connectionAlreadyConnected(deps.prisma, run, connectionId))
-            ) {
-              const connectedResult = { ok: true, submitted: true, connected: true };
-              return (await persistEffectResult(connectedResult))
-                ? connectedResult
-                : uncertainEffectResult(name);
+            if (connectionId) {
+              const connectionStatus = await reconcileManagedConnection(
+                deps.prisma,
+                deps.connectors,
+                run,
+                context,
+                connectionId,
+              );
+              if (connectionStatus === "connected") {
+                const connectedResult = { ok: true, submitted: true, connected: true };
+                if (recordedForAsk.effect.status === "executing") {
+                  return (await completeExternalEffect(
+                    deps.prisma,
+                    recordedForAsk.effect.id,
+                    "executing",
+                    connectedResult,
+                  ))
+                    ? connectedResult
+                    : uncertainEffectResult(name);
+                }
+                return (await persistEffectResult(connectedResult))
+                  ? connectedResult
+                  : uncertainEffectResult(name);
+              }
+            }
+            if (missingSecretAction.action === "settle_attempt") {
+              // Secret was taken and connector may have consumed the OTP; do not re-ask.
+              const failedAttempt = {
+                ok: true,
+                submitted: true,
+                connected: false,
+                connectionError: "Connection could not be completed.",
+              };
+              if (recordedForAsk.effect.status === "executing") {
+                return (await completeExternalEffect(
+                  deps.prisma,
+                  recordedForAsk.effect.id,
+                  "executing",
+                  failedAttempt,
+                ))
+                  ? failedAttempt
+                  : uncertainEffectResult(name);
+              }
+              return settleUncertainEffect(deps.prisma, recordedForAsk.effect.id, "request_secret");
             }
             if (!(await renewRunLease(deps, runId, workerId, fence))) {
               return pauseForSecret();

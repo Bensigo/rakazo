@@ -19,7 +19,8 @@ export function secretPausedToolResult(): ApprovalPausedToolResult {
 /**
  * Delete the stored secret before connector side effects, then persist the tool result.
  * Keeping the ciphertext until after complete() lets a crash retry resubmit a single-use OTP.
- * If persist fails after the connector already succeeded, retry reconciles via connection status.
+ * Callers must claim the effect to executing first and reconcile via connection status when
+ * the secret is already gone on retry.
  */
 export async function commitConsumedRunSecret<TResult, TFailed>(input: {
   deleteSecret: () => Promise<void>;
@@ -48,37 +49,58 @@ export function resolveCompletedSecretLeftover(input: {
 
 /**
  * When the stored run secret is already gone, decide whether to reuse a settled
- * effect result or ask again. Prevents re-prompting after persist if the worker
- * crashes before the tool result reaches the runtime.
+ * effect result, settle an in-flight attempt, or ask again.
  */
 export function resolveMissingRunSecretAction(
   effect: { status: string; result?: unknown } | null | undefined,
 ):
   | { action: "return"; result: unknown }
   | { action: "uncertain"; toolName: string }
+  | { action: "settle_attempt" }
   | { action: "ask" } {
   if (!effect) return { action: "ask" };
   const gate = resolveDuplicateEffectGate(effect, "request_secret");
   if (gate.action === "return") return { action: "return", result: gate.result };
-  if (gate.action === "uncertain") return { action: "uncertain", toolName: gate.toolName };
+  if (gate.action === "uncertain") {
+    // executing means connector may already have consumed the OTP
+    return { action: "settle_attempt" };
+  }
+  if (effect.status === "executing") return { action: "settle_attempt" };
   return { action: "ask" };
 }
 
-export async function connectionAlreadyConnected(
+export async function reconcileManagedConnection(
   prisma: PrismaClient,
+  connectors: { managed(id: string): ManagedConnectorProvider | undefined } | undefined,
   run: { workspaceId: string; userId: string },
+  context: AdapterContext,
   connectionId: string,
-): Promise<boolean> {
+): Promise<"connected" | "pending" | "missing"> {
   const row = await prisma.connection.findFirst({
     where: {
       id: connectionId,
       workspaceId: run.workspaceId,
       userId: run.userId,
-      status: "connected",
     },
-    select: { id: true },
   });
-  return row != null;
+  if (!row) return "missing";
+  if (row.status === "connected") return "connected";
+  if (row.status !== "pending") return "missing";
+  const connector = connectors?.managed(row.connectorId);
+  if (!connector) return "pending";
+  try {
+    const ready = await connector.connectionReady(context, row.provider);
+    if (ready) {
+      await prisma.connection.update({
+        where: { id: row.id },
+        data: { status: "connected" },
+      });
+      return "connected";
+    }
+  } catch {
+    return "pending";
+  }
+  return "pending";
 }
 
 export interface RunSecretWriter {

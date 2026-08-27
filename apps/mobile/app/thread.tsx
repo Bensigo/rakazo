@@ -1758,7 +1758,8 @@ function AskBlock({
   const secretInput = isSecretAskBlock(ask);
 
   async function submit() {
-    if (!answer.trim() || submitting) return;
+    if (submitting) return;
+    if (secretInput ? answer.length === 0 : !answer.trim()) return;
     const submitValue = secretInput ? answer : answer.trim();
     setSubmitting(true);
     setError(null);
@@ -1814,13 +1815,13 @@ function AskBlock({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Send answer"
-            disabled={!answer.trim() || submitting}
+            disabled={(secretInput ? answer.length === 0 : !answer.trim()) || submitting}
             onPress={() => void submit()}
             style={{
               alignSelf: "flex-end",
               borderRadius: 999,
               backgroundColor: "#ECECEE",
-              opacity: !answer.trim() || submitting ? 0.5 : 1,
+              opacity: (secretInput ? answer.length === 0 : !answer.trim()) || submitting ? 0.5 : 1,
               paddingHorizontal: 16,
               paddingVertical: 9,
             }}
