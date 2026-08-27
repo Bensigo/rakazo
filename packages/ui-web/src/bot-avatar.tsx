@@ -176,6 +176,8 @@ function OrganicAvatar({
       aria-hidden="true"
       className={cn("rakazo-organic-avatar overflow-visible select-none", className)}
       data-working={isWorking}
+      data-shape-family={seed % 10}
+      data-eye-pattern={seed % 4}
       style={{
         ...shapeStyle,
         width: size,
@@ -187,11 +189,14 @@ function OrganicAvatar({
         className="rakazo-organic-avatar-body"
         d={shapeA}
         fill={color}
-        style={{
-          filter: isWorking
-            ? `drop-shadow(0 0 ${Math.round(size * 0.16)}px ${color})`
-            : "drop-shadow(0 2px 3px rgba(0,0,0,.34))",
-        }}
+        style={
+          {
+            "--rakazo-organic-path": `path("${shapeA}")`,
+            filter: isWorking
+              ? `drop-shadow(0 0 ${Math.round(size * 0.16)}px ${color})`
+              : "drop-shadow(0 2px 3px rgba(0,0,0,.34))",
+          } as CSSProperties
+        }
       >
         <animate
           attributeName="d"
@@ -200,13 +205,11 @@ function OrganicAvatar({
           repeatCount="indefinite"
         />
       </path>
-      <g
-        className="rakazo-organic-avatar-eyes"
-        transform={`rotate(${(seed % 9) - 4})`}
-        fill="#101014"
-      >
-        <rect x="-14" y="-12" width="7" height="24" rx="3.5" />
-        <rect x="7" y="-12" width="7" height="24" rx="3.5" />
+      <g transform={`rotate(${(seed % 9) - 4})`}>
+        <g className="rakazo-organic-avatar-eyes" fill="#101014">
+          <rect x="-14" y="-12" width="7" height="24" rx="3.5" />
+          <rect x="7" y="-12" width="7" height="24" rx="3.5" />
+        </g>
       </g>
     </svg>
   );
