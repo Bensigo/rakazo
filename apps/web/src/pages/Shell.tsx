@@ -3083,6 +3083,7 @@ const Transcript = memo(function Transcript({
   const following = useRef(true);
   const autoScrolling = useRef(false);
   const autoScrollTimer = useRef<number | undefined>(undefined);
+  const jumpButtonRef = useRef<HTMLButtonElement>(null);
   const messageById = useMemo(
     () => new Map(messages.map((message) => [message.id, message])),
     [messages],
@@ -3108,17 +3109,24 @@ const Transcript = memo(function Transcript({
       behavior: reducedMotion ? "auto" : "smooth",
     });
     window.clearTimeout(autoScrollTimer.current);
+    // Fallback only: onScroll clears autoScrolling once near-end is reached.
     autoScrollTimer.current = window.setTimeout(
       () => {
         autoScrolling.current = false;
       },
-      reducedMotion ? 0 : 420,
+      reducedMotion ? 0 : 2_000,
     );
   }, [scrollRef]);
 
   useLayoutEffect(() => {
     if (following.current) snapToEnd();
   }, [messages, running, snapToEnd]);
+
+  useLayoutEffect(() => {
+    if (atEnd && document.activeElement === jumpButtonRef.current) {
+      jumpButtonRef.current.blur();
+    }
+  }, [atEnd]);
 
   const loadOlder = useCallback(() => {
     const wasFollowing = following.current;
@@ -3164,8 +3172,15 @@ const Transcript = memo(function Transcript({
         onScroll={(event) => {
           const nearEnd = transcriptIsNearEnd(event.currentTarget);
           setAtEnd(nearEnd);
-          if (nearEnd) following.current = true;
-          else if (!autoScrolling.current) following.current = false;
+          if (nearEnd) {
+            following.current = true;
+            if (autoScrolling.current) {
+              autoScrolling.current = false;
+              window.clearTimeout(autoScrollTimer.current);
+            }
+          } else if (!autoScrolling.current) {
+            following.current = false;
+          }
         }}
         className="rk-scroll flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-5 md:px-7 md:py-6"
       >
@@ -3226,6 +3241,7 @@ const Transcript = memo(function Transcript({
         ) : null}
       </div>
       <button
+        ref={jumpButtonRef}
         type="button"
         aria-label={t`Jump to latest`}
         aria-hidden={atEnd}
