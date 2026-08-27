@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   commitConsumedRunSecret,
+  resolveCompletedSecretLeftover,
   resolveMissingRunSecretAction,
   runSecretKind,
   secretPausedToolResult,
@@ -59,6 +60,26 @@ describe("commitConsumedRunSecret", () => {
     ).resolves.toBe(onPersistFailed);
 
     expect(deleteSecret).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveCompletedSecretLeftover", () => {
+  it("drops a leftover OTP created before the effect completed", () => {
+    expect(
+      resolveCompletedSecretLeftover({
+        secretCreatedAt: new Date("2026-08-27T12:00:00.000Z"),
+        effectUpdatedAt: new Date("2026-08-27T12:00:05.000Z"),
+      }),
+    ).toBe("drop_leftover");
+  });
+
+  it("consumes a replacement OTP submitted after the effect completed", () => {
+    expect(
+      resolveCompletedSecretLeftover({
+        secretCreatedAt: new Date("2026-08-27T12:01:00.000Z"),
+        effectUpdatedAt: new Date("2026-08-27T12:00:05.000Z"),
+      }),
+    ).toBe("consume_replacement");
   });
 });
 

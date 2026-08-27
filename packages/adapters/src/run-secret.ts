@@ -33,6 +33,19 @@ export async function commitConsumedRunSecret<TResult, TFailed>(input: {
 }
 
 /**
+ * When a completed request_secret effect still has a run-secret row, decide whether
+ * that row is a crash leftover (same OTP, do not resubmit) or a newer replacement.
+ */
+export function resolveCompletedSecretLeftover(input: {
+  secretCreatedAt: Date;
+  effectUpdatedAt: Date;
+}): "drop_leftover" | "consume_replacement" {
+  return input.secretCreatedAt.getTime() <= input.effectUpdatedAt.getTime()
+    ? "drop_leftover"
+    : "consume_replacement";
+}
+
+/**
  * When the stored run secret is already gone, decide whether to reuse a settled
  * effect result or ask again. Prevents re-prompting after persist+delete if the
  * worker crashes before the tool result reaches the runtime.

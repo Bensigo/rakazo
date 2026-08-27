@@ -152,6 +152,7 @@ import {
 } from "./plot-tool.js";
 import {
   commitConsumedRunSecret,
+  resolveCompletedSecretLeftover,
   resolveMissingRunSecretAction,
   runSecretKind,
   secretPausedToolResult,
@@ -1022,9 +1023,22 @@ export function createRunExecutor(deps: ExecutorDeps) {
                     userId: run.userId,
                     kind: runSecretKind(runId),
                   },
-                  select: { id: true },
+                  select: { id: true, createdAt: true },
                 });
                 if (!replacementSecret) return gate.result;
+                // Crash between persist and delete leaves the same OTP row. Do not
+                // resubmit it to the connector; only newer rows are replacements.
+                const effectUpdatedAt = applied.effect.updatedAt;
+                if (
+                  !(effectUpdatedAt instanceof Date) ||
+                  resolveCompletedSecretLeftover({
+                    secretCreatedAt: replacementSecret.createdAt,
+                    effectUpdatedAt,
+                  }) === "drop_leftover"
+                ) {
+                  await deps.prisma.secret.delete({ where: { id: replacementSecret.id } });
+                  return gate.result;
+                }
               } else {
                 return gate.result;
               }
