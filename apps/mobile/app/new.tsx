@@ -128,9 +128,7 @@ export default function NewBot() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       >
-        <Text style={{ color: "#6C6C70", fontSize: 13 }}>
-          Import share. Config only.
-        </Text>
+        <Text style={{ color: "#6C6C70", fontSize: 13 }}>Import share. Config only.</Text>
         <TextInput
           value={shareJson}
           onChangeText={setShareJson}

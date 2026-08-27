@@ -4838,9 +4838,7 @@ function BotSettings({
                   await navigator.clipboard.writeText(JSON.stringify(manifest, null, 2));
                   setShareNotice("Copied");
                 })
-                .catch((err) =>
-                  setError(err instanceof Error ? err.message : "Could not copy"),
-                )
+                .catch((err) => setError(err instanceof Error ? err.message : "Could not copy"))
                 .finally(() => setShareBusy(false));
             }}
             className="text-[14px] text-[#85858A] disabled:opacity-40"
@@ -4866,9 +4864,7 @@ function BotSettings({
                   a.click();
                   URL.revokeObjectURL(url);
                 })
-                .catch((err) =>
-                  setError(err instanceof Error ? err.message : "Could not download"),
-                )
+                .catch((err) => setError(err instanceof Error ? err.message : "Could not download"))
                 .finally(() => setShareBusy(false));
             }}
             className="text-[14px] text-[#85858A] disabled:opacity-40"
