@@ -37,6 +37,9 @@ export default function BotSettingsScreen() {
 
   useEffect(() => {
     if (!botId) return;
+    setShareLink(null);
+    setShareToken(null);
+    setShareNotice(null);
     void Promise.all([
       rpc<BotSettingsRecord>("bots/get", { botId }),
       rpc<ComputerStatus>("computer/status", { botId }).catch(() => null),
@@ -52,6 +55,9 @@ export default function BotSettingsScreen() {
         if (storedShare) {
           setShareToken(storedShare.token);
           setShareLink(storedShare.url);
+        } else {
+          setShareToken(null);
+          setShareLink(null);
         }
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Could not load bot"));

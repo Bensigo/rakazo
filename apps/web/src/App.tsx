@@ -39,10 +39,10 @@ export function App() {
     markAfterPaint("rk:renderer:session-painted");
   }, [session.isPending]);
 
-  if (showSessionUnavailable(gate, nextHolding)) {
+  const onPublicShareRoute = window.location.pathname.startsWith("/share/");
+  if (showSessionUnavailable(gate, nextHolding) && !onPublicShareRoute) {
     return <SessionUnavailable refetch={session.refetch} />;
   }
-  const onPublicShareRoute = window.location.pathname.startsWith("/share/");
   if (gate === "loading" && !onPublicShareRoute) {
     return window.location.pathname.startsWith("/app") ? (
       <ShellSkeleton />
