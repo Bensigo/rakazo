@@ -133,11 +133,25 @@ export const builtinAgentTools: ConnectorTool[] = [
   {
     name: "request_takeover",
     description:
-      "Ask the user to take over the computer screen for login or human judgment. Protected input stays off the thread.",
+      "Ask the user to take over the computer screen for passwords, 2FA, CAPTCHA, payment, passkeys, or other protected input. Never ask the user to paste protected values in chat.",
     inputSchema: {
       type: "object",
       properties: { reason: { type: "string" } },
       required: ["reason"],
+    },
+  },
+  {
+    name: "request_secret",
+    description:
+      "Collect a one-shot OTP, password, or API key in a masked field that never reaches the chat transcript or model. For website logins, CAPTCHA, passkeys, or anything that needs the live desktop, call request_takeover instead.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        label: { type: "string" },
+        purpose: { type: "string", enum: ["otp", "password", "api_key"] },
+        connectionId: { type: "string" },
+      },
+      required: ["label", "purpose"],
     },
   },
   {

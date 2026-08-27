@@ -17,6 +17,7 @@ import type {
   AgentToolExecutionResult,
   ConnectorTool,
 } from "@rakazo/adapter-kit";
+import { isToolPauseResult } from "./approval-effect.js";
 import { builtinAgentTools, DELEGATION_TOOL_NAMES } from "./builtin-tools.js";
 import { PiRuntimeCredentialStore, toOAuthCredential } from "./pi-credentials.js";
 import { registerLocalProvider } from "./pi-local-provider.js";
@@ -136,6 +137,7 @@ export class PiAgentRuntime implements AgentRuntime {
           abortTurn: () => undefined,
           signal,
           depth: 0,
+          pausePending: false,
         };
         const tools = toAgentTools(toolDefs, host);
         const history = toHistory(request.history, request.prompt);
@@ -249,7 +251,7 @@ export class PiAgentRuntime implements AgentRuntime {
             queue.push({ type: "text", text: budgetMessage });
             streamed = budgetMessage;
           }
-        } else if (!streamed.trim()) {
+        } else if (!streamed.trim() && !host.pausePending) {
           streamed = "";
           const lastMessage = agent.state.messages.at(-1);
           const fallback = lastMessage?.role === "assistant" ? assistantText(lastMessage) : "";
@@ -467,6 +469,13 @@ function toAgentTool(tool: ConnectorTool, host: ToolHost, exposedName: string): 
       if (tool.name === "request_takeover") {
         return { reason: String(raw.reason ?? "I need you on the screen.") };
       }
+      if (tool.name === "request_secret") {
+        return {
+          label: String(raw.label ?? "Code"),
+          purpose: String(raw.purpose ?? "otp"),
+          ...(raw.connectionId ? { connectionId: String(raw.connectionId) } : {}),
+        };
+      }
       if (tool.name === "write_file") {
         return {
           path: String(raw.path ?? "notes/result.txt"),
@@ -534,6 +543,25 @@ function toAgentTool(tool: ConnectorTool, host: ToolHost, exposedName: string): 
           terminate: true,
         };
       }
+      if (tool.name === "request_secret") {
+        if (host.request.executeTool) {
+          const result = await host.request.executeTool(tool.name, args, executionId);
+          if (isAgentToolExecutionResult(result)) {
+            if (isToolPauseResult(result)) host.pausePending = true;
+            return result;
+          }
+          return {
+            content: [{ type: "text", text: summarizeToolResult(result) }],
+            details: result,
+          };
+        }
+        host.pausePending = true;
+        return {
+          content: [{ type: "text", text: "Protected input requested." }],
+          details: args,
+          terminate: true,
+        };
+      }
       if (tool.name === "run_subagent") {
         const result = await executeSubagent(host, executionId, args);
         return {
@@ -545,7 +573,10 @@ function toAgentTool(tool: ConnectorTool, host: ToolHost, exposedName: string): 
         const result = tool.route
           ? await host.request.executeTool(tool.name, args, executionId, tool.route)
           : await host.request.executeTool(tool.name, args, executionId);
-        if (isAgentToolExecutionResult(result)) return result;
+        if (isAgentToolExecutionResult(result)) {
+          if (isToolPauseResult(result)) host.pausePending = true;
+          return result;
+        }
         return {
           content: [{ type: "text", text: summarizeToolResult(result) }],
           details: result,
@@ -718,6 +749,13 @@ function parametersFor(tool: ConnectorTool) {
   }
   if (tool.name === "request_takeover") {
     return Type.Object({ reason: Type.String() });
+  }
+  if (tool.name === "request_secret") {
+    return Type.Object({
+      label: Type.String(),
+      purpose: Type.Union([Type.Literal("otp"), Type.Literal("password"), Type.Literal("api_key")]),
+      connectionId: Type.Optional(Type.String()),
+    });
   }
   if (tool.name === "remember") {
     return Type.Object({ content: Type.String(), path: Type.String() });
@@ -899,6 +937,7 @@ interface ToolHost {
   abortTurn(): void;
   signal: AbortSignal;
   depth: number;
+  pausePending: boolean;
 }
 
 function toolCallBudgetExceededMessage(limit: number) {

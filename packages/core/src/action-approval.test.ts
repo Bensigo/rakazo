@@ -4,6 +4,7 @@ import {
   connectorKindFromToolName,
   connectorToolRequiresApproval,
   isApprovalAskBlock,
+  isSecretAskBlock,
   resolveActionApproval,
   toolRequiresApproval,
 } from "./action-approval.js";
@@ -73,6 +74,20 @@ describe("isApprovalAskBlock", () => {
         kind: "ask",
         approvalEffectId: "effect-1",
         actions: [{ id: "deny", label: "No" }],
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("isSecretAskBlock", () => {
+  it("detects masked secret asks", () => {
+    expect(isSecretAskBlock({ kind: "ask", input: "secret" })).toBe(true);
+    expect(isSecretAskBlock({ kind: "ask", input: "text" })).toBe(false);
+    expect(
+      isSecretAskBlock({
+        kind: "ask",
+        input: "secret",
+        approvalEffectId: "effect-1",
       }),
     ).toBe(false);
   });

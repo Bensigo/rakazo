@@ -147,6 +147,7 @@ describe("builtin tools", () => {
         "shell",
         "remember",
         "request_takeover",
+        "request_secret",
         "run_subagent",
         "spawn_bot",
         "archive_bot",

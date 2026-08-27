@@ -8,6 +8,7 @@ import type {
   ComputerRef,
   ConnectorProvider,
   JobPublisher,
+  ManagedConnectorProvider,
   MemoryStore,
   NotificationMessage,
   NotificationProvider,
@@ -70,7 +71,8 @@ import {
   claimIntendedEffect,
   completeExternalEffect,
   createApprovedEffectReplayQueue,
-  isApprovalPausedResult,
+  isToolPauseResult,
+  replaceCompletedExternalEffectResult,
   resolveDuplicateEffectGate,
   settleUncertainEffect,
   uncertainEffectResult,
@@ -149,6 +151,15 @@ import {
   searchChartCatalog,
 } from "./plot-tool.js";
 import {
+  commitConsumedRunSecret,
+  reconcileManagedConnection,
+  resolveCompletedSecretLeftover,
+  resolveMissingRunSecretAction,
+  runSecretKind,
+  secretPausedToolResult,
+  tryCompleteConnectionWithCode,
+} from "./run-secret.js";
+import {
   cancelScheduleFromTool,
   createScheduleFromTool,
   filterBuiltinToolsForThread,
@@ -209,6 +220,7 @@ export interface ExecutorDeps {
   home: AgentHomeStore;
   artifacts?: ArtifactStore;
   connector?: ConnectorProvider;
+  connectors?: { managed(id: string): ManagedConnectorProvider | undefined };
   secrets: string[];
   secretStore: EncryptedSecretStore;
   deploymentModelKey?: string;
@@ -869,7 +881,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
         let lastComputerFrameId: string | undefined;
         let terminalCheckpointComplete = false;
         let approvalPausePending = false;
-        const progressRedactor = createStreamingRedactor(runSecrets);
+        let progressRedactor = createStreamingRedactor(runSecrets);
         const scripted = deps.runtime.describe().capabilities.scripted;
         const script = scripted ? inferScript(task.prompt, takeoverResume?.checkpoint) : undefined;
         const flushProgress = async () => {
@@ -904,6 +916,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
           return approvalPausedToolResult();
         };
 
+        const pauseForSecret = () => {
+          approvalPausePending = true;
+          return secretPausedToolResult();
+        };
+
         const applyTool = async (
           name: string,
           args: Record<string, unknown>,
@@ -935,7 +952,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           const needsApproval = approvalDecision === "ask";
           const bypassApproval = approvalDecision === "allow" && requiresApprovalByDefault;
           const effectKey =
-            needsApproval || requiresApprovalByDefault
+            name === "request_secret" || needsApproval || requiresApprovalByDefault
               ? approvalEffectKey(runId, name, args)
               : executionId;
           const applied =
@@ -999,9 +1016,44 @@ export function createRunExecutor(deps: ExecutorDeps) {
 
           if (applied?.duplicate) {
             const gate = resolveDuplicateEffectGate(applied.effect, name);
-            if (gate.action === "return") return gate.result;
+            if (gate.action === "return") {
+              if (name === "request_secret") {
+                const replacementSecret = await deps.prisma.secret.findFirst({
+                  where: {
+                    workspaceId: run.workspaceId,
+                    userId: run.userId,
+                    kind: runSecretKind(runId),
+                  },
+                  select: { id: true, createdAt: true },
+                });
+                if (!replacementSecret) return gate.result;
+                // Crash between persist and delete leaves the same OTP row. Do not
+                // resubmit it to the connector; only newer rows are replacements.
+                const effectUpdatedAt = applied.effect.updatedAt;
+                if (
+                  !(effectUpdatedAt instanceof Date) ||
+                  resolveCompletedSecretLeftover({
+                    secretCreatedAt: replacementSecret.createdAt,
+                    effectUpdatedAt,
+                  }) === "drop_leftover"
+                ) {
+                  await deps.prisma.secret.delete({ where: { id: replacementSecret.id } });
+                  return gate.result;
+                }
+              } else {
+                return gate.result;
+              }
+            }
             if (gate.action === "paused") {
-              if (!needsApproval) {
+              if (name === "request_secret") {
+                const current = await deps.prisma.run.findUnique({
+                  where: { id: runId },
+                  select: { status: true },
+                });
+                if (current?.status === "waiting_input") {
+                  return pauseForSecret();
+                }
+              } else if (!needsApproval) {
                 const early = await claimOrReturn("intended");
                 if (early !== undefined) return early;
               } else {
@@ -1617,6 +1669,170 @@ export function createRunExecutor(deps: ExecutorDeps) {
               ),
             );
           }
+          if (name === "request_secret") {
+            const secretKind = runSecretKind(runId);
+            const storedSecret = await deps.prisma.secret.findFirst({
+              where: {
+                workspaceId: run.workspaceId,
+                userId: run.userId,
+                kind: secretKind,
+              },
+            });
+            if (storedSecret) {
+              const plaintext = deps.secretStore.load(storedSecret.ciphertext);
+              runSecrets.push(plaintext);
+              // Keep the tail the old redactor still holds; a fresh instance drops it.
+              pendingProgress += progressRedactor.finish();
+              progressRedactor = createStreamingRedactor(runSecrets);
+              const connectionId = args.connectionId ? String(args.connectionId) : undefined;
+              const purpose = String(args.purpose ?? "otp");
+              if (applied && !claimedEffect) {
+                if (applied.effect.status === "intended") {
+                  const early = await claimOrReturn("intended");
+                  if (early !== undefined) return early;
+                } else if (applied.effect.status === "approved") {
+                  const early = await claimOrReturn("approved");
+                  if (early !== undefined) return early;
+                }
+              }
+              const recordedEffect = await recordEffect(deps, run, name, effectKey, args);
+              if (recordedEffect?.duplicate) {
+                const gate = resolveDuplicateEffectGate(recordedEffect.effect, name);
+                if (gate.action === "execute") {
+                  const early = await claimOrReturn("approved");
+                  if (early !== undefined) return early;
+                }
+              }
+              // Claim executing (above), take the secret, then connector complete().
+              // Retries without a secret reconcile via connectionReady / settle_attempt.
+              return commitConsumedRunSecret({
+                deleteSecret: async () => {
+                  await deps.prisma.secret.delete({ where: { id: storedSecret.id } });
+                },
+                afterSecretTaken: async () => {
+                  let connectionResult: { connected: boolean; error?: string } | undefined;
+                  if (connectionId) {
+                    connectionResult = await tryCompleteConnectionWithCode(
+                      deps.prisma,
+                      deps.connectors,
+                      run,
+                      context,
+                      connectionId,
+                      plaintext,
+                    );
+                  }
+                  return purpose === "password" && !connectionId
+                    ? {
+                        ok: true,
+                        submitted: true,
+                        note: "Use request_takeover for website logins; the secret was not typed onto the computer.",
+                      }
+                    : {
+                        ok: true,
+                        submitted: true,
+                        ...(connectionResult
+                          ? {
+                              connected: connectionResult.connected,
+                              ...(connectionResult.error
+                                ? { connectionError: connectionResult.error }
+                                : {}),
+                            }
+                          : {}),
+                      };
+                },
+                persist: (secretResult) =>
+                  applied?.duplicate && applied.effect.status === "completed"
+                    ? replaceCompletedExternalEffectResult(
+                        deps.prisma,
+                        applied.effect.id,
+                        secretResult,
+                      )
+                    : persistEffectResult(secretResult),
+                onPersistFailed: uncertainEffectResult(name),
+              });
+            }
+            const recordedForAsk = await recordEffect(deps, run, name, effectKey, args);
+            const missingSecretAction = resolveMissingRunSecretAction(recordedForAsk.effect);
+            if (missingSecretAction.action === "return") return missingSecretAction.result;
+            const connectionId = args.connectionId ? String(args.connectionId) : undefined;
+            if (connectionId) {
+              const connectionStatus = await reconcileManagedConnection(
+                deps.prisma,
+                deps.connectors,
+                run,
+                context,
+                connectionId,
+              );
+              if (connectionStatus === "connected") {
+                const connectedResult = { ok: true, submitted: true, connected: true };
+                if (recordedForAsk.effect.status === "executing") {
+                  return (await completeExternalEffect(
+                    deps.prisma,
+                    recordedForAsk.effect.id,
+                    "executing",
+                    connectedResult,
+                  ))
+                    ? connectedResult
+                    : uncertainEffectResult(name);
+                }
+                return (await persistEffectResult(connectedResult))
+                  ? connectedResult
+                  : uncertainEffectResult(name);
+              }
+            }
+            if (missingSecretAction.action === "settle_attempt") {
+              // Secret was taken and connector may have consumed the OTP; do not re-ask.
+              const failedAttempt = {
+                ok: true,
+                submitted: true,
+                connected: false,
+                connectionError: "Connection could not be completed.",
+              };
+              if (recordedForAsk.effect.status === "executing") {
+                return (await completeExternalEffect(
+                  deps.prisma,
+                  recordedForAsk.effect.id,
+                  "executing",
+                  failedAttempt,
+                ))
+                  ? failedAttempt
+                  : uncertainEffectResult(name);
+              }
+              return settleUncertainEffect(deps.prisma, recordedForAsk.effect.id, "request_secret");
+            }
+            if (!(await renewRunLease(deps, runId, workerId, fence))) {
+              return pauseForSecret();
+            }
+            await checkpointAndRecordComputerWorkspace(deps, storedComputer, computer, context);
+            const paused = await deps.events.pauseRunForInput({
+              workspaceId: run.workspaceId,
+              threadId: run.threadId,
+              botId: run.botId,
+              runId,
+              attemptId: attempt.id,
+              leaseOwner: workerId,
+              leaseFence: fence,
+              blocks: [
+                {
+                  kind: "ask",
+                  text: String(args.label ?? "Code"),
+                  input: "secret",
+                  status: "pending",
+                },
+              ],
+            });
+            if (!paused) {
+              throw new Error("Could not pause this run for protected input; try sending again.");
+            }
+            await notifyRun(deps, run, {
+              kind: "help",
+              title: `${bot.name} needs a code`,
+              body: String(args.label ?? "Code"),
+              botId: bot.id,
+              threadId: thread.id,
+            });
+            return pauseForSecret();
+          }
           if (name === "request_takeover") return { ok: true };
           if (name === "run_subagent") {
             return {
@@ -2057,7 +2273,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               }
               if (scripted) {
                 const result = await applyTool(event.name, event.args, event.executionId);
-                if (isApprovalPausedResult(result)) return;
+                if (isToolPauseResult(result)) return;
               }
             } else if (event.type === "subagent") {
               const safeTask = redactSecrets(event.task, runSecrets);

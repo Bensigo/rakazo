@@ -51,6 +51,7 @@ export * from "./pi-runtime.js";
 export * from "./pipedream-connector.js";
 export * from "./realtime.js";
 export * from "./remote-mcp.js";
+export * from "./run-secret.js";
 export * from "./sandbox-factory.js";
 export * from "./scratchpad-context.js";
 export * from "./scratchpad-tools.js";
