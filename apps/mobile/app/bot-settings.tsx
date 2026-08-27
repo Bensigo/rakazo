@@ -154,7 +154,7 @@ export default function BotSettingsScreen() {
         />
         <Text style={{ color: "#85858A", marginTop: 24, fontSize: 14 }}>Share bot</Text>
         <Text style={{ color: "#6C6C70", marginTop: 8, fontSize: 13 }}>
-          Configuration only — not your computer, logins, files, or chat history.
+          Config only. Not the computer or logins.
         </Text>
         <Pressable
           accessibilityRole="button"
@@ -193,7 +193,7 @@ export default function BotSettingsScreen() {
               .then(({ url, token }) => {
                 setShareLink(url);
                 setShareToken(token);
-                setShareNotice("Share link created");
+                setShareNotice("Link created");
               })
               .catch((err) =>
                 setError(err instanceof Error ? err.message : "Could not create link"),
@@ -234,7 +234,7 @@ export default function BotSettingsScreen() {
                 .then(() => {
                   setShareLink(null);
                   setShareToken(null);
-                  setShareNotice("Share link revoked");
+                  setShareNotice("Link revoked");
                 })
                 .catch((err) =>
                   setError(err instanceof Error ? err.message : "Could not revoke link"),

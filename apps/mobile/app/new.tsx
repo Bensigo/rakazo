@@ -129,7 +129,7 @@ export default function NewBot() {
         keyboardDismissMode="on-drag"
       >
         <Text style={{ color: "#6C6C70", fontSize: 13 }}>
-          Import from share — configuration only, not computer or logins.
+          Import share. Config only.
         </Text>
         <TextInput
           value={shareJson}

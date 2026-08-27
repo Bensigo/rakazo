@@ -4376,9 +4376,7 @@ function CreateBotForm({
       </div>
       <details className="mb-5 rounded-[11px] border border-[#26262A] px-3.5 py-3">
         <summary className="cursor-pointer text-[14px] text-[#85858A]">Import from share</summary>
-        <p className="mt-3 text-[13px] text-[#6C6C70]">
-          Configuration only — not a computer, logins, files, or chat history.
-        </p>
+        <p className="mt-3 text-[13px] text-[#6C6C70]">Config only. Not the computer or logins.</p>
         <label className="mt-3 block text-[13px] text-[#85858A]">
           Share JSON
           <textarea
@@ -4826,9 +4824,7 @@ function BotSettings({
       </div>
       <div className="mt-6 border-t border-[#26262A] pt-5" data-testid="bot-share">
         <p className="text-[14px] text-[#85858A]">Share bot</p>
-        <p className="mt-2 text-[13px] text-[#6C6C70]">
-          Copies configuration only — not your computer, logins, files, or chat history.
-        </p>
+        <p className="mt-2 text-[13px] text-[#6C6C70]">Config only. Not the computer or logins.</p>
         <div className="mt-3 flex flex-wrap gap-3">
           <button
             type="button"
@@ -4840,10 +4836,10 @@ function BotSettings({
                 .shareManifest({ botId: bot.id })
                 .then(async (manifest) => {
                   await navigator.clipboard.writeText(JSON.stringify(manifest, null, 2));
-                  setShareNotice("Share JSON copied");
+                  setShareNotice("Copied");
                 })
                 .catch((err) =>
-                  setError(err instanceof Error ? err.message : "Could not copy share"),
+                  setError(err instanceof Error ? err.message : "Could not copy"),
                 )
                 .finally(() => setShareBusy(false));
             }}
@@ -4871,7 +4867,7 @@ function BotSettings({
                   URL.revokeObjectURL(url);
                 })
                 .catch((err) =>
-                  setError(err instanceof Error ? err.message : "Could not download share"),
+                  setError(err instanceof Error ? err.message : "Could not download"),
                 )
                 .finally(() => setShareBusy(false));
             }}
@@ -4889,10 +4885,10 @@ function BotSettings({
                 .shareCreate({ botId: bot.id })
                 .then(({ url, token }) => {
                   persistShareLink({ url, token });
-                  setShareNotice("Share link created");
+                  setShareNotice("Link created");
                 })
                 .catch((err) =>
-                  setError(err instanceof Error ? err.message : "Could not create share link"),
+                  setError(err instanceof Error ? err.message : "Could not create link"),
                 )
                 .finally(() => setShareBusy(false));
             }}
@@ -4910,10 +4906,10 @@ function BotSettings({
                   .shareRevoke({ token: shareToken })
                   .then(() => {
                     persistShareLink(null);
-                    setShareNotice("Share link revoked");
+                    setShareNotice("Link revoked");
                   })
                   .catch((err) =>
-                    setError(err instanceof Error ? err.message : "Could not revoke share link"),
+                    setError(err instanceof Error ? err.message : "Could not revoke link"),
                   )
                   .finally(() => setShareBusy(false));
               }}

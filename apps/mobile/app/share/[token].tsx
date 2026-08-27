@@ -93,7 +93,7 @@ export default function ShareImportScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <Text style={{ color: "#6C6C70", fontSize: 13 }}>
-          Configuration only — not a computer, logins, files, or chat history.
+          Config only. Not the computer or logins.
         </Text>
         <Text style={{ color: "#85858A", marginTop: 16, fontSize: 14 }}>Share JSON</Text>
         <TextInput

@@ -93,8 +93,8 @@ export function SharePage() {
         ) : null}
         {manifest.routines.length > 0 ? (
           <p className="mt-4 text-[14px] text-[#85858A]">
-            Includes {manifest.routines.length} routine template
-            {manifest.routines.length === 1 ? "" : "s"} (not active until you enable them).
+            {manifest.routines.length} routine{manifest.routines.length === 1 ? "" : "s"}. Off until
+            you enable.
           </p>
         ) : null}
         <details
@@ -111,9 +111,7 @@ export function SharePage() {
             <p className="mt-3 text-[14px] text-[#6C6C70]">No extra instructions.</p>
           )}
         </details>
-        <p className="mt-6 text-[13px] text-[#6C6C70]">
-          Configuration only — no computer, logins, files, or chat history.
-        </p>
+        <p className="mt-6 text-[13px] text-[#6C6C70]">Config only. Not the computer or logins.</p>
         {error ? (
           <p role="alert" className="mt-4 text-[13px] text-[#C94244]">
             {error}
