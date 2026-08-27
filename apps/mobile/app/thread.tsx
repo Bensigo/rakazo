@@ -1364,6 +1364,7 @@ function MessageBubble({
 }) {
   const [peerExpanded, setPeerExpanded] = useState(false);
   const artifactTarget: MobileArtifactTarget = groupId ? { groupId } : { botId };
+  const cardBotId = message.botId ?? botId;
   const appConnectBlocks = message.blocks.filter(
     (block): block is Extract<MessageBlock, { kind: "app_connect" }> =>
       block.kind === "app_connect",
@@ -1377,7 +1378,7 @@ function MessageBubble({
       <View style={{ gap: 8, width: "100%" }}>
         <AskBlock ask={ask} canAnswer={canAnswer} onAnswer={onAnswer} />
         {appConnectBlocks.map((block, index) => (
-          <AppConnectCard key={`${block.provider}-${index}`} botId={botId} block={block} />
+          <AppConnectCard key={`${block.provider}-${index}`} botId={cardBotId} block={block} />
         ))}
       </View>
     );
@@ -1527,7 +1528,7 @@ function MessageBubble({
     return (
       <View style={{ gap: 8, width: "100%" }}>
         {appConnectBlocks.map((block, index) => (
-          <AppConnectCard key={`${block.provider}-${index}`} botId={botId} block={block} />
+          <AppConnectCard key={`${block.provider}-${index}`} botId={cardBotId} block={block} />
         ))}
       </View>
     );
@@ -1578,7 +1579,7 @@ function MessageBubble({
           )}
         </View>
         {appConnectBlocks.map((block, index) => (
-          <AppConnectCard key={`${block.provider}-${index}`} botId={botId} block={block} />
+          <AppConnectCard key={`${block.provider}-${index}`} botId={cardBotId} block={block} />
         ))}
       </View>
     );
@@ -1682,7 +1683,7 @@ function MessageBubble({
           ),
         )}
         {appConnectBlocks.map((block, index) => (
-          <AppConnectCard key={`${block.provider}-${index}`} botId={botId} block={block} />
+          <AppConnectCard key={`${block.provider}-${index}`} botId={cardBotId} block={block} />
         ))}
       </View>
     );
@@ -1728,7 +1729,7 @@ function MessageBubble({
         )}
       </View>
       {appConnectBlocks.map((block, index) => (
-        <AppConnectCard key={`${block.provider}-${index}`} botId={botId} block={block} />
+        <AppConnectCard key={`${block.provider}-${index}`} botId={cardBotId} block={block} />
       ))}
     </View>
   );

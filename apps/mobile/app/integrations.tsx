@@ -55,13 +55,15 @@ export default function Integrations() {
   );
 
   async function refresh() {
-    const [nextCatalog, installs] = await Promise.all([
-      rpc<ConnectionCatalogItem[]>("connections/catalog"),
-      rpc<CapabilityInstall[]>("capabilities/list"),
-    ]);
-    setCatalog(nextCatalog);
-    setSources(installs.filter((item) => item.kind === "mcp" || item.kind === "api"));
+    const catalogResult = await rpc<ConnectionCatalogItem[]>("connections/catalog");
+    setCatalog(catalogResult);
     setCatalogReady(true);
+    try {
+      const installs = await rpc<CapabilityInstall[]>("capabilities/list");
+      setSources(installs.filter((item) => item.kind === "mcp" || item.kind === "api"));
+    } catch {
+      // Tool sources are optional; keep featured/catalog usable if this fails.
+    }
   }
 
   useEffect(() => {
