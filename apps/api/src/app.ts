@@ -1,10 +1,11 @@
 import { rm } from "node:fs/promises";
 import { RPCHandler } from "@orpc/server/fetch";
-import type {
-  JobPublisher,
-  ManagedConnectorProvider,
-  RealtimeFanout,
-  SandboxProvider,
+import {
+  runContinueJob,
+  type JobPublisher,
+  type ManagedConnectorProvider,
+  type RealtimeFanout,
+  type SandboxProvider,
 } from "@rakazo/adapter-kit";
 import {
   type ComposioProvider,
@@ -290,6 +291,49 @@ export async function createApp(
     if (!session?.user) return null;
     return requireMembership(prisma, session.user.id).catch(() => null);
   });
+  app.post("/api/v1/bots/:botId/webhook", async (c) => {
+    const botId = c.req.param("botId");
+    const bot = await prisma.bot.findUnique({
+      where: { id: botId, archivedAt: null },
+      include: { thread: { select: { id: true } } },
+    });
+    if (!bot || !bot.thread) {
+      return c.json({ error: "Bot not found" }, 404);
+    }
+
+    let payload: Record<string, unknown> = {};
+    try {
+      payload = await c.req.json();
+    } catch {
+      const text = await c.req.text().catch(() => "");
+      payload = { text };
+    }
+
+    const eventName = typeof payload.event === "string" ? payload.event : "webhook";
+    const promptText =
+      typeof payload.text === "string" && payload.text.trim()
+        ? payload.text.trim()
+        : `[Inbound Event: ${eventName}]\n\`\`\`json\n${JSON.stringify(payload, null, 2)}\n\`\`\``;
+
+    const sent = await events.sendUserMessage({
+      workspaceId: bot.workspaceId,
+      threadId: bot.thread.id,
+      botId: bot.id,
+      userId: bot.userId,
+      blocks: [{ kind: "text", text: promptText }],
+      prompt: promptText,
+      trigger: "webhook",
+    });
+
+    if (sent.runId) {
+      await jobs.enqueue(runContinueJob(sent.runId)).catch((error) => {
+        console.error("webhook run enqueue error", error);
+      });
+    }
+
+    return c.json({ ok: true, messageId: sent.messageId, runId: sent.runId, seq: sent.seq });
+  });
+
   app.get("/health", (c) =>
     c.json({
       ok: true,
