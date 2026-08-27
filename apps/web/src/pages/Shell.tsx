@@ -58,7 +58,7 @@ import {
   speechFromBlocks,
   truncateSlashDescription,
 } from "@rakazo/core";
-import { AvatarStyleProvider, BotAvatar, Button, GroupAvatar } from "@rakazo/ui-web";
+import { AvatarStyleProvider, BotAvatar, Button, GroupAvatar, type GroupAvatarMember } from "@rakazo/ui-web";
 import {
   ArrowUp,
   Bell,
@@ -99,11 +99,10 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArtifactFileCard } from "../components/ArtifactFileCard";
 import { AskCard } from "../components/AskCard";
 import {
-  BuiButton,
-  BuiCard,
-  LoadingState,
-  SuccessPop,
-} from "../components/beautiful-ui/primitives";
+  ActiveBotGlyph,
+  CollaborationMarker,
+} from "../components/beautiful-ui/CollaborationMarker";
+import { BuiButton, BuiCard, SuccessPop } from "../components/beautiful-ui/primitives";
 import { ComputerMaintenanceActions } from "../components/ComputerMaintenanceActions";
 import { SkillDraftCard } from "../components/teach/SkillDraftCard";
 import { TeachCaptureOverlay } from "../components/teach/TeachCaptureOverlay";
@@ -1088,24 +1087,29 @@ export function ShellPage() {
     ["running", "queued", "leased"].includes(run.status),
   );
   const transcriptRunning = workingRuns.length > 0;
-  const workingStartedAtMs = (() => {
-    let earliest: number | undefined;
-    for (const run of workingRuns) {
-      // Prefer startedAt; fall back to createdAt so queued/leased runs keep a
-      // stable clock across remounts before the executor sets startedAt.
-      const iso = run.startedAt ?? run.createdAt;
-      const ms = Date.parse(iso);
-      if (Number.isNaN(ms)) continue;
-      if (earliest === undefined || ms < earliest) earliest = ms;
-    }
-    return earliest;
-  })();
   const composerRunning = currentRuns.some((run) => isActive(run.status));
   const transcriptArtifactTarget = useMemo<ArtifactTarget>(
     () => (inGroup ? { groupId: groupId ?? "" } : { botId: active?.id ?? "" }),
     [active?.id, groupId, inGroup],
   );
   const transcriptMembers = activeSnapshot?.members ?? activeGroup?.members;
+  const resolveTranscriptBot = useCallback(
+    (botId: string) => {
+      const bot = bots.find((candidate) => candidate.id === botId);
+      if (bot) return bot;
+      return transcriptMembers?.find((member) => member.botId === botId);
+    },
+    [bots, transcriptMembers],
+  );
+  const workingBots: GroupAvatarMember[] = workingRuns.map((run) => {
+    const bot = resolveTranscriptBot(run.botId);
+    return {
+      botId: run.botId,
+      color: bot?.color ?? "#85858A",
+      name: bot?.name,
+      status: run.status,
+    };
+  });
   const resolveTranscriptMemberName = useCallback(
     (botId: string | undefined) => memberName(transcriptMembers, botId),
     [transcriptMembers],
@@ -2185,7 +2189,7 @@ export function ShellPage() {
           loadingOlder={loadingOlder}
           answerableAskMessageId={answerableAskMessageId}
           running={transcriptRunning}
-          workingStartedAt={workingStartedAtMs}
+          workingBots={workingBots}
           onLoadOlder={loadOlder}
           onOpenBot={openBot}
           onAnswer={answerMessage}
@@ -2196,6 +2200,7 @@ export function ShellPage() {
             setPeerMessagesOpen(true);
           }}
           memberName={resolveTranscriptMemberName}
+          peerBot={resolveTranscriptBot}
           onRefresh={refreshActiveThread}
           onBotChanged={refreshBots}
           onAddRoutine={addSkillRoutine}
@@ -3042,7 +3047,7 @@ const Transcript = memo(function Transcript({
   loadingOlder,
   answerableAskMessageId,
   running,
-  workingStartedAt,
+  workingBots,
   onLoadOlder,
   onOpenBot,
   onAnswer,
@@ -3050,6 +3055,7 @@ const Transcript = memo(function Transcript({
   onJumpToMessage,
   onOpenPeerMessages,
   memberName,
+  peerBot,
   onRefresh,
   onBotChanged,
   onAddRoutine,
@@ -3064,7 +3070,7 @@ const Transcript = memo(function Transcript({
   loadingOlder: boolean;
   answerableAskMessageId: string | null;
   running: boolean;
-  workingStartedAt?: number;
+  workingBots: GroupAvatarMember[];
   onLoadOlder: () => void | Promise<void>;
   onOpenBot: (botId: string) => void;
   onAnswer: (message: ThreadMessage, text: string) => Promise<void>;
@@ -3072,6 +3078,7 @@ const Transcript = memo(function Transcript({
   onJumpToMessage: (messageId: string) => void;
   onOpenPeerMessages: (peerBotId: string) => void;
   memberName?: (botId: string | undefined) => string | undefined;
+  peerBot: (botId: string) => { color: string; status?: string } | undefined;
   onRefresh: () => Promise<void>;
   onBotChanged: () => Promise<void>;
   onAddRoutine: (name: string, prompt: string) => void;
@@ -3116,6 +3123,7 @@ const Transcript = memo(function Transcript({
             onAnswer={onAnswer}
             speakerName={message.role === "bot" ? memberName?.(message.botId) : undefined}
             memberName={memberName}
+            peerBot={peerBot}
             replyPreview={
               message.replyToMessageId ? messageById.get(message.replyToMessageId) : undefined
             }
@@ -3137,13 +3145,14 @@ const Transcript = memo(function Transcript({
           message.blocks[0]?.kind === "progress" &&
           message.blocks[0].text,
       ) ? (
-        <div className="flex justify-start">
-          {/* Box metrics match the progress bubble exactly so swapping between
-              them never changes height or text position. */}
-          <div className="flex max-w-[74%] items-center rounded-[20px] bg-[#1A1A1D] px-[18px] py-3 text-[15.5px] leading-[1.5]">
-            <LoadingState label="working" startedAt={workingStartedAt} />
-          </div>
-        </div>
+        <ActiveBotGlyph
+          bots={workingBots}
+          label={
+            workingBots.length === 1 && workingBots[0]?.name
+              ? t`${workingBots[0].name} is working`
+              : t`Bots are working`
+          }
+        />
       ) : null}
     </div>
   );
@@ -3825,6 +3834,7 @@ const MessageView = memo(function MessageView({
   onOpenPeerMessages,
   speakerName,
   memberName,
+  peerBot,
   replyPreview,
   replyToMessageId,
   onJumpToMessage,
@@ -3843,6 +3853,7 @@ const MessageView = memo(function MessageView({
   onOpenPeerMessages: (peerBotId: string) => void;
   speakerName?: string;
   memberName?: (botId: string | undefined) => string | undefined;
+  peerBot: (botId: string) => { color: string; status?: string } | undefined;
   replyPreview?: ThreadMessage;
   replyToMessageId?: string;
   onJumpToMessage?: (messageId: string) => void;
@@ -3953,16 +3964,14 @@ const MessageView = memo(function MessageView({
           const peerBotId = sent ? block.toBotId : block.fromBotId;
           const label = sent ? t`Messaged ${peer}` : t`Message from ${peer}`;
           return (
-            <button
+            <CollaborationMarker
               key={i}
-              type="button"
-              aria-label={label}
+              action={sent ? <Trans>Messaged</Trans> : <Trans>Message from</Trans>}
+              ariaLabel={label}
+              color={peerBot(peerBotId)?.color ?? "#85858A"}
+              name={peer}
               onClick={() => onOpenPeerMessages(peerBotId)}
-              className="flex items-center justify-center gap-2 self-center rounded-full border border-[#26262A] px-3 py-1 text-[13px] text-[#85858A] hover:bg-[#161618]"
-            >
-              <span aria-hidden>↔</span>
-              <span>{label}</span>
-            </button>
+            />
           );
         }
         if (block.kind === "meta") {
