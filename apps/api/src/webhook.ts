@@ -118,7 +118,7 @@ export function mountWebhookHttpRoutes(app: Hono, deps: WebhookDeps) {
 
     const secret = await deps.prisma.secret.findUnique({
       where: { id: bot.webhookSecretId },
-      select: { ciphertext: true, kind: true, userId: true, workspaceId: true },
+      select: { id: true, ciphertext: true, kind: true, userId: true, workspaceId: true },
     });
     if (!secret || secret.kind !== WEBHOOK_SECRET_KIND) {
       return unauthorized();
@@ -129,7 +129,7 @@ export function mountWebhookHttpRoutes(app: Hono, deps: WebhookDeps) {
 
     let expected: string;
     try {
-      expected = deps.secrets.load(secret.ciphertext);
+      expected = deps.secrets.load(secret.ciphertext, secret.id);
     } catch {
       return unauthorized();
     }

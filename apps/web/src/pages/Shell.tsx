@@ -154,6 +154,7 @@ import {
   RoutineEditor,
   RoutineListHeader,
   RoutineListRow,
+  routineNeedsOneShotArm,
 } from "./RoutineEditor";
 import { WindowChrome } from "./WindowChrome";
 import { WorkspaceSearchResults } from "./WorkspaceSearch";
@@ -244,6 +245,7 @@ export function ShellPage() {
   const [bots, setBots] = useState<Bot[]>([]);
   const [botSections, setBotSections] = useState<BotSection[]>([]);
   const [archivedBots, setArchivedBots] = useState<Bot[]>([]);
+  const [archivedGroups, setArchivedGroups] = useState<Group[]>([]);
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [collapsedSidebarSections, setCollapsedSidebarSections] = useState(() => new Set<string>());
 
@@ -283,6 +285,10 @@ export function ShellPage() {
   const computerRef = useRef<ComputerStatus | null>(null);
   const threadRefreshEpoch = useRef(0);
   const groupRefreshEpoch = useRef(0);
+  const botsRefreshEpoch = useRef(0);
+  const botsRefreshApplied = useRef(0);
+  const archivedBotsRefreshEpoch = useRef(0);
+  const botsRefreshInFlight = useRef(0);
   // Last-known computer/screen per bot, so switching back to an already-seen
   // bot paints its computer pane instantly instead of blanking it while the
   // thread + screen RPCs round-trip again (see refreshThread / refreshComputerScreen).
@@ -350,12 +356,18 @@ export function ShellPage() {
     });
   }, []);
   const [botMenu, setBotMenu] = useState<{
-    botId: string;
+    kind: "bot" | "group";
+    id: string;
     position: ContextMenuPosition;
   } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Bot | null>(null);
-  const [clearTarget, setClearTarget] = useState<Bot | null>(null);
-  const [newSectionBot, setNewSectionBot] = useState<Bot | null>(null);
+  const [deleteGroupTarget, setDeleteGroupTarget] = useState<Group | null>(null);
+  const [clearTarget, setClearTarget] = useState<
+    { kind: "bot"; chat: Bot } | { kind: "group"; chat: Group } | null
+  >(null);
+  const [newSectionTarget, setNewSectionTarget] = useState<
+    { kind: "bot"; chat: Bot } | { kind: "group"; chat: Group } | null
+  >(null);
   const [booting, setBooting] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [initialBotsLoaded, setInitialBotsLoaded] = useState(false);
@@ -419,7 +431,11 @@ export function ShellPage() {
   const activeGroupId = useRef<string | undefined>(groupId);
   activeGroupId.current = groupId;
   const screenRequest = useRef(0);
-  const contextBot = botMenu ? bots.find((bot) => bot.id === botMenu.botId) : undefined;
+  const contextBot =
+    botMenu?.kind === "bot" ? bots.find((bot) => bot.id === botMenu.id) : undefined;
+  const contextGroup =
+    botMenu?.kind === "group" ? groups.find((group) => group.id === botMenu.id) : undefined;
+  const contextChat = contextBot ?? contextGroup;
   const closeBotMenu = useCallback(() => setBotMenu(null), []);
   const updateBotUnread = useCallback((id: string, unread: boolean) => {
     setBots((current) => {
@@ -466,37 +482,56 @@ export function ShellPage() {
   const refreshBots = useCallback(
     async (includeArchived = false) => {
       markOnce("rk:renderer:bots-request-start");
-      const [list, sections, archived, groupList] = await Promise.all([
-        rpc.bots.list(),
-        rpc.botSections.list(),
-        includeArchived ? rpc.bots.listArchived() : Promise.resolve(null),
-        rpc.groups.list(),
-      ]);
-      markOnce("rk:renderer:bots-response");
-      setBots(list);
-      setBotSections(sections);
-      setGroups(groupList);
-      setInitialBotsLoaded(true);
-      if (archived) setArchivedBots(archived);
-      if (
-        includeArchived &&
-        list.length === 0 &&
-        archived?.length === 0 &&
-        groupList.length === 0
-      ) {
-        navigate("/onboarding", { replace: true });
-        return;
-      }
-      const currentGroupId = routeGroupId.current;
-      if (currentGroupId) {
-        if (!groupList.some((group) => group.id === currentGroupId)) {
+      const request = ++botsRefreshEpoch.current;
+      const archivedRequest = includeArchived ? ++archivedBotsRefreshEpoch.current : null;
+      botsRefreshInFlight.current += 1;
+      try {
+        const [list, sections, archived, groupList, archivedGroupList] = await Promise.all([
+          rpc.bots.list(),
+          rpc.botSections.list(),
+          includeArchived ? rpc.bots.listArchived() : Promise.resolve(null),
+          rpc.groups.list(),
+          includeArchived ? rpc.groups.listArchived() : Promise.resolve(null),
+        ]);
+        markOnce("rk:renderer:bots-response");
+        const botsFresh = request === botsRefreshEpoch.current;
+        const archivedFresh =
+          archivedRequest != null && archivedRequest === archivedBotsRefreshEpoch.current;
+        // A newer non-archived refresh can win the bots epoch while an older
+        // includeArchived request still owns archivedBotsRefreshEpoch — apply
+        // whichever slices are still current.
+        if (!botsFresh && !archivedFresh) return;
+        if (archivedFresh && archived) setArchivedBots(archived);
+        if (archivedFresh && archivedGroupList) setArchivedGroups(archivedGroupList);
+        if (!botsFresh) return;
+        setBots(list);
+        setBotSections(sections);
+        setGroups(groupList);
+        setInitialBotsLoaded(true);
+        botsRefreshApplied.current = request;
+        if (
+          includeArchived &&
+          list.length === 0 &&
+          archived?.length === 0 &&
+          groupList.length === 0 &&
+          archivedGroupList?.length === 0
+        ) {
+          navigate("/onboarding", { replace: true });
+          return;
+        }
+        const currentGroupId = routeGroupId.current;
+        if (currentGroupId) {
+          if (!groupList.some((group) => group.id === currentGroupId)) {
+            navigate(firstThreadRoute(list, groupList), { replace: true });
+          }
+          return;
+        }
+        const currentBotId = routeBotId.current;
+        if (!currentBotId || !list.some((bot) => bot.id === currentBotId)) {
           navigate(firstThreadRoute(list, groupList), { replace: true });
         }
-        return;
-      }
-      const currentBotId = routeBotId.current;
-      if (!currentBotId || !list.some((bot) => bot.id === currentBotId)) {
-        navigate(firstThreadRoute(list, groupList), { replace: true });
+      } finally {
+        botsRefreshInFlight.current -= 1;
       }
     },
     [navigate],
@@ -667,15 +702,22 @@ export function ShellPage() {
           setMemoryProviderConfig(null);
         }
       });
+    const appliedAtStart = botsRefreshApplied.current;
     void Promise.all([takeInitialBootstrap(botId), rpc.groups.list()])
       .then(([bootstrap, groupList]) => {
         if (cancelled) return;
         setBootstrapMe(bootstrap.me);
-        setBots(bootstrap.bots);
-        setBotSections(bootstrap.botSections);
-        setArchivedBots(bootstrap.archivedBots);
-        setGroups(groupList);
-        setInitialBotsLoaded(true);
+        // Skip list/route writes only if a later refreshBots() successfully
+        // committed (failed refreshes bump epoch but not botsRefreshApplied).
+        const applyBotLists = appliedAtStart === botsRefreshApplied.current;
+        if (applyBotLists) {
+          setBots(bootstrap.bots);
+          setBotSections(bootstrap.botSections);
+          setArchivedBots(bootstrap.archivedBots);
+          setArchivedGroups(bootstrap.archivedGroups);
+          setGroups(groupList);
+          setInitialBotsLoaded(true);
+        }
         if (!groupId && bootstrap.thread) {
           bootstrappedThread.current = bootstrap.thread;
           commitSnapshot(bootstrap.thread);
@@ -685,7 +727,13 @@ export function ShellPage() {
           markOnce("rk:renderer:bots-response");
           markOnce("rk:renderer:thread-response");
         }
-        if (bootstrap.bots.length === 0 && bootstrap.archivedBots.length === 0) {
+        if (!applyBotLists) return;
+        if (
+          bootstrap.bots.length === 0 &&
+          bootstrap.archivedBots.length === 0 &&
+          groupList.length === 0 &&
+          bootstrap.archivedGroups.length === 0
+        ) {
           navigate("/onboarding", { replace: true });
           return;
         }
@@ -713,7 +761,12 @@ export function ShellPage() {
     };
     window.addEventListener("focus", refreshVisibleBots);
     document.addEventListener("visibilitychange", refreshVisibleBots);
-    const poll = window.setInterval(refreshVisibleBots, 60_000);
+    // Poll skips while a refresh is in flight; focus/visibility and event-driven
+    // callers still bump botsRefreshEpoch so only the latest response applies.
+    const poll = window.setInterval(() => {
+      if (botsRefreshInFlight.current > 0) return;
+      refreshVisibleBots();
+    }, 3_000);
     return () => {
       cancelled = true;
       window.clearTimeout(refreshTimer);
@@ -860,6 +913,7 @@ export function ShellPage() {
             } else if (
               event.type === "bot.spawned" ||
               event.type === "bot.deleted" ||
+              event.type === "run.started" ||
               isRunTerminalEvent(event) ||
               event.type === "thread.cleared"
             ) {
@@ -953,6 +1007,9 @@ export function ShellPage() {
               readVisibleGroups.current.delete(groupId);
               markVisibleGroupRead();
             }
+            if (event.type === "run.started" || isRunTerminalEvent(event)) {
+              void refreshBots().catch(() => undefined);
+            }
             if (isRunTerminalEvent(event) || event.type === "run.waiting_input") {
               // waiting_input: reconcile ask cards if a stale post-send refresh raced SSE.
               void refreshGroupThread(groupId).catch(() => undefined);
@@ -981,9 +1038,21 @@ export function ShellPage() {
       ),
     [bots, query],
   );
+  const filteredGroups = useMemo(
+    () =>
+      groups.filter((g) => `${g.name} ${g.preview}`.toLowerCase().includes(query.toLowerCase())),
+    [groups, query],
+  );
   const sidebarGroups = useMemo(
-    () => groupBotsForSidebar<Bot>(filtered, botSections),
-    [botSections, filtered],
+    () =>
+      groupBotsForSidebar(
+        [
+          ...filtered.map((chat) => ({ kind: "bot" as const, chat })),
+          ...filteredGroups.map((chat) => ({ kind: "group" as const, chat })),
+        ].map((item) => ({ ...item, pinned: item.chat.pinned, sectionId: item.chat.sectionId })),
+        botSections,
+      ),
+    [botSections, filtered, filteredGroups],
   );
   const toggleSidebarSection = useCallback(
     (key: string) => {
@@ -1482,6 +1551,8 @@ export function ShellPage() {
         setPendingAttachments((current) =>
           current.filter((attachment) => attachment.threadKey !== originThreadKey),
         );
+        // Refresh sidebar status even when a bot→group reroute navigates away below.
+        void refreshBots().catch(() => undefined);
         if (reroutedToGroup && groupTarget) {
           navigate(`/app/g/${groupTarget}`);
           return;
@@ -1913,51 +1984,72 @@ export function ShellPage() {
                       </div>
                     ) : null}
                     {!collapsed &&
-                      group.bots.map((bot) => (
+                      group.bots.map((item) => (
                         <button
-                          key={bot.id}
+                          key={`${item.kind}:${item.chat.id}`}
                           type="button"
                           onClick={() => {
                             setMobileSidebarOpen(false);
-                            navigate(`/app/${bot.id}`);
+                            navigate(
+                              item.kind === "bot"
+                                ? `/app/${item.chat.id}`
+                                : `/app/g/${item.chat.id}`,
+                            );
                           }}
                           onContextMenu={(event) => {
                             event.preventDefault();
                             setBotMenu({
-                              botId: bot.id,
+                              kind: item.kind,
+                              id: item.chat.id,
                               position: { x: event.clientX, y: event.clientY },
                             });
                           }}
                           className="flex w-full gap-3 rounded-xl px-2.5 py-[11px] text-start"
                           style={{
                             background:
-                              !inGroup && active?.id === bot.id ? "#161618" : "transparent",
+                              (item.kind === "bot" && !inGroup && active?.id === item.chat.id) ||
+                              (item.kind === "group" && inGroup && activeGroup?.id === item.chat.id)
+                                ? "#161618"
+                                : "transparent",
                           }}
                         >
-                          <BotAvatar
-                            color={bot.color}
-                            identity={bot.id}
-                            size={38}
-                            status={bot.status}
-                          />
+                          {item.kind === "bot" ? (
+                            <BotAvatar
+                              color={item.chat.color}
+                              identity={item.chat.id}
+                              size={38}
+                              status={item.chat.status}
+                            />
+                          ) : (
+                            <GroupAvatar
+                              members={
+                                item.chat.id === activeSnapshot?.groupId
+                                  ? (activeSnapshot.members ?? item.chat.members)
+                                  : item.chat.members
+                              }
+                              size={38}
+                            />
+                          )}
                           <div className="min-w-0 flex-1">
                             <div className="flex items-baseline justify-between gap-2">
                               <span
                                 dir="auto"
                                 className={`truncate text-[15px] text-[#ECECEE] ${
-                                  bot.unread ? "font-semibold" : "font-medium"
+                                  item.chat.unread ? "font-semibold" : "font-medium"
                                 }`}
                               >
-                                {bot.name}
-                                {bot.unread ? (
+                                {item.chat.name}
+                                {item.chat.unread ? (
                                   <span className="sr-only">
                                     <Trans> (unread)</Trans>
                                   </span>
                                 ) : null}
                               </span>
                               <span className="flex shrink-0 items-center gap-1.5 text-[12.5px] text-[#6C6C70]">
-                                {bot.status === "idle" ? "" : bot.status}
-                                {bot.unread ? (
+                                {item.kind === "bot" && item.chat.status !== "idle"
+                                  ? item.chat.status
+                                  : ""}
+                                {item.chat.unread ? (
                                   <span
                                     aria-hidden="true"
                                     className="inline-block h-2 w-2 rounded-full bg-[#8B5CF6]"
@@ -1965,19 +2057,21 @@ export function ShellPage() {
                                 ) : null}
                               </span>
                             </div>
-                            {bot.title ? (
+                            {item.kind === "bot" && item.chat.title ? (
                               <>
                                 <div
                                   dir="auto"
                                   className={`mt-0.5 truncate text-[13.5px] ${
-                                    bot.unread ? "font-medium text-[#C9C9CE]" : "text-[#85858A]"
+                                    item.chat.unread
+                                      ? "font-medium text-[#C9C9CE]"
+                                      : "text-[#85858A]"
                                   }`}
                                 >
-                                  {bot.title}
+                                  {item.chat.title}
                                 </div>
-                                {bot.preview ? (
+                                {item.chat.preview ? (
                                   <div dir="auto" className="truncate text-[12.5px] text-[#6C6C70]">
-                                    {bot.preview}
+                                    {item.chat.preview}
                                   </div>
                                 ) : null}
                               </>
@@ -1985,10 +2079,13 @@ export function ShellPage() {
                               <div
                                 dir="auto"
                                 className={`mt-0.5 truncate text-[13.5px] ${
-                                  bot.unread ? "font-medium text-[#C9C9CE]" : "text-[#85858A]"
+                                  item.chat.unread ? "font-medium text-[#C9C9CE]" : "text-[#85858A]"
                                 }`}
                               >
-                                {bot.preview}
+                                {item.kind === "bot"
+                                  ? item.chat.preview
+                                  : item.chat.preview ||
+                                    item.chat.members.map((member) => member.name).join(", ")}
                               </div>
                             )}
                           </div>
@@ -1999,53 +2096,7 @@ export function ShellPage() {
               })}
             </>
           )}
-          {!showWorkspaceSearch
-            ? groups.map((group) => (
-                <button
-                  key={group.id}
-                  type="button"
-                  onClick={() => {
-                    setMobileSidebarOpen(false);
-                    navigate(`/app/g/${group.id}`);
-                  }}
-                  className="flex gap-3 rounded-xl px-2.5 py-[11px] text-start"
-                  style={{
-                    background: inGroup && activeGroup?.id === group.id ? "#161618" : "transparent",
-                  }}
-                >
-                  <GroupAvatar
-                    members={
-                      group.id === activeSnapshot?.groupId
-                        ? (activeSnapshot.members ?? group.members)
-                        : group.members
-                    }
-                    size={38}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span
-                        dir="auto"
-                        className={`min-w-0 truncate text-[15px] text-[#ECECEE] ${
-                          group.unread ? "font-semibold" : "font-medium"
-                        }`}
-                      >
-                        {group.name}
-                      </span>
-                      {group.unread ? (
-                        <span
-                          aria-hidden="true"
-                          className="inline-block h-2 w-2 rounded-full bg-[#8B5CF6]"
-                        />
-                      ) : null}
-                    </div>
-                    <div dir="auto" className="mt-0.5 truncate text-[13.5px] text-[#85858A]">
-                      {group.members.map((member) => member.name).join(", ")}
-                    </div>
-                  </div>
-                </button>
-              ))
-            : null}
-          {archivedBots.length > 0 && !showWorkspaceSearch ? (
+          {archivedBots.length + archivedGroups.length > 0 && !showWorkspaceSearch ? (
             <div className="mt-2 border-t border-[#202023] pt-2">
               <button
                 type="button"
@@ -2056,10 +2107,11 @@ export function ShellPage() {
                 <span>
                   <Trans>Archived</Trans>
                 </span>
-                <span>{archivedBots.length}</span>
+                <span>{archivedBots.length + archivedGroups.length}</span>
               </button>
-              {archivedOpen
-                ? archivedBots.map((bot) => (
+              {archivedOpen ? (
+                <>
+                  {archivedBots.map((bot) => (
                     <div key={bot.id} className="flex items-center gap-2 rounded-lg px-2.5 py-2">
                       <BotAvatar
                         color={bot.color}
@@ -2091,8 +2143,39 @@ export function ShellPage() {
                         <Trans>Delete</Trans>
                       </button>
                     </div>
-                  ))
-                : null}
+                  ))}
+                  {archivedGroups.map((group) => (
+                    <div key={group.id} className="flex items-center gap-2 rounded-lg px-2.5 py-2">
+                      <GroupAvatar members={group.members} size={28} />
+                      <span
+                        className="min-w-0 flex-1 truncate text-[14px] text-[#A8A8AD]"
+                        dir="auto"
+                      >
+                        {group.name}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void rpc.groups
+                            .restore({ groupId: group.id })
+                            .then(() => refreshBots(true))
+                        }
+                        className="text-[12.5px] text-[#C9C9CE] hover:text-white"
+                      >
+                        <Trans>Restore</Trans>
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={t`Delete ${group.name}`}
+                        onClick={() => setDeleteGroupTarget(group)}
+                        className="text-[12.5px] text-[#FF5364]"
+                      >
+                        <Trans>Delete</Trans>
+                      </button>
+                    </div>
+                  ))}
+                </>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -2618,7 +2701,7 @@ export function ShellPage() {
                   a.click();
                   URL.revokeObjectURL(url);
                 }}
-                onClear={() => setClearTarget(active)}
+                onClear={() => setClearTarget({ kind: "bot", chat: active })}
                 onComputerChanged={async () => {
                   await refreshThread(active.id);
                 }}
@@ -2682,13 +2765,31 @@ export function ShellPage() {
                     const crons = routineDraft.schedules.map(cronFromPreset);
                     let saved: Routine;
                     if (targetRoutine) {
+                      const armOneShot = routineNeedsOneShotArm(targetRoutine, crons);
+                      let runAt: string | undefined;
+                      if (armOneShot) {
+                        if (!routineDraft.runAtLocal) {
+                          setRoutineError(t`Add a run time for this one-shot.`);
+                          return;
+                        }
+                        const parsed = new Date(routineDraft.runAtLocal);
+                        if (
+                          !Number.isFinite(parsed.getTime()) ||
+                          parsed.getTime() <= Date.now()
+                        ) {
+                          setRoutineError(t`Run time must be in the future.`);
+                          return;
+                        }
+                        runAt = parsed.toISOString();
+                      }
                       saved = await rpc.routines.update({
                         routineId: targetRoutine.id,
                         name: routineDraft.name || t`Routine`,
                         prompt: routineDraft.prompt || t`Check in.`,
                         crons,
-                        active: routineDraft.active,
+                        active: armOneShot ? true : routineDraft.active,
                         webhookEnabled: routineDraft.webhookEnabled,
+                        ...(runAt ? { runAt } : {}),
                       });
                     } else {
                       saved = await rpc.routines.create({
@@ -2756,55 +2857,92 @@ export function ShellPage() {
       </aside>
 
       <Suspense fallback={null}>
-        {contextBot && botMenu ? (
+        {contextChat && botMenu ? (
           <BotContextMenu
-            bot={contextBot}
+            bot={contextChat}
             position={botMenu.position}
             onClose={closeBotMenu}
             sections={botSections}
             onTogglePinned={() => {
               setBotMenu(null);
-              void rpc.bots
-                .update({ botId: contextBot.id, pinned: !contextBot.pinned })
-                .then(() => refreshBots());
+              const request = contextBot
+                ? rpc.bots.update({ botId: contextBot.id, pinned: !contextBot.pinned })
+                : rpc.groups.update({
+                    groupId: contextGroup!.id,
+                    pinned: !contextGroup!.pinned,
+                  });
+              void request.then(() => refreshBots());
             }}
             onToggleUnread={() => {
-              const unread = !contextBot.unread;
+              const unread = !contextChat.unread;
               setBotMenu(null);
-              const request = unread ? markBotUnread(contextBot.id) : markBotRead(contextBot.id);
-              void request.catch(() => undefined);
+              if (contextBot) {
+                const request = unread ? markBotUnread(contextBot.id) : markBotRead(contextBot.id);
+                void request.catch(() => undefined);
+              } else {
+                const request = unread
+                  ? rpc.threads.markUnread({ groupId: contextGroup!.id })
+                  : rpc.threads.markRead({ groupId: contextGroup!.id });
+                void request
+                  .then(() =>
+                    setGroups((current) =>
+                      current.map((group) =>
+                        group.id === contextGroup!.id ? { ...group, unread } : group,
+                      ),
+                    ),
+                  )
+                  .catch(() => undefined);
+              }
             }}
             onMoveToSection={(sectionId) => {
               setBotMenu(null);
-              if (sectionId === contextBot.sectionId) return;
-              void rpc.bots.update({ botId: contextBot.id, sectionId }).then(() => refreshBots());
+              if (sectionId === contextChat.sectionId) return;
+              const request = contextBot
+                ? rpc.bots.update({ botId: contextBot.id, sectionId })
+                : rpc.groups.update({ groupId: contextGroup!.id, sectionId });
+              void request.then(() => refreshBots());
             }}
             onCreateSection={() => {
-              setNewSectionBot(contextBot);
+              setNewSectionTarget(
+                contextBot
+                  ? { kind: "bot", chat: contextBot }
+                  : { kind: "group", chat: contextGroup! },
+              );
               setBotMenu(null);
             }}
             onEdit={() => {
-              navigate(`/app/${contextBot.id}`);
-              setPanel("settings");
+              navigate(contextBot ? `/app/${contextBot.id}` : `/app/g/${contextGroup!.id}`);
+              setPanel(contextBot ? "settings" : "group-settings");
               setBotMenu(null);
             }}
             onDuplicate={() => {
               setBotMenu(null);
-              void rpc.bots.duplicate({ botId: contextBot.id }).then(async (bot) => {
+              const request = contextBot
+                ? rpc.bots.duplicate({ botId: contextBot.id })
+                : rpc.groups.duplicate({ groupId: contextGroup!.id });
+              void request.then(async (chat) => {
                 await refreshBots();
-                navigate(`/app/${bot.id}`);
+                navigate(contextBot ? `/app/${chat.id}` : `/app/g/${chat.id}`);
               });
             }}
             onClear={() => {
-              setClearTarget(contextBot);
+              setClearTarget(
+                contextBot
+                  ? { kind: "bot", chat: contextBot }
+                  : { kind: "group", chat: contextGroup! },
+              );
               setBotMenu(null);
             }}
             onArchive={() => {
               setBotMenu(null);
-              void rpc.bots.archive({ botId: contextBot.id }).then(() => refreshBots(true));
+              const request = contextBot
+                ? rpc.bots.archive({ botId: contextBot.id })
+                : rpc.groups.archive({ groupId: contextGroup!.id });
+              void request.then(() => refreshBots(true));
             }}
             onDelete={() => {
-              setDeleteTarget(contextBot);
+              if (contextBot) setDeleteTarget(contextBot);
+              else setDeleteGroupTarget(contextGroup!);
               setBotMenu(null);
             }}
           />
@@ -2823,13 +2961,31 @@ export function ShellPage() {
           />
         ) : null}
 
-        {newSectionBot ? (
+        {deleteGroupTarget ? (
+          <DeleteItemDialog
+            item={deleteGroupTarget}
+            noun="group"
+            onCancel={() => setDeleteGroupTarget(null)}
+            onConfirm={async () => {
+              await rpc.groups.remove({ groupId: deleteGroupTarget.id });
+              setDeleteGroupTarget(null);
+              setPanel(null);
+              await refreshBots(true);
+            }}
+          />
+        ) : null}
+
+        {newSectionTarget ? (
           <NewBotSectionDialog
-            bot={newSectionBot}
-            onCancel={() => setNewSectionBot(null)}
+            bot={newSectionTarget.chat}
+            onCancel={() => setNewSectionTarget(null)}
             onConfirm={async (name) => {
-              await rpc.botSections.create({ botId: newSectionBot.id, name });
-              setNewSectionBot(null);
+              await rpc.botSections.create(
+                newSectionTarget.kind === "bot"
+                  ? { botId: newSectionTarget.chat.id, name }
+                  : { groupId: newSectionTarget.chat.id, name },
+              );
+              setNewSectionTarget(null);
               await refreshBots();
             }}
           />
@@ -2837,11 +2993,18 @@ export function ShellPage() {
 
         {clearTarget ? (
           <ClearConversationDialog
-            bot={clearTarget}
+            bot={clearTarget.chat}
             onCancel={() => setClearTarget(null)}
             onConfirm={async () => {
-              await rpc.threads.clear({ botId: clearTarget.id });
-              if (active?.id === clearTarget.id) {
+              await rpc.threads.clear(
+                clearTarget.kind === "bot"
+                  ? { botId: clearTarget.chat.id }
+                  : { groupId: clearTarget.chat.id },
+              );
+              if (
+                (clearTarget.kind === "bot" && active?.id === clearTarget.chat.id) ||
+                (clearTarget.kind === "group" && activeGroup?.id === clearTarget.chat.id)
+              ) {
                 expandedHistoryThread.current = null;
                 pinnedAroundRef.current = null;
                 historyEpoch.current += 1;
@@ -2856,8 +3019,9 @@ export function ShellPage() {
         ) : null}
 
         {deleteRoutineTarget ? (
-          <DeleteRoutineDialog
-            routine={deleteRoutineTarget}
+          <DeleteItemDialog
+            item={deleteRoutineTarget}
+            noun="routine"
             onCancel={() => setDeleteRoutineTarget(null)}
             onConfirm={async () => {
               const target = deleteRoutineTarget;
@@ -4897,7 +5061,7 @@ function NewBotSectionDialog({
   onCancel,
   onConfirm,
 }: {
-  bot: Bot;
+  bot: Pick<Bot, "name">;
   onCancel: () => void;
   onConfirm: (name: string) => Promise<void>;
 }) {
@@ -4983,7 +5147,7 @@ function ClearConversationDialog({
   onCancel,
   onConfirm,
 }: {
-  bot: Bot;
+  bot: Pick<Bot, "name">;
   onCancel: () => void;
   onConfirm: () => Promise<void>;
 }) {
@@ -5023,8 +5187,8 @@ function ClearConversationDialog({
           className="mt-2 text-[14px] leading-6 text-[#9A9AA0]"
         >
           <Trans>
-            This permanently removes every message and stops current work. The bot, computer,
-            memory, and routines are kept.
+            This permanently removes every message and stops current work. The chat remains
+            available.
           </Trans>
         </p>
         {error ? <p className="mt-3 text-[13.5px] text-[#FF5364]">{error}</p> : null}
@@ -5173,12 +5337,14 @@ function DeleteBotDialog({
   );
 }
 
-function DeleteRoutineDialog({
-  routine,
+function DeleteItemDialog({
+  item,
+  noun,
   onCancel,
   onConfirm,
 }: {
-  routine: Routine;
+  item: { name: string };
+  noun: "group" | "routine";
   onCancel: () => void;
   onConfirm: () => Promise<void>;
 }) {
@@ -5205,15 +5371,15 @@ function DeleteRoutineDialog({
       <div
         role="alertdialog"
         aria-modal="true"
-        aria-labelledby="delete-routine-title"
-        aria-describedby="delete-routine-description"
+        aria-labelledby="delete-item-title"
+        aria-describedby="delete-item-description"
         className="w-full max-w-[420px] rounded-[18px] border border-[#343438] bg-[#1A1A1D] p-5 shadow-[0_24px_70px_rgba(0,0,0,.65)]"
         onPointerDown={(event) => event.stopPropagation()}
       >
-        <h2 id="delete-routine-title" className="text-[17px] font-medium text-[#F1F1F2]">
-          <Trans>Delete {routine.name}?</Trans>
+        <h2 id="delete-item-title" className="text-[17px] font-medium text-[#F1F1F2]">
+          <Trans>Delete {item.name}?</Trans>
         </h2>
-        <p id="delete-routine-description" className="mt-2 text-[14px] leading-6 text-[#9A9AA0]">
+        <p id="delete-item-description" className="mt-2 text-[14px] leading-6 text-[#9A9AA0]">
           <Trans>This cannot be undone.</Trans>
         </p>
         {error ? <p className="mt-3 text-[13.5px] text-[#FF5364]">{error}</p> : null}
@@ -5233,7 +5399,13 @@ function DeleteRoutineDialog({
               setDeleting(true);
               setError(null);
               void onConfirm().catch((err: unknown) => {
-                setError(err instanceof Error ? err.message : t`Could not delete routine`);
+                setError(
+                  err instanceof Error
+                    ? err.message
+                    : noun === "group"
+                      ? t`Could not delete group`
+                      : t`Could not delete routine`,
+                );
                 setDeleting(false);
               });
             }}

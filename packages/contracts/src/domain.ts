@@ -68,6 +68,9 @@ export const GroupSchema = z.object({
   id: Id,
   workspaceId: Id,
   name: z.string(),
+  pinned: z.boolean(),
+  sectionId: Id.nullable(),
+  archivedAt: z.string().nullable(),
   members: z.array(GroupMemberSchema),
   threadId: Id,
   preview: z.string(),
@@ -93,6 +96,8 @@ export const UpdateGroupInput = z.object({
   groupId: Id,
   name: z.string().trim().min(1).max(80).optional(),
   botIds: GroupBotIds.optional(),
+  pinned: z.boolean().optional(),
+  sectionId: Id.nullable().optional(),
 });
 export type UpdateGroupInput = z.infer<typeof UpdateGroupInput>;
 
@@ -845,6 +850,7 @@ export const AppBootstrapSchema = z.object({
   bots: z.array(BotSchema),
   botSections: z.array(BotSectionSchema),
   archivedBots: z.array(BotSchema),
+  archivedGroups: z.array(GroupSchema),
   thread: ThreadSnapshotSchema.nullable(),
   routines: z.array(RoutineSchema),
 });

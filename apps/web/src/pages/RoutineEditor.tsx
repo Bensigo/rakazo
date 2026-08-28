@@ -7,11 +7,28 @@ import {
   cronFromPreset,
   defaultCronPreset,
   formatCron,
+  isOneShotRoutineCrons,
   presetFromCron,
 } from "@rakazo/core";
 import { ChevronLeft, ChevronRight, Pause, Plus, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { RoutineSchedule } from "./RoutineSchedule";
+
+function toDatetimeLocalValue(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function defaultArmRunAtLocal(): string {
+  return toDatetimeLocalValue(new Date(Date.now() + 60 * 60 * 1000));
+}
+
+export function routineNeedsOneShotArm(
+  routine: Pick<Routine, "nextRunAt" | "lastRunAt">,
+  crons: string[],
+) {
+  return isOneShotRoutineCrons(crons) && !routine.nextRunAt && !routine.lastRunAt;
+}
 
 const SCHEDULE_PRESETS: CronFreq[] = [
   "Every hour",
@@ -38,6 +55,7 @@ export type RoutineDraftState = {
   schedules: CronPreset[];
   webhookEnabled: boolean;
   active: boolean;
+  runAtLocal: string;
 };
 
 export function emptyRoutineDraft(): RoutineDraftState {
@@ -47,6 +65,7 @@ export function emptyRoutineDraft(): RoutineDraftState {
     schedules: [],
     webhookEnabled: false,
     active: true,
+    runAtLocal: "",
   };
 }
 
@@ -57,6 +76,7 @@ export function draftFromRoutine(routine: Routine): RoutineDraftState {
     schedules: routine.crons.map(presetFromCron),
     webhookEnabled: routine.webhookEnabled,
     active: routine.active,
+    runAtLocal: routineNeedsOneShotArm(routine, routine.crons) ? defaultArmRunAtLocal() : "",
   };
 }
 
@@ -174,6 +194,12 @@ export function RoutineEditor({
   const addTriggerId = useId();
   const hasTriggers = draft.schedules.length > 0 || draft.webhookEnabled;
   const canTest = Boolean(editing) && !saving && !running;
+  const needsOneShotArm =
+    editing != null &&
+    routineNeedsOneShotArm(
+      editing,
+      draft.schedules.map(cronFromPreset),
+    );
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -332,6 +358,19 @@ export function RoutineEditor({
               onRemove={() => onChange({ ...draft, webhookEnabled: false })}
               onRotate={() => void onEnsureWebhook()}
             />
+          ) : null}
+
+          {needsOneShotArm ? (
+            <label className="block text-[14px] text-[#85858A]">
+              <Trans>Run at</Trans>
+              <input
+                type="datetime-local"
+                value={draft.runAtLocal}
+                onChange={(e) => onChange({ ...draft, runAtLocal: e.target.value })}
+                aria-label={t`Run at`}
+                className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
+              />
+            </label>
           ) : null}
         </div>
 

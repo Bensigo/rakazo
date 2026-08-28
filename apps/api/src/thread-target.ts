@@ -201,6 +201,7 @@ async function lockAndLoadGroupMembers(
       id: target.groupId,
       workspaceId: actor.workspaceId,
       userId: actor.userId,
+      archivedAt: null,
       thread: { id: target.threadId },
     },
     include: {
@@ -605,86 +606,58 @@ export async function stopThreadRuns(
   actor: Actor,
   target: ThreadTarget,
 ) {
-  const activeRuns = await deps.prisma.run.findMany({
-    where: {
-      threadId: target.threadId,
-      status: { in: [...ACTIVE_RUN_STATUSES] },
-    },
-    select: { id: true, botId: true },
-  });
+  const runIds = (
+    await deps.prisma.run.findMany({
+      where: {
+        threadId: target.threadId,
+        status: { in: [...ACTIVE_RUN_STATUSES] },
+      },
+      select: { id: true },
+    })
+  ).map((run) => run.id);
   await deps.prisma.run.updateMany({
-    where: {
-      threadId: target.threadId,
-      status: { in: [...ACTIVE_RUN_STATUSES] },
-    },
+    where: { id: { in: runIds } },
     data: { status: "cancelled", completedAt: new Date() },
   });
-  if (target.kind === "bot") {
-    await deps.prisma.computerExecutionLease.deleteMany({ where: { botId: target.botId } });
-    await deps.prisma.computer.updateMany({
-      where: { executionBotId: target.botId },
-      data: {
-        executionRunId: null,
-        executionBotId: null,
-        executionLeaseExpiresAt: null,
-      },
-    });
-    if (target.bot.computer?.providerRef) {
+  const computers = runIds.length
+    ? await deps.prisma.computer.findMany({
+        where: { executionRunId: { in: runIds } },
+        select: {
+          homeKey: true,
+          kind: true,
+          providerRef: true,
+          executionBotId: true,
+        },
+      })
+    : [];
+  await deps.prisma.computerExecutionLease.deleteMany({ where: { runId: { in: runIds } } });
+  await deps.prisma.computer.updateMany({
+    where: { executionRunId: { in: runIds } },
+    data: {
+      executionRunId: null,
+      executionBotId: null,
+      executionLeaseExpiresAt: null,
+    },
+  });
+  await Promise.all(
+    computers.map(async (computer) => {
+      if (!computer.providerRef || !computer.executionBotId) return;
       await deps.sandbox
-        .releaseScreen?.(toComputerRef(target.bot.computer), {
+        .releaseScreen?.(toComputerRef(computer), {
           operationId: "stop",
           traceId: "stop",
           workspaceId: actor.workspaceId,
           userId: actor.userId,
-          botId: target.botId,
+          botId: computer.executionBotId,
           signal: new AbortController().signal,
         })
         .catch(() => undefined);
-    }
-  } else {
-    const botIds = [...new Set(activeRuns.map((run) => run.botId))];
-    const botsWithScreens = botIds.length
-      ? await deps.prisma.bot.findMany({
-          where: {
-            id: { in: botIds },
-            workspaceId: actor.workspaceId,
-            userId: actor.userId,
-          },
-          select: {
-            id: true,
-            computer: { select: { homeKey: true, kind: true, providerRef: true } },
-          },
-        })
-      : [];
-    await deps.prisma.computerExecutionLease.deleteMany({ where: { botId: { in: botIds } } });
-    await deps.prisma.computer.updateMany({
-      where: { executionBotId: { in: botIds } },
-      data: {
-        executionRunId: null,
-        executionBotId: null,
-        executionLeaseExpiresAt: null,
-      },
-    });
-    await Promise.all(
-      botsWithScreens.map(async (bot) => {
-        if (!bot.computer?.providerRef) return;
-        await deps.sandbox
-          .releaseScreen?.(toComputerRef(bot.computer), {
-            operationId: "stop",
-            traceId: "stop",
-            workspaceId: actor.workspaceId,
-            userId: actor.userId,
-            botId: bot.id,
-            signal: new AbortController().signal,
-          })
-          .catch(() => undefined);
-      }),
-    );
-  }
+    }),
+  );
   await deps.prisma.event.deleteMany({
     where: {
       type: "thread.progress",
-      runId: { in: activeRuns.map((run) => run.id) },
+      runId: { in: runIds },
     },
   });
 }
