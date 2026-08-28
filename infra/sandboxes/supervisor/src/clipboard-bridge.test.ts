@@ -17,8 +17,34 @@ describe("host clipboard paste bridge", () => {
     expect(isPasteChord({ ctrlKey: true, metaKey: true, code: "KeyV", key: "V" })).toBe(true);
     expect(isPasteChord({ ctrlKey: true, code: "KeyC", key: "c" })).toBe(false);
     expect(isPasteChord({ altKey: true, ctrlKey: true, code: "KeyV", key: "v" })).toBe(false);
-    expect(isPasteChord({ ctrlKey: true, repeat: true, code: "KeyV", key: "v" })).toBe(false);
     expect(isPasteChord({ code: "KeyV", key: "v" })).toBe(false);
+  });
+
+  it("blocks repeated Ctrl/Cmd+V keydowns so noVNC cannot see an unmatched KeyV", () => {
+    const listeners = new Map<string, (event: object) => void>();
+    const target = {
+      addEventListener: (type: string, listener: (event: object) => void) => {
+        listeners.set(type, listener);
+      },
+      removeEventListener: (type: string) => {
+        listeners.delete(type);
+      },
+    };
+    attachHostClipboardPaste(
+      { viewOnly: false, clipboardPasteFrom: vi.fn(), sendKey: vi.fn() },
+      { target },
+    );
+    const stopPropagation = vi.fn();
+    listeners.get("keydown")?.({
+      ctrlKey: true,
+      metaKey: false,
+      altKey: false,
+      repeat: true,
+      code: "KeyV",
+      key: "v",
+      stopPropagation,
+    });
+    expect(stopPropagation).toHaveBeenCalledOnce();
   });
 
   it("reads plain text from a paste event", () => {

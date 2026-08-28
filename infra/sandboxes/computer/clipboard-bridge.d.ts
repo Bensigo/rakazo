@@ -12,7 +12,6 @@ export function isPasteChord(event: {
   ctrlKey?: boolean;
   metaKey?: boolean;
   altKey?: boolean;
-  repeat?: boolean;
   code?: string;
   key?: string;
 }): boolean;

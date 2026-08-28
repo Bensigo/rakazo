@@ -14,9 +14,9 @@ export const KEYSYM = {
   v: 0x76,
 };
 
-/** @param {{ ctrlKey?: boolean, metaKey?: boolean, altKey?: boolean, repeat?: boolean, code?: string, key?: string }} event */
+/** @param {{ ctrlKey?: boolean, metaKey?: boolean, altKey?: boolean, code?: string, key?: string }} event */
 export function isPasteChord(event) {
-  if (!event || event.altKey || event.repeat) return false;
+  if (!event || event.altKey) return false;
   if (!(event.ctrlKey || event.metaKey)) return false;
   return event.code === "KeyV" || event.key === "v" || event.key === "V";
 }
