@@ -625,6 +625,7 @@ async function ensureComputerImage() {
             "xcapture.c",
             "rakazo-browser",
             "embed.html",
+            "clipboard-bridge.js",
             "fluxbox.init",
             "fluxbox.apps",
             "fluxbox.menu",
