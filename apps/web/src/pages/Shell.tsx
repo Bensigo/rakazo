@@ -977,7 +977,10 @@ export function ShellPage() {
   }, [activeGroup?.id, groupId]);
 
   const filtered = useMemo(
-    () => bots.filter((b) => `${b.name} ${b.preview}`.toLowerCase().includes(query.toLowerCase())),
+    () =>
+      bots.filter((b) =>
+        `${b.name} ${b.title ?? ""} ${b.preview ?? ""}`.toLowerCase().includes(query.toLowerCase()),
+      ),
     [bots, query],
   );
   const sidebarGroups = useMemo(
@@ -1966,14 +1969,32 @@ export function ShellPage() {
                                 ) : null}
                               </span>
                             </div>
-                            <div
-                              dir="auto"
-                              className={`mt-0.5 truncate text-[13.5px] ${
-                                bot.unread ? "font-medium text-[#C9C9CE]" : "text-[#85858A]"
-                              }`}
-                            >
-                              {bot.preview || bot.title}
-                            </div>
+                            {bot.title ? (
+                              <>
+                                <div
+                                  dir="auto"
+                                  className={`mt-0.5 truncate text-[13.5px] ${
+                                    bot.unread ? "font-medium text-[#C9C9CE]" : "text-[#85858A]"
+                                  }`}
+                                >
+                                  {bot.title}
+                                </div>
+                                {bot.preview ? (
+                                  <div dir="auto" className="truncate text-[12.5px] text-[#6C6C70]">
+                                    {bot.preview}
+                                  </div>
+                                ) : null}
+                              </>
+                            ) : (
+                              <div
+                                dir="auto"
+                                className={`mt-0.5 truncate text-[13.5px] ${
+                                  bot.unread ? "font-medium text-[#C9C9CE]" : "text-[#85858A]"
+                                }`}
+                              >
+                                {bot.preview}
+                              </div>
+                            )}
                           </div>
                         </button>
                       ))}
