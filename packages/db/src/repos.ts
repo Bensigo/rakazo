@@ -34,6 +34,7 @@ function mapBot(
     modelProvider?: string | null;
     modelId?: string | null;
     thinkingLevel?: string | null;
+    webhookSecretId?: string | null;
   },
   preview = "",
   status = "idle",
@@ -67,6 +68,7 @@ function mapBot(
     modelProvider: bot.modelProvider ?? null,
     modelId: bot.modelId ?? null,
     thinkingLevel: (bot.thinkingLevel as Bot["thinkingLevel"]) ?? null,
+    webhookConfigured: Boolean(bot.webhookSecretId),
   };
 }
 

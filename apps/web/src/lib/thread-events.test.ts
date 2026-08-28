@@ -278,6 +278,19 @@ describe("thread event reduction", () => {
     expect(started?.run?.trigger).toBe("bot_message");
   });
 
+  it("preserves webhook when event-sourcing an inbound wake", () => {
+    const started = reduceThreadSnapshot(
+      snapshot([]),
+      event({
+        type: "run.started",
+        runId: "webhook-run-1",
+        payload: { trigger: "webhook" },
+      }),
+    );
+
+    expect(started?.run?.trigger).toBe("webhook");
+  });
+
   it("marks the run as waiting when computer takeover is requested", () => {
     const run = threadRun("run-1");
     const initial: ThreadSnapshot = {

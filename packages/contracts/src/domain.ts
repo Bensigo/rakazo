@@ -49,6 +49,7 @@ export const BotSchema = z.object({
   modelProvider: z.string().nullable(),
   modelId: z.string().nullable(),
   thinkingLevel: ThinkingLevelSchema.nullable(),
+  webhookConfigured: z.boolean(),
 });
 export type Bot = z.infer<typeof BotSchema>;
 
@@ -190,25 +191,37 @@ export const RoutineSchema = z.object({
   botId: Id,
   name: z.string(),
   prompt: z.string(),
-  crons: z.array(z.string()).min(1),
+  crons: z.array(z.string()),
   timezone: z.string(),
   active: z.boolean(),
   notify: z.boolean(),
+  webhookEnabled: z.boolean(),
   lastRunAt: z.string().nullable(),
   nextRunAt: z.string().nullable(),
   createdAt: z.string(),
 });
 export type Routine = z.infer<typeof RoutineSchema>;
 
-export const CreateRoutineInput = z.object({
-  botId: Id,
-  name: z.string().min(1).max(80),
-  prompt: z.string().min(1),
-  crons: z.array(z.string().min(1)).min(1),
-  timezone: z.string().default("UTC"),
-  notify: z.boolean().default(true),
-  active: z.boolean().default(false),
-});
+export const CreateRoutineInput = z
+  .object({
+    botId: Id,
+    name: z.string().min(1).max(80),
+    prompt: z.string().min(1),
+    crons: z.array(z.string().min(1)).default([]),
+    timezone: z.string().default("UTC"),
+    notify: z.boolean().default(true),
+    active: z.boolean().default(false),
+    webhookEnabled: z.boolean().default(false),
+  })
+  .superRefine((value, ctx) => {
+    if (value.crons.length === 0 && !value.webhookEnabled) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Add a schedule or webhook trigger",
+        path: ["crons"],
+      });
+    }
+  });
 
 export const ScratchpadItemStatusSchema = z.enum(["open", "parked", "done"]);
 export type ScratchpadItemStatus = z.infer<typeof ScratchpadItemStatusSchema>;
@@ -533,7 +546,16 @@ export const RunSchema = z.object({
   threadId: Id,
   taskId: Id,
   status: RunStatus,
-  trigger: z.enum(["user", "routine", "resume", "follow_up", "spawn", "skill", "bot_message"]),
+  trigger: z.enum([
+    "user",
+    "routine",
+    "resume",
+    "follow_up",
+    "spawn",
+    "skill",
+    "bot_message",
+    "webhook",
+  ]),
   routineId: Id.nullable(),
   modelProvider: z.string().nullable(),
   modelId: z.string().nullable(),

@@ -48,6 +48,7 @@ import { cors } from "hono/cors";
 import { type AppEnv, loadEnv } from "./env.js";
 import { createRouter } from "./router.js";
 import { mountVoiceHttpRoutes } from "./voice.js";
+import { mountWebhookHttpRoutes } from "./webhook.js";
 
 export interface AppHandles {
   app: Hono;
@@ -314,6 +315,8 @@ export async function createApp(
     if (!session?.user) return null;
     return requireMembership(prisma, session.user.id).catch(() => null);
   });
+  mountWebhookHttpRoutes(app, { prisma, secrets, events, jobs });
+
   app.get("/health", (c) =>
     c.json({
       ok: true,

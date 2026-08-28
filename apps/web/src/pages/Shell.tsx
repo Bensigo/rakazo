@@ -41,16 +41,12 @@ import {
   buildComposerMentionOptions,
   type ComposerMention,
   cronFromPreset,
-  defaultCronPreset,
-  formatCron,
   groupBotsForSidebar,
   inferAttachmentMimeType,
   isActive,
-  isOneShotRoutineCrons,
   isRunTerminalEvent,
   latestAnswerableAskMessageId,
   mentionChipKey,
-  presetFromCron,
   resolveComposerSendPlan,
   SLASH_ACTIONS,
   type SlashActionId,
@@ -72,7 +68,6 @@ import {
   Bell,
   Box,
   ChevronDown,
-  ChevronLeft,
   Clock,
   Copy,
   Cpu,
@@ -152,6 +147,15 @@ import { ActivityList } from "./ActivityList";
 import type { ContextMenuPosition } from "./BotContextMenu";
 import { CreateGroupForm, GroupSettings, memberName } from "./GroupPanel";
 import { HostComputerPrompt } from "./HostComputerPrompt";
+import {
+  draftFromRoutine,
+  emptyRoutineDraft,
+  type RoutineDraftState,
+  RoutineEditor,
+  RoutineListHeader,
+  RoutineListRow,
+  routineNeedsOneShotArm,
+} from "./RoutineEditor";
 import { WindowChrome } from "./WindowChrome";
 import { WorkspaceSearchResults } from "./WorkspaceSearch";
 
@@ -179,9 +183,6 @@ const MemorySettingsOverlay = lazy(() =>
   import("./MemorySettingsOverlay").then((module) => ({
     default: module.MemorySettingsOverlay,
   })),
-);
-const RoutineSchedules = lazy(() =>
-  import("./RoutineSchedule").then((module) => ({ default: module.RoutineSchedules })),
 );
 const VoiceSettingsOverlay = lazy(() =>
   import("./VoiceSettingsOverlay").then((module) => ({ default: module.VoiceSettingsOverlay })),
@@ -226,35 +227,6 @@ function readCollapsedSidebarSections(userId: string | null | undefined): Set<st
   } catch {
     return new Set();
   }
-}
-
-function toDatetimeLocalValue(date: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function defaultArmRunAtLocal(): string {
-  return toDatetimeLocalValue(new Date(Date.now() + 60 * 60 * 1000));
-}
-
-function routineNeedsOneShotArm(
-  routine: Pick<Routine, "nextRunAt" | "lastRunAt">,
-  crons: string[],
-) {
-  return isOneShotRoutineCrons(crons) && !routine.nextRunAt && !routine.lastRunAt;
-}
-
-function emptyRoutineDraft() {
-  return { name: "", prompt: "", schedules: [defaultCronPreset()], runAtLocal: "" };
-}
-
-function draftFromRoutine(routine: Routine) {
-  return {
-    name: routine.name,
-    prompt: routine.prompt,
-    schedules: routine.crons.map(presetFromCron),
-    runAtLocal: routineNeedsOneShotArm(routine, routine.crons) ? defaultArmRunAtLocal() : "",
-  };
 }
 
 export function ShellPage() {
@@ -400,7 +372,8 @@ export function ShellPage() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [initialBotsLoaded, setInitialBotsLoaded] = useState(false);
   const [bootstrapMe, setBootstrapMe] = useState<Me | null>();
-  const [routineDraft, setRoutineDraft] = useState(emptyRoutineDraft);
+  const [routineDraft, setRoutineDraft] = useState<RoutineDraftState>(emptyRoutineDraft());
+  const [routineWebhookSecret, setRoutineWebhookSecret] = useState<string | null>(null);
   const [editingRoutine, setEditingRoutine] = useState<Routine | null>(null);
   const [deleteRoutineTarget, setDeleteRoutineTarget] = useState<Routine | null>(null);
   const [savingRoutine, setSavingRoutine] = useState(false);
@@ -1213,6 +1186,7 @@ export function ShellPage() {
       const routine = routines.find((item) => item.id === routineId);
       if (routine) {
         setRoutineDraft(draftFromRoutine(routine));
+        setRoutineWebhookSecret(null);
         setEditingRoutine(routine);
         setPanel("routine");
       } else {
@@ -1684,6 +1658,7 @@ export function ShellPage() {
   }, []);
   const addSkillRoutine = useCallback((name: string, prompt: string) => {
     setRoutineDraft({ ...emptyRoutineDraft(), name, prompt });
+    setRoutineWebhookSecret(null);
     setEditingRoutine(null);
     setPanel("routine");
   }, []);
@@ -2609,60 +2584,34 @@ export function ShellPage() {
                     }}
                   />
                 ) : null}
-                <div className="mt-[30px] mb-3 text-[14px] text-[#85858A]">
-                  <Trans>Routines</Trans>
-                </div>
+                <RoutineListHeader
+                  onCreate={() => {
+                    setRoutineDraft(emptyRoutineDraft());
+                    setRoutineWebhookSecret(null);
+                    setEditingRoutine(null);
+                    setRoutineError(null);
+                    setPanel("routine");
+                  }}
+                />
                 {activeRoutines.map((routine) => {
                   const routineRunning =
                     snapshot?.run?.routineId === routine.id && isActive(snapshot.run.status);
                   return (
-                    <div
+                    <RoutineListRow
                       key={routine.id}
-                      className="flex w-full items-center gap-2 rounded-[11px] px-2.5 py-2.5 hover:bg-[#121214]"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRoutineDraft(draftFromRoutine(routine));
-                          setEditingRoutine(routine);
-                          setPanel("routine");
-                        }}
-                        className="flex min-w-0 flex-1 items-center gap-3 text-start"
-                      >
-                        <span className="text-[#E65707]">◷</span>
-                        <span
-                          className="min-w-0 flex-1 truncate text-start text-[14.5px] text-[#ECECEE]"
-                          dir="auto"
-                        >
-                          {routine.name}
-                        </span>
-                        <span className="shrink-0 text-[13px] text-[#6C6C70]">
-                          {routine.crons.map(formatCron).join(" · ")}
-                        </span>
-                      </button>
-                      {routineRunning ? (
-                        <button
-                          type="button"
-                          onClick={() => void stopRun()}
-                          className="shrink-0 rounded-full bg-[rgba(230,87,7,.14)] px-2.5 py-1 text-[12px] text-[#E65707]"
-                        >
-                          <Trans>Running · Stop</Trans>
-                        </button>
-                      ) : null}
-                    </div>
+                      routine={routine}
+                      running={routineRunning}
+                      onOpen={() => {
+                        setRoutineDraft(draftFromRoutine(routine));
+                        setRoutineWebhookSecret(null);
+                        setEditingRoutine(routine);
+                        setRoutineError(null);
+                        setPanel("routine");
+                      }}
+                      onStop={() => void stopRun()}
+                    />
                   );
                 })}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRoutineDraft(emptyRoutineDraft());
-                    setEditingRoutine(null);
-                    setPanel("routine");
-                  }}
-                  className="mt-1 flex items-center gap-2.5 px-2.5 py-2.5 text-[14.5px] text-[#7A7A80]"
-                >
-                  + <Trans>New routine</Trans>
-                </button>
                 {active ? (
                   <TeachComputerSection
                     botId={active.id}
@@ -2678,6 +2627,7 @@ export function ShellPage() {
                         name: skill.name || skill.goal.slice(0, 80),
                         prompt: `Run taught skill: ${skill.name || skill.goal}\n${skill.playbook.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")}`,
                       });
+                      setRoutineWebhookSecret(null);
                       setEditingRoutine(null);
                       setPanel("routine");
                     }}
@@ -2758,195 +2708,158 @@ export function ShellPage() {
               />
             ) : null}
             {panel === "routine" && active ? (
-              <div>
-                <div className="mb-5 flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={() => setPanel("computer")}
-                    className="text-[#9A9AA0]"
-                  >
-                    <ChevronLeft size={18} strokeWidth={1.8} />
-                  </button>
-                  <div className="text-[15.5px] font-medium text-[#F1F1F2]">
-                    <Trans>Routine</Trans>
-                  </div>
-                  <button type="button" onClick={() => setPanel(null)} className="text-[#6C6C70]">
-                    <X size={16} strokeWidth={1.8} />
-                  </button>
-                </div>
-                <label className="text-[14px] text-[#85858A]">
-                  <Trans>Name</Trans>
-                  <input
-                    value={routineDraft.name}
-                    onChange={(e) => setRoutineDraft((s) => ({ ...s, name: e.target.value }))}
-                    className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
-                  />
-                </label>
-                <label className="mt-5 block text-[14px] text-[#85858A]">
-                  <Trans>Instruction</Trans>
-                  <textarea
-                    value={routineDraft.prompt}
-                    onChange={(e) => setRoutineDraft((s) => ({ ...s, prompt: e.target.value }))}
-                    rows={4}
-                    className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
-                  />
-                </label>
-                <div className="mt-5 text-[14px] text-[#85858A]">
-                  <Trans>When to run</Trans>
-                  <span className="ml-2 text-[12.5px] text-[#6E6E74]">
-                    {editingRoutine?.timezone ?? localTimezone()}
-                  </span>
-                  <Suspense fallback={null}>
-                    <RoutineSchedules
-                      value={routineDraft.schedules}
-                      onChange={(schedules) => setRoutineDraft((s) => ({ ...s, schedules }))}
-                    />
-                  </Suspense>
-                </div>
-                {editingRoutine &&
-                routineNeedsOneShotArm(
-                  editingRoutine,
-                  routineDraft.schedules.map(cronFromPreset),
-                ) ? (
-                  <label className="mt-5 block text-[14px] text-[#85858A]">
-                    <Trans>Run at</Trans>
-                    <input
-                      type="datetime-local"
-                      value={routineDraft.runAtLocal}
-                      onChange={(e) =>
-                        setRoutineDraft((s) => ({ ...s, runAtLocal: e.target.value }))
-                      }
-                      aria-label={t`Run at`}
-                      className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
-                    />
-                  </label>
-                ) : null}
-                <div className="mt-5 flex items-center gap-3">
-                  <button
-                    type="button"
-                    disabled={savingRoutine || runningRoutine}
-                    onClick={async () => {
-                      if (routineSavePending.current) return;
-                      const targetBotId = active.id;
-                      const targetRoutine = editingRoutine;
-                      if (targetRoutine && targetRoutine.botId !== targetBotId) return;
-                      const saveRequest = ++routineSaveRequest.current;
-                      routineSavePending.current = true;
-                      setSavingRoutine(true);
-                      setRoutineError(null);
-                      try {
-                        const crons = routineDraft.schedules.map(cronFromPreset);
-                        if (targetRoutine) {
-                          const armOneShot = routineNeedsOneShotArm(targetRoutine, crons);
-                          let runAt: string | undefined;
-                          if (armOneShot) {
-                            if (!routineDraft.runAtLocal) {
-                              setRoutineError(t`Add a run time for this one-shot.`);
-                              return;
-                            }
-                            const parsed = new Date(routineDraft.runAtLocal);
-                            if (
-                              !Number.isFinite(parsed.getTime()) ||
-                              parsed.getTime() <= Date.now()
-                            ) {
-                              setRoutineError(t`Run time must be in the future.`);
-                              return;
-                            }
-                            runAt = parsed.toISOString();
-                          }
-                          await rpc.routines.update({
-                            routineId: targetRoutine.id,
-                            name: routineDraft.name || t`Routine`,
-                            prompt: routineDraft.prompt || t`Check in.`,
-                            crons,
-                            ...(armOneShot ? { active: true } : {}),
-                            ...(runAt ? { runAt } : {}),
-                          });
-                        } else {
-                          await rpc.routines.create({
-                            botId: targetBotId,
-                            name: routineDraft.name || t`Routine`,
-                            prompt: routineDraft.prompt || t`Check in.`,
-                            crons,
-                            timezone: localTimezone(),
-                            active: true,
-                            notify: true,
-                          });
-                        }
-                      } catch (error) {
-                        if (
-                          routineSaveRequest.current !== saveRequest ||
-                          activeBotId.current !== targetBotId
-                        ) {
+              <RoutineEditor
+                draft={routineDraft}
+                onChange={setRoutineDraft}
+                editing={editingRoutine}
+                timezone={editingRoutine?.timezone ?? localTimezone()}
+                webhook={{
+                  path:
+                    typeof window !== "undefined"
+                      ? `${window.location.origin}/api/v1/bots/${active.id}/webhook`
+                      : `/api/v1/bots/${active.id}/webhook`,
+                  secret: routineWebhookSecret,
+                  configured: active.webhookConfigured || Boolean(routineWebhookSecret),
+                }}
+                saving={savingRoutine}
+                running={runningRoutine}
+                error={routineError}
+                onBack={() => setPanel("computer")}
+                onClose={() => setPanel(null)}
+                onEnsureWebhook={async () => {
+                  const result = await rpc.bots.rotateWebhookSecret({ botId: active.id });
+                  setRoutineWebhookSecret(result.secret);
+                  setBots((current) =>
+                    current.map((bot) =>
+                      bot.id === active.id ? { ...bot, webhookConfigured: true } : bot,
+                    ),
+                  );
+                }}
+                onSave={async () => {
+                  if (routineSavePending.current) return;
+                  const targetBotId = active.id;
+                  const targetRoutine = editingRoutine;
+                  if (targetRoutine && targetRoutine.botId !== targetBotId) return;
+                  if (!routineDraft.schedules.length && !routineDraft.webhookEnabled) {
+                    setRoutineError(t`Add a schedule or webhook trigger`);
+                    return;
+                  }
+                  const saveRequest = ++routineSaveRequest.current;
+                  routineSavePending.current = true;
+                  setSavingRoutine(true);
+                  setRoutineError(null);
+                  try {
+                    if (
+                      routineDraft.webhookEnabled &&
+                      !active.webhookConfigured &&
+                      !routineWebhookSecret
+                    ) {
+                      const rotated = await rpc.bots.rotateWebhookSecret({ botId: targetBotId });
+                      setRoutineWebhookSecret(rotated.secret);
+                      setBots((current) =>
+                        current.map((bot) =>
+                          bot.id === targetBotId ? { ...bot, webhookConfigured: true } : bot,
+                        ),
+                      );
+                    }
+                    const crons = routineDraft.schedules.map(cronFromPreset);
+                    let saved: Routine;
+                    if (targetRoutine) {
+                      const armOneShot = routineNeedsOneShotArm(targetRoutine, crons);
+                      let runAt: string | undefined;
+                      if (armOneShot) {
+                        if (!routineDraft.runAtLocal) {
+                          setRoutineError(t`Add a run time for this one-shot.`);
                           return;
                         }
-                        setRoutineError(
-                          error instanceof Error ? error.message : t`Could not save routine`,
-                        );
-                        return;
-                      } finally {
-                        routineSavePending.current = false;
-                        setSavingRoutine(false);
+                        const parsed = new Date(routineDraft.runAtLocal);
+                        if (!Number.isFinite(parsed.getTime()) || parsed.getTime() <= Date.now()) {
+                          setRoutineError(t`Run time must be in the future.`);
+                          return;
+                        }
+                        runAt = parsed.toISOString();
                       }
-                      if (
-                        routineSaveRequest.current !== saveRequest ||
-                        activeBotId.current !== targetBotId
-                      ) {
-                        return;
-                      }
-                      await refreshThread(targetBotId).catch(() => undefined);
-                      if (
-                        routineSaveRequest.current === saveRequest &&
-                        activeBotId.current === targetBotId
-                      ) {
-                        setPanel("computer");
-                      }
-                    }}
-                    className="rounded-[11px] bg-[#F1F1EF] px-4 py-2 text-[#17171A] disabled:opacity-40"
-                  >
-                    {savingRoutine ? t`Saving…` : t`Save`}
-                  </button>
-                  {editingRoutine?.botId === active.id ? (
-                    <>
-                      <button
-                        type="button"
-                        disabled={savingRoutine || runningRoutine}
-                        onClick={async () => {
-                          if (routineRunPending.current) return;
-                          const targetBotId = active.id;
-                          const targetRoutine = editingRoutine;
-                          if (!targetRoutine) return;
-                          routineRunPending.current = true;
-                          setRunningRoutine(true);
-                          try {
-                            await rpc.routines.testRun({ routineId: targetRoutine.id });
-                            await refreshThread(targetBotId);
-                          } finally {
-                            routineRunPending.current = false;
-                            setRunningRoutine(false);
-                          }
-                        }}
-                        className="rounded-[11px] border border-[#26262A] px-4 py-2 text-[14px] text-[#ECECEE] disabled:opacity-40"
-                      >
-                        {runningRoutine ? t`Running…` : t`Run now`}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={savingRoutine || runningRoutine}
-                        onClick={() => setDeleteRoutineTarget(editingRoutine)}
-                        className="rounded-[11px] px-4 py-2 text-[14px] text-[#FF5364] disabled:opacity-40"
-                      >
-                        <Trans>Delete routine</Trans>
-                      </button>
-                    </>
-                  ) : null}
-                </div>
-                {routineError ? (
-                  <p role="alert" className="mt-3 text-[13px] text-[#EF6461]">
-                    {routineError}
-                  </p>
-                ) : null}
-              </div>
+                      saved = await rpc.routines.update({
+                        routineId: targetRoutine.id,
+                        name: routineDraft.name || t`Routine`,
+                        prompt: routineDraft.prompt || t`Check in.`,
+                        crons,
+                        active: armOneShot ? true : routineDraft.active,
+                        webhookEnabled: routineDraft.webhookEnabled,
+                        ...(runAt ? { runAt } : {}),
+                      });
+                    } else {
+                      saved = await rpc.routines.create({
+                        botId: targetBotId,
+                        name: routineDraft.name || t`Routine`,
+                        prompt: routineDraft.prompt || t`Check in.`,
+                        crons,
+                        timezone: localTimezone(),
+                        active: routineDraft.active,
+                        notify: true,
+                        webhookEnabled: routineDraft.webhookEnabled,
+                      });
+                    }
+                    if (
+                      routineSaveRequest.current === saveRequest &&
+                      activeBotId.current === targetBotId
+                    ) {
+                      setEditingRoutine(saved);
+                      setRoutineDraft(draftFromRoutine(saved));
+                    }
+                  } catch (error) {
+                    if (
+                      routineSaveRequest.current !== saveRequest ||
+                      activeBotId.current !== targetBotId
+                    ) {
+                      return;
+                    }
+                    setRoutineError(
+                      error instanceof Error ? error.message : t`Could not save routine`,
+                    );
+                    return;
+                  } finally {
+                    routineSavePending.current = false;
+                    setSavingRoutine(false);
+                  }
+                  if (
+                    routineSaveRequest.current !== saveRequest ||
+                    activeBotId.current !== targetBotId
+                  ) {
+                    return;
+                  }
+                  await refreshThread(targetBotId).catch(() => undefined);
+                }}
+                onTestRun={async () => {
+                  if (routineRunPending.current) return;
+                  const targetBotId = active.id;
+                  const targetRoutine = editingRoutine;
+                  if (!targetRoutine) return;
+                  routineRunPending.current = true;
+                  setRunningRoutine(true);
+                  setRoutineError(null);
+                  try {
+                    await rpc.routines.testRun({ routineId: targetRoutine.id });
+                    await refreshThread(targetBotId);
+                  } catch (error) {
+                    if (activeBotId.current === targetBotId) {
+                      setRoutineError(
+                        error instanceof Error ? error.message : t`Could not run routine`,
+                      );
+                    }
+                  } finally {
+                    routineRunPending.current = false;
+                    setRunningRoutine(false);
+                  }
+                }}
+                onDelete={() => {
+                  if (editingRoutine) {
+                    setDeleteRoutineTarget(editingRoutine);
+                    return;
+                  }
+                  setPanel("computer");
+                }}
+              />
             ) : null}
           </div>
         ) : null}
@@ -4853,7 +4766,6 @@ function BotSettings({
   const [modelMetaReady, setModelMetaReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   useEffect(() => {
     void rpc.voice
       .voices({})
