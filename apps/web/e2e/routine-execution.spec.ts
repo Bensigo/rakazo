@@ -19,7 +19,12 @@ test("routine test-run completes and survives reload", async ({ page }, testInfo
   await expect(page.getByLabel("How often")).toHaveValue("Weekdays");
   await captureScreenshot(page, testInfo, "32-routine-configured");
 
+  const saved = page.waitForResponse(
+    (response) => response.url().includes("/rpc/routines/create") && response.ok(),
+  );
   await page.getByRole("button", { name: "Save" }).click();
+  await saved;
+  await expect(page.getByRole("button", { name: "Save" })).toBeEnabled();
   await page.getByRole("button", { name: "Back" }).click();
   const routine = page.getByRole("button", { name: /Daily verification/ });
   await expect(routine).toContainText("Weekdays at 9:00 AM");

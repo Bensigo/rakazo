@@ -8,6 +8,16 @@ async function addScheduleTrigger(page: Page, freq: string) {
   await page.getByRole("menuitem", { name: freq, exact: true }).click();
 }
 
+async function saveAndReturn(page: Page, procedure: "routines/create" | "routines/update") {
+  const saved = page.waitForResponse(
+    (response) => response.url().includes(`/rpc/${procedure}`) && response.ok(),
+  );
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await saved;
+  await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Back" }).click();
+}
+
 test("routine editing updates in place, preserves timezone, and deletion persists", async ({
   page,
 }, testInfo) => {
@@ -34,8 +44,7 @@ test("routine editing updates in place, preserves timezone, and deletion persist
   await page.locator("label:has-text('Name') input").fill("Weekday check-in");
   await page.locator("label:has-text('Instruction') textarea").fill("Send the revised update");
   await page.getByLabel("How often").selectOption("Weekdays");
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  await page.getByRole("button", { name: "Back" }).click();
+  await saveAndReturn(page, "routines/update");
 
   const updatedButton = page.getByRole("button", { name: /Weekday check-in/ });
   await expect(updatedButton).toHaveCount(1);
