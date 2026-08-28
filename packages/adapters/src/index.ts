@@ -1,4 +1,5 @@
 export * from "./artifacts.js";
+export * from "./auto-review.js";
 export * from "./background-job-handlers.js";
 export * from "./bot-messages.js";
 export * from "./box-emulator.js";

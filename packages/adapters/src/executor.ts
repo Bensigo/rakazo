@@ -25,6 +25,7 @@ import type { MessageBlock, RunStatus } from "@rakazo/contracts";
 import { ATTACHMENT_MAX_BYTES, isAttachmentImageMimeType } from "@rakazo/contracts";
 import {
   type ActionApprovalRule,
+  applyJudgeDecision,
   appendTextSegment,
   appendToolCallSegment,
   assertTransition,
@@ -42,10 +43,11 @@ import {
   isTerminal,
   nextCronDateAcross,
   nextFence,
+  planActionGate,
   promptInvokesSkill,
   redactSecrets,
   renderBotDirectory,
-  resolveActionApproval,
+  resolveActionApprovalDetail,
   sandboxCommandTimeoutMs,
   type ToolCallStreak,
   toolRequiresApproval,
@@ -78,6 +80,15 @@ import {
   settleUncertainEffect,
   uncertainEffectResult,
 } from "./approval-effect.js";
+import {
+  autoReviewTimeoutMs,
+  buildAutoReviewPrompt,
+  deploymentAutoReviewDefault,
+  isAutoReviewCheckerConfigured,
+  redactToolArgsForReview,
+  resolveAutoReviewChecker,
+  runAutoReviewJudge,
+} from "./auto-review.js";
 import { messageBot } from "./bot-messages.js";
 import { builtinAgentTools } from "./builtin-tools.js";
 import { archiveSpawnedBot, spawnBot } from "./child-bots.js";
@@ -945,6 +956,21 @@ export function createRunExecutor(deps: ExecutorDeps) {
             .then((rules) => rules as ActionApprovalRule[]);
           return approvalRulesPromise;
         };
+        let autoReviewPreferencePromise: Promise<boolean> | undefined;
+        const loadAutoReviewPreference = () => {
+          autoReviewPreferencePromise ??= deps.prisma.actionAutoReviewPreference
+            .findUnique({
+              where: {
+                workspaceId_userId: {
+                  workspaceId: run.workspaceId,
+                  userId: run.userId,
+                },
+              },
+              select: { enabled: true },
+            })
+            .then((row) => row?.enabled ?? deploymentAutoReviewDefault());
+          return autoReviewPreferencePromise;
+        };
         const tools = [...builtins, ...exposedConnectorTools];
         const approvedEffects = await deps.prisma.externalEffect.findMany({
           where: { runId, status: "approved" },
@@ -1048,24 +1074,127 @@ export function createRunExecutor(deps: ExecutorDeps) {
           args = approvedEffectReplays.take(name) ?? args;
           const viaConnector = !BUILTIN_AGENT_TOOL_NAMES.has(name);
           const requiresApprovalByDefault = toolRequiresApproval(name, viaConnector);
-          const approvalDecision = resolveActionApproval({
+          const connectorKind = connectorKindFromToolName(
+            name,
+            connectedPlugins.map((plugin) => plugin.provider),
+          );
+          const approvalResolved = resolveActionApprovalDetail({
             toolName: name,
-            connectorKind: connectorKindFromToolName(
-              name,
-              connectedPlugins.map((plugin) => plugin.provider),
-            ),
+            connectorKind,
             rules: await loadApprovalRules(),
           });
-          const needsApproval = approvalDecision === "ask";
-          const bypassApproval = approvalDecision === "allow" && requiresApprovalByDefault;
+          const autoReviewPref = await loadAutoReviewPreference();
+          const checker = resolveAutoReviewChecker();
+          const checkerConfigured =
+            autoReviewPref && checker
+              ? isAutoReviewCheckerConfigured({}) ||
+                Boolean(
+                  await findModelCredential(
+                    deps.prisma,
+                    { userId: run.userId, workspaceId: run.workspaceId },
+                    checker.provider,
+                  ),
+                )
+              : false;
+          const plan = planActionGate({
+            resolved: approvalResolved,
+            consequential: requiresApprovalByDefault,
+            autoReviewEnabled: autoReviewPref,
+            checkerConfigured,
+          });
+          let reviewReason: string | undefined;
+          let gateDecision: "ask" | "allow" = plan === "ask" ? "ask" : "allow";
+          const needsApprovalEarly = plan === "ask" || plan === "judge";
           const effectKey =
-            name === "request_secret" || needsApproval || requiresApprovalByDefault
+            name === "request_secret" || needsApprovalEarly || requiresApprovalByDefault
               ? approvalEffectKey(runId, name, args)
               : executionId;
           const applied =
             READ_ONLY_AGENT_TOOLS.has(name) || readOnlyConnectorTools.has(name)
               ? undefined
               : await recordEffect(deps, run, name, effectKey, args);
+
+          const runAutoReview = async () => {
+            if (!checker) return;
+            const reviewCredential =
+              checker.provider === credential?.provider
+                ? credential
+                : await findModelCredential(
+                    deps.prisma,
+                    { userId: run.userId, workspaceId: run.workspaceId },
+                    checker.provider,
+                  );
+            const judgeKey = await resolveModelKey(
+              deps,
+              run.userId,
+              run.workspaceId,
+              reviewCredential,
+              checker.provider,
+              (values) => runSecrets.push(...values),
+            );
+            const judge = await runAutoReviewJudge({
+              runtime: deps.runtime,
+              checker,
+              apiKey: judgeKey.oauth ? undefined : judgeKey.apiKey,
+              prompt: buildAutoReviewPrompt({
+                toolName: name,
+                connectorKind,
+                args: redactToolArgsForReview(args, runSecrets),
+                userTask: task.prompt,
+                botDescription: `${bot.name}: ${bot.title}\n${bot.description}`,
+                matchingRules: approvalResolved.matchingRules,
+              }),
+              runId,
+              workspaceId: run.workspaceId,
+              userId: run.userId,
+              botId: bot.id,
+              threadId: thread.id,
+              timeoutMs: autoReviewTimeoutMs(),
+            });
+            reviewReason = judge.reason;
+            gateDecision = applyJudgeDecision({
+              decision: judge.decision,
+              consequential: requiresApprovalByDefault,
+            });
+            if (applied) {
+              await deps.prisma.externalEffect.update({
+                where: { id: applied.effect.id },
+                data: {
+                  reviewDecision: judge.decision,
+                  reviewReason: judge.reason,
+                  reviewModel: judge.model,
+                },
+              });
+            }
+          };
+
+          if (applied && plan === "judge" && checker) {
+            if (!applied.duplicate) {
+              await runAutoReview();
+            } else {
+              const priorDecision = applied.effect.reviewDecision;
+              if (priorDecision === "ask" || priorDecision === "error") {
+                reviewReason =
+                  typeof applied.effect.reviewReason === "string"
+                    ? applied.effect.reviewReason
+                    : undefined;
+                gateDecision = "ask";
+              } else if (priorDecision === "pass") {
+                reviewReason =
+                  typeof applied.effect.reviewReason === "string"
+                    ? applied.effect.reviewReason
+                    : undefined;
+                gateDecision = "allow";
+              } else {
+                await runAutoReview();
+              }
+            }
+          } else if (applied?.duplicate && plan === "ask") {
+            gateDecision = "ask";
+          }
+
+          const needsApproval = gateDecision === "ask";
+          const bypassApproval = gateDecision === "allow" && requiresApprovalByDefault;
           let claimedEffect = false;
 
           const claimOrReturn = async (
@@ -1103,7 +1232,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
               attemptId: attempt.id,
               leaseOwner: workerId,
               leaseFence: fence,
-              blocks: [buildApprovalAskBlock(applied!.effect.id, name, args, runSecrets)],
+              blocks: [
+                buildApprovalAskBlock(applied!.effect.id, name, args, runSecrets, {
+                  reviewReason,
+                }),
+              ],
             });
             // pauseRunForInput returning false after a successful renew means the run row no
             // longer matches this worker. Exiting via pauseForApproval() would leave the run

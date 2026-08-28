@@ -27,12 +27,14 @@ import {
   checkpointAndRecordComputerWorkspace,
   computerSupportsUpdate,
   createVoiceProvider,
+  deploymentAutoReviewDefault,
   destroyBot,
   displayBotWorkspacePath,
   type EncryptedSecretStore,
   enqueueTakeoverContinuation,
   expireComputerControl,
   hasActiveComputerControl,
+  isAutoReviewCheckerConfigured,
   isScratchpadStatus,
   listPiCatalog,
   listScratchpadItems,
@@ -2838,6 +2840,28 @@ export function createRouter(deps: RouterDeps) {
         return { ok: true as const };
       }),
     },
+    autoReview: {
+      get: authed.autoReview.get.handler(async ({ context }) => {
+        return loadAutoReviewSettings(deps, context.actor);
+      }),
+      set: authed.autoReview.set.handler(async ({ context, input }) => {
+        await deps.prisma.actionAutoReviewPreference.upsert({
+          where: {
+            workspaceId_userId: {
+              workspaceId: context.actor.workspaceId,
+              userId: context.actor.userId,
+            },
+          },
+          create: {
+            workspaceId: context.actor.workspaceId,
+            userId: context.actor.userId,
+            enabled: input.enabled,
+          },
+          update: { enabled: input.enabled },
+        });
+        return loadAutoReviewSettings(deps, context.actor);
+      }),
+    },
     artifacts: {
       list: authed.artifacts.list.handler(async ({ context, input }) => {
         await repos.getBot(context.actor, input.botId);
@@ -3104,6 +3128,30 @@ function mapUpdaterError(error: unknown): never {
   throw new ORPCError("INTERNAL_SERVER_ERROR", {
     message: error instanceof Error ? error.message : "Update failed.",
   });
+}
+
+async function loadAutoReviewSettings(deps: RouterDeps, actor: Actor) {
+  const [preference, credentials] = await Promise.all([
+    deps.prisma.actionAutoReviewPreference.findUnique({
+      where: {
+        workspaceId_userId: {
+          workspaceId: actor.workspaceId,
+          userId: actor.userId,
+        },
+      },
+      select: { enabled: true },
+    }),
+    deps.prisma.userModelCredential.findMany({
+      where: { userId: actor.userId, workspaceId: actor.workspaceId },
+      select: { provider: true },
+    }),
+  ]);
+  const providers = new Set(credentials.map((row) => row.provider));
+  const enabled = preference?.enabled ?? deploymentAutoReviewDefault(process.env);
+  const checkerAvailable = isAutoReviewCheckerConfigured({
+    hasUserCredentialForProvider: (provider) => providers.has(provider),
+  });
+  return { enabled, checkerAvailable };
 }
 
 async function meDto(deps: RouterDeps, actor: Actor): Promise<Me> {

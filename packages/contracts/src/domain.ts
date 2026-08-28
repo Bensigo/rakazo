@@ -407,6 +407,12 @@ export const ActionApprovalRuleSchema = z.object({
 });
 export type ActionApprovalRule = z.infer<typeof ActionApprovalRuleSchema>;
 
+export const ActionAutoReviewSettingsSchema = z.object({
+  enabled: z.boolean(),
+  checkerAvailable: z.boolean(),
+});
+export type ActionAutoReviewSettings = z.infer<typeof ActionAutoReviewSettingsSchema>;
+
 export const CapabilityInstallSchema = z.object({
   id: Id,
   kind: z.enum(["skill", "plugin", "mcp", "api", "connection"]),
