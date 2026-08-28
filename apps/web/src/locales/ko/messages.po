@@ -171,6 +171,10 @@ msgstr "활동"
 msgid "Add"
 msgstr "추가"
 
+#: src/components/ApprovalRulesSettings.tsx:151
+msgid "Add a model in Settings to use this."
+msgstr ""
+
 #: src/pages/Shell.tsx:2780
 msgid "Add a run time for this one-shot."
 msgstr ""
@@ -989,6 +993,10 @@ msgstr ""
 msgid "Could not save"
 msgstr "저장하지 못했습니다."
 
+#: src/components/ApprovalRulesSettings.tsx:101
+msgid "Could not save Auto Review"
+msgstr ""
+
 #: src/pages/GroupPanel.tsx:168
 msgid "Could not save group"
 msgstr "그룹을 저장하지 못했습니다."
@@ -1363,6 +1371,10 @@ msgstr "<0>{0}</0>에서 로그인을 마치세요. 마지막 페이지가 열�
 #: src/pages/McpOAuthCallback.tsx:55
 msgid "Finishing MCP connection…"
 msgstr "MCP 연결을 마무리하는 중…"
+
+#: src/components/ApprovalRulesSettings.tsx:147
+msgid "Flag unexpected actions"
+msgstr ""
 
 #: src/pages/ModelSettingsOverlay.tsx:1026
 msgid "Free"

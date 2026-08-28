@@ -171,6 +171,10 @@ msgstr "Aktivität"
 msgid "Add"
 msgstr "Hinzufügen"
 
+#: src/components/ApprovalRulesSettings.tsx:151
+msgid "Add a model in Settings to use this."
+msgstr ""
+
 #: src/pages/Shell.tsx:2780
 msgid "Add a run time for this one-shot."
 msgstr ""
@@ -989,6 +993,10 @@ msgstr ""
 msgid "Could not save"
 msgstr "Speichern fehlgeschlagen"
 
+#: src/components/ApprovalRulesSettings.tsx:101
+msgid "Could not save Auto Review"
+msgstr ""
+
 #: src/pages/GroupPanel.tsx:168
 msgid "Could not save group"
 msgstr "Gruppe konnte nicht gespeichert werden"
@@ -1363,6 +1371,10 @@ msgstr "Schließe die Anmeldung unter <0>{0}</0> ab. Die letzte Seite wird mögl
 #: src/pages/McpOAuthCallback.tsx:55
 msgid "Finishing MCP connection…"
 msgstr "MCP-Verbindung wird abgeschlossen…"
+
+#: src/components/ApprovalRulesSettings.tsx:147
+msgid "Flag unexpected actions"
+msgstr ""
 
 #: src/pages/ModelSettingsOverlay.tsx:1026
 msgid "Free"

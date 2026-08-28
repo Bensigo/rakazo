@@ -26,6 +26,7 @@ model User {
   mcpServers       McpServer[]
   botSections      BotSection[]
   actionApprovalRules ActionApprovalRule[]
+  actionAutoReviewPreferences ActionAutoReviewPreference[]
 
   @@unique([email])
   @@map("user")
@@ -112,6 +113,7 @@ model Organization {
   externalEffects ExternalEffect[]
   mcpServers   McpServer[]
   actionApprovalRules ActionApprovalRule[]
+  actionAutoReviewPreferences ActionAutoReviewPreference[]
   workspaceMemoryConfig WorkspaceMemoryConfig?
   chatGroups  ChatGroup[]
 
@@ -133,6 +135,20 @@ model ActionApprovalRule {
   @@unique([workspaceId, createdByUserId, effect, matchKind, matchValue])
   @@index([workspaceId, createdByUserId])
   @@map("action_approval_rules")
+}
+
+model ActionAutoReviewPreference {
+  id          String       @id @default(cuid())
+  workspaceId String
+  workspace   Organization @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  enabled     Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([workspaceId, userId])
+  @@map("action_auto_review_preferences")
 }
 
 model Member {
@@ -488,6 +504,9 @@ model ExternalEffect {
   status          String
   request         Json
   result          Json?
+  reviewDecision  String?
+  reviewReason    String?
+  reviewModel     String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

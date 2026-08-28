@@ -171,6 +171,10 @@ msgstr "Activity"
 msgid "Add"
 msgstr "Add"
 
+#: src/components/ApprovalRulesSettings.tsx:151
+msgid "Add a model in Settings to use this."
+msgstr "Add a model in Settings to use this."
+
 #: src/pages/Shell.tsx:2780
 msgid "Add a run time for this one-shot."
 msgstr "Add a run time for this one-shot."
@@ -989,6 +993,10 @@ msgstr "Could not run routine"
 msgid "Could not save"
 msgstr "Could not save"
 
+#: src/components/ApprovalRulesSettings.tsx:101
+msgid "Could not save Auto Review"
+msgstr "Could not save Auto Review"
+
 #: src/pages/GroupPanel.tsx:168
 msgid "Could not save group"
 msgstr "Could not save group"
@@ -1363,6 +1371,10 @@ msgstr "Finish signing in at <0>{0}</0>. The final page may not load; paste its 
 #: src/pages/McpOAuthCallback.tsx:55
 msgid "Finishing MCP connection…"
 msgstr "Finishing MCP connection…"
+
+#: src/components/ApprovalRulesSettings.tsx:147
+msgid "Flag unexpected actions"
+msgstr "Flag unexpected actions"
 
 #: src/pages/ModelSettingsOverlay.tsx:1026
 msgid "Free"
