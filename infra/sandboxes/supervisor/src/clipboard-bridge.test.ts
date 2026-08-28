@@ -26,14 +26,14 @@ describe("host clipboard paste bridge", () => {
       clipboardTextFromPaste({
         clipboardData: {
           getData: (type: string) => (type === "text/plain" ? "secret" : ""),
-        } as DataTransfer,
+        },
       }),
     ).toBe("secret");
     expect(
       clipboardTextFromPaste({
         clipboardData: {
           getData: (type: string) => (type === "text" ? "fallback" : ""),
-        } as DataTransfer,
+        },
       }),
     ).toBe("fallback");
     expect(clipboardTextFromPaste({})).toBe("");
@@ -80,9 +80,9 @@ describe("host clipboard paste bridge", () => {
   });
 
   it("intercepts paste chords and applies host clipboard text", () => {
-    const listeners = new Map<string, EventListener>();
+    const listeners = new Map<string, (event: object) => void>();
     const target = {
-      addEventListener: (type: string, listener: EventListener) => {
+      addEventListener: (type: string, listener: (event: object) => void) => {
         listeners.set(type, listener);
       },
       removeEventListener: (type: string) => {
@@ -94,7 +94,7 @@ describe("host clipboard paste bridge", () => {
       clipboardPasteFrom: vi.fn(),
       sendKey: vi.fn(),
     };
-    const detach = attachHostClipboardPaste(rfb, { target: target as unknown as EventTarget });
+    const detach = attachHostClipboardPaste(rfb, { target });
 
     const keydown = listeners.get("keydown");
     const paste = listeners.get("paste");
@@ -102,30 +102,26 @@ describe("host clipboard paste bridge", () => {
     expect(paste).toBeTypeOf("function");
 
     const stopPropagation = vi.fn();
-    keydown?.(
-      {
-        ctrlKey: true,
-        metaKey: false,
-        altKey: false,
-        repeat: false,
-        code: "KeyV",
-        key: "v",
-        stopPropagation,
-      } as unknown as Event,
-    );
+    keydown?.({
+      ctrlKey: true,
+      metaKey: false,
+      altKey: false,
+      repeat: false,
+      code: "KeyV",
+      key: "v",
+      stopPropagation,
+    });
     expect(stopPropagation).toHaveBeenCalledOnce();
 
     const preventDefault = vi.fn();
     const pasteStop = vi.fn();
-    paste?.(
-      {
-        clipboardData: {
-          getData: (type: string) => (type === "text/plain" ? "from-host" : ""),
-        },
-        preventDefault,
-        stopPropagation: pasteStop,
-      } as unknown as Event,
-    );
+    paste?.({
+      clipboardData: {
+        getData: (type: string) => (type === "text/plain" ? "from-host" : ""),
+      },
+      preventDefault,
+      stopPropagation: pasteStop,
+    });
     expect(preventDefault).toHaveBeenCalledOnce();
     expect(pasteStop).toHaveBeenCalledOnce();
     expect(rfb.clipboardPasteFrom).toHaveBeenCalledWith("from-host");

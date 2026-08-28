@@ -15,8 +15,8 @@
       }
     </style>
     <script type="module">
-      import RFB from "./core/rfb.js";
       import { attachHostClipboardPaste } from "./clipboard-bridge.js";
+      import RFB from "./core/rfb.js";
 
       function query(name, fallback) {
         const match = `${document.location.href}${window.location.hash}`.match(
