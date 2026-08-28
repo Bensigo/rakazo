@@ -119,6 +119,7 @@ describe("graphical computer spec", () => {
     expect(dockerfile).toMatch(/USER 1000:1000/);
     expect(start).toMatch(/rakazo-computer-control/);
     expect(start).toMatch(/rakazo-browser/);
+    expect(start).toMatch(/SingletonLock/);
     expect(start).toMatch(/x11vnc .* -viewonly /);
     expect(browser).toMatch(/\.browser-profiles\/chromium/);
     expect(start).not.toMatch(/windowsize 1280 800/);

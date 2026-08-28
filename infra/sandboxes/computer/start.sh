@@ -49,6 +49,10 @@ EOF
 chmod +x /tmp/fluxbox-home/.fluxbox/startup
 HOME=/tmp/fluxbox-home /tmp/fluxbox-home/.fluxbox/startup >/tmp/rakazo/fluxbox.log 2>&1 &
 
+rm -f "$AGENT_HOME/.browser-profiles/chromium/SingletonLock" \
+  "$AGENT_HOME/.browser-profiles/chromium/SingletonCookie" \
+  "$AGENT_HOME/.browser-profiles/chromium/SingletonSocket"
+
 HOME="$AGENT_HOME" rakazo-browser >/tmp/rakazo/browser.log 2>&1 &
 browser_up=0
 for _ in $(seq 1 40); do
