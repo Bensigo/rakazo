@@ -35,6 +35,7 @@ import {
   expireComputerControl,
   hasActiveComputerControl,
   isAutoReviewCheckerConfigured,
+  isSandboxGoneError,
   isScratchpadStatus,
   listPiCatalog,
   listScratchpadItems,
@@ -1567,26 +1568,34 @@ export function createRouter(deps: RouterDeps) {
         ) {
           return { url: null };
         }
-        const session = await deps.sandbox.connectScreen(
-          toComputerRef(bot.computer),
-          {
-            view: "stream",
-            interactive:
-              hasActiveComputerControl(bot.computer) && bot.computer.controlBotId === bot.id,
-            controlToken:
-              bot.computer.controlBotId === bot.id
-                ? (bot.computer.controlLeaseId ?? undefined)
-                : undefined,
-          },
-          await computerScreenContext(
-            deps.prisma,
-            context.actor,
-            bot.computer.id,
-            bot.id,
-            "screen",
-          ),
-        );
-        if (!session.url) return { url: null };
+        const computer = bot.computer;
+        const session = await deps.sandbox
+          .connectScreen(
+            toComputerRef(computer),
+            {
+              view: "stream",
+              interactive: hasActiveComputerControl(computer) && computer.controlBotId === bot.id,
+              controlToken:
+                computer.controlBotId === bot.id
+                  ? (computer.controlLeaseId ?? undefined)
+                  : undefined,
+            },
+            await computerScreenContext(deps.prisma, context.actor, computer.id, bot.id, "screen"),
+          )
+          .catch(async (error: unknown) => {
+            if (!isSandboxGoneError(error)) throw error;
+            // The provider killed this sandbox (idle timeout) while the row still says
+            // running. Clear the dead ref so the UI offers a boot instead of 500ing.
+            // Leave any active control lease alone — expireComputerControl owns that
+            // release (provider screen-control, events, takeover continuation).
+            console.error(`computer ${computer.id} sandbox ${computer.providerRef} is gone`, error);
+            await deps.prisma.computer.updateMany({
+              where: { id: computer.id, providerRef: computer.providerRef },
+              data: { state: "stopped", providerRef: null },
+            });
+            return null;
+          });
+        if (!session?.url) return { url: null };
         scheduleComputerSleep(deps.jobs, bot.computer.id);
         const viewUrl = withViewOnly(
           session.url,
@@ -3174,6 +3183,7 @@ async function meDto(deps: RouterDeps, actor: Actor): Promise<Me> {
     defaultModel: cred?.defaultModel ?? settings?.defaultModelId ?? deps.env.defaultModel,
     computerHost: computerHostFor(settings?.computerHost, deps.env.sandboxProvider),
     canChooseHostComputer: actor.isDeploymentOwner && deps.env.sandboxProvider === "docker",
+    sandboxProvider: deps.env.sandboxProvider,
     avatarStyle: user.avatarStyle === "organic" ? "organic" : "robot",
   };
 }
@@ -3284,6 +3294,7 @@ async function deploymentDto(prisma: PrismaClient, sandboxProvider: string) {
     defaultModel: settings?.defaultModelId ?? null,
     computerHost: computerHostFor(settings?.computerHost, sandboxProvider),
     canChooseHostComputer: sandboxProvider === "docker",
+    sandboxProvider,
   };
 }
 
