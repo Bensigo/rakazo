@@ -1116,59 +1116,78 @@ export function createRunExecutor(deps: ExecutorDeps) {
 
           const runAutoReview = async () => {
             if (!checker) return;
-            const reviewCredential =
-              checker.provider === credential?.provider
-                ? credential
-                : await findModelCredential(
-                    deps.prisma,
-                    { userId: run.userId, workspaceId: run.workspaceId },
-                    checker.provider,
-                  );
-            const judgeKey = await resolveModelKey(
-              deps,
-              run.userId,
-              run.workspaceId,
-              reviewCredential,
-              checker.provider,
-              (values) => runSecrets.push(...values),
-            );
-            const judge = await runAutoReviewJudge({
-              runtime: deps.runtime,
-              checker,
-              apiKey: judgeKey.oauth ? undefined : judgeKey.apiKey,
-              baseUrl: judgeKey.baseUrl,
-              oauth: judgeKey.oauth
-                ? { credential: judgeKey.oauth, persist: judgeKey.persistOAuth }
-                : undefined,
-              prompt: buildAutoReviewPrompt({
-                toolName: name,
-                connectorKind,
-                args: redactToolArgsForReview(args, runSecrets),
-                userTask: task.prompt,
-                botDescription: `${bot.name}: ${bot.title}\n${bot.description}`,
-                matchingRules: approvalResolved.matchingRules,
-              }),
-              runId,
-              workspaceId: run.workspaceId,
-              userId: run.userId,
-              botId: bot.id,
-              threadId: thread.id,
-              timeoutMs: autoReviewTimeoutMs(),
-            });
-            reviewReason = judge.reason;
-            gateDecision = applyJudgeDecision({
-              decision: judge.decision,
-              consequential: requiresApprovalByDefault,
-            });
-            if (applied) {
-              await deps.prisma.externalEffect.update({
-                where: { id: applied.effect.id },
-                data: {
-                  reviewDecision: judge.decision,
-                  reviewReason: judge.reason,
-                  reviewModel: judge.model,
-                },
+            try {
+              const reviewCredential =
+                checker.provider === credential?.provider
+                  ? credential
+                  : await findModelCredential(
+                      deps.prisma,
+                      { userId: run.userId, workspaceId: run.workspaceId },
+                      checker.provider,
+                    );
+              const judgeKey = await resolveModelKey(
+                deps,
+                run.userId,
+                run.workspaceId,
+                reviewCredential,
+                checker.provider,
+                (values) => runSecrets.push(...values),
+              );
+              const judge = await runAutoReviewJudge({
+                runtime: deps.runtime,
+                checker,
+                apiKey: judgeKey.oauth ? undefined : judgeKey.apiKey,
+                baseUrl: judgeKey.baseUrl,
+                oauth: judgeKey.oauth
+                  ? { credential: judgeKey.oauth, persist: judgeKey.persistOAuth }
+                  : undefined,
+                prompt: buildAutoReviewPrompt({
+                  toolName: name,
+                  connectorKind,
+                  args: redactToolArgsForReview(args, runSecrets),
+                  userTask: task.prompt,
+                  botDescription: `${bot.name}: ${bot.title}\n${bot.description}`,
+                  matchingRules: approvalResolved.matchingRules,
+                }),
+                runId,
+                workspaceId: run.workspaceId,
+                userId: run.userId,
+                botId: bot.id,
+                threadId: thread.id,
+                timeoutMs: autoReviewTimeoutMs(),
               });
+              reviewReason = judge.reason;
+              gateDecision = applyJudgeDecision({
+                decision: judge.decision,
+                consequential: requiresApprovalByDefault,
+              });
+              if (applied) {
+                await deps.prisma.externalEffect.update({
+                  where: { id: applied.effect.id },
+                  data: {
+                    reviewDecision: judge.decision,
+                    reviewReason: judge.reason,
+                    reviewModel: judge.model,
+                  },
+                });
+              }
+            } catch {
+              // Auth/refresh failures must fail closed like a checker error, not fail the run.
+              reviewReason = "Checker could not authenticate.";
+              gateDecision = applyJudgeDecision({
+                decision: "error",
+                consequential: requiresApprovalByDefault,
+              });
+              if (applied) {
+                await deps.prisma.externalEffect.update({
+                  where: { id: applied.effect.id },
+                  data: {
+                    reviewDecision: "error",
+                    reviewReason,
+                    reviewModel: `${checker.provider}/${checker.model}`,
+                  },
+                });
+              }
             }
           };
 
