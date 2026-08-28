@@ -79,6 +79,10 @@ if [[ ! -f "$NOVNC_ROOT/embed.html" ]]; then
   echo "noVNC embed.html is missing from the computer image" >&2
   exit 1
 fi
+if [[ ! -f "$NOVNC_ROOT/clipboard-bridge.js" ]]; then
+  echo "noVNC clipboard-bridge.js is missing from the computer image" >&2
+  exit 1
+fi
 websockify --heartbeat=30 --web="$NOVNC_ROOT" 0.0.0.0:6080 127.0.0.1:5900 >/tmp/rakazo/novnc.log 2>&1 &
 
 while kill -0 "$XVFB_PID" 2>/dev/null; do

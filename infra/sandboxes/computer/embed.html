@@ -16,6 +16,7 @@
     </style>
     <script type="module">
       import RFB from "./core/rfb.js";
+      import { attachHostClipboardPaste } from "./clipboard-bridge.js";
 
       function query(name, fallback) {
         const match = `${document.location.href}${window.location.hash}`.match(
@@ -37,6 +38,7 @@
       rfb.viewOnly = flag("view_only");
       rfb.scaleViewport = true;
       rfb.clipViewport = false;
+      if (!rfb.viewOnly) attachHostClipboardPaste(rfb);
     </script>
   </head>
   <body>
