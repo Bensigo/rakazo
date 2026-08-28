@@ -1,9 +1,10 @@
 # Pull-based self-host: published GHCR images + Postgres. No source checkout required.
-# Drop this file and .env into any directory, then: docker compose --env-file .env up -d
+# Drop this file and .env into any directory, then:
+#   docker compose --env-file .env -f docker-compose.images.yml up -d
 #
 # Tag contract matches docs/self-host.md (edge from main; latest / vX.Y.Z from stable releases).
-# Default is edge because that tag is published on every main build; pin a release tag in
-# production when you want a fixed version.
+# Default is edge because that tag is published on every main build (linux/amd64 only).
+# Pin a release tag (latest or vX.Y.Z) for multi-arch amd64+arm64 and for a fixed version.
 name: rakazo
 
 services:

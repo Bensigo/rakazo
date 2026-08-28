@@ -19,8 +19,9 @@ cp .env.images.example .env
 
 Set `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`, `ENCRYPTION_KEY`, and `SCREEN_PROXY_SECRET`. Add
 `E2B_API_KEY` (default computer provider) and an optional model key such as `OPENROUTER_API_KEY`.
-Pin `RAKAZO_IMAGE_TAG` to a release (`latest` or `vX.Y.Z`) when you want a fixed version; the
-example defaults to `edge` (main). See [Published images and tags](#published-images-and-tags).
+The example defaults to `edge` (main builds, `linux/amd64` only). On arm64 hosts, or when you want
+a fixed version, pin `RAKAZO_IMAGE_TAG` to a release (`latest` or `vX.Y.Z`; those publish
+amd64+arm64). See [Published images and tags](#published-images-and-tags).
 
 ```bash
 docker compose --env-file .env -f docker-compose.images.yml pull
@@ -284,6 +285,10 @@ your CI cannot publish into someone else's.
 | `latest` | stable `vX.Y.Z` tags only (not prereleases) | yes, to the newest stable release |
 | `sha-<full-commit>` | every push and manual run | source-addressed; used by the updater sidecar |
 | `edge` | pushes to main | yes, to the newest main build |
+
+`edge` from everyday main merges is `linux/amd64` only. Release tags (`v*`) and manual
+`workflow_dispatch` publishes are multi-arch (`amd64` + `arm64`). On arm64 hosts, pin a release
+tag rather than `edge`.
 
 The updater resolves the newest stable `vX.Y.Z` source tag but deploys its `sha-<full-commit>` image,
 not `latest` or a moving minor tag. A registry tag is not an OCI digest and GHCR package writers can

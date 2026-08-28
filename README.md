@@ -89,6 +89,7 @@ curl -fsSO https://raw.githubusercontent.com/elie222/rakazo/main/infra/compose/d
 curl -fsSO https://raw.githubusercontent.com/elie222/rakazo/main/infra/compose/.env.images.example
 cp .env.images.example .env
 # set POSTGRES_PASSWORD, BETTER_AUTH_SECRET, ENCRYPTION_KEY, SCREEN_PROXY_SECRET, E2B_API_KEY
+# on arm64, pin RAKAZO_IMAGE_TAG to a release (latest / vX.Y.Z); edge is amd64-only
 docker compose --env-file .env -f docker-compose.images.yml up -d
 ```
 
