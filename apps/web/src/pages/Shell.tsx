@@ -141,7 +141,11 @@ import {
   reduceThreadSnapshot,
   userHoldsComputerControl,
 } from "../lib/thread-events";
-import { transcriptIsNearEnd } from "../lib/transcript-scroll";
+import {
+  transcriptCanSnapAfterFrame,
+  transcriptIsNearEnd,
+  transcriptMovedDown,
+} from "../lib/transcript-scroll";
 import { speaker } from "../lib/tts";
 import { ActivityList } from "./ActivityList";
 import type { ContextMenuPosition } from "./BotContextMenu";
@@ -500,6 +504,18 @@ export function ShellPage() {
     [navigate],
   );
 
+  function snapTranscriptToEndAfterFrame() {
+    const queuedElement = messageScroll.current;
+    if (!queuedElement) return;
+    const queuedScrollTop = queuedElement.scrollTop;
+    window.requestAnimationFrame(() => {
+      const element = messageScroll.current;
+      if (transcriptCanSnapAfterFrame(element, queuedElement, queuedScrollTop)) {
+        queuedElement.scrollTop = queuedElement.scrollHeight;
+      }
+    });
+  }
+
   async function refreshGroupThread(id: string) {
     const scrollElement = messageScroll.current;
     const stickToEnd = !scrollElement || transcriptIsNearEnd(scrollElement);
@@ -524,10 +540,7 @@ export function ShellPage() {
       (!scrollElement || transcriptIsNearEnd(scrollElement)) &&
       expandedHistoryThread.current !== snap.threadId
     ) {
-      window.requestAnimationFrame(() => {
-        const element = messageScroll.current;
-        if (element) element.scrollTop = element.scrollHeight;
-      });
+      snapTranscriptToEndAfterFrame();
     }
     return snap;
   }
@@ -563,10 +576,7 @@ export function ShellPage() {
       (!scrollElement || transcriptIsNearEnd(scrollElement)) &&
       expandedHistoryThread.current !== snap.threadId
     ) {
-      window.requestAnimationFrame(() => {
-        const element = messageScroll.current;
-        if (element) element.scrollTop = element.scrollHeight;
-      });
+      snapTranscriptToEndAfterFrame();
     }
     const [routines, skills] = await Promise.all([
       rpc.routines.list({ botId: id }),
@@ -3172,7 +3182,7 @@ const Transcript = memo(function Transcript({
   const [atEnd, setAtEnd] = useState(true);
   const following = useRef(true);
   const autoScrolling = useRef(false);
-  const lastScrollTop = useRef(0);
+  const lastScrollTop = useRef<number | null>(null);
   const autoScrollTimer = useRef<number | undefined>(undefined);
   const jumpButtonRef = useRef<HTMLButtonElement>(null);
   const messageById = useMemo(
@@ -3254,22 +3264,28 @@ const Transcript = memo(function Transcript({
       <div
         ref={scrollRef}
         data-testid="transcript"
-        onPointerDown={() => {
+        onPointerDown={(event) => {
+          lastScrollTop.current = event.currentTarget.scrollTop;
           autoScrolling.current = false;
           following.current = false;
         }}
-        onTouchStart={() => {
+        onTouchStart={(event) => {
+          lastScrollTop.current = event.currentTarget.scrollTop;
           autoScrolling.current = false;
           following.current = false;
         }}
         onWheel={(event) => {
           if (event.deltaY < 0) {
+            lastScrollTop.current = event.currentTarget.scrollTop;
             autoScrolling.current = false;
             following.current = false;
           }
         }}
         onScroll={(event) => {
-          const scrolledDown = event.currentTarget.scrollTop >= lastScrollTop.current;
+          const scrolledDown = transcriptMovedDown(
+            lastScrollTop.current,
+            event.currentTarget.scrollTop,
+          );
           lastScrollTop.current = event.currentTarget.scrollTop;
           const nearEnd = transcriptIsNearEnd(event.currentTarget);
           setAtEnd(nearEnd);
