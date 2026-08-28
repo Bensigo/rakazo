@@ -2800,8 +2800,13 @@ export function ShellPage() {
                         webhookEnabled: routineDraft.webhookEnabled,
                       });
                     }
-                    setEditingRoutine(saved);
-                    setRoutineDraft(draftFromRoutine(saved));
+                    if (
+                      routineSaveRequest.current === saveRequest &&
+                      activeBotId.current === targetBotId
+                    ) {
+                      setEditingRoutine(saved);
+                      setRoutineDraft(draftFromRoutine(saved));
+                    }
                   } catch (error) {
                     if (
                       routineSaveRequest.current !== saveRequest ||

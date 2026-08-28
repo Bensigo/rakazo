@@ -208,6 +208,29 @@ describe("inbound webhook HTTP route", () => {
     );
   });
 
+  it("hashes idempotency keys into a fixed-length clientNonce", async () => {
+    const { createHash } = await import("node:crypto");
+    const deps = createDeps();
+    const app = mount(deps);
+    const longKey = `event-${"a".repeat(240)}-unique-suffix`;
+    const res = await app.request("/api/v1/bots/bot-1/webhook", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${SECRET}`,
+        "content-type": "application/json",
+        "idempotency-key": longKey,
+      },
+      body: JSON.stringify({ event: "ping" }),
+    });
+    expect(res.status).toBe(200);
+    const digest = createHash("sha256").update(longKey).digest("base64url");
+    expect(deps.sendUserMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clientNonce: `webhook:bot-1:${digest}`,
+      }),
+    );
+  });
+
   it("rejects oversized payloads", async () => {
     const deps = createDeps();
     const app = mount(deps);

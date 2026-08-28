@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { JobPublisher } from "@rakazo/adapter-kit";
 import { runContinueJob } from "@rakazo/adapter-kit";
 import type { EncryptedSecretStore } from "@rakazo/adapters";
@@ -176,7 +177,7 @@ export function mountWebhookHttpRoutes(app: Hono, deps: WebhookDeps) {
       (typeof payload.event_id === "string" ? payload.event_id.trim() : "") ||
       undefined;
     const clientNonce = idempotencyKey
-      ? `webhook:${bot.id}:${idempotencyKey}`.slice(0, 200)
+      ? `webhook:${bot.id}:${createHash("sha256").update(idempotencyKey).digest("base64url")}`
       : undefined;
 
     const sent = await deps.events.sendUserMessage({

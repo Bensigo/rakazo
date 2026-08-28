@@ -517,7 +517,13 @@ function WebhookTriggerCard({
   const keyValue = pending
     ? placeholder
     : (secret ?? (configured ? t`Saved. Rotate to reveal.` : placeholder));
-  const headerValue = pending ? placeholder : "Authorization";
+  const headerValue = pending
+    ? placeholder
+    : secret
+      ? `Authorization: Bearer ${secret}`
+      : configured
+        ? "Authorization: Bearer …"
+        : placeholder;
 
   return (
     <div className="rounded-[13px] border border-[#26262A] p-3">
