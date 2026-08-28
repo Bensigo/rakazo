@@ -139,6 +139,7 @@ import {
   reconcileRefreshedThread,
   reduceComputerStatus,
   reduceThreadSnapshot,
+  threadRunError,
   userHoldsComputerControl,
 } from "../lib/thread-events";
 import {
@@ -348,6 +349,9 @@ export function ShellPage() {
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const [dictating, setDictating] = useState(false);
   const [dictationError, setDictationError] = useState<string | null>(null);
+  const [dismissedRunErrorIds, setDismissedRunErrorIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
@@ -1226,6 +1230,7 @@ export function ShellPage() {
   );
   const transcriptRunning = workingRuns.length > 0;
   const composerRunning = currentRuns.some((run) => isActive(run.status));
+  const runError = threadRunError(activeSnapshot, dismissedRunErrorIds);
   const transcriptArtifactTarget = useMemo<ArtifactTarget>(
     () => (inGroup ? { groupId: groupId ?? "" } : { botId: active?.id ?? "" }),
     [active?.id, groupId, inGroup],
@@ -1844,6 +1849,15 @@ export function ShellPage() {
     await refreshThread(active.id);
   }
 
+  function dismissComposerError() {
+    // The strip shows one message at a time, so only dismiss the run failure when it is the
+    // one on screen; otherwise a live run would be silenced before it has even failed.
+    const failedRunId = !sendError && !dictationError && runError ? activeSnapshot?.run?.id : null;
+    setSendError(null);
+    setDictationError(null);
+    if (failedRunId) setDismissedRunErrorIds((current) => new Set(current).add(failedRunId));
+  }
+
   const embeddedScreenUrl = embeddableScreenUrl(screenUrl);
   const hasControl = userHoldsComputerControl(computer, active?.id);
   const takeoverBlocked = computerTakeoverBlocked(computer, snapshot?.run?.status);
@@ -2417,6 +2431,8 @@ export function ShellPage() {
           attachmentNotice={attachmentNotice}
           sendError={sendError}
           dictationError={dictationError}
+          runError={runError}
+          onDismissError={dismissComposerError}
           sending={sending}
           fileInputRef={fileInputRef}
           onAttachmentPick={onAttachmentPick}
@@ -3520,6 +3536,8 @@ const Composer = memo(function Composer({
   attachmentNotice,
   sendError,
   dictationError,
+  runError,
+  onDismissError,
   sending,
   fileInputRef,
   onAttachmentPick,
@@ -3545,6 +3563,8 @@ const Composer = memo(function Composer({
   attachmentNotice: string | null;
   sendError: string | null;
   dictationError: string | null;
+  runError: string | null;
+  onDismissError: () => void;
   sending: boolean;
   fileInputRef: RefObject<HTMLInputElement | null>;
   onAttachmentPick: (files: FileList | null) => void | Promise<void>;
@@ -3694,9 +3714,22 @@ const Composer = memo(function Composer({
 
   return (
     <div className="relative z-30 px-3 pb-4 pt-3 md:px-6 md:pb-6">
-      {sendError || dictationError ? (
-        <div className="mb-3 rounded-[14px] border border-[#5A2A2A] bg-[#2A1717] px-4 py-2 text-[13px] text-[#F1A8A8]">
-          {sendError ?? dictationError}
+      {sendError || dictationError || runError ? (
+        <div
+          role="alert"
+          data-testid="composer-error"
+          className="mb-3 flex items-center gap-2 rounded-[14px] border border-[#5A2A2A] bg-[#2A1717] px-4 py-2 text-[13px] text-[#F1A8A8]"
+        >
+          <span className="min-w-0 flex-1">{sendError ?? dictationError ?? runError}</span>
+          <button
+            type="button"
+            aria-label={t`Dismiss error`}
+            data-testid="composer-error-dismiss"
+            onClick={onDismissError}
+            className="shrink-0 text-[#F1A8A8] hover:text-[#ECECEE]"
+          >
+            <X size={13} strokeWidth={2} />
+          </button>
         </div>
       ) : null}
       {replyTarget ? (
