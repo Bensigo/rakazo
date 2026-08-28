@@ -65,7 +65,7 @@ describe("host clipboard paste bridge", () => {
     expect(clipboardTextFromPaste({})).toBe("");
   });
 
-  it("releases host modifiers then pastes with Linux Ctrl+V", () => {
+  it("releases host modifiers including noVNC macOS remaps, then pastes with Linux Ctrl+V", () => {
     const keys: Array<[number, string, boolean | undefined]> = [];
     const sendKey = (keysym: number, code: string, down?: boolean) => {
       keys.push([keysym, code, down]);
@@ -74,8 +74,12 @@ describe("host clipboard paste bridge", () => {
     expect(keys).toEqual([
       [0xffe3, "ControlLeft", false],
       [0xffe4, "ControlRight", false],
+      [0xffe9, "AltLeft", false],
+      [0xffea, "AltRight", false],
       [0xffeb, "MetaLeft", false],
       [0xffec, "MetaRight", false],
+      [0xff7e, "AltLeft", false],
+      [0xfe03, "AltRight", false],
     ]);
     keys.length = 0;
     sendRemotePaste(sendKey);
@@ -91,6 +95,7 @@ describe("host clipboard paste bridge", () => {
     const keys: Array<[number, string, boolean | undefined]> = [];
     const rfb = {
       viewOnly: false,
+      _rfbConnectionState: "connected",
       clipboardPasteFrom: vi.fn(),
       sendKey: (keysym: number, code: string, down?: boolean) => {
         keys.push([keysym, code, down]);
@@ -99,10 +104,44 @@ describe("host clipboard paste bridge", () => {
     expect(pasteHostText(rfb, "agent-password")).toBe(true);
     expect(rfb.clipboardPasteFrom).toHaveBeenCalledWith("agent-password");
     expect(keys[0]).toEqual([0xffe3, "ControlLeft", false]);
+    expect(keys).toContainEqual([0xffe9, "AltLeft", false]);
     expect(keys.at(-4)).toEqual([0xffe3, "ControlLeft", true]);
     expect(keys.at(-3)).toEqual([0x76, "KeyV", true]);
     expect(pasteHostText({ ...rfb, viewOnly: true }, "x")).toBe(false);
     expect(pasteHostText(rfb, "")).toBe(false);
+    expect(pasteHostText({ ...rfb, _rfbConnectionState: "connecting" }, "x")).toBe(false);
+    expect(pasteHostText({ ...rfb, _rfbConnectionState: "disconnected" }, "x")).toBe(false);
+  });
+
+  it("does not swallow paste while the RFB session is still connecting", () => {
+    const listeners = new Map<string, (event: object) => void>();
+    const target = {
+      addEventListener: (type: string, listener: (event: object) => void) => {
+        listeners.set(type, listener);
+      },
+      removeEventListener: (type: string) => {
+        listeners.delete(type);
+      },
+    };
+    const rfb = {
+      viewOnly: false,
+      _rfbConnectionState: "connecting",
+      clipboardPasteFrom: vi.fn(),
+      sendKey: vi.fn(),
+    };
+    attachHostClipboardPaste(rfb, { target });
+    const preventDefault = vi.fn();
+    const pasteStop = vi.fn();
+    listeners.get("paste")?.({
+      clipboardData: {
+        getData: (type: string) => (type === "text/plain" ? "from-host" : ""),
+      },
+      preventDefault,
+      stopPropagation: pasteStop,
+    });
+    expect(preventDefault).not.toHaveBeenCalled();
+    expect(pasteStop).not.toHaveBeenCalled();
+    expect(rfb.clipboardPasteFrom).not.toHaveBeenCalled();
   });
 
   it("intercepts paste chords and applies host clipboard text", () => {
@@ -117,6 +156,7 @@ describe("host clipboard paste bridge", () => {
     };
     const rfb = {
       viewOnly: false,
+      _rfbConnectionState: "connected",
       clipboardPasteFrom: vi.fn(),
       sendKey: vi.fn(),
     };

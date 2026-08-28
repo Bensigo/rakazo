@@ -3,8 +3,12 @@
 export const KEYSYM: {
   Control_L: number;
   Control_R: number;
+  Alt_L: number;
+  Alt_R: number;
   Super_L: number;
   Super_R: number;
+  Mode_switch: number;
+  ISO_Level3_Shift: number;
   v: number;
 };
 
@@ -20,6 +24,8 @@ export function clipboardTextFromPaste(event: {
   clipboardData?: { getData: (type: string) => string } | null;
 }): string;
 
+export function isRfbConnected(rfb: { _rfbConnectionState?: string } | null | undefined): boolean;
+
 export function releaseModifierKeys(
   sendKey: (keysym: number, code: string, down?: boolean) => void,
 ): void;
@@ -33,6 +39,7 @@ export function pasteHostText(
     viewOnly?: boolean;
     clipboardPasteFrom?: (text: string) => void;
     sendKey?: (keysym: number, code: string, down?: boolean) => void;
+    _rfbConnectionState?: string;
   },
   text: string,
 ): boolean;
@@ -55,6 +62,7 @@ export function attachHostClipboardPaste(
     viewOnly?: boolean;
     clipboardPasteFrom?: (text: string) => void;
     sendKey?: (keysym: number, code: string, down?: boolean) => void;
+    _rfbConnectionState?: string;
   },
   options?: { target?: EventTargetLike },
 ): () => void;
