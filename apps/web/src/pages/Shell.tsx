@@ -2773,10 +2773,7 @@ export function ShellPage() {
                           return;
                         }
                         const parsed = new Date(routineDraft.runAtLocal);
-                        if (
-                          !Number.isFinite(parsed.getTime()) ||
-                          parsed.getTime() <= Date.now()
-                        ) {
+                        if (!Number.isFinite(parsed.getTime()) || parsed.getTime() <= Date.now()) {
                           setRoutineError(t`Run time must be in the future.`);
                           return;
                         }

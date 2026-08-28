@@ -195,11 +195,7 @@ export function RoutineEditor({
   const hasTriggers = draft.schedules.length > 0 || draft.webhookEnabled;
   const canTest = Boolean(editing) && !saving && !running;
   const needsOneShotArm =
-    editing != null &&
-    routineNeedsOneShotArm(
-      editing,
-      draft.schedules.map(cronFromPreset),
-    );
+    editing != null && routineNeedsOneShotArm(editing, draft.schedules.map(cronFromPreset));
 
   useEffect(() => {
     if (!menuOpen) return;
