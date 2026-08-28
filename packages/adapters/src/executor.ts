@@ -1136,6 +1136,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
               runtime: deps.runtime,
               checker,
               apiKey: judgeKey.oauth ? undefined : judgeKey.apiKey,
+              baseUrl: judgeKey.baseUrl,
+              oauth: judgeKey.oauth
+                ? { credential: judgeKey.oauth, persist: judgeKey.persistOAuth }
+                : undefined,
               prompt: buildAutoReviewPrompt({
                 toolName: name,
                 connectorKind,

@@ -1,4 +1,4 @@
-import type { AgentRuntime } from "@rakazo/adapter-kit";
+import type { AgentModelOAuthCredential, AgentRuntime } from "@rakazo/adapter-kit";
 import type { ActionApprovalRule } from "@rakazo/core";
 import { type AutoReviewJudgeDecision, redactSecrets } from "@rakazo/core";
 import { resolveDeploymentModel } from "./deployment-model.js";
@@ -187,6 +187,11 @@ export async function runAutoReviewJudge(input: {
   runtime: AgentRuntime;
   checker: AutoReviewChecker;
   apiKey?: string;
+  baseUrl?: string;
+  oauth?: {
+    credential: AgentModelOAuthCredential;
+    persist?: (credential: AgentModelOAuthCredential) => Promise<void>;
+  };
   prompt: string;
   runId: string;
   workspaceId: string;
@@ -213,7 +218,9 @@ export async function runAutoReviewJudge(input: {
         model: {
           provider: input.checker.provider,
           id: input.checker.model,
-          apiKey: input.apiKey,
+          apiKey: input.oauth ? undefined : input.apiKey,
+          baseUrl: input.baseUrl,
+          oauth: input.oauth,
         },
       },
       {
