@@ -46,7 +46,7 @@ export function emptyRoutineDraft(): RoutineDraftState {
     prompt: "",
     schedules: [],
     webhookEnabled: false,
-    active: false,
+    active: true,
   };
 }
 
