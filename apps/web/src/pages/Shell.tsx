@@ -2726,12 +2726,6 @@ export function ShellPage() {
                     return;
                   }
                   await refreshThread(targetBotId).catch(() => undefined);
-                  if (
-                    routineSaveRequest.current === saveRequest &&
-                    activeBotId.current === targetBotId
-                  ) {
-                    setPanel("computer");
-                  }
                 }}
                 onTestRun={async () => {
                   if (routineRunPending.current) return;
