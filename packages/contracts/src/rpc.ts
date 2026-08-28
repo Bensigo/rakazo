@@ -326,15 +326,26 @@ export const appContract = {
     create: oc.input(CreateRoutineInput).output(RoutineSchema),
     update: oc
       .input(
-        z.object({
-          routineId: Id,
-          name: z.string().optional(),
-          prompt: z.string().optional(),
-          crons: z.array(z.string().min(1)).min(1).optional(),
-          timezone: z.string().optional(),
-          active: z.boolean().optional(),
-          notify: z.boolean().optional(),
-        }),
+        z
+          .object({
+            routineId: Id,
+            name: z.string().optional(),
+            prompt: z.string().optional(),
+            crons: z.array(z.string().min(1)).optional(),
+            timezone: z.string().optional(),
+            active: z.boolean().optional(),
+            notify: z.boolean().optional(),
+            webhookEnabled: z.boolean().optional(),
+          })
+          .superRefine((value, ctx) => {
+            if (value.crons && value.crons.length === 0 && value.webhookEnabled === false) {
+              ctx.addIssue({
+                code: "custom",
+                message: "Add a schedule or webhook trigger",
+                path: ["crons"],
+              });
+            }
+          }),
       )
       .output(RoutineSchema),
     remove: oc.input(z.object({ routineId: Id })).output(z.object({ ok: z.literal(true) })),

@@ -41,15 +41,12 @@ import {
   buildComposerMentionOptions,
   type ComposerMention,
   cronFromPreset,
-  defaultCronPreset,
-  formatCron,
   groupBotsForSidebar,
   inferAttachmentMimeType,
   isActive,
   isRunTerminalEvent,
   latestAnswerableAskMessageId,
   mentionChipKey,
-  presetFromCron,
   resolveComposerSendPlan,
   SLASH_ACTIONS,
   type SlashActionId,
@@ -71,7 +68,6 @@ import {
   Bell,
   Box,
   ChevronDown,
-  ChevronLeft,
   Clock,
   Copy,
   Cpu,
@@ -151,6 +147,14 @@ import { ActivityList } from "./ActivityList";
 import type { ContextMenuPosition } from "./BotContextMenu";
 import { CreateGroupForm, GroupSettings, memberName } from "./GroupPanel";
 import { HostComputerPrompt } from "./HostComputerPrompt";
+import {
+  draftFromRoutine,
+  emptyRoutineDraft,
+  type RoutineDraftState,
+  RoutineEditor,
+  RoutineListHeader,
+  RoutineListRow,
+} from "./RoutineEditor";
 import { WindowChrome } from "./WindowChrome";
 import { WorkspaceSearchResults } from "./WorkspaceSearch";
 
@@ -178,9 +182,6 @@ const MemorySettingsOverlay = lazy(() =>
   import("./MemorySettingsOverlay").then((module) => ({
     default: module.MemorySettingsOverlay,
   })),
-);
-const RoutineSchedules = lazy(() =>
-  import("./RoutineSchedule").then((module) => ({ default: module.RoutineSchedules })),
 );
 const VoiceSettingsOverlay = lazy(() =>
   import("./VoiceSettingsOverlay").then((module) => ({ default: module.VoiceSettingsOverlay })),
@@ -359,11 +360,8 @@ export function ShellPage() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [initialBotsLoaded, setInitialBotsLoaded] = useState(false);
   const [bootstrapMe, setBootstrapMe] = useState<Me | null>();
-  const [routineDraft, setRoutineDraft] = useState({
-    name: "",
-    prompt: "",
-    schedules: [defaultCronPreset()],
-  });
+  const [routineDraft, setRoutineDraft] = useState<RoutineDraftState>(emptyRoutineDraft());
+  const [routineWebhookSecret, setRoutineWebhookSecret] = useState<string | null>(null);
   const [editingRoutine, setEditingRoutine] = useState<Routine | null>(null);
   const [deleteRoutineTarget, setDeleteRoutineTarget] = useState<Routine | null>(null);
   const [savingRoutine, setSavingRoutine] = useState(false);
@@ -1118,11 +1116,8 @@ export function ShellPage() {
     if (routineId && routinesBotId === active.id) {
       const routine = routines.find((item) => item.id === routineId);
       if (routine) {
-        setRoutineDraft({
-          name: routine.name,
-          prompt: routine.prompt,
-          schedules: routine.crons.map(presetFromCron),
-        });
+        setRoutineDraft(draftFromRoutine(routine));
+        setRoutineWebhookSecret(null);
         setEditingRoutine(routine);
         setPanel("routine");
       } else {
@@ -1591,7 +1586,8 @@ export function ShellPage() {
     await refreshThreadRef.current(id);
   }, []);
   const addSkillRoutine = useCallback((name: string, prompt: string) => {
-    setRoutineDraft({ name, prompt, schedules: [defaultCronPreset()] });
+    setRoutineDraft({ ...emptyRoutineDraft(), name, prompt });
+    setRoutineWebhookSecret(null);
     setEditingRoutine(null);
     setPanel("routine");
   }, []);
@@ -2505,64 +2501,34 @@ export function ShellPage() {
                     }}
                   />
                 ) : null}
-                <div className="mt-[30px] mb-3 text-[14px] text-[#85858A]">
-                  <Trans>Routines</Trans>
-                </div>
+                <RoutineListHeader
+                  onCreate={() => {
+                    setRoutineDraft(emptyRoutineDraft());
+                    setRoutineWebhookSecret(null);
+                    setEditingRoutine(null);
+                    setRoutineError(null);
+                    setPanel("routine");
+                  }}
+                />
                 {activeRoutines.map((routine) => {
                   const routineRunning =
                     snapshot?.run?.routineId === routine.id && isActive(snapshot.run.status);
                   return (
-                    <div
+                    <RoutineListRow
                       key={routine.id}
-                      className="flex w-full items-center gap-2 rounded-[11px] px-2.5 py-2.5 hover:bg-[#121214]"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRoutineDraft({
-                            name: routine.name,
-                            prompt: routine.prompt,
-                            schedules: routine.crons.map(presetFromCron),
-                          });
-                          setEditingRoutine(routine);
-                          setPanel("routine");
-                        }}
-                        className="flex min-w-0 flex-1 items-center gap-3 text-start"
-                      >
-                        <span className="text-[#E65707]">◷</span>
-                        <span
-                          className="min-w-0 flex-1 truncate text-start text-[14.5px] text-[#ECECEE]"
-                          dir="auto"
-                        >
-                          {routine.name}
-                        </span>
-                        <span className="shrink-0 text-[13px] text-[#6C6C70]">
-                          {routine.crons.map(formatCron).join(" · ")}
-                        </span>
-                      </button>
-                      {routineRunning ? (
-                        <button
-                          type="button"
-                          onClick={() => void stopRun()}
-                          className="shrink-0 rounded-full bg-[rgba(230,87,7,.14)] px-2.5 py-1 text-[12px] text-[#E65707]"
-                        >
-                          <Trans>Running · Stop</Trans>
-                        </button>
-                      ) : null}
-                    </div>
+                      routine={routine}
+                      running={routineRunning}
+                      onOpen={() => {
+                        setRoutineDraft(draftFromRoutine(routine));
+                        setRoutineWebhookSecret(null);
+                        setEditingRoutine(routine);
+                        setRoutineError(null);
+                        setPanel("routine");
+                      }}
+                      onStop={() => void stopRun()}
+                    />
                   );
                 })}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRoutineDraft({ name: "", prompt: "", schedules: [defaultCronPreset()] });
-                    setEditingRoutine(null);
-                    setPanel("routine");
-                  }}
-                  className="mt-1 flex items-center gap-2.5 px-2.5 py-2.5 text-[14.5px] text-[#7A7A80]"
-                >
-                  + <Trans>New routine</Trans>
-                </button>
                 {active ? (
                   <TeachComputerSection
                     botId={active.id}
@@ -2574,10 +2540,11 @@ export function ShellPage() {
                     onStopTeaching={stopTeaching}
                     onAddRoutine={(skill) => {
                       setRoutineDraft({
+                        ...emptyRoutineDraft(),
                         name: skill.name || skill.goal.slice(0, 80),
                         prompt: `Run taught skill: ${skill.name || skill.goal}\n${skill.playbook.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")}`,
-                        schedules: [defaultCronPreset()],
                       });
+                      setRoutineWebhookSecret(null);
                       setEditingRoutine(null);
                       setPanel("routine");
                     }}
@@ -2658,158 +2625,137 @@ export function ShellPage() {
               />
             ) : null}
             {panel === "routine" && active ? (
-              <div>
-                <div className="mb-5 flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={() => setPanel("computer")}
-                    className="text-[#9A9AA0]"
-                  >
-                    <ChevronLeft size={18} strokeWidth={1.8} />
-                  </button>
-                  <div className="text-[15.5px] font-medium text-[#F1F1F2]">
-                    <Trans>Routine</Trans>
-                  </div>
-                  <button type="button" onClick={() => setPanel(null)} className="text-[#6C6C70]">
-                    <X size={16} strokeWidth={1.8} />
-                  </button>
-                </div>
-                <label className="text-[14px] text-[#85858A]">
-                  <Trans>Name</Trans>
-                  <input
-                    value={routineDraft.name}
-                    onChange={(e) => setRoutineDraft((s) => ({ ...s, name: e.target.value }))}
-                    className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
-                  />
-                </label>
-                <label className="mt-5 block text-[14px] text-[#85858A]">
-                  <Trans>Instruction</Trans>
-                  <textarea
-                    value={routineDraft.prompt}
-                    onChange={(e) => setRoutineDraft((s) => ({ ...s, prompt: e.target.value }))}
-                    rows={4}
-                    className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
-                  />
-                </label>
-                <div className="mt-5 text-[14px] text-[#85858A]">
-                  <Trans>When to run</Trans>
-                  <span className="ml-2 text-[12.5px] text-[#6E6E74]">
-                    {editingRoutine?.timezone ?? localTimezone()}
-                  </span>
-                  <Suspense fallback={null}>
-                    <RoutineSchedules
-                      value={routineDraft.schedules}
-                      onChange={(schedules) => setRoutineDraft((s) => ({ ...s, schedules }))}
-                    />
-                  </Suspense>
-                </div>
-                <div className="mt-5 flex items-center gap-3">
-                  <button
-                    type="button"
-                    disabled={savingRoutine || runningRoutine}
-                    onClick={async () => {
-                      if (routineSavePending.current) return;
-                      const targetBotId = active.id;
-                      const targetRoutine = editingRoutine;
-                      if (targetRoutine && targetRoutine.botId !== targetBotId) return;
-                      const saveRequest = ++routineSaveRequest.current;
-                      routineSavePending.current = true;
-                      setSavingRoutine(true);
-                      setRoutineError(null);
-                      try {
-                        const crons = routineDraft.schedules.map(cronFromPreset);
-                        if (targetRoutine) {
-                          await rpc.routines.update({
-                            routineId: targetRoutine.id,
-                            name: routineDraft.name || t`Routine`,
-                            prompt: routineDraft.prompt || t`Check in.`,
-                            crons,
-                          });
-                        } else {
-                          await rpc.routines.create({
-                            botId: targetBotId,
-                            name: routineDraft.name || t`Routine`,
-                            prompt: routineDraft.prompt || t`Check in.`,
-                            crons,
-                            timezone: localTimezone(),
-                            active: true,
-                            notify: true,
-                          });
-                        }
-                      } catch (error) {
-                        if (
-                          routineSaveRequest.current !== saveRequest ||
-                          activeBotId.current !== targetBotId
-                        ) {
-                          return;
-                        }
-                        setRoutineError(
-                          error instanceof Error ? error.message : t`Could not save routine`,
-                        );
-                        return;
-                      } finally {
-                        routineSavePending.current = false;
-                        setSavingRoutine(false);
-                      }
-                      if (
-                        routineSaveRequest.current !== saveRequest ||
-                        activeBotId.current !== targetBotId
-                      ) {
-                        return;
-                      }
-                      await refreshThread(targetBotId).catch(() => undefined);
-                      if (
-                        routineSaveRequest.current === saveRequest &&
-                        activeBotId.current === targetBotId
-                      ) {
-                        setPanel("computer");
-                      }
-                    }}
-                    className="rounded-[11px] bg-[#F1F1EF] px-4 py-2 text-[#17171A] disabled:opacity-40"
-                  >
-                    {savingRoutine ? t`Saving…` : t`Save`}
-                  </button>
-                  {editingRoutine?.botId === active.id ? (
-                    <>
-                      <button
-                        type="button"
-                        disabled={savingRoutine || runningRoutine}
-                        onClick={async () => {
-                          if (routineRunPending.current) return;
-                          const targetBotId = active.id;
-                          const targetRoutine = editingRoutine;
-                          if (!targetRoutine) return;
-                          routineRunPending.current = true;
-                          setRunningRoutine(true);
-                          try {
-                            await rpc.routines.testRun({ routineId: targetRoutine.id });
-                            await refreshThread(targetBotId);
-                          } finally {
-                            routineRunPending.current = false;
-                            setRunningRoutine(false);
-                          }
-                        }}
-                        className="rounded-[11px] border border-[#26262A] px-4 py-2 text-[14px] text-[#ECECEE] disabled:opacity-40"
-                      >
-                        {runningRoutine ? t`Running…` : t`Run now`}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={savingRoutine || runningRoutine}
-                        onClick={() => setDeleteRoutineTarget(editingRoutine)}
-                        className="rounded-[11px] px-4 py-2 text-[14px] text-[#FF5364] disabled:opacity-40"
-                      >
-                        <Trans>Delete routine</Trans>
-                      </button>
-                    </>
-                  ) : null}
-                </div>
-                {routineError ? (
-                  <p role="alert" className="mt-3 text-[13px] text-[#EF6461]">
-                    {routineError}
-                  </p>
-                ) : null}
-              </div>
+              <RoutineEditor
+                draft={routineDraft}
+                onChange={setRoutineDraft}
+                editing={editingRoutine}
+                timezone={editingRoutine?.timezone ?? localTimezone()}
+                webhook={{
+                  path:
+                    typeof window !== "undefined"
+                      ? `${window.location.origin}/api/v1/bots/${active.id}/webhook`
+                      : `/api/v1/bots/${active.id}/webhook`,
+                  secret: routineWebhookSecret,
+                  configured: active.webhookConfigured || Boolean(routineWebhookSecret),
+                }}
+                saving={savingRoutine}
+                running={runningRoutine}
+                error={routineError}
+                onBack={() => setPanel("computer")}
+                onClose={() => setPanel(null)}
+                onEnsureWebhook={async () => {
+                  const result = await rpc.bots.rotateWebhookSecret({ botId: active.id });
+                  setRoutineWebhookSecret(result.secret);
+                  setBots((current) =>
+                    current.map((bot) =>
+                      bot.id === active.id ? { ...bot, webhookConfigured: true } : bot,
+                    ),
+                  );
+                }}
+                onSave={async () => {
+                  if (routineSavePending.current) return;
+                  const targetBotId = active.id;
+                  const targetRoutine = editingRoutine;
+                  if (targetRoutine && targetRoutine.botId !== targetBotId) return;
+                  if (!routineDraft.schedules.length && !routineDraft.webhookEnabled) {
+                    setRoutineError(t`Add a schedule or webhook trigger`);
+                    return;
+                  }
+                  const saveRequest = ++routineSaveRequest.current;
+                  routineSavePending.current = true;
+                  setSavingRoutine(true);
+                  setRoutineError(null);
+                  try {
+                    if (
+                      routineDraft.webhookEnabled &&
+                      !active.webhookConfigured &&
+                      !routineWebhookSecret
+                    ) {
+                      const rotated = await rpc.bots.rotateWebhookSecret({ botId: targetBotId });
+                      setRoutineWebhookSecret(rotated.secret);
+                      setBots((current) =>
+                        current.map((bot) =>
+                          bot.id === targetBotId ? { ...bot, webhookConfigured: true } : bot,
+                        ),
+                      );
+                    }
+                    const crons = routineDraft.schedules.map(cronFromPreset);
+                    let saved: Routine;
+                    if (targetRoutine) {
+                      saved = await rpc.routines.update({
+                        routineId: targetRoutine.id,
+                        name: routineDraft.name || t`Routine`,
+                        prompt: routineDraft.prompt || t`Check in.`,
+                        crons,
+                        active: routineDraft.active,
+                        webhookEnabled: routineDraft.webhookEnabled,
+                      });
+                    } else {
+                      saved = await rpc.routines.create({
+                        botId: targetBotId,
+                        name: routineDraft.name || t`Routine`,
+                        prompt: routineDraft.prompt || t`Check in.`,
+                        crons,
+                        timezone: localTimezone(),
+                        active: routineDraft.active,
+                        notify: true,
+                        webhookEnabled: routineDraft.webhookEnabled,
+                      });
+                    }
+                    setEditingRoutine(saved);
+                    setRoutineDraft(draftFromRoutine(saved));
+                  } catch (error) {
+                    if (
+                      routineSaveRequest.current !== saveRequest ||
+                      activeBotId.current !== targetBotId
+                    ) {
+                      return;
+                    }
+                    setRoutineError(
+                      error instanceof Error ? error.message : t`Could not save routine`,
+                    );
+                    return;
+                  } finally {
+                    routineSavePending.current = false;
+                    setSavingRoutine(false);
+                  }
+                  if (
+                    routineSaveRequest.current !== saveRequest ||
+                    activeBotId.current !== targetBotId
+                  ) {
+                    return;
+                  }
+                  await refreshThread(targetBotId).catch(() => undefined);
+                  if (
+                    routineSaveRequest.current === saveRequest &&
+                    activeBotId.current === targetBotId
+                  ) {
+                    setPanel("computer");
+                  }
+                }}
+                onTestRun={async () => {
+                  if (routineRunPending.current) return;
+                  const targetBotId = active.id;
+                  const targetRoutine = editingRoutine;
+                  if (!targetRoutine) return;
+                  routineRunPending.current = true;
+                  setRunningRoutine(true);
+                  try {
+                    await rpc.routines.testRun({ routineId: targetRoutine.id });
+                    await refreshThread(targetBotId);
+                  } finally {
+                    routineRunPending.current = false;
+                    setRunningRoutine(false);
+                  }
+                }}
+                onDelete={() => {
+                  if (editingRoutine) {
+                    setDeleteRoutineTarget(editingRoutine);
+                    return;
+                  }
+                  setPanel("computer");
+                }}
+              />
             ) : null}
           </div>
         ) : null}
@@ -4653,10 +4599,6 @@ function BotSettings({
   const [modelMetaReady, setModelMetaReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [webhookConfigured, setWebhookConfigured] = useState(bot.webhookConfigured);
-  const [webhookSecret, setWebhookSecret] = useState<string | null>(null);
-  const [webhookBusy, setWebhookBusy] = useState(false);
-
   useEffect(() => {
     void rpc.voice
       .voices({})
@@ -4869,41 +4811,6 @@ function BotSettings({
             </select>
           </label>
         ) : null}
-        <div className="mt-5 text-[14px] text-[#85858A]">
-          <Trans>Webhook</Trans>
-          <p className="mt-2 break-all font-mono text-[12px] text-[#C9C9CE]">
-            {`POST /api/v1/bots/${bot.id}/webhook`}
-          </p>
-          <p className="mt-1 text-[12px] text-[#85858A]">
-            {webhookConfigured ? t`Secret saved. Send it as a Bearer token.` : t`No secret yet.`}
-          </p>
-          {webhookSecret ? (
-            <p className="mt-2 break-all rounded-[11px] border border-[#26262A] bg-[#141416] px-3 py-2 font-mono text-[12px] text-[#ECECEE]">
-              {webhookSecret}
-            </p>
-          ) : null}
-          <button
-            type="button"
-            disabled={webhookBusy}
-            className="mt-2 rounded-[11px] border border-[#26262A] px-3 py-2 text-[13px] text-[#C9C9CE] disabled:opacity-50"
-            onClick={() => {
-              setWebhookBusy(true);
-              setError(null);
-              void rpc.bots
-                .rotateWebhookSecret({ botId: bot.id })
-                .then((result) => {
-                  setWebhookConfigured(true);
-                  setWebhookSecret(result.secret);
-                })
-                .catch((err: unknown) => {
-                  setError(err instanceof Error ? err.message : t`Could not create webhook secret`);
-                })
-                .finally(() => setWebhookBusy(false));
-            }}
-          >
-            {webhookConfigured ? t`Rotate secret` : t`Create secret`}
-          </button>
-        </div>
       </details>
       {error ? <p className="mt-2 text-[13px] text-[#E65707]">{error}</p> : null}
       <div className="mt-5 flex flex-col items-start gap-3">

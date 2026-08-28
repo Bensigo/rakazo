@@ -17,6 +17,7 @@ export type WebhookEvents = {
     blocks: Array<{ kind: "text"; text: string }>;
     prompt: string;
     trigger: "webhook";
+    clientNonce?: string;
   }): Promise<{ messageId: string; runId: string | null; seq: number }>;
 };
 
@@ -142,7 +143,41 @@ export function mountWebhookHttpRoutes(app: Hono, deps: WebhookDeps) {
     }
 
     const payload = parseWebhookPayload(raw, c.req.header("content-type"));
-    const promptText = formatWebhookPrompt(payload);
+    const eventPrompt = formatWebhookPrompt(payload);
+
+    const webhookRoutines = await deps.prisma.routine.findMany({
+      where: {
+        botId: bot.id,
+        workspaceId: bot.workspaceId,
+        active: true,
+        webhookEnabled: true,
+      },
+      select: { id: true, name: true, prompt: true },
+      orderBy: { updatedAt: "desc" },
+      take: 5,
+    });
+
+    const promptText =
+      webhookRoutines.length > 0
+        ? [
+            ...webhookRoutines.map(
+              (routine) => `Run routine "${routine.name}":\n${routine.prompt.trim()}`,
+            ),
+            "",
+            "Inbound webhook payload:",
+            eventPrompt,
+          ].join("\n")
+        : eventPrompt;
+
+    const idempotencyKey =
+      c.req.header("idempotency-key")?.trim() ||
+      c.req.header("x-idempotency-key")?.trim() ||
+      (typeof payload.id === "string" ? payload.id.trim() : "") ||
+      (typeof payload.event_id === "string" ? payload.event_id.trim() : "") ||
+      undefined;
+    const clientNonce = idempotencyKey
+      ? `webhook:${bot.id}:${idempotencyKey}`.slice(0, 200)
+      : undefined;
 
     const sent = await deps.events.sendUserMessage({
       workspaceId: bot.workspaceId,
@@ -152,6 +187,7 @@ export function mountWebhookHttpRoutes(app: Hono, deps: WebhookDeps) {
       blocks: [{ kind: "text", text: promptText }],
       prompt: promptText,
       trigger: "webhook",
+      clientNonce,
     });
 
     if (sent.runId) {

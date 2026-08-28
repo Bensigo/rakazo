@@ -61,6 +61,9 @@ function createDeps(
       secret: {
         findUnique: vi.fn(async () => secret),
       },
+      routine: {
+        findMany: vi.fn(async () => []),
+      },
     } as unknown as WebhookDeps["prisma"],
     secrets: {
       load: overrides.load ?? (() => SECRET),

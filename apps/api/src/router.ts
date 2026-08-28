@@ -1665,9 +1665,9 @@ export function createRouter(deps: RouterDeps) {
           });
         }
         const bot = await repos.getBot(context.actor, input.botId);
-        // Validate every recurring cron even when inactive; @once has no next date.
+        // Validate every recurring cron even when inactive; @once and webhook-only have no next date.
         let nextRunAt: Date | null = null;
-        if (!isOneShotRoutineCrons(input.crons)) {
+        if (input.crons.length > 0 && !isOneShotRoutineCrons(input.crons)) {
           const computedNextRunAt = nextRoutineDate(input.crons, input.timezone);
           nextRunAt = input.active ? computedNextRunAt : null;
         }
@@ -1682,6 +1682,7 @@ export function createRouter(deps: RouterDeps) {
             timezone: input.timezone,
             notify: input.notify,
             active: input.active,
+            webhookEnabled: input.webhookEnabled,
             nextRunAt,
           },
         });
@@ -1711,6 +1712,12 @@ export function createRouter(deps: RouterDeps) {
         const active = input.active ?? existing.active;
         const crons = input.crons ?? existing.crons;
         const timezone = input.timezone ?? existing.timezone;
+        const webhookEnabled = input.webhookEnabled ?? existing.webhookEnabled;
+        if (crons.length === 0 && !webhookEnabled) {
+          throw new ORPCError("BAD_REQUEST", {
+            message: "Add a schedule or webhook trigger",
+          });
+        }
         if (hasMixedOneShotSchedule(crons)) {
           throw new ORPCError("BAD_REQUEST", {
             message: "A one-time schedule can't be combined with other schedules.",
@@ -1734,14 +1741,18 @@ export function createRouter(deps: RouterDeps) {
             JSON.stringify(input.crons) !== JSON.stringify(existing.crons)) ||
           (input.timezone !== undefined && input.timezone !== existing.timezone);
         const recalculatedNextRunAt =
-          !isOneShotRoutineCrons(crons) && (scheduleChanged || (active && !existing.nextRunAt))
+          crons.length > 0 &&
+          !isOneShotRoutineCrons(crons) &&
+          (scheduleChanged || (active && !existing.nextRunAt))
             ? nextRoutineDate(crons, timezone)
             : null;
         const nextRunAt = !active
           ? null
-          : isOneShotRoutineCrons(crons)
-            ? existing.nextRunAt
-            : (recalculatedNextRunAt ?? existing.nextRunAt);
+          : crons.length === 0
+            ? null
+            : isOneShotRoutineCrons(crons)
+              ? existing.nextRunAt
+              : (recalculatedNextRunAt ?? existing.nextRunAt);
         const row = await deps.prisma.routine.update({
           where: { id: existing.id },
           data: {
@@ -1751,6 +1762,7 @@ export function createRouter(deps: RouterDeps) {
             timezone: input.timezone,
             active: input.active,
             notify: input.notify,
+            webhookEnabled: input.webhookEnabled,
             nextRunAt,
           },
         });
@@ -3372,6 +3384,7 @@ function mapRoutine(row: {
   timezone: string;
   active: boolean;
   notify: boolean;
+  webhookEnabled: boolean;
   lastRunAt: Date | null;
   nextRunAt: Date | null;
   createdAt: Date;
@@ -3385,6 +3398,7 @@ function mapRoutine(row: {
     timezone: row.timezone,
     active: row.active,
     notify: row.notify,
+    webhookEnabled: row.webhookEnabled,
     lastRunAt: row.lastRunAt?.toISOString() ?? null,
     nextRunAt: row.nextRunAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
