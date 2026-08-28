@@ -2837,9 +2837,16 @@ export function ShellPage() {
                   if (!targetRoutine) return;
                   routineRunPending.current = true;
                   setRunningRoutine(true);
+                  setRoutineError(null);
                   try {
                     await rpc.routines.testRun({ routineId: targetRoutine.id });
                     await refreshThread(targetBotId);
+                  } catch (error) {
+                    if (activeBotId.current === targetBotId) {
+                      setRoutineError(
+                        error instanceof Error ? error.message : t`Could not run routine`,
+                      );
+                    }
                   } finally {
                     routineRunPending.current = false;
                     setRunningRoutine(false);
