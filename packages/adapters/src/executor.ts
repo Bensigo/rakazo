@@ -25,9 +25,9 @@ import type { MessageBlock, RunStatus } from "@rakazo/contracts";
 import { ATTACHMENT_MAX_BYTES, isAttachmentImageMimeType } from "@rakazo/contracts";
 import {
   type ActionApprovalRule,
-  applyJudgeDecision,
   appendTextSegment,
   appendToolCallSegment,
+  applyJudgeDecision,
   assertTransition,
   blocksToAgentHistoryText,
   connectorKindFromToolName,

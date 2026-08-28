@@ -50,7 +50,9 @@ export function autoReviewTimeoutMs(env: NodeJS.ProcessEnv = process.env): numbe
  * Prefer explicit env overrides, then local models, then PI_DEFAULT_*.
  * Returns null only when there is no model id to try.
  */
-export function resolveAutoReviewChecker(env: NodeJS.ProcessEnv = process.env): AutoReviewChecker | null {
+export function resolveAutoReviewChecker(
+  env: NodeJS.ProcessEnv = process.env,
+): AutoReviewChecker | null {
   const overrideProvider = env.RAKAZO_AUTO_REVIEW_PROVIDER?.trim();
   const overrideModel = env.RAKAZO_AUTO_REVIEW_MODEL?.trim();
   if (overrideProvider && overrideModel) {
@@ -222,7 +224,10 @@ export async function runAutoReviewJudge(input: {
         signal: AbortSignal.timeout(timeoutMs),
       },
     )) {
-      if (event.type === "text" && /^(?:I hit a problem:|Unknown model )/i.test(event.text.trim())) {
+      if (
+        event.type === "text" &&
+        /^(?:I hit a problem:|Unknown model )/i.test(event.text.trim())
+      ) {
         failed = true;
       }
       if (event.type === "done" && event.text) {

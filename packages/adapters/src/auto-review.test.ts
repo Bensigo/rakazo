@@ -103,9 +103,7 @@ describe("parseAutoReviewJudgeText", () => {
   });
 
   it("strips em dashes from reasons", () => {
-    expect(
-      parseAutoReviewJudgeText('{"decision":"ask","reason":"Risky \u2014 pause"}'),
-    ).toEqual({
+    expect(parseAutoReviewJudgeText('{"decision":"ask","reason":"Risky \u2014 pause"}')).toEqual({
       decision: "ask",
       reason: "Risky - pause",
     });
@@ -115,10 +113,9 @@ describe("parseAutoReviewJudgeText", () => {
 describe("redactToolArgsForReview", () => {
   it("redacts secret-looking fields and values", () => {
     expect(
-      redactToolArgsForReview(
-        { to: "a@b.test", apiKey: "secret", body: "token-secret hello" },
-        ["token-secret"],
-      ),
+      redactToolArgsForReview({ to: "a@b.test", apiKey: "secret", body: "token-secret hello" }, [
+        "token-secret",
+      ]),
     ).toEqual({
       to: "a@b.test",
       apiKey: "[redacted]",
@@ -149,9 +146,16 @@ describe("runAutoReviewJudge timeout", () => {
     const { runAutoReviewJudge } = await import("./auto-review.js");
     const runtime = {
       describe: () => ({ capabilities: { scripted: false } }),
-      run: async function* () {
-        throw new DOMException("Aborted", "AbortError");
-      },
+      run: () =>
+        ({
+          [Symbol.asyncIterator]() {
+            return {
+              async next() {
+                throw new DOMException("Aborted", "AbortError");
+              },
+            };
+          },
+        }) as AsyncIterable<never>,
       abort: async () => {},
     };
     await expect(
