@@ -35,6 +35,7 @@ test("routine editing updates in place, preserves timezone, and deletion persist
   await page.locator("label:has-text('Instruction') textarea").fill("Send the revised update");
   await page.getByLabel("How often").selectOption("Weekdays");
   await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByRole("button", { name: "Back" }).click();
 
   const updatedButton = page.getByRole("button", { name: /Weekday check-in/ });
   await expect(updatedButton).toHaveCount(1);
@@ -124,7 +125,7 @@ test("a successful routine create is not reported as failed when refresh fails",
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await createResponse;
   await failedRefresh;
-  await expect(page.getByTestId("side-panel")).toHaveAttribute("data-panel", "computer");
+  await expect(page.getByTestId("side-panel")).toHaveAttribute("data-panel", "routine");
   await expect(page.getByRole("alert")).toHaveCount(0);
 
   await page.unroute("**/rpc/routines/list");

@@ -20,6 +20,7 @@ test("routine test-run completes and survives reload", async ({ page }, testInfo
   await captureScreenshot(page, testInfo, "32-routine-configured");
 
   await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "Back" }).click();
   const routine = page.getByRole("button", { name: /Daily verification/ });
   await expect(routine).toContainText("Weekdays at 9:00 AM");
   await captureScreenshot(page, testInfo, "33-routine-scheduled");
