@@ -78,9 +78,33 @@ create_env() {
   echo "Created .env with random secrets."
 }
 
-require_env_value() {
-  local name="$1"
-  grep -Eq "^${name}=.+$" "$ENV_FILE" || fail "set ${name} in .env."
+validate_required_secrets() {
+  if ! docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config --environment | awk '
+    BEGIN {
+      required["POSTGRES_PASSWORD"] = 1
+      required["BETTER_AUTH_SECRET"] = 1
+      required["ENCRYPTION_KEY"] = 1
+      required["SCREEN_PROXY_SECRET"] = 1
+      required["SANDBOX_SUPERVISOR_TOKEN"] = 1
+    }
+    {
+      name = $0
+      sub(/=.*/, "", name)
+      if (!(name in required)) next
+
+      value = $0
+      sub(/^[^=]*=/, "", value)
+      gsub(/[[:space:]]/, "", value)
+      if (value != "") present[name] = 1
+    }
+    END {
+      for (name in required) {
+        if (!(name in present)) exit 1
+      }
+    }
+  '; then
+    fail "set every required secret in .env to a non-empty value."
+  fi
 }
 
 download "$COMPOSE_FILE"
@@ -92,14 +116,7 @@ else
   create_env
 fi
 
-for secret_name in \
-  POSTGRES_PASSWORD \
-  BETTER_AUTH_SECRET \
-  ENCRYPTION_KEY \
-  SCREEN_PROXY_SECRET \
-  SANDBOX_SUPERVISOR_TOKEN; do
-  require_env_value "$secret_name"
-done
+validate_required_secrets
 
 if [[ "$prepare_only" == true ]]; then
   echo "Rakazo files are ready. Edit .env, then run: bash install-images.sh"
