@@ -2888,3 +2888,27 @@ msgstr "Your name"
 #: src/pages/Welcome.tsx:21
 msgid "Your team of always-on agents<0/>that you can give real work to."
 msgstr "Your team of always-on agents<0/>that you can give real work to."
+
+#: src/lib/browser-notifications.ts
+msgid "{name} failed"
+msgstr "{name} failed"
+
+#: src/lib/browser-notifications.ts
+msgid "{name} finished"
+msgstr "{name} finished"
+
+#: src/lib/browser-notifications.ts
+msgid "{name} stopped"
+msgstr "{name} stopped"
+
+#: src/lib/browser-notifications.ts
+msgid "Failed."
+msgstr "Failed."
+
+#: src/lib/browser-notifications.ts
+msgid "Stopped."
+msgstr "Stopped."
+
+#: src/lib/browser-notifications.ts
+msgid "Finished."
+msgstr "Finished."

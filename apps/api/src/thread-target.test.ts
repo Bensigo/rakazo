@@ -6,8 +6,27 @@ import {
   cancelSupersededQueuedRuns,
   stopThreadRuns,
   type ThreadTarget,
+  threadHead,
   threadSnapshot,
 } from "./thread-target.js";
+
+describe("threadHead", () => {
+  it("returns the durable cursor without loading a snapshot", async () => {
+    const findFirst = vi.fn().mockResolvedValue({ seq: 12 });
+    const prisma = { event: { findFirst } } as unknown as PrismaClient;
+    const target = { threadId: "thread-1" } as ThreadTarget;
+
+    await expect(threadHead(prisma, target)).resolves.toEqual({
+      threadId: "thread-1",
+      cursor: 12,
+    });
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { threadId: "thread-1" },
+      orderBy: { seq: "desc" },
+      select: { seq: true },
+    });
+  });
+});
 
 describe("queued run supersession", () => {
   it("only cancels queued runs started by a user message", async () => {
