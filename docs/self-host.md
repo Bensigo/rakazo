@@ -12,8 +12,8 @@ Pull Postgres and `ghcr.io/elie222/rakazo/app` into any empty folder. No clone o
 Requires Docker Engine, the Compose plugin, curl, and OpenSSL.
 
 ```bash
-mkdir rakazo && cd rakazo
-curl -fsSLO https://raw.githubusercontent.com/elie222/rakazo/main/infra/compose/install-images.sh
+mkdir -p rakazo && cd rakazo &&
+curl -fsSLO https://raw.githubusercontent.com/elie222/rakazo/main/infra/compose/install-images.sh &&
 bash install-images.sh
 ```
 
