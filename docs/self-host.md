@@ -9,32 +9,18 @@ Same as the README quick start: `.env` from `.env.example`, Postgres via Compose
 ## Published images (no checkout)
 
 Pull Postgres and `ghcr.io/elie222/rakazo/app` into any empty folder. No clone or image build.
-Requires Docker Engine and the Compose plugin.
+Requires Docker Engine, the Compose plugin, curl, and OpenSSL.
 
 ```bash
-mkdir rakazo && cd rakazo
-curl -fsSO https://raw.githubusercontent.com/elie222/rakazo/main/infra/compose/docker-compose.images.yml
-curl -fsSO https://raw.githubusercontent.com/elie222/rakazo/main/infra/compose/.env.images.example
-cp .env.images.example .env
+mkdir -p rakazo && cd rakazo &&
+curl -fsSLO https://raw.githubusercontent.com/elie222/rakazo/main/infra/compose/install-images.sh &&
+bash install-images.sh
 ```
 
-Generate secrets and write them into `.env` (after `cp .env.images.example .env`):
-
-```bash
-POSTGRES_PASSWORD=$(openssl rand -hex 16) &&
-BETTER_AUTH_SECRET=$(openssl rand -hex 32) &&
-ENCRYPTION_KEY=$(openssl rand -hex 32) &&
-SCREEN_PROXY_SECRET=$(openssl rand -hex 32) &&
-SANDBOX_SUPERVISOR_TOKEN=$(openssl rand -hex 32) &&
-: "${POSTGRES_PASSWORD:?}" "${BETTER_AUTH_SECRET:?}" "${ENCRYPTION_KEY:?}" "${SCREEN_PROXY_SECRET:?}" "${SANDBOX_SUPERVISOR_TOKEN:?}" &&
-sed -i.bak \
-  -e "s/^POSTGRES_PASSWORD=$/POSTGRES_PASSWORD=${POSTGRES_PASSWORD}/" \
-  -e "s/^BETTER_AUTH_SECRET=$/BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}/" \
-  -e "s/^ENCRYPTION_KEY=$/ENCRYPTION_KEY=${ENCRYPTION_KEY}/" \
-  -e "s/^SCREEN_PROXY_SECRET=$/SCREEN_PROXY_SECRET=${SCREEN_PROXY_SECRET}/" \
-  -e "s/^SANDBOX_SUPERVISOR_TOKEN=$/SANDBOX_SUPERVISOR_TOKEN=${SANDBOX_SUPERVISOR_TOKEN}/" \
-  .env && rm -f .env.bak
-```
+The installer downloads `docker-compose.images.yml` and `.env.images.example`, creates `.env` with
+random secrets, then pulls and starts the images. It preserves an existing `.env` when rerun. To
+customize the public URL, image tag, or optional providers before startup, run
+`bash install-images.sh --prepare-only`, edit `.env`, then run `bash install-images.sh`.
 
 `SANDBOX_PROVIDER` defaults to `docker`. The images Compose file runs a sandbox supervisor
 (from the app image, on the internal network only) and pulls `ghcr.io/elie222/rakazo/computer`.
@@ -49,11 +35,6 @@ The example defaults to `edge` (main builds, `linux/amd64` only). On arm64 hosts
 when one exists (see [Published images and tags](#published-images-and-tags)). Changing only
 `RAKAZO_IMAGE_TAG` leaves the computer service on amd64-only `edge`. Do not assume `latest` is
 published.
-
-```bash
-docker compose --env-file .env -f docker-compose.images.yml pull
-docker compose --env-file .env -f docker-compose.images.yml up -d
-```
 
 Open [http://127.0.0.1:5173](http://127.0.0.1:5173). The first registered user becomes the
 deployment owner. Put TLS in front of `:5173` for a public host and set the three public origins to

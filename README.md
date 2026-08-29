@@ -41,29 +41,16 @@ https://github.com/user-attachments/assets/dccdeddb-2134-4a56-8eed-b2e591736b1c
 
 ## Quick start (published images)
 
-You need Docker Engine and the Compose plugin. No clone or Node install.
+You need Docker Engine, the Compose plugin, curl, and OpenSSL. No clone or Node install.
 
 ```bash
-mkdir rakazo && cd rakazo &&
-curl -fsSO https://raw.githubusercontent.com/elie222/rakazo/main/infra/compose/docker-compose.images.yml &&
-curl -fsSO https://raw.githubusercontent.com/elie222/rakazo/main/infra/compose/.env.images.example &&
-cp .env.images.example .env &&
-POSTGRES_PASSWORD=$(openssl rand -hex 16) &&
-BETTER_AUTH_SECRET=$(openssl rand -hex 32) &&
-ENCRYPTION_KEY=$(openssl rand -hex 32) &&
-SCREEN_PROXY_SECRET=$(openssl rand -hex 32) &&
-SANDBOX_SUPERVISOR_TOKEN=$(openssl rand -hex 32) &&
-: "${POSTGRES_PASSWORD:?}" "${BETTER_AUTH_SECRET:?}" "${ENCRYPTION_KEY:?}" "${SCREEN_PROXY_SECRET:?}" "${SANDBOX_SUPERVISOR_TOKEN:?}" &&
-sed -i.bak \
-  -e "s/^POSTGRES_PASSWORD=$/POSTGRES_PASSWORD=${POSTGRES_PASSWORD}/" \
-  -e "s/^BETTER_AUTH_SECRET=$/BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}/" \
-  -e "s/^ENCRYPTION_KEY=$/ENCRYPTION_KEY=${ENCRYPTION_KEY}/" \
-  -e "s/^SCREEN_PROXY_SECRET=$/SCREEN_PROXY_SECRET=${SCREEN_PROXY_SECRET}/" \
-  -e "s/^SANDBOX_SUPERVISOR_TOKEN=$/SANDBOX_SUPERVISOR_TOKEN=${SANDBOX_SUPERVISOR_TOKEN}/" \
-  .env && rm -f .env.bak &&
-docker compose --env-file .env -f docker-compose.images.yml pull &&
-docker compose --env-file .env -f docker-compose.images.yml up -d
+mkdir -p rakazo && cd rakazo &&
+curl -fsSLO https://raw.githubusercontent.com/elie222/rakazo/main/infra/compose/install-images.sh &&
+bash install-images.sh
 ```
+
+The installer downloads the Compose files, creates `.env` with random secrets, and starts Rakazo.
+It preserves an existing `.env` when rerun.
 
 Open [http://127.0.0.1:5173](http://127.0.0.1:5173), create an account, and connect a model.
 Local Docker computers are on by default. Optional remote providers: `e2b`, `daytona`, or `box`

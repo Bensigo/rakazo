@@ -37,14 +37,14 @@ Preflight:
 Setup:
 
 1. Create the directory if needed and enter it.
-2. Download only these two files (do not clone the repository):
-   - https://raw.githubusercontent.com/elie222/rakazo/main/infra/compose/docker-compose.images.yml
-   - https://raw.githubusercontent.com/elie222/rakazo/main/infra/compose/.env.images.example
-3. If `.env` does not exist, copy `.env.images.example` to `.env`. Generate secrets with openssl into shell variables (including `SANDBOX_SUPERVISOR_TOKEN`), abort if any are empty (`: "${VAR:?}"`), then write them into `.env` with portable `sed -i.bak` (see comments in the example file). Keep `SANDBOX_PROVIDER=docker` unless I chose a remote computer provider. Add only the model key I selected.
-4. Run:
-   `docker compose --env-file .env -f docker-compose.images.yml pull`
-   `docker compose --env-file .env -f docker-compose.images.yml up -d`
-5. Wait until api, web, and supervisor are healthy. Default image tag is `edge` (amd64). Do not pin `latest` unless that tag exists in GHCR.
+2. Download and inspect this installer (do not clone the repository):
+   https://raw.githubusercontent.com/elie222/rakazo/main/infra/compose/install-images.sh
+3. Run `bash install-images.sh --prepare-only`. It downloads the Compose and environment example
+   files, then creates `.env` with all required random secrets when one does not already exist.
+4. Preserve existing values. Keep `SANDBOX_PROVIDER=docker` unless I chose a remote computer
+   provider, and add only the provider or model keys I selected.
+5. Run `bash install-images.sh`. It preserves `.env`, pulls the images, and starts the stack.
+6. Wait until api, web, and supervisor are healthy. Default image tag is `edge` (amd64). Do not pin `latest` unless that tag exists in GHCR.
 
 Verification:
 
