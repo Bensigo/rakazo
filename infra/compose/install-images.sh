@@ -79,7 +79,7 @@ create_env() {
 }
 
 validate_required_secrets() {
-  if ! docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config --environment | awk '
+  if ! docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f - config --environment <<'YAML' | awk '
     BEGIN {
       required["POSTGRES_PASSWORD"] = 1
       required["BETTER_AUTH_SECRET"] = 1
@@ -91,18 +91,29 @@ validate_required_secrets() {
       name = $0
       sub(/=.*/, "", name)
       if (!(name in required)) next
+      seen[name]++
 
       value = $0
       sub(/^[^=]*=/, "", value)
       gsub(/[[:space:]]/, "", value)
-      if (value != "") present[name] = 1
+      if (value != "") nonempty[name]++
     }
     END {
       for (name in required) {
-        if (!(name in present)) exit 1
+        if (seen[name] != 1 || nonempty[name] != 1) exit 1
       }
     }
-  '; then
+  '
+services:
+  api:
+    environment:
+      _RAKAZO_VALIDATE_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      _RAKAZO_VALIDATE_BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in .env}
+      _RAKAZO_VALIDATE_ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Set ENCRYPTION_KEY in .env}
+      _RAKAZO_VALIDATE_SCREEN_PROXY_SECRET: ${SCREEN_PROXY_SECRET:?Set SCREEN_PROXY_SECRET in .env}
+      _RAKAZO_VALIDATE_SANDBOX_SUPERVISOR_TOKEN: ${SANDBOX_SUPERVISOR_TOKEN:?Set SANDBOX_SUPERVISOR_TOKEN in .env}
+YAML
+  then
     fail "set every required secret in .env to a non-empty value."
   fi
 }
