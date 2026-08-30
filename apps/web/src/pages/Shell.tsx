@@ -134,7 +134,12 @@ import { localTimezone } from "../lib/local-timezone";
 import { connectMcpOauth } from "../lib/mcp-connect";
 import { isFileDrag, revokePendingAttachmentPreviews } from "../lib/pending-attachments";
 import { markAfterPaint, markOnce } from "../lib/performance";
-import { clearPrivateSpaceSelection, rpc, selectPrivateSpace } from "../lib/rpc";
+import {
+  clearPrivateSpaceSelection,
+  rpc,
+  selectedPrivateSpaceId,
+  selectPrivateSpace,
+} from "../lib/rpc";
 import {
   activeThreadRuns,
   clearActiveThreadRuns,
@@ -1317,13 +1322,18 @@ export function ShellPage() {
   const openPrivateSpaceChat = useCallback(
     (workspaceId: string, path: string) => {
       setMobileSidebarOpen(false);
-      if (workspaceId === bootstrapMe?.workspaceId) {
-        navigate(path);
+      const previousSpaceId = selectedPrivateSpaceId();
+      // Persist the active workspace id (including primary) so voice/RPC headers match the chat.
+      selectPrivateSpace(workspaceId);
+      const previousEffective = previousSpaceId ?? bootstrapMe?.workspaceId;
+      const boundaryChanged = previousEffective !== workspaceId;
+      // Soft-navigate within the same workspace; reload only when the auth boundary changes
+      // so bootstrapped bots/groups match the request header.
+      if (boundaryChanged) {
+        window.location.assign(path);
         return;
       }
-      selectPrivateSpace(workspaceId);
-      // Full reload so bots/groups bootstrap matches the selected workspace boundary.
-      window.location.assign(path);
+      navigate(path);
     },
     [bootstrapMe?.workspaceId, navigate],
   );
