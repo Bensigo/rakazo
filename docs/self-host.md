@@ -289,6 +289,34 @@ Source checkouts (not Compose) still upgrade the old way: pull, rebuild with
 `GIT_SHA=$(git rev-parse HEAD)`, run `pnpm --filter @rakazo/db migrate`, then restart API and worker.
 Product contracts stay compatible across cloud and self-hosted.
 
+### Space privacy-boundary migration
+
+Before upgrading across migration `20260830200000_space_scope_names_and_user_credentials`, check
+that every existing model and voice credential still belongs to a member of its Space. This query
+uses the pre-migration `workspaceId` column name and must return no rows:
+
+```sql
+SELECT 'model' AS credential_type, credential."id", credential."userId",
+       credential."workspaceId" AS "spaceId"
+FROM "user_model_credentials" AS credential
+LEFT JOIN "space_members" AS membership
+  ON membership."spaceId" = credential."workspaceId"
+ AND membership."userId" = credential."userId"
+WHERE membership."id" IS NULL
+UNION ALL
+SELECT 'voice', credential."id", credential."userId", credential."workspaceId"
+FROM "user_voice_credentials" AS credential
+LEFT JOIN "space_members" AS membership
+  ON membership."spaceId" = credential."workspaceId"
+ AND membership."userId" = credential."userId"
+WHERE membership."id" IS NULL;
+```
+
+The migration renames columns used by the API and worker and is therefore a coordinated cutover,
+not an online rolling migration. Stop the old API and worker, apply the migration, and start the new
+versions together. Its lock waits are bounded so contention fails the migration instead of leaving
+application traffic queued indefinitely.
+
 ### Published images and tags
 
 `.github/workflows/publish-server-image.yml` publishes to `ghcr.io/<owner>/<repo>/…`, derived from

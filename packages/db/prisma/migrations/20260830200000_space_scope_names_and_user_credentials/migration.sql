@@ -1,5 +1,10 @@
 BEGIN;
 
+-- These metadata renames need ACCESS EXCLUSIVE locks. Fail the deployment
+-- promptly under contention instead of leaving application traffic queued
+-- behind a migration waiting indefinitely for a lock.
+SET LOCAL lock_timeout = '5s';
+
 -- A space is the application privacy boundary. Make the default-space and
 -- ownership invariants explicit before clients can create more of them.
 ALTER TABLE "spaces"
@@ -279,6 +284,8 @@ ALTER TABLE "workspace_memory_configs" RENAME TO "space_memory_configs";
 COMMIT;
 
 BEGIN;
+
+SET LOCAL lock_timeout = '5s';
 
 ALTER TABLE "spaces" VALIDATE CONSTRAINT "spaces_createdByUserId_fkey";
 ALTER TABLE "secrets" VALIDATE CONSTRAINT "secrets_spaceId_fkey";
