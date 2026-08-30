@@ -45,6 +45,11 @@ export async function clearSessionToken(): Promise<boolean> {
 
 /** Restores the current-server session in memory even when persistence is unavailable. */
 export async function restoreSessionToken(token: string) {
+  if (!token) {
+    sessionInvalidated = false;
+    sessionFallback = undefined;
+    return;
+  }
   try {
     await saveSessionToken(token);
   } catch {
@@ -55,7 +60,7 @@ export async function restoreSessionToken(token: string) {
 
 /** Read the active token for restore snapshots, including in-memory fallbacks. */
 export async function peekStoredSessionToken() {
-  if (sessionFallback !== undefined) return sessionFallback;
+  if (sessionFallback) return sessionFallback;
   try {
     return (await SecureStore.getItemAsync(SESSION_KEY)) ?? "";
   } catch {
