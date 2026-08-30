@@ -6,34 +6,11 @@ import {
   type MessageBlock,
   type PrivateSpaceBot,
 } from "@rakazo/contracts";
-import { ACTIVE_RUN_STATUSES } from "@rakazo/core";
 import type { PrismaClient } from "./client.js";
 import { type ComputerMode, ensureComputerRecord, parseComputerMode } from "./computers.js";
 import { createThreadMessageInTransaction } from "./messages.js";
 import { IsolationError } from "./scope.js";
-
-const activeRunStatuses = [...ACTIVE_RUN_STATUSES];
-const activeRunSelection = {
-  where: { status: { in: activeRunStatuses } },
-  orderBy: { createdAt: "desc" as const },
-  take: 1,
-  select: { status: true },
-} as const;
-
-function previewFromBlocks(blocks: unknown): string {
-  const rows = Array.isArray(blocks) ? blocks : [];
-  for (const block of rows) {
-    if (
-      block &&
-      typeof block === "object" &&
-      "text" in block &&
-      typeof (block as { text?: unknown }).text === "string"
-    ) {
-      return (block as { text: string }).text;
-    }
-  }
-  return "";
-}
+import { activeRunSelection, previewFromBlocks } from "./thread-listing.js";
 
 function mapBot(
   bot: {
@@ -279,8 +256,6 @@ export function createRepos(prisma: PrismaClient) {
     async listBots(actor: Actor, options: { archived?: boolean } = {}): Promise<Bot[]> {
       return listBotsForWorkspaces(actor, [actor.workspaceId], options);
     },
-
-    listBotsForWorkspaces,
 
     listPrivateSpaceBotsForWorkspaces,
 

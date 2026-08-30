@@ -6,17 +6,9 @@ import {
   type GroupMember,
   type PrivateSpaceGroup,
 } from "@rakazo/contracts";
-import { ACTIVE_RUN_STATUSES } from "@rakazo/core";
 import type { Prisma, PrismaClient } from "./client.js";
 import { IsolationError } from "./scope.js";
-
-const activeRunStatuses = [...ACTIVE_RUN_STATUSES];
-const activeRunSelection = {
-  where: { status: { in: activeRunStatuses } },
-  orderBy: { createdAt: "desc" as const },
-  take: 1,
-  select: { status: true },
-} as const;
+import { activeRunSelection, activeRunStatuses, previewFromBlocks } from "./thread-listing.js";
 
 type GroupRecord = {
   id: string;
@@ -52,21 +44,6 @@ type PrivateSpaceGroupRecord = Pick<
     messages: Array<{ blocks: unknown }>;
   } | null;
 };
-
-function previewFromBlocks(blocks: unknown): string {
-  const rows = Array.isArray(blocks) ? blocks : [];
-  for (const block of rows) {
-    if (
-      block &&
-      typeof block === "object" &&
-      "text" in block &&
-      typeof (block as { text?: unknown }).text === "string"
-    ) {
-      return (block as { text: string }).text;
-    }
-  }
-  return "";
-}
 
 function mapGroupMembers(members: GroupRecord["members"]): GroupMember[] {
   return members.map((member) => ({
@@ -246,8 +223,6 @@ export function createGroupRepos(prisma: PrismaClient) {
     async listGroups(actor: Actor, options: { archived?: boolean } = {}): Promise<Group[]> {
       return listGroupsForWorkspaces(actor, [actor.workspaceId], options);
     },
-
-    listGroupsForWorkspaces,
 
     listPrivateSpaceGroupsForWorkspaces,
 
