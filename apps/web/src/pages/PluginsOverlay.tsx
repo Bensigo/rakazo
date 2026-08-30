@@ -117,7 +117,7 @@ export function PluginsOverlay({
         displayName: item.name,
       });
       if (started.authorizationUrl)
-        window.open(started.authorizationUrl, "_blank", "noopener,noreferrer");
+        window.open(started.authorizationUrl, "rakazo-plugin-connect", "noopener,noreferrer");
       if (item.noAuth && !started.authorizationUrl) {
         if (controller.signal.aborted) return;
         setItemConnected(item, true);
