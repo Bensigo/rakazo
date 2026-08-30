@@ -1,3 +1,5 @@
+import { selectedPrivateSpaceId, withPrivateSpaceHeaders } from "./rpc.js";
+
 export type DictationMode = "hold" | "endpoint";
 
 export type DictationSnapshot = {
@@ -58,6 +60,7 @@ export class Dictation {
   private audioContext: AudioContext | null = null;
   private vadTimer: ReturnType<typeof setInterval> | undefined;
   private onFinal: ((text: string) => void) | null = null;
+  private workspaceId: string | null = null;
 
   subscribe(fn: (s: DictationSnapshot) => void): () => void {
     this.watchers.add(fn);
@@ -119,6 +122,7 @@ export class Dictation {
     this.stop("replace");
     const mine = this.token;
     this.onFinal = opts.onFinal;
+    this.workspaceId = selectedPrivateSpaceId();
     this.set({ status: "listening", transcript: "" });
     if (webSpeechAvailable()) {
       this.listenWebSpeech(opts.mode, opts.endpointMs ?? 850, mine);
@@ -292,10 +296,9 @@ export class Dictation {
     try {
       const audioBase64 = await blobToBase64(blob);
       if (this.token !== mine) return;
-      const { withPrivateSpaceHeaders } = await import("./rpc.js");
       const res = await fetch("/api/voice/transcribe", {
         method: "POST",
-        headers: withPrivateSpaceHeaders({ "content-type": "application/json" }),
+        headers: withPrivateSpaceHeaders({ "content-type": "application/json" }, this.workspaceId),
         credentials: "include",
         body: JSON.stringify({ audioBase64, mimeType: blob.type }),
         signal: abort.signal,

@@ -1,3 +1,5 @@
+import { selectedPrivateSpaceId, withPrivateSpaceHeaders } from "./rpc.js";
+
 export type SpeechStatus = "idle" | "preparing" | "speaking";
 
 export interface SpeechSnapshot {
@@ -76,6 +78,7 @@ export class Speaker {
     const controller = new AbortController();
     this.request = controller;
     const live = () => this.token === mine && !controller.signal.aborted;
+    const workspaceId = selectedPrivateSpaceId();
 
     this.set({ status: "preparing", botId: opts.botId, messageId: opts.messageId });
     let utterances: string[];
@@ -99,7 +102,7 @@ export class Speaker {
 
     type Rendered = { blob: Blob; error?: never } | { blob?: never; error: unknown };
     const render = (utterance: string): Promise<Rendered> =>
-      this.render(utterance, opts, controller.signal).then(
+      this.render(utterance, opts, controller.signal, workspaceId).then(
         (blob) => ({ blob }),
         (error: unknown) => ({ error }),
       );
@@ -150,11 +153,15 @@ export class Speaker {
     return body.utterances ?? [];
   }
 
-  private async render(text: string, opts: SpeakOptions, signal: AbortSignal): Promise<Blob> {
-    const { withPrivateSpaceHeaders } = await import("./rpc.js");
+  private async render(
+    text: string,
+    opts: SpeakOptions,
+    signal: AbortSignal,
+    workspaceId: string | null,
+  ): Promise<Blob> {
     const res = await fetch("/api/voice/speak", {
       method: "POST",
-      headers: withPrivateSpaceHeaders({ "content-type": "application/json" }),
+      headers: withPrivateSpaceHeaders({ "content-type": "application/json" }, workspaceId),
       credentials: "include",
       body: JSON.stringify({ text, voiceId: opts.voiceId, botId: opts.botId }),
       signal,

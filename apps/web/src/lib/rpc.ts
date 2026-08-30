@@ -23,9 +23,11 @@ export function clearPrivateSpaceSelection(): void {
 }
 
 /** Adds `x-rakazo-workspace-id` when a private space is selected. */
-export function withPrivateSpaceHeaders(init?: HeadersInit): Headers {
+export function withPrivateSpaceHeaders(
+  init?: HeadersInit,
+  workspaceId: string | null = selectedPrivateSpaceId(),
+): Headers {
   const headers = new Headers(init);
-  const workspaceId = selectedPrivateSpaceId();
   if (workspaceId) headers.set("x-rakazo-workspace-id", workspaceId);
   return headers;
 }

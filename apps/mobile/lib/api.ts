@@ -95,16 +95,25 @@ async function clearPrivateSpace(): Promise<boolean> {
 }
 
 /** Clears session + space for an endpoint change. Restores both if either wipe fails. */
-async function clearCredentialsForEndpointChange(): Promise<EndpointResult | null> {
+async function clearCredentialsForEndpointChange(): Promise<
+  { ok: true; previousToken: string; previousSpace: string } | { ok: false; result: EndpointResult }
+> {
   const previousToken = await peekStoredSessionToken();
   const previousSpace = cachedPrivateSpaceId;
   const sessionCleared = await clearSessionToken();
   const spaceCleared = await clearPrivateSpace();
-  if (sessionCleared && spaceCleared) return null;
+  if (sessionCleared && spaceCleared) {
+    return { ok: true, previousToken, previousSpace };
+  }
 
   await restoreSessionToken(previousToken);
   if (previousSpace) await selectPrivateSpace(previousSpace);
-  return { ok: false, error: "Could not clear the previous server session" };
+  return { ok: false, result: { ok: false, error: "Could not clear the previous server session" } };
+}
+
+async function restoreCredentials(previousToken: string, previousSpace: string) {
+  await restoreSessionToken(previousToken);
+  if (previousSpace) await selectPrivateSpace(previousSpace);
 }
 
 export async function saveApiBase(input: string): Promise<EndpointResult> {
@@ -112,11 +121,18 @@ export async function saveApiBase(input: string): Promise<EndpointResult> {
   if (!parsed.ok) return parsed;
   if (parsed.url === defaultApiBase()) return resetApiBase();
   const previous = currentApiBase();
+  let cleared: { previousToken: string; previousSpace: string } | undefined;
   if (parsed.url !== previous) {
-    const failed = await clearCredentialsForEndpointChange();
-    if (failed) return failed;
+    const result = await clearCredentialsForEndpointChange();
+    if (!result.ok) return result.result;
+    cleared = result;
   }
-  await SecureStore.setItemAsync(ENDPOINT_KEY, parsed.url);
+  try {
+    await SecureStore.setItemAsync(ENDPOINT_KEY, parsed.url);
+  } catch {
+    if (cleared) await restoreCredentials(cleared.previousToken, cleared.previousSpace);
+    return { ok: false, error: "Could not save the server URL" };
+  }
   cachedApiBase = parsed.url;
   return parsed;
 }
@@ -124,14 +140,19 @@ export async function saveApiBase(input: string): Promise<EndpointResult> {
 export async function resetApiBase(): Promise<EndpointResult> {
   const previous = currentApiBase();
   const url = defaultApiBase();
+  let cleared: { previousToken: string; previousSpace: string } | undefined;
   if (url !== previous) {
-    const failed = await clearCredentialsForEndpointChange();
-    if (failed) return failed;
+    const result = await clearCredentialsForEndpointChange();
+    if (!result.ok) return result.result;
+    cleared = result;
   }
   try {
     await SecureStore.deleteItemAsync(ENDPOINT_KEY);
   } catch {
-    // ignore missing keys
+    if (cleared) {
+      await restoreCredentials(cleared.previousToken, cleared.previousSpace);
+      return { ok: false, error: "Could not clear the custom server URL" };
+    }
   }
   cachedApiBase = url;
   return { ok: true, url };

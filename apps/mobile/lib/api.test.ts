@@ -157,11 +157,30 @@ describe("mobile API authentication", () => {
       authorization: "Bearer session-token",
       "x-rakazo-workspace-id": "space-support",
     });
-    expect(SecureStore.setItemAsync).toHaveBeenCalledWith("rakazo.session_token", "session-token");
     expect(SecureStore.setItemAsync).not.toHaveBeenCalledWith(
       "rakazo.api_base",
       "https://second-server.example",
     );
+  });
+
+  it("restores credentials when the new endpoint cannot be persisted", async () => {
+    vi.mocked(SecureStore.getItemAsync).mockImplementation(async (key) => {
+      if (key === "rakazo.session_token") return "session-token";
+      return null;
+    });
+    await selectPrivateSpace("space-support");
+    vi.mocked(SecureStore.setItemAsync).mockImplementation(async (key) => {
+      if (key === "rakazo.api_base") throw new Error("device locked");
+    });
+
+    await expect(saveApiBase("https://second-server.example")).resolves.toEqual({
+      ok: false,
+      error: "Could not save the server URL",
+    });
+    await expect(authHeaders()).resolves.toEqual({
+      authorization: "Bearer session-token",
+      "x-rakazo-workspace-id": "space-support",
+    });
   });
 });
 
