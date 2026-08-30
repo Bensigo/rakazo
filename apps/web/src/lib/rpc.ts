@@ -17,11 +17,19 @@ export function selectedPrivateSpaceId(): string | null {
 }
 
 export function selectPrivateSpace(id: string): void {
-  window.localStorage.setItem(WORKSPACE_STORAGE_KEY, id);
+  try {
+    window.localStorage.setItem(WORKSPACE_STORAGE_KEY, id);
+  } catch {
+    // Keep navigation usable when storage is unavailable (create must not abort after success).
+  }
 }
 
 export function clearPrivateSpaceSelection(): void {
-  window.localStorage.removeItem(WORKSPACE_STORAGE_KEY);
+  try {
+    window.localStorage.removeItem(WORKSPACE_STORAGE_KEY);
+  } catch {
+    // Ignore storage failures on sign-out / reset paths.
+  }
 }
 
 /** Adds `x-rakazo-workspace-id` when a private space is selected. */
