@@ -569,6 +569,38 @@ describeWithDatabase("API authorization and resource isolation", () => {
     await expectDenied(app, intruder, "bots/list", {}, support.id);
   });
 
+  it("enforces the private-space limit across concurrent creation requests", async () => {
+    const cookie = await signup(app, `private-space-limit-${stamp}@rakazo.test`, "Space Limit");
+    const actor = await rpc<Actor>(app, cookie, "me");
+    const extraSpaces = Array.from({ length: 30 }, (_, index) => ({
+      id: `limit-space-${stamp}-${index}`,
+      name: `Limit space ${index}`,
+      slug: `limit-space-${stamp}-${index}`,
+      createdAt: new Date(),
+    }));
+    await handles.prisma.organization.createMany({ data: extraSpaces });
+    await handles.prisma.member.createMany({
+      data: extraSpaces.map((space, index) => ({
+        id: `limit-member-${stamp}-${index}`,
+        organizationId: space.id,
+        userId: actor.userId,
+        role: "owner",
+        createdAt: space.createdAt,
+      })),
+    });
+
+    const results = await Promise.allSettled([
+      rpc<PrivateSpace>(app, cookie, "privateSpaces/create", { name: "Concurrent A" }),
+      rpc<PrivateSpace>(app, cookie, "privateSpaces/create", { name: "Concurrent B" }),
+    ]);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+    await expect(handles.prisma.member.count({ where: { userId: actor.userId } })).resolves.toBe(
+      32,
+    );
+  });
+
   it("isolates model defaults by workspace and switches them atomically", async () => {
     const cookie = await signup(app, `model-defaults-${stamp}@rakazo.test`, "Model Defaults");
     const actor = await rpc<Actor>(app, cookie, "me");

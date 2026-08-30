@@ -2,12 +2,16 @@ import * as SecureStore from "expo-secure-store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   applyMobileThreadEvent,
+  authHeaders,
   blockText,
   type MobileMessage,
   type MobileSnapshot,
   mergeMobileSnapshot,
   prependMobileMessagePage,
+  resetApiBase,
   rpc,
+  saveApiBase,
+  selectPrivateSpace,
   shouldApplyMobileThreadRefresh,
   signIn,
   signOut,
@@ -92,6 +96,27 @@ describe("mobile API authentication", () => {
       }),
     );
     await expect(rpc("bots/get", { botId: "missing" })).rejects.toThrow("Bot does not exist");
+  });
+
+  it("shares the selected private space with direct API requests", async () => {
+    vi.mocked(SecureStore.getItemAsync).mockResolvedValue("session-token");
+    await selectPrivateSpace("space-support");
+
+    await expect(authHeaders()).resolves.toEqual({
+      authorization: "Bearer session-token",
+      "x-rakazo-workspace-id": "space-support",
+    });
+  });
+
+  it("clears server-specific session and space state when the API endpoint changes", async () => {
+    await selectPrivateSpace("space-support");
+    vi.mocked(SecureStore.deleteItemAsync).mockClear();
+
+    await expect(saveApiBase("https://second-server.example")).resolves.toMatchObject({ ok: true });
+
+    expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith("rakazo.session_token");
+    expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith("rakazo.private_space_id");
+    await resetApiBase();
   });
 });
 
