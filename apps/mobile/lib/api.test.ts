@@ -143,8 +143,10 @@ describe("mobile API authentication", () => {
     vi.mocked(SecureStore.deleteItemAsync).mockImplementation(async (key) => {
       if (key === "rakazo.private_space_id") throw new Error("device locked");
     });
-    vi.mocked(SecureStore.setItemAsync).mockImplementation(async (key) => {
-      if (key === "rakazo.private_space_id") throw new Error("device locked");
+    vi.mocked(SecureStore.setItemAsync).mockImplementation(async (key, value) => {
+      if (key === "rakazo.session_token" || (key === "rakazo.private_space_id" && value === "")) {
+        throw new Error("device locked");
+      }
     });
 
     await expect(saveApiBase("https://second-server.example")).resolves.toEqual({

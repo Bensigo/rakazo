@@ -24,10 +24,10 @@ import {
 import * as SecureStore from "expo-secure-store";
 import { defaultApiBase, type EndpointResult, normalizeApiBase } from "./endpoint";
 import {
-  acknowledgeStoredSession,
   clearSessionToken,
   loadSessionToken,
   peekStoredSessionToken,
+  restoreSessionToken,
   saveSessionToken,
   tokenFromAuthResponse,
 } from "./session";
@@ -102,15 +102,7 @@ async function clearCredentialsForEndpointChange(): Promise<EndpointResult | nul
   const spaceCleared = await clearPrivateSpace();
   if (sessionCleared && spaceCleared) return null;
 
-  if (previousToken) {
-    try {
-      await saveSessionToken(previousToken);
-    } catch {
-      if (!sessionCleared) acknowledgeStoredSession();
-    }
-  } else if (!sessionCleared) {
-    acknowledgeStoredSession();
-  }
+  await restoreSessionToken(previousToken);
   if (previousSpace) await selectPrivateSpace(previousSpace);
   return { ok: false, error: "Could not clear the previous server session" };
 }

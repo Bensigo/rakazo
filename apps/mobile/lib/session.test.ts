@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearSessionToken,
   loadSessionToken,
+  restoreSessionToken,
   saveSessionToken,
   tokenFromAuthResponse,
 } from "./session.js";
@@ -48,6 +49,17 @@ describe("mobile session storage", () => {
     await expect(loadSessionToken()).resolves.toBe("");
 
     vi.mocked(SecureStore.getItemAsync).mockRejectedValueOnce(new Error("device locked"));
+    await expect(loadSessionToken()).resolves.toBe("");
+  });
+
+  it("restores the active session in memory when persistence is unavailable", async () => {
+    vi.mocked(SecureStore.setItemAsync).mockRejectedValue(new Error("device locked"));
+
+    await restoreSessionToken("secret-token");
+    await expect(loadSessionToken()).resolves.toBe("secret-token");
+
+    vi.mocked(SecureStore.deleteItemAsync).mockRejectedValue(new Error("device locked"));
+    await expect(clearSessionToken()).resolves.toBe(false);
     await expect(loadSessionToken()).resolves.toBe("");
   });
 });
