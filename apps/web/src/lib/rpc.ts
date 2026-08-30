@@ -21,7 +21,12 @@ export function selectPrivateSpace(id: string): boolean {
     window.localStorage.setItem(WORKSPACE_STORAGE_KEY, id);
     return true;
   } catch {
-    return false;
+    try {
+      // Write failed but the desired selection is already durable — treat as success.
+      return window.localStorage.getItem(WORKSPACE_STORAGE_KEY) === id;
+    } catch {
+      return false;
+    }
   }
 }
 
