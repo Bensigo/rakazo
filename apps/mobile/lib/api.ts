@@ -91,28 +91,30 @@ export async function saveApiBase(input: string): Promise<EndpointResult> {
   if (!parsed.ok) return parsed;
   if (parsed.url === defaultApiBase()) return resetApiBase();
   const previous = currentApiBase();
-  await SecureStore.setItemAsync(ENDPOINT_KEY, parsed.url);
-  cachedApiBase = parsed.url;
   if (parsed.url !== previous) {
+    // Clear credentials before activating the new origin so a SecureStore
+    // failure cannot leave the old bearer/workspace attached to the new host.
     await clearSessionToken();
     await clearPrivateSpace();
   }
+  await SecureStore.setItemAsync(ENDPOINT_KEY, parsed.url);
+  cachedApiBase = parsed.url;
   return parsed;
 }
 
 export async function resetApiBase(): Promise<EndpointResult> {
   const previous = currentApiBase();
+  const url = defaultApiBase();
+  if (url !== previous) {
+    await clearSessionToken();
+    await clearPrivateSpace();
+  }
   try {
     await SecureStore.deleteItemAsync(ENDPOINT_KEY);
   } catch {
     // ignore missing keys
   }
-  const url = defaultApiBase();
   cachedApiBase = url;
-  if (url !== previous) {
-    await clearSessionToken();
-    await clearPrivateSpace();
-  }
   return { ok: true, url };
 }
 

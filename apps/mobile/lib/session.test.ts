@@ -28,6 +28,12 @@ describe("mobile session storage", () => {
     expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith("rakazo.session_token");
   });
 
+  it("overwrites the token when SecureStore delete fails", async () => {
+    vi.mocked(SecureStore.deleteItemAsync).mockRejectedValueOnce(new Error("device locked"));
+    await clearSessionToken();
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith("rakazo.session_token", "");
+  });
+
   it("returns an empty token when secure storage is empty or unavailable", async () => {
     vi.mocked(SecureStore.getItemAsync).mockResolvedValueOnce(null);
     await expect(loadSessionToken()).resolves.toBe("");

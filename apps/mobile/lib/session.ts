@@ -15,7 +15,15 @@ export async function saveSessionToken(token: string) {
 }
 
 export async function clearSessionToken() {
-  await SecureStore.deleteItemAsync(SESSION_KEY);
+  try {
+    await SecureStore.deleteItemAsync(SESSION_KEY);
+  } catch {
+    try {
+      await SecureStore.setItemAsync(SESSION_KEY, "");
+    } catch {
+      // Best-effort clear so endpoint switches do not keep sending the old bearer.
+    }
+  }
 }
 
 export function tokenFromAuthResponse(res: Response, body: unknown) {
