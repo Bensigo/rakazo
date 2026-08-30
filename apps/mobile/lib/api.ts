@@ -75,10 +75,10 @@ export async function loadApiBase() {
 }
 
 export async function selectSpace(id: string) {
+  if (!(await clearStoredValue(SPACE_ROLLBACK_KEY))) return false;
   try {
     await SecureStore.setItemAsync(SPACE_KEY, id);
     cachedSpaceId = id;
-    await clearStoredValue(SPACE_ROLLBACK_KEY);
     return true;
   } catch {
     return false;

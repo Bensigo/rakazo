@@ -196,6 +196,24 @@ describe("mobile API authentication", () => {
     await selectSpace("");
   });
 
+  it("does not switch spaces when stale recovery cannot be cleared", async () => {
+    await selectSpace("space-support");
+    vi.mocked(SecureStore.deleteItemAsync).mockImplementation(async (key) => {
+      if (key === "rakazo.space_rollback") throw new Error("device locked");
+    });
+    vi.mocked(SecureStore.setItemAsync).mockImplementation(async (key, value) => {
+      if (key === "rakazo.space_rollback" && value === "") throw new Error("device locked");
+    });
+
+    await expect(selectSpace("space-social")).resolves.toBe(false);
+    expect(SecureStore.setItemAsync).not.toHaveBeenCalledWith("rakazo.space_id", "space-social");
+    expect(selectedSpaceId()).toBe("space-support");
+
+    vi.mocked(SecureStore.setItemAsync).mockReset();
+    vi.mocked(SecureStore.deleteItemAsync).mockReset();
+    await selectSpace("");
+  });
+
   it("refuses sign-in when a previous space cannot be cleared", async () => {
     await selectSpace("space-support");
     vi.mocked(SecureStore.deleteItemAsync).mockImplementation(async (key) => {
