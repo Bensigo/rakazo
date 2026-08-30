@@ -14,6 +14,7 @@ import {
   resetApiBase,
   rpc,
   saveApiBase,
+  selectedSpaceId,
   selectSpace,
   shouldApplyMobileThreadRefresh,
   signIn,
@@ -180,6 +181,46 @@ describe("mobile API authentication", () => {
       authorization: "Bearer session-token",
       "x-rakazo-workspace-id": "space-support",
     });
+  });
+
+  it("does not switch spaces when the selection cannot be persisted", async () => {
+    await expect(selectSpace("space-support")).resolves.toBe(true);
+    vi.mocked(SecureStore.setItemAsync).mockImplementation(async (key) => {
+      if (key === "rakazo.space_id") throw new Error("device locked");
+    });
+
+    await expect(selectSpace("space-social")).resolves.toBe(false);
+    expect(selectedSpaceId()).toBe("space-support");
+
+    vi.mocked(SecureStore.setItemAsync).mockReset();
+    await selectSpace("");
+  });
+
+  it("refuses sign-in when a previous space cannot be cleared", async () => {
+    await selectSpace("space-support");
+    vi.mocked(SecureStore.deleteItemAsync).mockImplementation(async (key) => {
+      if (key === "rakazo.space_rollback") throw new Error("device locked");
+    });
+    vi.mocked(SecureStore.setItemAsync).mockImplementation(async (key, value) => {
+      if (key === "rakazo.space_rollback" && value === "") throw new Error("device locked");
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse({ token: "new-session-token" })),
+    );
+
+    await expect(signIn("ada@example.com", "correct horse")).rejects.toThrow(
+      "Could not clear the previous space",
+    );
+    expect(SecureStore.setItemAsync).not.toHaveBeenCalledWith(
+      "rakazo.session_token",
+      "new-session-token",
+    );
+    expect(selectedSpaceId()).toBe("space-support");
+
+    vi.mocked(SecureStore.setItemAsync).mockReset();
+    vi.mocked(SecureStore.deleteItemAsync).mockReset();
+    await selectSpace("");
   });
 
   it("clears server-specific session and space state when the API endpoint changes", async () => {

@@ -118,9 +118,15 @@ export default function Account() {
 
   async function handleSignOut() {
     setPending(true);
-    await signOut();
-    router.dismissAll();
-    router.replace("/sign-in");
+    setError(null);
+    try {
+      await signOut();
+      router.dismissAll();
+      router.replace("/sign-in");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not sign out");
+      setPending(false);
+    }
   }
 
   async function updateNotifications(next: LiveNotificationSettings) {

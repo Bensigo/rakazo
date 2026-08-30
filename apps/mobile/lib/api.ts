@@ -75,12 +75,13 @@ export async function loadApiBase() {
 }
 
 export async function selectSpace(id: string) {
-  cachedSpaceId = id;
   try {
     await SecureStore.setItemAsync(SPACE_KEY, id);
+    cachedSpaceId = id;
     await clearStoredValue(SPACE_ROLLBACK_KEY);
+    return true;
   } catch {
-    // Keep the in-memory selection so create/switch still work when SecureStore fails.
+    return false;
   }
 }
 
@@ -89,10 +90,11 @@ export function selectedSpaceId(): string | null {
 }
 
 async function clearSpace(): Promise<boolean> {
-  cachedSpaceId = "";
   const spaceCleared = await clearStoredValue(SPACE_KEY);
   const rollbackCleared = await clearStoredValue(SPACE_ROLLBACK_KEY);
-  return spaceCleared && rollbackCleared;
+  if (!spaceCleared || !rollbackCleared) return false;
+  cachedSpaceId = "";
+  return true;
 }
 
 async function clearStoredValue(key: string): Promise<boolean> {
@@ -278,7 +280,7 @@ export async function signIn(email: string, password: string) {
   }
   const token = tokenFromAuthResponse(res, body);
   if (!token) throw new Error("Sign-in did not return a session");
-  await clearSpace();
+  if (!(await clearSpace())) throw new Error("Could not clear the previous space");
   await saveSessionToken(token);
   await resumeLiveNotifications(currentApiBase(), token).catch(() => undefined);
 }
@@ -290,8 +292,9 @@ export async function signOut() {
     method: "POST",
     headers: { "content-type": "application/json", origin: "rakazo://", ...headers },
   }).catch(() => undefined);
-  await clearSessionToken();
-  await clearSpace();
+  const sessionCleared = await clearSessionToken();
+  const spaceCleared = await clearSpace();
+  if (!sessionCleared || !spaceCleared) throw new Error("Could not clear the local session");
 }
 
 export async function deleteAccount(password: string) {

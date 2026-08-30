@@ -54,7 +54,10 @@ type InboxItem =
   | { type: "heading"; key: string; title: string };
 
 async function openMobileSpace(spaceId: string | undefined, open: () => void) {
-  if (spaceId) await selectSpace(spaceId);
+  if (spaceId && !(await selectSpace(spaceId))) {
+    Alert.alert("Could not switch spaces", "Try again.");
+    return;
+  }
   open();
 }
 
