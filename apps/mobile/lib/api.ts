@@ -180,13 +180,18 @@ async function saveSpaceRollback(spaceId: string): Promise<boolean> {
 async function recoverSpaceRollback(apiBase: string) {
   const stored = await SecureStore.getItemAsync(SPACE_ROLLBACK_KEY);
   if (!stored) return;
-  let rollback: { apiBase?: unknown; spaceId?: unknown };
+  let parsed: unknown;
   try {
-    rollback = JSON.parse(stored) as { apiBase?: unknown; spaceId?: unknown };
+    parsed = JSON.parse(stored);
   } catch {
     await clearStoredValue(SPACE_ROLLBACK_KEY);
     return;
   }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    await clearStoredValue(SPACE_ROLLBACK_KEY);
+    return;
+  }
+  const rollback = parsed as { apiBase?: unknown; spaceId?: unknown };
   if (rollback.apiBase !== apiBase || typeof rollback.spaceId !== "string" || !rollback.spaceId) {
     await clearStoredValue(SPACE_ROLLBACK_KEY);
     return;

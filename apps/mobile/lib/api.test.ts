@@ -519,6 +519,23 @@ describe("mobile API authentication", () => {
     expect(restartedApi.selectedSpaceId()).toBeNull();
     expect(storage.has("rakazo.space_rollback")).toBe(false);
   });
+
+  it("removes a malformed space rollback record", async () => {
+    const storage = new Map([["rakazo.space_rollback", "null"]]);
+    vi.mocked(SecureStore.getItemAsync).mockImplementation(async (key) => storage.get(key) ?? null);
+    vi.mocked(SecureStore.setItemAsync).mockImplementation(async (key, value) => {
+      storage.set(key, value);
+    });
+    vi.mocked(SecureStore.deleteItemAsync).mockImplementation(async (key) => {
+      storage.delete(key);
+    });
+    vi.resetModules();
+    const restartedApi = await import("./api.js");
+
+    await restartedApi.loadApiBase();
+    expect(restartedApi.selectedSpaceId()).toBeNull();
+    expect(storage.has("rakazo.space_rollback")).toBe(false);
+  });
 });
 
 describe("mobile thread subscription", () => {
