@@ -331,9 +331,9 @@ export async function createApp(
   });
   app.use("/rpc/*", async (c, next) => {
     const session = await auth.api.getSession({ headers: sessionHeaders(c.req.raw) });
-    const requestedWorkspaceId = c.req.header("x-rakazo-workspace-id");
+    const requestedSpaceId = c.req.header("x-rakazo-workspace-id");
     const actor = session?.user
-      ? await requireMembership(prisma, session.user.id, requestedWorkspaceId).catch(() => null)
+      ? await requireMembership(prisma, session.user.id, requestedSpaceId).catch(() => null)
       : null;
     const { matched, response } = await rpc.handle(c.req.raw, {
       prefix: "/rpc",

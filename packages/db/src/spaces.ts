@@ -20,36 +20,33 @@ export class InvalidSpaceNameError extends Error {
   }
 }
 
-type WorkspaceClient = Pick<
+type SpaceClient = Pick<
   PrismaClient,
-  "workspace" | "workspaceMember" | "memoryDocument" | "notificationPreference"
+  "space" | "spaceMember" | "memoryDocument" | "notificationPreference"
 >;
 
-interface CreateWorkspaceInput {
-  workspaceId: string;
-  workspaceMembershipId: string;
+interface CreateSpaceInput {
+  spaceId: string;
+  spaceMembershipId: string;
   organizationId: string;
   userId: string;
   name: string;
   createdAt: Date;
 }
 
-async function createWorkspace(
-  prisma: WorkspaceClient,
-  input: CreateWorkspaceInput,
-): Promise<void> {
-  await prisma.workspace.create({
+async function createSpace(prisma: SpaceClient, input: CreateSpaceInput): Promise<void> {
+  await prisma.space.create({
     data: {
-      id: input.workspaceId,
+      id: input.spaceId,
       organizationId: input.organizationId,
       name: input.name,
       createdAt: input.createdAt,
     },
   });
-  await prisma.workspaceMember.create({
+  await prisma.spaceMember.create({
     data: {
-      id: input.workspaceMembershipId,
-      workspaceId: input.workspaceId,
+      id: input.spaceMembershipId,
+      spaceId: input.spaceId,
       organizationId: input.organizationId,
       userId: input.userId,
       createdAt: input.createdAt,
@@ -57,13 +54,13 @@ async function createWorkspace(
   });
 }
 
-async function createWorkspaceDefaults(
-  prisma: WorkspaceClient,
-  input: { workspaceId: string; userId: string; memoryContent: string },
+async function createSpaceDefaults(
+  prisma: SpaceClient,
+  input: { spaceId: string; userId: string; memoryContent: string },
 ): Promise<void> {
   await prisma.memoryDocument.create({
     data: {
-      workspaceId: input.workspaceId,
+      workspaceId: input.spaceId,
       userId: input.userId,
       scope: "user",
       path: "MEMORY.md",
@@ -72,7 +69,7 @@ async function createWorkspaceDefaults(
   });
   await prisma.notificationPreference.create({
     data: {
-      workspaceId: input.workspaceId,
+      workspaceId: input.spaceId,
       userId: input.userId,
     },
   });
@@ -82,47 +79,47 @@ async function createWorkspaceDefaults(
 export async function createSpaceForMember(
   prisma: PrismaClient,
   input: {
-    currentWorkspaceId: string;
+    currentSpaceId: string;
     userId: string;
     name: string;
   },
 ): Promise<{ id: string; name: string }> {
   const name = input.name.trim();
   if (!name || name.length > 60) throw new InvalidSpaceNameError();
-  const workspaceId = randomUUID();
-  const workspaceMembershipId = randomUUID();
+  const spaceId = randomUUID();
+  const spaceMembershipId = randomUUID();
   const createdAt = new Date();
 
   await withTransactionRetry(() =>
     prisma.$transaction(
       async (tx) => {
-        const currentMembership = await tx.workspaceMember.findUnique({
+        const currentMembership = await tx.spaceMember.findUnique({
           where: {
-            workspaceId_userId: {
-              workspaceId: input.currentWorkspaceId,
+            spaceId_userId: {
+              spaceId: input.currentSpaceId,
               userId: input.userId,
             },
           },
           select: { organizationId: true },
         });
         if (!currentMembership) throw new IsolationError();
-        const count = await tx.workspaceMember.count({
+        const count = await tx.spaceMember.count({
           where: {
             userId: input.userId,
             organizationId: currentMembership.organizationId,
           },
         });
         if (count >= MAX_SPACES_PER_MEMBER) throw new SpaceLimitError();
-        await createWorkspace(tx, {
-          workspaceId,
-          workspaceMembershipId,
+        await createSpace(tx, {
+          spaceId,
+          spaceMembershipId,
           organizationId: currentMembership.organizationId,
           userId: input.userId,
           name,
           createdAt,
         });
-        await createWorkspaceDefaults(tx, {
-          workspaceId,
+        await createSpaceDefaults(tx, {
+          spaceId,
           userId: input.userId,
           memoryContent: "# Space memory\n\n",
         });
@@ -131,5 +128,5 @@ export async function createSpaceForMember(
     ),
   );
 
-  return { id: workspaceId, name };
+  return { id: spaceId, name };
 }

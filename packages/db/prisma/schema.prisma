@@ -90,7 +90,7 @@ model Organization {
   metadata    String?
   members     Member[]
   invitations Invitation[]
-  workspaces  Workspace[]
+  spaces      Space[]
 
   @@unique([slug])
   @@map("organization")
@@ -99,7 +99,7 @@ model Organization {
 model ActionApprovalRule {
   id              String       @id @default(cuid())
   workspaceId     String
-  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  space           Space @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   createdByUserId String
   createdByUser   User         @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
   effect          String
@@ -115,7 +115,7 @@ model ActionApprovalRule {
 model ActionAutoReviewPreference {
   id          String       @id @default(cuid())
   workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  space       Space @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   userId      String
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   enabled     Boolean      @default(false)
@@ -134,7 +134,7 @@ model Member {
   user                 User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   role                 String
   createdAt            DateTime
-  workspaceMemberships WorkspaceMember[]
+  spaceMemberships     SpaceMember[]
 
   @@unique([organizationId, userId])
   @@index([organizationId])
@@ -142,13 +142,13 @@ model Member {
   @@map("member")
 }
 
-model Workspace {
+model Space {
   id             String       @id
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   name           String
   createdAt      DateTime     @default(now())
-  memberships    WorkspaceMember[]
+  memberships    SpaceMember[]
   bots           Bot[]
   botSections    BotSection[]
   botDeletions   BotDeletion[]
@@ -178,22 +178,22 @@ model Workspace {
 
   @@unique([id, organizationId])
   @@index([organizationId, createdAt])
-  @@map("workspaces")
+  @@map("spaces")
 }
 
-model WorkspaceMember {
+model SpaceMember {
   id             String    @id
-  workspaceId    String
+  spaceId        String
   organizationId String
-  workspace      Workspace @relation(fields: [workspaceId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  space          Space     @relation(fields: [spaceId, organizationId], references: [id, organizationId], onDelete: Cascade)
   userId         String
   member         Member    @relation(fields: [organizationId, userId], references: [organizationId, userId], onDelete: Cascade)
   createdAt      DateTime
 
-  @@unique([workspaceId, userId])
+  @@unique([spaceId, userId])
   @@index([organizationId, userId])
   @@index([userId, createdAt])
-  @@map("workspace_members")
+  @@map("space_members")
 }
 
 model Invitation {
@@ -264,7 +264,7 @@ model UserVoiceCredential {
 model Bot {
   id             String   @id @default(cuid())
   workspaceId    String
-  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  space          Space @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   userId         String
   name           String
   title          String   @default("")
@@ -318,7 +318,7 @@ model Bot {
 model BotSection {
   id          String       @id @default(cuid())
   workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  space       Space @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   userId      String
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   name        String
@@ -336,7 +336,7 @@ model BotSection {
 model BotDeletion {
   id                String   @id
   workspaceId       String
-  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  space             Space @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   name              String
   deletedByUserId   String
   memoriesPreserved Boolean
@@ -349,7 +349,7 @@ model BotDeletion {
 model ChatGroup {
   id          String   @id @default(cuid())
   workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  space       Space @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   userId      String
   name        String
   pinned      Boolean  @default(false)
@@ -383,7 +383,7 @@ model ChatGroupMember {
 model Thread {
   id                      String       @id @default(cuid())
   workspaceId             String
-  workspace               Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  space                   Space @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   botId                   String?      @unique
   bot                     Bot?         @relation(fields: [botId], references: [id], onDelete: Cascade)
   groupId                 String?      @unique
@@ -431,7 +431,7 @@ model Message {
 model Event {
   id          String   @id @default(cuid())
   workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  space       Space @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   threadId    String
   thread      Thread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
   botId       String
@@ -451,7 +451,7 @@ model Event {
 model Task {
   id          String   @id @default(cuid())
   workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  space       Space @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   botId       String
   bot         Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
   threadId    String
@@ -470,7 +470,7 @@ model Task {
 model Run {
   id            String    @id @default(cuid())
   workspaceId   String
-  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  space         Space @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   botId         String
   bot           Bot       @relation(fields: [botId], references: [id], onDelete: Cascade)
   threadId      String
@@ -529,7 +529,7 @@ model Attempt {
 model ExternalEffect {
   id              String   @id @default(cuid())
   workspaceId     String
-  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  space           Space @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   runId           String
   run             Run      @relation(fields: [runId], references: [id], onDelete: Cascade)
   kind            String
@@ -551,7 +551,7 @@ model ExternalEffect {
 model Routine {
   id             String    @id @default(cuid())
   workspaceId    String
-  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  space          Space @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   botId          String
   bot            Bot       @relation(fields: [botId], references: [id], onDelete: Cascade)
   userId         String
@@ -576,7 +576,7 @@ model Routine {
 model ScratchpadItem {
   id          String   @id @default(cuid())
   workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  space       Space @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   botId       String
   bot         Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
   userId      String
@@ -594,7 +594,7 @@ model ScratchpadItem {
 model TaughtSkill {
   id          String    @id @default(cuid())
   workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  space       Space @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   botId       String
   bot         Bot       @relation(fields: [botId], references: [id], onDelete: Cascade)
   userId      String
@@ -622,7 +622,7 @@ model TaughtSkill {
 model AgentSkill {
   id          String   @id @default(cuid())
   workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  space       Space @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   userId      String
   name        String
   description String
@@ -640,7 +640,7 @@ model AgentSkill {
 model Connection {
   id            String   @id @default(cuid())
   workspaceId   String
-  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  space         Space @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   userId        String
   connectorId   String   @default("composio")
   provider      String
@@ -659,7 +659,7 @@ model Connection {
 model CapabilityInstall {
   id          String   @id @default(cuid())
   workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  space       Space @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   userId      String
   kind        String
   name        String
@@ -677,7 +677,7 @@ model CapabilityInstall {
 model MemoryDocument {
   id          String   @id @default(cuid())
   workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  space       Space @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   userId      String
   botId       String?
   bot         Bot?     @relation(fields: [botId], references: [id], onDelete: Cascade)
@@ -711,7 +711,7 @@ model MemoryRevision {
 model AgentHome {
   id          String   @id @default(cuid())
   workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  space       Space @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   botId       String   @unique
   bot         Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
   userId      String
@@ -725,7 +725,7 @@ model AgentHome {
 model BrowserProfile {
   id          String   @id @default(cuid())
   workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  space       Space @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   botId       String   @unique
   bot         Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
   userId      String
@@ -739,7 +739,7 @@ model BrowserProfile {
 model Computer {
   id                      String   @id @default(cuid())
   workspaceId             String
-  workspace               Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  space                   Space @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   userId                   String
   scope                    String   @default("team")
   scopeKey                 String   @unique
@@ -788,7 +788,7 @@ model ComputerExecutionLease {
 model Artifact {
   id          String   @id @default(cuid())
   workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  space       Space @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   botId       String?
   bot         Bot?     @relation(fields: [botId], references: [id], onDelete: SetNull)
   groupId     String?
@@ -810,7 +810,7 @@ model Artifact {
 model UsageRecord {
   id           String   @id @default(cuid())
   workspaceId  String
-  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  space        Space @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   botId        String?
   bot          Bot?     @relation(fields: [botId], references: [id], onDelete: Cascade)
   userId       String
@@ -829,7 +829,7 @@ model UsageRecord {
 model NotificationPreference {
   id          String  @id @default(cuid())
   workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  space       Space @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   userId      String
   finish      Boolean @default(true)
   help        Boolean @default(true)
@@ -842,7 +842,7 @@ model NotificationPreference {
 model WorkspaceMemoryConfig {
   id                 String   @id @default(cuid())
   workspaceId        String   @unique
-  workspace          Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  space              Space @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   userId             String
   provider           String
   settings           Json
@@ -873,7 +873,7 @@ model Secret {
 model McpServer {
   id          String   @id @default(cuid())
   workspaceId String
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  space       Space @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   slug        String

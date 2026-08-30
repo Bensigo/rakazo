@@ -76,7 +76,7 @@ import {
   type McpServer,
   type Me,
   OPENAI_COMPATIBLE_PROVIDER_ID,
-  type PrivateSpaceNavigation,
+  type SpaceNavigation,
 } from "@rakazo/contracts";
 import {
   ACTIVE_RUN_STATUSES,
@@ -371,15 +371,15 @@ export function createRouter(deps: RouterDeps) {
         return meDto(deps, context.actor);
       }),
     },
-    privateSpaces: {
-      list: authed.privateSpaces.list.handler(async ({ context }) =>
-        privateSpaceNavigationDto(deps, context.actor, repos, groupRepos),
+    spaces: {
+      list: authed.spaces.list.handler(async ({ context }) =>
+        spaceNavigationDto(deps, context.actor, repos, groupRepos),
       ),
-      create: authed.privateSpaces.create.handler(async ({ context, input }) => {
+      create: authed.spaces.create.handler(async ({ context, input }) => {
         let space: { id: string; name: string };
         try {
           space = await createSpaceForMember(deps.prisma, {
-            currentWorkspaceId: context.actor.workspaceId,
+            currentSpaceId: context.actor.workspaceId,
             userId: context.actor.userId,
             name: input.name,
           });
@@ -402,7 +402,7 @@ export function createRouter(deps: RouterDeps) {
       const actor = context.actor;
       const [me, navigation, archivedBots, archivedGroups] = await Promise.all([
         meDto(deps, actor),
-        privateSpaceNavigationDto(deps, actor, repos, groupRepos),
+        spaceNavigationDto(deps, actor, repos, groupRepos),
         repos.listBots(actor, { archived: true }),
         groupRepos.listGroups(actor, { archived: true }),
       ]);
@@ -425,7 +425,7 @@ export function createRouter(deps: RouterDeps) {
         archivedGroups,
         thread,
         routines,
-        privateSpaces: navigation.privateSpaces,
+        spaces: navigation.spaces,
       };
     }),
     deployment: {
@@ -3373,64 +3373,62 @@ function mapUpdaterError(error: unknown): never {
   });
 }
 
-async function privateSpaceNavigationDto(
+async function spaceNavigationDto(
   deps: RouterDeps,
   actor: Actor,
   repos: ReturnType<typeof createRepos>,
   groupRepos: ReturnType<typeof createGroupRepos>,
-): Promise<PrivateSpaceNavigation> {
-  const currentWorkspace = await deps.prisma.workspace.findUnique({
+): Promise<SpaceNavigation> {
+  const currentSpace = await deps.prisma.space.findUnique({
     where: { id: actor.workspaceId },
     select: { organizationId: true },
   });
-  if (!currentWorkspace) throw new IsolationError();
-  const memberships = await deps.prisma.workspaceMember.findMany({
-    where: { userId: actor.userId, organizationId: currentWorkspace.organizationId },
+  if (!currentSpace) throw new IsolationError();
+  const memberships = await deps.prisma.spaceMember.findMany({
+    where: { userId: actor.userId, organizationId: currentSpace.organizationId },
     select: {
-      workspaceId: true,
-      workspace: { select: { name: true } },
+      spaceId: true,
+      space: { select: { name: true } },
     },
     orderBy: { createdAt: "asc" },
   });
-  const workspaceIds = memberships.map((membership) => membership.workspaceId);
-  const inactiveWorkspaceIds = workspaceIds.filter(
-    (workspaceId) => workspaceId !== actor.workspaceId,
-  );
+  const spaceIds = memberships.map((membership) => membership.spaceId);
+  const inactiveSpaceIds = spaceIds.filter((spaceId) => spaceId !== actor.workspaceId);
   const [currentBots, currentGroups, inactiveBots, inactiveGroups, botSections] = await Promise.all(
     [
       repos.listBots(actor),
       groupRepos.listGroups(actor),
-      repos.listPrivateSpaceBotsForWorkspaces(actor, inactiveWorkspaceIds),
-      groupRepos.listPrivateSpaceGroupsForWorkspaces(actor, inactiveWorkspaceIds),
-      repos.listBotSectionsForWorkspaces(actor, workspaceIds),
+      repos.listSpaceBotsForSpaces(actor, inactiveSpaceIds),
+      groupRepos.listSpaceGroupsForSpaces(actor, inactiveSpaceIds),
+      repos.listBotSectionsForSpaces(actor, spaceIds),
     ],
   );
   const currentMembership = memberships.find(
-    (membership) => membership.workspaceId === actor.workspaceId,
+    (membership) => membership.spaceId === actor.workspaceId,
   );
   if (!currentMembership) throw new IsolationError();
-  const botsByWorkspace = partitionByWorkspace([...currentBots, ...inactiveBots]);
-  const groupsByWorkspace = partitionByWorkspace([...currentGroups, ...inactiveGroups]);
-  const sectionsByWorkspace = partitionByWorkspace(botSections);
-  const botsFor = (workspaceId: string) => botsByWorkspace.get(workspaceId) ?? [];
-  const groupsFor = (workspaceId: string) => groupsByWorkspace.get(workspaceId) ?? [];
-  const sectionsFor = (workspaceId: string) => sectionsByWorkspace.get(workspaceId) ?? [];
+  const botsBySpace = partitionBySpace([...currentBots, ...inactiveBots]);
+  const groupsBySpace = partitionBySpace([...currentGroups, ...inactiveGroups]);
+  const sectionsBySpace = partitionBySpace(botSections);
+  const botsFor = (spaceId: string) => botsBySpace.get(spaceId) ?? [];
+  const groupsFor = (spaceId: string) => groupsBySpace.get(spaceId) ?? [];
+  const sectionsFor = (spaceId: string) => sectionsBySpace.get(spaceId) ?? [];
 
   return {
     current: {
       id: actor.workspaceId,
-      name: currentMembership.workspace.name,
+      name: currentMembership.space.name,
       bots: currentBots,
       groups: currentGroups,
       botSections: sectionsFor(actor.workspaceId),
     },
-    privateSpaces: memberships.map((membership) => {
-      const workspaceBots = botsFor(membership.workspaceId);
-      const workspaceGroups = groupsFor(membership.workspaceId);
+    spaces: memberships.map((membership) => {
+      const spaceBots = botsFor(membership.spaceId);
+      const spaceGroups = groupsFor(membership.spaceId);
       return {
-        id: membership.workspaceId,
-        name: membership.workspace.name,
-        bots: workspaceBots.map((bot) => ({
+        id: membership.spaceId,
+        name: membership.space.name,
+        bots: spaceBots.map((bot) => ({
           id: bot.id,
           workspaceId: bot.workspaceId,
           name: bot.name,
@@ -3444,7 +3442,7 @@ async function privateSpaceNavigationDto(
           status: bot.status,
           updatedAt: bot.updatedAt,
         })),
-        groups: workspaceGroups.map((group) => ({
+        groups: spaceGroups.map((group) => ({
           id: group.id,
           workspaceId: group.workspaceId,
           name: group.name,
@@ -3455,18 +3453,18 @@ async function privateSpaceNavigationDto(
           unread: group.unread,
           updatedAt: group.updatedAt,
         })),
-        botSections: sectionsFor(membership.workspaceId),
+        botSections: sectionsFor(membership.spaceId),
       };
     }),
   };
 }
 
-function partitionByWorkspace<T extends { workspaceId: string }>(rows: T[]): Map<string, T[]> {
+function partitionBySpace<T extends { workspaceId: string }>(rows: T[]): Map<string, T[]> {
   const partitioned = new Map<string, T[]>();
   for (const row of rows) {
-    const workspaceRows = partitioned.get(row.workspaceId) ?? [];
-    workspaceRows.push(row);
-    partitioned.set(row.workspaceId, workspaceRows);
+    const spaceRows = partitioned.get(row.workspaceId) ?? [];
+    spaceRows.push(row);
+    partitioned.set(row.workspaceId, spaceRows);
   }
   return partitioned;
 }
@@ -3733,7 +3731,7 @@ async function requireWorkspaceOwner(prisma: PrismaClient, actor: Actor): Promis
   const member = await prisma.member.findFirst({
     where: {
       userId: actor.userId,
-      workspaceMemberships: { some: { workspaceId: actor.workspaceId } },
+      spaceMemberships: { some: { spaceId: actor.workspaceId } },
     },
     select: { role: true },
   });

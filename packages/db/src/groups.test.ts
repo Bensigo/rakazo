@@ -3,7 +3,7 @@ import type { PrismaClient } from "./client.js";
 import { createGroupRepos } from "./groups.js";
 import { IsolationError } from "./scope.js";
 
-describe("listPrivateSpaceGroupsForWorkspaces", () => {
+describe("listSpaceGroupsForSpaces", () => {
   it("loads and maps compact cross-space group fields", async () => {
     const findMany = vi.fn(async (_query: { where: unknown; select: Record<string, unknown> }) => [
       {
@@ -38,9 +38,7 @@ describe("listPrivateSpaceGroupsForWorkspaces", () => {
       isDeploymentOwner: false,
     };
 
-    await expect(
-      repos.listPrivateSpaceGroupsForWorkspaces(actor, ["workspace-2"]),
-    ).resolves.toEqual([
+    await expect(repos.listSpaceGroupsForSpaces(actor, ["workspace-2"])).resolves.toEqual([
       {
         id: "group-1",
         workspaceId: "workspace-2",

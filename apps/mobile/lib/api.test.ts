@@ -14,7 +14,7 @@ import {
   resetApiBase,
   rpc,
   saveApiBase,
-  selectPrivateSpace,
+  selectSpace,
   shouldApplyMobileThreadRefresh,
   signIn,
   signOut,
@@ -172,9 +172,9 @@ describe("mobile API authentication", () => {
     await expect(rpc("bots/get", { botId: "missing" })).rejects.toThrow("Bot does not exist");
   });
 
-  it("shares the selected private space with direct API requests", async () => {
+  it("shares the selected space with direct API requests", async () => {
     vi.mocked(SecureStore.getItemAsync).mockResolvedValue("session-token");
-    await selectPrivateSpace("space-support");
+    await selectSpace("space-support");
 
     await expect(authHeaders()).resolves.toEqual({
       authorization: "Bearer session-token",
@@ -183,18 +183,18 @@ describe("mobile API authentication", () => {
   });
 
   it("clears server-specific session and space state when the API endpoint changes", async () => {
-    await selectPrivateSpace("space-support");
+    await selectSpace("space-support");
     vi.mocked(SecureStore.deleteItemAsync).mockClear();
 
     await expect(saveApiBase("https://second-server.example")).resolves.toMatchObject({ ok: true });
 
     expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith("rakazo.session_token");
-    expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith("rakazo.private_space_id");
+    expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith("rakazo.space_id");
     await resetApiBase();
   });
 
   it("refuses to switch endpoints when SecureStore cannot clear credentials", async () => {
-    await selectPrivateSpace("space-support");
+    await selectSpace("space-support");
     vi.mocked(SecureStore.deleteItemAsync).mockRejectedValue(new Error("device locked"));
     vi.mocked(SecureStore.setItemAsync).mockRejectedValue(new Error("device locked"));
 
@@ -213,12 +213,12 @@ describe("mobile API authentication", () => {
       if (key === "rakazo.session_token") return "session-token";
       return null;
     });
-    await selectPrivateSpace("space-support");
+    await selectSpace("space-support");
     vi.mocked(SecureStore.deleteItemAsync).mockImplementation(async (key) => {
-      if (key === "rakazo.private_space_id") throw new Error("device locked");
+      if (key === "rakazo.space_id") throw new Error("device locked");
     });
     vi.mocked(SecureStore.setItemAsync).mockImplementation(async (key, value) => {
-      if (key === "rakazo.session_token" || (key === "rakazo.private_space_id" && value === "")) {
+      if (key === "rakazo.session_token" || (key === "rakazo.space_id" && value === "")) {
         throw new Error("device locked");
       }
     });
@@ -243,7 +243,7 @@ describe("mobile API authentication", () => {
       if (key === "rakazo.session_token") return "session-token";
       return null;
     });
-    await selectPrivateSpace("space-support");
+    await selectSpace("space-support");
     vi.mocked(SecureStore.setItemAsync).mockImplementation(async (key) => {
       if (key === "rakazo.api_base") throw new Error("device locked");
     });
@@ -263,11 +263,11 @@ describe("mobile API authentication", () => {
     vi.mocked(SecureStore.getItemAsync).mockResolvedValue(null);
     await loadApiBase();
     const previous = currentApiBase();
-    let privateSpaceReads = 0;
+    let spaceReads = 0;
     vi.mocked(SecureStore.getItemAsync).mockImplementation(async (key) => {
-      if (key !== "rakazo.private_space_id") return null;
-      privateSpaceReads += 1;
-      if (privateSpaceReads === 1) throw new Error("device locked");
+      if (key !== "rakazo.space_id") return null;
+      spaceReads += 1;
+      if (spaceReads === 1) throw new Error("device locked");
       return "space-support";
     });
     await loadApiBase();
@@ -283,17 +283,14 @@ describe("mobile API authentication", () => {
     await expect(authHeaders()).resolves.toEqual({
       "x-rakazo-workspace-id": "space-support",
     });
-    expect(SecureStore.setItemAsync).toHaveBeenCalledWith(
-      "rakazo.private_space_id",
-      "space-support",
-    );
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith("rakazo.space_id", "space-support");
   });
 
   it("refuses an endpoint switch when the active workspace cannot be snapshotted", async () => {
     vi.mocked(SecureStore.getItemAsync).mockResolvedValue(null);
     await loadApiBase();
     vi.mocked(SecureStore.getItemAsync).mockImplementation(async (key) => {
-      if (key === "rakazo.private_space_id") throw new Error("device locked");
+      if (key === "rakazo.space_id") throw new Error("device locked");
       return null;
     });
     await loadApiBase();
@@ -308,7 +305,7 @@ describe("mobile API authentication", () => {
 
   it("preserves credentials when the active session cannot be snapshotted", async () => {
     await saveSessionToken("session-token");
-    await selectPrivateSpace("space-support");
+    await selectSpace("space-support");
     vi.mocked(SecureStore.getItemAsync).mockRejectedValue(new Error("device locked"));
     vi.mocked(SecureStore.deleteItemAsync).mockClear();
     const previous = currentApiBase();
@@ -335,7 +332,7 @@ describe("mobile API authentication", () => {
 
   it("keeps an invalidated empty session fail closed during credential rollback", async () => {
     await saveSessionToken("session-token");
-    await selectPrivateSpace("space-support");
+    await selectSpace("space-support");
     vi.mocked(SecureStore.deleteItemAsync).mockImplementation(async (key) => {
       if (key === "rakazo.session_token") throw new Error("device locked");
     });
@@ -365,12 +362,12 @@ describe("mobile API authentication", () => {
       if (key === "rakazo.session_token") return "session-token";
       return null;
     });
-    await selectPrivateSpace("space-support");
+    await selectSpace("space-support");
     vi.mocked(SecureStore.deleteItemAsync).mockImplementation(async (key) => {
-      if (key === "rakazo.private_space_id") throw new Error("device locked");
+      if (key === "rakazo.space_id") throw new Error("device locked");
     });
     vi.mocked(SecureStore.setItemAsync).mockImplementation(async (key, value) => {
-      if (key === "rakazo.session_token" || (key === "rakazo.private_space_id" && value === "")) {
+      if (key === "rakazo.session_token" || (key === "rakazo.space_id" && value === "")) {
         throw new Error("device locked");
       }
     });
@@ -398,7 +395,7 @@ describe("mobile API authentication", () => {
       if (key === "rakazo.session_token") return "session-token";
       return null;
     });
-    await selectPrivateSpace("space-support");
+    await selectSpace("space-support");
     vi.mocked(SecureStore.deleteItemAsync).mockImplementation(async (key) => {
       if (key === "rakazo.api_base") throw new Error("device locked");
     });

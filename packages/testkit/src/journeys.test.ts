@@ -2260,7 +2260,7 @@ describeJourneys("required product journeys", () => {
       instructions: "",
       notifyOnFinish: true,
     });
-    const membershipsBefore = await prisma.workspaceMember.count({ where: { userId: me.userId } });
+    const membershipsBefore = await prisma.spaceMember.count({ where: { userId: me.userId } });
     const sent = await rpc<{ runId: string }>(app, cookie, "threads/send", {
       botId: bot.id,
       text: "create a space named Customer support",
@@ -2276,7 +2276,7 @@ describeJourneys("required product journeys", () => {
     expect(approval).toContain("Customer support");
     expect(approval).toContain("Cancel");
     expect(approval).not.toContain("Always allow this tool");
-    expect(await prisma.workspaceMember.count({ where: { userId: me.userId } })).toBe(
+    expect(await prisma.spaceMember.count({ where: { userId: me.userId } })).toBe(
       membershipsBefore,
     );
 
@@ -2287,13 +2287,9 @@ describeJourneys("required product journeys", () => {
       bot.id,
       (snap) => !snap.run || ["completed", "failed", "cancelled"].includes(snap.run.status),
     );
-    const navigation = await rpc<{ privateSpaces: Array<{ name: string }> }>(
-      app,
-      cookie,
-      "privateSpaces/list",
-    );
-    expect(navigation.privateSpaces.map((space) => space.name)).toContain("Customer support");
-    expect(await prisma.workspaceMember.count({ where: { userId: me.userId } })).toBe(
+    const navigation = await rpc<{ spaces: Array<{ name: string }> }>(app, cookie, "spaces/list");
+    expect(navigation.spaces.map((space) => space.name)).toContain("Customer support");
+    expect(await prisma.spaceMember.count({ where: { userId: me.userId } })).toBe(
       membershipsBefore + 1,
     );
 
@@ -2314,7 +2310,7 @@ describeJourneys("required product journeys", () => {
       bot.id,
       (snap) => !snap.run || ["completed", "failed", "cancelled"].includes(snap.run.status),
     );
-    expect(await prisma.workspaceMember.count({ where: { userId: me.userId } })).toBe(
+    expect(await prisma.spaceMember.count({ where: { userId: me.userId } })).toBe(
       membershipsBefore + 1,
     );
   });

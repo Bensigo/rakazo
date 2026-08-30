@@ -12,8 +12,8 @@ function makePrisma(settings: { id: string; ownerUserId: string | null } | null)
       }),
     },
     member: { create: create() },
-    workspace: { create: create() },
-    workspaceMember: { create: create() },
+    space: { create: create() },
+    spaceMember: { create: create() },
     deploymentSettings: {
       findUnique: vi.fn(async () => settings),
       create: create(),
@@ -52,18 +52,18 @@ describe("bootstrapUserWorkspace", () => {
     expect(memberData.userId).toBe("user-1");
     expect(memberData.role).toBe("owner");
 
-    const workspaceData = prisma.workspace.create.mock.calls[0]![0].data;
-    expect(workspaceData).toEqual(
+    const spaceData = prisma.space.create.mock.calls[0]![0].data;
+    expect(spaceData).toEqual(
       expect.objectContaining({
         id: orgData.id,
         organizationId: orgData.id,
         name: "Personal",
       }),
     );
-    const workspaceMemberData = prisma.workspaceMember.create.mock.calls[0]![0].data;
-    expect(workspaceMemberData).toEqual(
+    const spaceMemberData = prisma.spaceMember.create.mock.calls[0]![0].data;
+    expect(spaceMemberData).toEqual(
       expect.objectContaining({
-        workspaceId: orgData.id,
+        spaceId: orgData.id,
         organizationId: orgData.id,
         userId: "user-1",
       }),
@@ -159,8 +159,8 @@ describe("bootstrapUserWorkspace concurrency", () => {
         findUniqueOrThrow: vi.fn(async () => ({ id: "org-winner" })),
       },
       member: { create: vi.fn(uniqueViolation) },
-      workspace: { create: vi.fn(uniqueViolation) },
-      workspaceMember: { create: vi.fn(uniqueViolation) },
+      space: { create: vi.fn(uniqueViolation) },
+      spaceMember: { create: vi.fn(uniqueViolation) },
       deploymentSettings: {
         findUnique: vi.fn(async () => null),
         create: vi.fn(uniqueViolation),

@@ -7,8 +7,8 @@ import type {
   MessageBlock,
   ModelCatalogEntry,
   ModelCredential,
-  PrivateSpace,
-  PrivateSpaceNavigation,
+  Space,
+  SpaceNavigation,
 } from "@rakazo/contracts";
 import {
   isRunTerminalEvent,
@@ -33,11 +33,11 @@ import {
 } from "./session";
 
 const ENDPOINT_KEY = "rakazo.api_base";
-const PRIVATE_SPACE_KEY = "rakazo.private_space_id";
+const SPACE_KEY = "rakazo.space_id";
 const RPC_TIMEOUT_MS = 8_000;
 
 let cachedApiBase: string | undefined;
-let cachedPrivateSpaceId = "";
+let cachedSpaceId = "";
 
 function responseErrorMessage(body: unknown, fallback: string): string {
   return typeof body === "object" && body && "message" in body
@@ -51,7 +51,7 @@ export function currentApiBase() {
 
 export async function loadApiBase() {
   try {
-    cachedPrivateSpaceId = (await SecureStore.getItemAsync(PRIVATE_SPACE_KEY)) ?? "";
+    cachedSpaceId = (await SecureStore.getItemAsync(SPACE_KEY)) ?? "";
   } catch {
     // Keep any in-memory selection when SecureStore is temporarily unavailable.
   }
@@ -71,27 +71,27 @@ export async function loadApiBase() {
   return cachedApiBase;
 }
 
-export async function selectPrivateSpace(id: string) {
-  cachedPrivateSpaceId = id;
+export async function selectSpace(id: string) {
+  cachedSpaceId = id;
   try {
-    await SecureStore.setItemAsync(PRIVATE_SPACE_KEY, id);
+    await SecureStore.setItemAsync(SPACE_KEY, id);
   } catch {
     // Keep the in-memory selection so create/switch still work when SecureStore fails.
   }
 }
 
-export function selectedPrivateSpaceId(): string | null {
-  return cachedPrivateSpaceId || null;
+export function selectedSpaceId(): string | null {
+  return cachedSpaceId || null;
 }
 
-async function clearPrivateSpace(): Promise<boolean> {
-  cachedPrivateSpaceId = "";
+async function clearSpace(): Promise<boolean> {
+  cachedSpaceId = "";
   try {
-    await SecureStore.deleteItemAsync(PRIVATE_SPACE_KEY);
+    await SecureStore.deleteItemAsync(SPACE_KEY);
     return true;
   } catch {
     try {
-      await SecureStore.setItemAsync(PRIVATE_SPACE_KEY, "");
+      await SecureStore.setItemAsync(SPACE_KEY, "");
       return true;
     } catch {
       return false;
@@ -99,10 +99,10 @@ async function clearPrivateSpace(): Promise<boolean> {
   }
 }
 
-async function snapshotPrivateSpace(): Promise<{ ok: true; value: string } | { ok: false }> {
-  if (cachedPrivateSpaceId) return { ok: true, value: cachedPrivateSpaceId };
+async function snapshotSpace(): Promise<{ ok: true; value: string } | { ok: false }> {
+  if (cachedSpaceId) return { ok: true, value: cachedSpaceId };
   try {
-    return { ok: true, value: (await SecureStore.getItemAsync(PRIVATE_SPACE_KEY)) ?? "" };
+    return { ok: true, value: (await SecureStore.getItemAsync(SPACE_KEY)) ?? "" };
   } catch {
     return { ok: false };
   }
@@ -113,7 +113,7 @@ async function clearCredentialsForEndpointChange(): Promise<
   { ok: true; previousToken: string; previousSpace: string } | { ok: false; result: EndpointResult }
 > {
   const previousToken = await snapshotSessionToken();
-  const previousSpace = await snapshotPrivateSpace();
+  const previousSpace = await snapshotSpace();
   if (!previousToken.ok || !previousSpace.ok) {
     return {
       ok: false,
@@ -121,7 +121,7 @@ async function clearCredentialsForEndpointChange(): Promise<
     };
   }
   const sessionCleared = await clearSessionToken();
-  const spaceCleared = await clearPrivateSpace();
+  const spaceCleared = await clearSpace();
   if (sessionCleared && spaceCleared) {
     return { ok: true, previousToken: previousToken.value, previousSpace: previousSpace.value };
   }
@@ -132,7 +132,7 @@ async function clearCredentialsForEndpointChange(): Promise<
 
 async function restoreCredentials(previousToken: string, previousSpace: string) {
   if (previousToken) await restoreSessionToken(previousToken);
-  if (previousSpace) await selectPrivateSpace(previousSpace);
+  if (previousSpace) await selectSpace(previousSpace);
 }
 
 export async function saveApiBase(input: string): Promise<EndpointResult> {
@@ -178,12 +178,12 @@ export async function resetApiBase(): Promise<EndpointResult> {
 }
 
 export async function authHeaders(
-  privateSpaceId: string | null = selectedPrivateSpaceId(),
+  spaceId: string | null = selectedSpaceId(),
 ): Promise<Record<string, string>> {
   const token = await loadSessionToken();
   return {
     ...(token ? { authorization: `Bearer ${token}` } : {}),
-    ...(privateSpaceId ? { "x-rakazo-workspace-id": privateSpaceId } : {}),
+    ...(spaceId ? { "x-rakazo-workspace-id": spaceId } : {}),
   };
 }
 
@@ -194,7 +194,7 @@ export type ApiRequestContext = {
 
 export async function captureApiRequestContext(): Promise<ApiRequestContext> {
   const apiBase = currentApiBase();
-  const headers = await authHeaders(selectedPrivateSpaceId());
+  const headers = await authHeaders(selectedSpaceId());
   if (apiBase !== currentApiBase()) {
     throw new Error("The server changed while starting the request");
   }
@@ -213,7 +213,7 @@ export async function signIn(email: string, password: string) {
   }
   const token = tokenFromAuthResponse(res, body);
   if (!token) throw new Error("Sign-in did not return a session");
-  await clearPrivateSpace();
+  await clearSpace();
   await saveSessionToken(token);
   await resumeLiveNotifications(currentApiBase(), token).catch(() => undefined);
 }
@@ -226,7 +226,7 @@ export async function signOut() {
     headers: { "content-type": "application/json", origin: "rakazo://", ...headers },
   }).catch(() => undefined);
   await clearSessionToken();
-  await clearPrivateSpace();
+  await clearSpace();
 }
 
 export async function deleteAccount(password: string) {
@@ -241,7 +241,7 @@ export async function deleteAccount(password: string) {
     throw new Error(responseErrorMessage(body, "Could not delete account"));
   }
   await clearSessionToken();
-  await clearPrivateSpace();
+  await clearSpace();
 }
 
 export async function rpc<T>(
@@ -340,8 +340,8 @@ export type MobileGroup = Pick<
 > &
   Partial<Pick<Group, "workspaceId">>;
 
-export type MobilePrivateSpace = PrivateSpace;
-export type MobilePrivateSpaceNavigation = PrivateSpaceNavigation;
+export type MobileSpace = Space;
+export type MobileSpaceNavigation = SpaceNavigation;
 
 export type MobileSnapshot = {
   botId?: string;

@@ -124,11 +124,11 @@ export const BotSectionSchema = z.object({
 export type BotSection = z.infer<typeof BotSectionSchema>;
 
 /**
- * A private space is a real workspace boundary, not just sidebar organization.
+ * A space is a real privacy boundary, not just sidebar organization.
  * Bots are included so clients can keep every space visible without granting
  * those bots access to the currently active space.
  */
-export const PrivateSpaceBotSchema = BotSchema.pick({
+export const SpaceBotSchema = BotSchema.pick({
   id: true,
   workspaceId: true,
   name: true,
@@ -142,9 +142,9 @@ export const PrivateSpaceBotSchema = BotSchema.pick({
   status: true,
   updatedAt: true,
 });
-export type PrivateSpaceBot = z.infer<typeof PrivateSpaceBotSchema>;
+export type SpaceBot = z.infer<typeof SpaceBotSchema>;
 
-export const PrivateSpaceGroupSchema = GroupSchema.pick({
+export const SpaceGroupSchema = GroupSchema.pick({
   id: true,
   workspaceId: true,
   name: true,
@@ -155,18 +155,18 @@ export const PrivateSpaceGroupSchema = GroupSchema.pick({
   unread: true,
   updatedAt: true,
 });
-export type PrivateSpaceGroup = z.infer<typeof PrivateSpaceGroupSchema>;
+export type SpaceGroup = z.infer<typeof SpaceGroupSchema>;
 
-export const PrivateSpaceSchema = z.object({
+export const SpaceSchema = z.object({
   id: Id,
   name: z.string(),
-  bots: z.array(PrivateSpaceBotSchema),
-  groups: z.array(PrivateSpaceGroupSchema),
+  bots: z.array(SpaceBotSchema),
+  groups: z.array(SpaceGroupSchema),
   botSections: z.array(BotSectionSchema),
 });
-export type PrivateSpace = z.infer<typeof PrivateSpaceSchema>;
+export type Space = z.infer<typeof SpaceSchema>;
 
-export const PrivateSpaceNavigationSchema = z.object({
+export const SpaceNavigationSchema = z.object({
   current: z.object({
     id: Id,
     name: z.string(),
@@ -174,9 +174,9 @@ export const PrivateSpaceNavigationSchema = z.object({
     groups: z.array(GroupSchema),
     botSections: z.array(BotSectionSchema),
   }),
-  privateSpaces: z.array(PrivateSpaceSchema),
+  spaces: z.array(SpaceSchema),
 });
-export type PrivateSpaceNavigation = z.infer<typeof PrivateSpaceNavigationSchema>;
+export type SpaceNavigation = z.infer<typeof SpaceNavigationSchema>;
 
 export const BOT_NAME_MAX_LENGTH = 80;
 export const BOT_TITLE_MAX_LENGTH = 500;
@@ -952,7 +952,7 @@ export const AppBootstrapSchema = z.object({
   archivedGroups: z.array(GroupSchema),
   thread: ThreadSnapshotSchema.nullable(),
   routines: z.array(RoutineSchema),
-  privateSpaces: z.array(PrivateSpaceSchema),
+  spaces: z.array(SpaceSchema),
 });
 export type AppBootstrap = z.infer<typeof AppBootstrapSchema>;
 

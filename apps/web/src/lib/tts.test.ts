@@ -7,7 +7,7 @@ afterEach(() => {
 });
 
 function stubSelectedSpace(id: string) {
-  const store = new Map<string, string>([["rakazo:private-space-id", id]]);
+  const store = new Map<string, string>([["rakazo:space-id", id]]);
   const localStorage = {
     getItem: (key: string) => store.get(key) ?? null,
     setItem: (key: string, value: string) => {
@@ -19,7 +19,7 @@ function stubSelectedSpace(id: string) {
   };
   vi.stubGlobal("window", { localStorage });
   vi.stubGlobal("localStorage", localStorage);
-  return (next: string) => store.set("rakazo:private-space-id", next);
+  return (next: string) => store.set("rakazo:space-id", next);
 }
 
 describe("Speaker", () => {
@@ -45,7 +45,7 @@ describe("Speaker", () => {
     expect(speaker.state.error).toBe("ElevenLabs rejected that key.");
   });
 
-  it("keeps speak requests in the private space where playback started", async () => {
+  it("keeps speak requests in the space where playback started", async () => {
     const changeSelectedSpace = stubSelectedSpace("space-support");
     const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => ({
       ok: true,
@@ -77,7 +77,7 @@ describe("Speaker", () => {
             text: string,
             opts: unknown,
             signal: AbortSignal,
-            workspaceId: string | null,
+            spaceId: string | null,
           ) => Promise<string[]>;
         },
         "prepare",

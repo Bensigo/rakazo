@@ -40,8 +40,6 @@ import {
   PhoneAgentConnectionSchema,
   PhoneChannelMembershipSchema,
   PhoneStatusSchema,
-  PrivateSpaceNavigationSchema,
-  PrivateSpaceSchema,
   ReorderBotsInput,
   RoutineSchema,
   ScratchpadItemSchema,
@@ -51,6 +49,8 @@ import {
   ServerUpdateRunSchema,
   ServerUpdateStatusSchema,
   SkillPlaybookSchema,
+  SpaceNavigationSchema,
+  SpaceSchema,
   TaughtSkillSchema,
   TeachRecordingEventSchema,
   ThreadMessagePageSchema,
@@ -127,11 +127,9 @@ export const appContract = {
   preferences: {
     update: oc.input(z.object({ avatarStyle: AvatarStyleSchema })).output(MeSchema),
   },
-  privateSpaces: {
-    list: oc.output(PrivateSpaceNavigationSchema),
-    create: oc
-      .input(z.object({ name: z.string().trim().min(1).max(60) }))
-      .output(PrivateSpaceSchema),
+  spaces: {
+    list: oc.output(SpaceNavigationSchema),
+    create: oc.input(z.object({ name: z.string().trim().min(1).max(60) })).output(SpaceSchema),
   },
   bootstrap: oc.input(z.object({ botId: Id.optional() })).output(AppBootstrapSchema),
   deployment: {

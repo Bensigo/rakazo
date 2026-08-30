@@ -4,7 +4,7 @@ import {
   type Bot,
   type BotSection,
   type MessageBlock,
-  type PrivateSpaceBot,
+  type SpaceBot,
 } from "@rakazo/contracts";
 import type { PrismaClient } from "./client.js";
 import { type ComputerMode, ensureComputerRecord, parseComputerMode } from "./computers.js";
@@ -75,13 +75,13 @@ function mapBot(
 }
 
 export function createRepos(prisma: PrismaClient) {
-  async function listBotSectionsForWorkspaces(
+  async function listBotSectionsForSpaces(
     actor: Actor,
-    workspaceIds: string[],
+    spaceIds: string[],
   ): Promise<Array<BotSection & { workspaceId: string }>> {
-    if (workspaceIds.length === 0) return [];
+    if (spaceIds.length === 0) return [];
     const sections = await prisma.botSection.findMany({
-      where: { workspaceId: { in: workspaceIds }, userId: actor.userId },
+      where: { workspaceId: { in: spaceIds }, userId: actor.userId },
       orderBy: [{ position: "asc" }, { createdAt: "asc" }],
     });
     return sections.map((section) => ({
@@ -94,14 +94,11 @@ export function createRepos(prisma: PrismaClient) {
     }));
   }
 
-  async function listPrivateSpaceBotsForWorkspaces(
-    actor: Actor,
-    workspaceIds: string[],
-  ): Promise<PrivateSpaceBot[]> {
-    if (workspaceIds.length === 0) return [];
+  async function listSpaceBotsForSpaces(actor: Actor, spaceIds: string[]): Promise<SpaceBot[]> {
+    if (spaceIds.length === 0) return [];
     const bots = await prisma.bot.findMany({
       where: {
-        workspaceId: { in: workspaceIds },
+        workspaceId: { in: spaceIds },
         userId: actor.userId,
         archivedAt: null,
       },
@@ -150,10 +147,10 @@ export function createRepos(prisma: PrismaClient) {
 
   return {
     async listBotSections(actor: Actor): Promise<BotSection[]> {
-      return listBotSectionsForWorkspaces(actor, [actor.workspaceId]);
+      return listBotSectionsForSpaces(actor, [actor.workspaceId]);
     },
 
-    listBotSectionsForWorkspaces,
+    listBotSectionsForSpaces,
 
     async createBotSection(
       actor: Actor,
@@ -246,7 +243,7 @@ export function createRepos(prisma: PrismaClient) {
       });
     },
 
-    listPrivateSpaceBotsForWorkspaces,
+    listSpaceBotsForSpaces,
 
     async getBot(actor: Actor, botId: string, options: { includeArchived?: boolean } = {}) {
       const bot = await prisma.bot.findFirst({

@@ -1,10 +1,10 @@
-import type { PrivateSpace } from "@rakazo/contracts";
+import type { Space } from "@rakazo/contracts";
 import { Stack, useRouter } from "expo-router";
 import { useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import { rpc, selectPrivateSpace } from "../lib/api";
+import { rpc, selectSpace } from "../lib/api";
 
-export default function NewPrivateSpace() {
+export default function NewSpace() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [pending, setPending] = useState(false);
@@ -16,8 +16,8 @@ export default function NewPrivateSpace() {
     setPending(true);
     setError(null);
     try {
-      const space = await rpc<PrivateSpace>("privateSpaces/create", { name: trimmed });
-      await selectPrivateSpace(space.id);
+      const space = await rpc<Space>("spaces/create", { name: trimmed });
+      await selectSpace(space.id);
       router.dismissAll();
       router.replace("/");
     } catch (reason) {

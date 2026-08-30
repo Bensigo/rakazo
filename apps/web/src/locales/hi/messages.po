@@ -2852,8 +2852,8 @@ msgid "Working…"
 msgstr "काम चल रहा है…"
 
 #: src/pages/Shell.tsx:4905
-msgid "Workspace default"
-msgstr "वर्कस्पेस डिफ़ॉल्ट"
+msgid "Space default"
+msgstr "स्पेस डिफ़ॉल्ट"
 
 #: src/pages/Shell.tsx:1257
 #: src/pages/Shell.tsx:1851

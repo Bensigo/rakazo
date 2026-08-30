@@ -3,48 +3,48 @@ import { RPCLink } from "@orpc/client/fetch";
 import type { ContractRouterClient } from "@orpc/contract";
 import type { AppContract } from "@rakazo/contracts";
 
-const WORKSPACE_STORAGE_KEY = "rakazo:private-space-id";
+const SPACE_STORAGE_KEY = "rakazo:space-id";
 
-type RpcClientContext = { privateSpaceId?: string | null };
+type RpcClientContext = { spaceId?: string | null };
 
-export function selectedPrivateSpaceId(): string | null {
+export function selectedSpaceId(): string | null {
   if (typeof window === "undefined") return null;
   try {
-    return window.localStorage.getItem(WORKSPACE_STORAGE_KEY);
+    return window.localStorage.getItem(SPACE_STORAGE_KEY);
   } catch {
     return null;
   }
 }
 
-export function selectPrivateSpace(id: string): boolean {
+export function selectSpace(id: string): boolean {
   try {
-    window.localStorage.setItem(WORKSPACE_STORAGE_KEY, id);
+    window.localStorage.setItem(SPACE_STORAGE_KEY, id);
     return true;
   } catch {
     try {
       // Write failed but the desired selection is already durable — treat as success.
-      return window.localStorage.getItem(WORKSPACE_STORAGE_KEY) === id;
+      return window.localStorage.getItem(SPACE_STORAGE_KEY) === id;
     } catch {
       return false;
     }
   }
 }
 
-export function clearPrivateSpaceSelection(): void {
+export function clearSpaceSelection(): void {
   try {
-    window.localStorage.removeItem(WORKSPACE_STORAGE_KEY);
+    window.localStorage.removeItem(SPACE_STORAGE_KEY);
   } catch {
     // Ignore storage failures on sign-out / reset paths.
   }
 }
 
-/** Adds `x-rakazo-workspace-id` when a private space is selected. */
-export function withPrivateSpaceHeaders(
+/** Adds `x-rakazo-workspace-id` when a space is selected. */
+export function withSpaceHeaders(
   init?: HeadersInit,
-  workspaceId: string | null = selectedPrivateSpaceId(),
+  spaceId: string | null = selectedSpaceId(),
 ): Headers {
   const headers = new Headers(init);
-  if (workspaceId) headers.set("x-rakazo-workspace-id", workspaceId);
+  if (spaceId) headers.set("x-rakazo-workspace-id", spaceId);
   else headers.delete("x-rakazo-workspace-id");
   return headers;
 }
@@ -54,12 +54,10 @@ const link = new RPCLink<RpcClientContext>({
     typeof window === "undefined" ? "http://127.0.0.1:5173/rpc" : `${window.location.origin}/rpc`,
   fetch: (input, init, options) => {
     const request = new Request(input, init);
-    const workspaceId =
-      options.context.privateSpaceId === undefined
-        ? selectedPrivateSpaceId()
-        : options.context.privateSpaceId;
+    const spaceId =
+      options.context.spaceId === undefined ? selectedSpaceId() : options.context.spaceId;
     return fetch(request, {
-      headers: withPrivateSpaceHeaders(request.headers, workspaceId),
+      headers: withSpaceHeaders(request.headers, spaceId),
       credentials: "include",
     });
   },

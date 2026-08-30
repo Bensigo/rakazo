@@ -1,9 +1,4 @@
-import type {
-  PrivateSpaceBot,
-  PrivateSpaceGroup,
-  RunActivityRow,
-  SearchHit,
-} from "@rakazo/contracts";
+import type { RunActivityRow, SearchHit, SpaceBot, SpaceGroup } from "@rakazo/contracts";
 import { groupBotsForSidebar } from "@rakazo/core";
 import { Redirect, useFocusEffect, useRouter } from "expo-router";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -37,10 +32,10 @@ import {
   type MobileBotSection,
   type MobileGroup,
   type MobileMe,
-  type MobilePrivateSpace,
-  type MobilePrivateSpaceNavigation,
+  type MobileSpace,
+  type MobileSpaceNavigation,
   rpc,
-  selectPrivateSpace,
+  selectSpace,
 } from "../lib/api";
 import { botTag, filterBots, formatThreadTime, userInitials } from "../lib/inbox";
 import { dismissThreadNotifications, resumeLiveNotifications } from "../lib/live-notifications";
@@ -53,13 +48,13 @@ import { mobileSearchDestination } from "../lib/search-destination";
 const FALLBACK_COLOR = "#9B5CF6";
 
 type InboxItem =
-  | { type: "bot"; bot: MobileBot | PrivateSpaceBot }
-  | { type: "group"; group: MobileGroup | PrivateSpaceGroup }
+  | { type: "bot"; bot: MobileBot | SpaceBot }
+  | { type: "group"; group: MobileGroup | SpaceGroup }
   | { type: "search"; hit: SearchHit }
   | { type: "heading"; key: string; title: string };
 
-async function openMobilePrivateSpace(workspaceId: string | undefined, open: () => void) {
-  if (workspaceId) await selectPrivateSpace(workspaceId);
+async function openMobileSpace(spaceId: string | undefined, open: () => void) {
+  if (spaceId) await selectSpace(spaceId);
   open();
 }
 
@@ -67,7 +62,7 @@ export default function Home() {
   const [bots, setBots] = useState<MobileBot[]>([]);
   const [groups, setGroups] = useState<MobileGroup[]>([]);
   const [botSections, setBotSections] = useState<MobileBotSection[]>([]);
-  const [privateSpaces, setPrivateSpaces] = useState<MobilePrivateSpace[]>([]);
+  const [spaces, setSpaces] = useState<MobileSpace[]>([]);
   const [me, setMe] = useState<MobileMe | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
@@ -106,14 +101,14 @@ export default function Home() {
     setError(null);
     try {
       const [navigation, nextMe] = await Promise.all([
-        rpc<MobilePrivateSpaceNavigation>("privateSpaces/list"),
+        rpc<MobileSpaceNavigation>("spaces/list"),
         rpc<MobileMe>("me"),
       ]);
       if (requestId !== inboxRequestId.current) return;
       setBots(navigation.current.bots);
       setBotSections(navigation.current.botSections);
       setGroups(navigation.current.groups);
-      setPrivateSpaces(navigation.privateSpaces);
+      setSpaces(navigation.spaces);
       setMe(nextMe);
     } catch (err) {
       if (requestId !== inboxRequestId.current) return;
@@ -237,9 +232,9 @@ export default function Home() {
     if (query.trim() && searching) {
       return searchHits.map((hit) => ({ type: "search", hit }));
     }
-    const spaces =
-      privateSpaces.length > 0
-        ? privateSpaces.map((space) =>
+    const sidebarSpaces =
+      spaces.length > 0
+        ? spaces.map((space) =>
             space.id === me?.workspaceId
               ? { ...space, bots: visible, groups: visibleGroups, botSections }
               : {
@@ -263,8 +258,8 @@ export default function Home() {
               },
             ]
           : [];
-    const showSpaceNames = spaces.length > 1;
-    return spaces.flatMap((space) => {
+    const showSpaceNames = sidebarSpaces.length > 1;
+    return sidebarSpaces.flatMap((space) => {
       const chats = [
         ...space.bots.map((chat) => ({ type: "bot" as const, bot: chat, ...chat })),
         ...space.groups.map((chat) => ({ type: "group" as const, group: chat, ...chat })),
@@ -284,7 +279,7 @@ export default function Home() {
         ...group.bots,
       ]);
     });
-  }, [botSections, me, privateSpaces, query, searching, searchHits, visible, visibleGroups]);
+  }, [botSections, me, spaces, query, searching, searchHits, visible, visibleGroups]);
   const initials = userInitials(me?.name ?? "");
   const organizeChat = organizeTarget
     ? organizeTarget.kind === "bot"
@@ -431,7 +426,7 @@ export default function Home() {
             <GroupRow
               group={item.group}
               onPress={() => {
-                void openMobilePrivateSpace(item.group.workspaceId, () =>
+                void openMobileSpace(item.group.workspaceId, () =>
                   router.push({
                     pathname: "/group-thread",
                     params: { groupId: item.group.id, name: item.group.name },
@@ -448,7 +443,7 @@ export default function Home() {
             <BotRow
               bot={item.bot}
               onPress={() => {
-                void openMobilePrivateSpace(item.bot.workspaceId, () =>
+                void openMobileSpace(item.bot.workspaceId, () =>
                   router.push({
                     pathname: "/thread",
                     params: { botId: item.bot.id, name: item.bot.name },
@@ -624,7 +619,7 @@ function BotRow({
   onPress,
   onLongPress,
 }: {
-  bot: MobileBot | PrivateSpaceBot;
+  bot: MobileBot | SpaceBot;
   onPress: () => void;
   onLongPress?: () => void;
 }) {
@@ -694,7 +689,7 @@ function GroupRow({
   onPress,
   onLongPress,
 }: {
-  group: MobileGroup | PrivateSpaceGroup;
+  group: MobileGroup | SpaceGroup;
   onPress: () => void;
   onLongPress?: () => void;
 }) {

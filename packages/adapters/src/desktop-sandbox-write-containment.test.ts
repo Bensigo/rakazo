@@ -93,7 +93,7 @@ describe("desktop sandbox write containment without O_NOFOLLOW", () => {
     expect(await readFile(outside, "utf8")).toBe("before");
   });
 
-  it("keeps writes on the opened inode when the final name is replaced after lstat", async () => {
+  it("rejects writes when the final name is replaced after lstat", async () => {
     const { root, desktop, computer } = await fixture("swap-link");
     const target = path.join(computer.providerRef, "result.txt");
     const displaced = path.join(computer.providerRef, "result-original.txt");
@@ -108,13 +108,15 @@ describe("desktop sandbox write containment without O_NOFOLLOW", () => {
       await symlink(outside, target);
     };
 
-    await desktop.writeFile(computer, {
-      path: "result.txt",
-      content: new TextEncoder().encode("after"),
-    });
+    await expect(
+      desktop.writeFile(computer, {
+        path: "result.txt",
+        content: new TextEncoder().encode("after"),
+      }),
+    ).rejects.toThrow("Path escapes the computer workspace");
     expect(swapped).toBe(true);
     expect(await readFile(outside, "utf8")).toBe("outside-before");
-    expect(await readFile(displaced, "utf8")).toBe("after");
+    expect(await readFile(displaced, "utf8")).toBe("inside-before");
   });
 
   it("rejects a parent symlink that resolves outside the workspace", async () => {

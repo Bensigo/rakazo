@@ -2182,7 +2182,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           if (name === "create_space") {
             try {
               const space = await createSpaceForMember(deps.prisma, {
-                currentWorkspaceId: run.workspaceId,
+                currentSpaceId: run.workspaceId,
                 userId: run.userId,
                 name: String(args.name ?? ""),
               });

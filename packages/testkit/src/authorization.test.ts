@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ComposioEmulator } from "@rakazo/adapters";
-import type { appContract, PrivateSpace, PrivateSpaceNavigation } from "@rakazo/contracts";
+import type { appContract, Space, SpaceNavigation } from "@rakazo/contracts";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { sessionCookieHeader } from "./index.js";
 
@@ -66,8 +66,8 @@ describeWithDatabase("API authorization and resource isolation", () => {
       ["models/finishOAuth", { loginId: "missing-login" }],
       ["models/cancelOAuth", { loginId: "missing-login" }],
       ["models/setDefault", { provider: "test", modelId: "test/model" }],
-      ["privateSpaces/list"],
-      ["privateSpaces/create", { name: "Nope" }],
+      ["spaces/list"],
+      ["spaces/create", { name: "Nope" }],
       ["bots/list"],
       ["bots/listArchived"],
       ["bots/get", { botId: "missing-bot" }],
@@ -474,10 +474,10 @@ describeWithDatabase("API authorization and resource isolation", () => {
         createdAt: new Date(),
       },
     });
-    await handles.prisma.workspaceMember.create({
+    await handles.prisma.spaceMember.create({
       data: {
-        id: `approval-workspace-member-${stamp}`,
-        workspaceId: ownerActor.workspaceId,
+        id: `approval-space-member-${stamp}`,
+        spaceId: ownerActor.workspaceId,
         organizationId: ownerActor.workspaceId,
         userId: memberActor.userId,
         createdAt: new Date(),
@@ -509,22 +509,22 @@ describeWithDatabase("API authorization and resource isolation", () => {
     ).not.toBeNull();
   });
 
-  it("keeps private-space data and computers behind the selected workspace boundary", async () => {
-    const cookie = await signup(app, `private-spaces-${stamp}@rakazo.test`, "Space Owner");
+  it("keeps space data and computers behind the selected space boundary", async () => {
+    const cookie = await signup(app, `spaces-${stamp}@rakazo.test`, "Space Owner");
     const original = await rpc<Actor>(app, cookie, "me");
     const originalBot = await rpc<Bot>(app, cookie, "bots/create", botInput("Open source"));
-    const support = await rpc<PrivateSpace>(app, cookie, "privateSpaces/create", {
+    const support = await rpc<Space>(app, cookie, "spaces/create", {
       name: "Customer support",
     });
-    const storedSpaces = await handles.prisma.workspace.findMany({
+    const storedSpaces = await handles.prisma.space.findMany({
       where: { id: { in: [original.workspaceId, support.id] } },
       select: { id: true, organizationId: true },
     });
     expect(new Set(storedSpaces.map((space) => space.organizationId))).toEqual(
       new Set([original.workspaceId]),
     );
-    const otherOrganizationId = `private-spaces-other-org-${stamp}`;
-    const otherWorkspaceId = `private-spaces-other-workspace-${stamp}`;
+    const otherOrganizationId = `spaces-other-org-${stamp}`;
+    const otherWorkspaceId = `spaces-other-workspace-${stamp}`;
     await handles.prisma.$transaction([
       handles.prisma.organization.create({
         data: {
@@ -536,24 +536,24 @@ describeWithDatabase("API authorization and resource isolation", () => {
       }),
       handles.prisma.member.create({
         data: {
-          id: `private-spaces-other-member-${stamp}`,
+          id: `spaces-other-member-${stamp}`,
           organizationId: otherOrganizationId,
           userId: original.userId,
           role: "owner",
           createdAt: new Date(),
         },
       }),
-      handles.prisma.workspace.create({
+      handles.prisma.space.create({
         data: {
           id: otherWorkspaceId,
           organizationId: otherOrganizationId,
-          name: "Other company workspace",
+          name: "Other company space",
         },
       }),
-      handles.prisma.workspaceMember.create({
+      handles.prisma.spaceMember.create({
         data: {
-          id: `private-spaces-other-workspace-member-${stamp}`,
-          workspaceId: otherWorkspaceId,
+          id: `spaces-other-space-member-${stamp}`,
+          spaceId: otherWorkspaceId,
           organizationId: otherOrganizationId,
           userId: original.userId,
           createdAt: new Date(),
@@ -574,14 +574,14 @@ describeWithDatabase("API authorization and resource isolation", () => {
     await expectDenied(app, cookie, "bots/get", { botId: supportBot.id });
     await expectDenied(app, cookie, "bots/get", { botId: originalBot.id }, support.id);
 
-    const navigation = await rpc<PrivateSpaceNavigation>(app, cookie, "privateSpaces/list");
+    const navigation = await rpc<SpaceNavigation>(app, cookie, "spaces/list");
     expect(navigation.current).toEqual(
       expect.objectContaining({
         id: original.workspaceId,
         bots: [expect.objectContaining({ id: originalBot.id })],
       }),
     );
-    expect(navigation.privateSpaces).toEqual(
+    expect(navigation.spaces).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: original.workspaceId,
@@ -594,13 +594,13 @@ describeWithDatabase("API authorization and resource isolation", () => {
         }),
       ]),
     );
-    expect(navigation.privateSpaces).not.toEqual(
+    expect(navigation.spaces).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ id: otherWorkspaceId })]),
     );
-    const supportNavigation = await rpc<PrivateSpaceNavigation>(
+    const supportNavigation = await rpc<SpaceNavigation>(
       app,
       cookie,
-      "privateSpaces/list",
+      "spaces/list",
       {},
       support.id,
     );
@@ -610,16 +610,14 @@ describeWithDatabase("API authorization and resource isolation", () => {
         bots: [expect.objectContaining({ id: supportBot.id })],
       }),
     );
-    const otherOrganizationNavigation = await rpc<PrivateSpaceNavigation>(
+    const otherOrganizationNavigation = await rpc<SpaceNavigation>(
       app,
       cookie,
-      "privateSpaces/list",
+      "spaces/list",
       {},
       otherWorkspaceId,
     );
-    expect(otherOrganizationNavigation.privateSpaces.map((space) => space.id)).toEqual([
-      otherWorkspaceId,
-    ]);
+    expect(otherOrganizationNavigation.spaces.map((space) => space.id)).toEqual([otherWorkspaceId]);
 
     const storedBots = await handles.prisma.bot.findMany({
       where: { id: { in: [originalBot.id, supportBot.id] } },
@@ -631,28 +629,28 @@ describeWithDatabase("API authorization and resource isolation", () => {
     expect(storedSupport?.workspaceId).toBe(support.id);
     expect(storedOriginal?.computerId).not.toBe(storedSupport?.computerId);
 
-    const intruder = await signup(app, `private-spaces-intruder-${stamp}@rakazo.test`, "Intruder");
+    const intruder = await signup(app, `spaces-intruder-${stamp}@rakazo.test`, "Intruder");
     await expectDenied(app, intruder, "bots/list", {}, support.id);
   });
 
-  it("enforces the private-space limit across concurrent creation requests", async () => {
-    const cookie = await signup(app, `private-space-limit-${stamp}@rakazo.test`, "Space Limit");
+  it("enforces the space limit across concurrent creation requests", async () => {
+    const cookie = await signup(app, `space-limit-${stamp}@rakazo.test`, "Space Limit");
     const actor = await rpc<Actor>(app, cookie, "me");
-    const currentWorkspace = await handles.prisma.workspace.findUniqueOrThrow({
+    const currentSpace = await handles.prisma.space.findUniqueOrThrow({
       where: { id: actor.workspaceId },
       select: { organizationId: true },
     });
     const extraSpaces = Array.from({ length: 30 }, (_, index) => ({
       id: `limit-space-${stamp}-${index}`,
-      organizationId: currentWorkspace.organizationId,
+      organizationId: currentSpace.organizationId,
       name: `Limit space ${index}`,
       createdAt: new Date(),
     }));
-    await handles.prisma.workspace.createMany({ data: extraSpaces });
-    await handles.prisma.workspaceMember.createMany({
+    await handles.prisma.space.createMany({ data: extraSpaces });
+    await handles.prisma.spaceMember.createMany({
       data: extraSpaces.map((space, index) => ({
         id: `limit-member-${stamp}-${index}`,
-        workspaceId: space.id,
+        spaceId: space.id,
         organizationId: space.organizationId,
         userId: actor.userId,
         createdAt: space.createdAt,
@@ -660,15 +658,15 @@ describeWithDatabase("API authorization and resource isolation", () => {
     });
 
     const results = await Promise.allSettled([
-      rpc<PrivateSpace>(app, cookie, "privateSpaces/create", { name: "Concurrent A" }),
-      rpc<PrivateSpace>(app, cookie, "privateSpaces/create", { name: "Concurrent B" }),
+      rpc<Space>(app, cookie, "spaces/create", { name: "Concurrent A" }),
+      rpc<Space>(app, cookie, "spaces/create", { name: "Concurrent B" }),
     ]);
 
     expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
     expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
     await expect(
-      handles.prisma.workspaceMember.count({
-        where: { userId: actor.userId, organizationId: currentWorkspace.organizationId },
+      handles.prisma.spaceMember.count({
+        where: { userId: actor.userId, organizationId: currentSpace.organizationId },
       }),
     ).resolves.toBe(32);
   });

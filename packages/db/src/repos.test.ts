@@ -57,7 +57,7 @@ describe("createRepos.listBots", () => {
   });
 });
 
-describe("createRepos.listPrivateSpaceBotsForWorkspaces", () => {
+describe("createRepos.listSpaceBotsForSpaces", () => {
   it("loads and maps only the compact cross-space sidebar fields", async () => {
     const findMany = vi.fn(async (_query: { where: unknown; select: Record<string, unknown> }) => [
       {
@@ -79,7 +79,7 @@ describe("createRepos.listPrivateSpaceBotsForWorkspaces", () => {
     ]);
     const repos = createRepos({ bot: { findMany } } as unknown as PrismaClient);
 
-    await expect(repos.listPrivateSpaceBotsForWorkspaces(actor, ["ws-2"])).resolves.toEqual([
+    await expect(repos.listSpaceBotsForSpaces(actor, ["ws-2"])).resolves.toEqual([
       {
         id: "bot-2",
         workspaceId: "ws-2",

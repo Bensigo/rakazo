@@ -2852,8 +2852,8 @@ msgid "Working…"
 msgstr "처리 중…"
 
 #: src/pages/Shell.tsx:4905
-msgid "Workspace default"
-msgstr "작업공간 기본값"
+msgid "Space default"
+msgstr "스페이스 기본값"
 
 #: src/pages/Shell.tsx:1257
 #: src/pages/Shell.tsx:1851

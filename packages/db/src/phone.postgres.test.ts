@@ -53,15 +53,15 @@ describePostgres("provisionPhoneIdentity (PostgreSQL)", () => {
     expect(org!.name).toBe("Personal");
     expect(org!.slug).toBe(`user-${result.userId.slice(0, 12)}`);
 
-    const workspace = await prisma.workspace.findUnique({
+    const space = await prisma.space.findUnique({
       where: { id: result.workspaceId },
       include: { memberships: true },
     });
-    expect(workspace).toMatchObject({
+    expect(space).toMatchObject({
       organizationId: org!.id,
       name: "Personal",
     });
-    expect(workspace!.memberships).toEqual([expect.objectContaining({ userId: result.userId })]);
+    expect(space!.memberships).toEqual([expect.objectContaining({ userId: result.userId })]);
 
     const bot = await prisma.bot.findUnique({
       where: { id: result.botId },

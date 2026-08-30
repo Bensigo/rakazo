@@ -2852,8 +2852,8 @@ msgid "Working…"
 msgstr "Working…"
 
 #: src/pages/Shell.tsx:4905
-msgid "Workspace default"
-msgstr "Workspace default"
+msgid "Space default"
+msgstr "Space default"
 
 #: src/pages/Shell.tsx:1257
 #: src/pages/Shell.tsx:1851

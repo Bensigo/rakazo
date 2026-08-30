@@ -4,7 +4,7 @@ import {
   GROUP_MEMBER_MIN,
   type Group,
   type GroupMember,
-  type PrivateSpaceGroup,
+  type SpaceGroup,
 } from "@rakazo/contracts";
 import type { Prisma, PrismaClient } from "./client.js";
 import { IsolationError } from "./scope.js";
@@ -35,7 +35,7 @@ type GroupRecord = {
   }>;
 };
 
-type PrivateSpaceGroupRecord = Pick<
+type SpaceGroupRecord = Pick<
   GroupRecord,
   "id" | "workspaceId" | "name" | "pinned" | "sectionId" | "updatedAt" | "members"
 > & {
@@ -73,7 +73,7 @@ function mapGroup(group: GroupRecord): Group {
   };
 }
 
-function mapPrivateSpaceGroup(group: PrivateSpaceGroupRecord): PrivateSpaceGroup {
+function mapSpaceGroup(group: SpaceGroupRecord): SpaceGroup {
   if (!group.thread) throw new IsolationError("Group is missing its thread");
   return {
     id: group.id,
@@ -162,14 +162,11 @@ const groupTargetInclude = {
 } as const;
 
 export function createGroupRepos(prisma: PrismaClient) {
-  async function listPrivateSpaceGroupsForWorkspaces(
-    actor: Actor,
-    workspaceIds: string[],
-  ): Promise<PrivateSpaceGroup[]> {
-    if (workspaceIds.length === 0) return [];
+  async function listSpaceGroupsForSpaces(actor: Actor, spaceIds: string[]): Promise<SpaceGroup[]> {
+    if (spaceIds.length === 0) return [];
     const groups = await prisma.chatGroup.findMany({
       where: {
-        workspaceId: { in: workspaceIds },
+        workspaceId: { in: spaceIds },
         userId: actor.userId,
         archivedAt: null,
       },
@@ -196,7 +193,7 @@ export function createGroupRepos(prisma: PrismaClient) {
     });
     return groups
       .filter((group) => hasMinimumActiveMembers(group.members))
-      .map((group) => mapPrivateSpaceGroup(group));
+      .map((group) => mapSpaceGroup(group));
   }
 
   return {
@@ -215,7 +212,7 @@ export function createGroupRepos(prisma: PrismaClient) {
         .map((group) => mapGroup(group as GroupRecord));
     },
 
-    listPrivateSpaceGroupsForWorkspaces,
+    listSpaceGroupsForSpaces,
 
     async getGroup(actor: Actor, groupId: string, options: { includeArchived?: boolean } = {}) {
       const group = await prisma.chatGroup.findFirst({

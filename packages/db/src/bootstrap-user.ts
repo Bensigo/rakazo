@@ -18,7 +18,7 @@ function isUniqueViolation(error: unknown): boolean {
 
 /**
  * Everything a brand-new user needs around their account row: a personal
- * organization, its default workspace, owner memberships for both boundaries,
+ * organization, its default space, owner memberships for both boundaries,
  * deployment-owner claim, user memory, and notification preferences. Shared by
  * the Better Auth `user.create.after` hook and phone-identity provisioning so
  * both paths stay in lockstep.
@@ -60,7 +60,7 @@ export async function bootstrapUserWorkspace(
     .catch((error: unknown) => {
       if (!isUniqueViolation(error)) throw error;
     });
-  await prisma.workspace
+  await prisma.space
     .create({
       data: {
         id: orgId,
@@ -72,11 +72,11 @@ export async function bootstrapUserWorkspace(
     .catch((error: unknown) => {
       if (!isUniqueViolation(error)) throw error;
     });
-  await prisma.workspaceMember
+  await prisma.spaceMember
     .create({
       data: {
         id: newId(),
-        workspaceId: orgId,
+        spaceId: orgId,
         organizationId: orgId,
         userId: user.id,
         createdAt: new Date(),

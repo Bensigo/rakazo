@@ -15,10 +15,10 @@ import type {
   MessageBlock,
   ModelCatalogEntry,
   ModelCredential,
-  PrivateSpace,
   ProductEvent,
   Routine,
   SearchHit,
+  Space,
   TaughtSkill,
   ThinkingLevel,
   ThreadMessage,
@@ -136,12 +136,7 @@ import { connectMcpOauth } from "../lib/mcp-connect";
 import { copyableMessageText } from "../lib/message-text";
 import { isFileDrag, revokePendingAttachmentPreviews } from "../lib/pending-attachments";
 import { markAfterPaint, markOnce } from "../lib/performance";
-import {
-  clearPrivateSpaceSelection,
-  rpc,
-  selectedPrivateSpaceId,
-  selectPrivateSpace,
-} from "../lib/rpc";
+import { clearSpaceSelection, rpc, selectedSpaceId, selectSpace } from "../lib/rpc";
 import {
   activeThreadRuns,
   clearActiveThreadRuns,
@@ -284,7 +279,7 @@ export function ShellPage() {
   const pendingBotOrderRef = useRef<string[] | null>(null);
   const savingBotOrderRef = useRef(false);
   const [botSections, setBotSections] = useState<BotSection[]>([]);
-  const [privateSpaces, setPrivateSpaces] = useState<PrivateSpace[]>([]);
+  const [spaces, setSpaces] = useState<Space[]>([]);
   const [archivedBots, setArchivedBots] = useState<Bot[]>([]);
   const [archivedGroups, setArchivedGroups] = useState<Group[]>([]);
   const [archivedOpen, setArchivedOpen] = useState(false);
@@ -394,7 +389,7 @@ export function ShellPage() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [draggedBotId, setDraggedBotId] = useState<string | null>(null);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
-  const [newPrivateSpaceOpen, setNewPrivateSpaceOpen] = useState(false);
+  const [newSpaceOpen, setNewSpaceOpen] = useState(false);
   const [activityMode, setActivityMode] = useState(readActivityMode);
   const toggleActivityMode = useCallback(() => {
     setActivityMode((on) => {
@@ -617,7 +612,7 @@ export function ShellPage() {
       botsRefreshInFlight.current += 1;
       try {
         const [navigation, archived, archivedGroupList] = await Promise.all([
-          rpc.privateSpaces.list(),
+          rpc.spaces.list(),
           includeArchived ? rpc.bots.listArchived() : Promise.resolve(null),
           includeArchived ? rpc.groups.listArchived() : Promise.resolve(null),
         ]);
@@ -641,7 +636,7 @@ export function ShellPage() {
         }
         setBotSections(sections);
         setGroups(groupList);
-        setPrivateSpaces(navigation.privateSpaces);
+        setSpaces(navigation.spaces);
         setInitialBotsLoaded(true);
         botsRefreshApplied.current = request;
         if (
@@ -857,7 +852,7 @@ export function ShellPage() {
           setArchivedBots(bootstrap.archivedBots);
           setArchivedGroups(bootstrap.archivedGroups);
           setGroups(groupList);
-          setPrivateSpaces(bootstrap.privateSpaces);
+          setSpaces(bootstrap.spaces);
           setInitialBotsLoaded(true);
         }
         if (!groupId && bootstrap.thread) {
@@ -1305,9 +1300,9 @@ export function ShellPage() {
 
   const sidebarGroups = useMemo(() => {
     const needle = query.toLowerCase();
-    const spaces =
-      privateSpaces.length > 0
-        ? privateSpaces.map((space) =>
+    const sidebarSpaces =
+      spaces.length > 0
+        ? spaces.map((space) =>
             space.id === bootstrapMe?.workspaceId ? { ...space, bots, groups, botSections } : space,
           )
         : bootstrapMe
@@ -1321,8 +1316,8 @@ export function ShellPage() {
               },
             ]
           : [];
-    const showSpaceNames = spaces.length > 1;
-    return spaces.flatMap((space) => {
+    const showSpaceNames = sidebarSpaces.length > 1;
+    return sidebarSpaces.flatMap((space) => {
       const visibleBots = space.bots.filter((bot) =>
         `${bot.name} ${bot.title ?? ""} ${bot.preview ?? ""}`.toLowerCase().includes(needle),
       );
@@ -1347,7 +1342,7 @@ export function ShellPage() {
         emptyWorkspaceId: undefined as string | undefined,
       }));
       if (sections.length > 0) return sections;
-      // Keep empty private spaces selectable; chat clicks are the only switch control.
+      // Keep empty spaces selectable; chat clicks are the only switch control.
       if (!showSpaceNames) return [];
       if (needle && (space.bots.length > 0 || space.groups.length > 0)) return [];
       return [
@@ -1360,18 +1355,18 @@ export function ShellPage() {
         },
       ];
     });
-  }, [bootstrapMe, botSections, bots, groups, privateSpaces, query]);
+  }, [bootstrapMe, botSections, bots, groups, spaces, query]);
 
-  const openPrivateSpaceChat = useCallback(
-    (workspaceId: string, path: string) => {
+  const openSpaceChat = useCallback(
+    (spaceId: string, path: string) => {
       setMobileSidebarOpen(false);
-      const previousSpaceId = selectedPrivateSpaceId();
-      // Persist the active workspace id (including primary) so voice/RPC headers match the chat.
-      const selectionStored = selectPrivateSpace(workspaceId);
+      const previousSpaceId = selectedSpaceId();
+      // Persist the active space (including primary) so voice/RPC headers match the chat.
+      const selectionStored = selectSpace(spaceId);
       if (!selectionStored) return;
       const previousEffective = previousSpaceId ?? bootstrapMe?.workspaceId;
-      const boundaryChanged = previousEffective !== workspaceId;
-      // Soft-navigate within the same workspace; reload only when the auth boundary changes
+      const boundaryChanged = previousEffective !== spaceId;
+      // Soft-navigate within the same space; reload only when the auth boundary changes
       // so bootstrapped bots/groups match the request header.
       if (boundaryChanged) {
         window.location.assign(path);
@@ -2322,7 +2317,7 @@ export function ShellPage() {
                   className="flex w-full items-center gap-2 px-3.5 py-2 text-start text-[14px] text-[#ECECEE] hover:bg-[#1A1A1D]"
                   onClick={() => {
                     setCreateMenuOpen(false);
-                    setNewPrivateSpaceOpen(true);
+                    setNewSpaceOpen(true);
                   }}
                 >
                   <Lock size={14} strokeWidth={1.8} aria-hidden="true" />
@@ -2373,7 +2368,7 @@ export function ShellPage() {
                           className="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium text-[#6C6C70] hover:bg-[#1A1A1D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#8B5CF6]"
                           onClick={() => {
                             if (group.emptyWorkspaceId) {
-                              openPrivateSpaceChat(group.emptyWorkspaceId, "/onboarding");
+                              openSpaceChat(group.emptyWorkspaceId, "/onboarding");
                               return;
                             }
                             toggleSidebarSection(group.key);
@@ -2455,7 +2450,7 @@ export function ShellPage() {
                             reorderRosterBot(item.chat.id, target, groupBotIds);
                           }}
                           onClick={() => {
-                            openPrivateSpaceChat(
+                            openSpaceChat(
                               item.chat.workspaceId,
                               item.kind === "bot"
                                 ? `/app/${item.chat.id}`
@@ -2742,7 +2737,7 @@ export function ShellPage() {
                 type="button"
                 onClick={() =>
                   void authClient.signOut().then(() => {
-                    clearPrivateSpaceSelection();
+                    clearSpaceSelection();
                     navigate("/");
                   })
                 }
@@ -3482,13 +3477,13 @@ export function ShellPage() {
           />
         ) : null}
 
-        {newPrivateSpaceOpen ? (
-          <NewPrivateSpaceDialog
-            onCancel={() => setNewPrivateSpaceOpen(false)}
+        {newSpaceOpen ? (
+          <NewSpaceDialog
+            onCancel={() => setNewSpaceOpen(false)}
             onConfirm={async (name) => {
-              const space = await rpc.privateSpaces.create({ name });
-              if (!selectPrivateSpace(space.id)) {
-                setNewPrivateSpaceOpen(false);
+              const space = await rpc.spaces.create({ name });
+              if (!selectSpace(space.id)) {
+                setNewSpaceOpen(false);
                 await refreshBots();
                 return;
               }
@@ -5477,7 +5472,7 @@ function BotSettings({
             className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
           >
             <option value="">
-              {t`Workspace default`}
+              {t`Space default`}
               {me?.defaultModel
                 ? ` (${catalogLabel(catalog, me.defaultProvider, me.defaultModel) ?? me.defaultModel})`
                 : ""}
@@ -5649,7 +5644,7 @@ function catalogLabel(
   return catalog.find((entry) => entry.provider === provider && entry.id === modelId)?.label;
 }
 
-function NewPrivateSpaceDialog({
+function NewSpaceDialog({
   onCancel,
   onConfirm,
 }: {
@@ -5691,13 +5686,13 @@ function NewPrivateSpaceDialog({
       <BuiCard
         role="dialog"
         aria-modal="true"
-        aria-labelledby="new-private-space-title"
+        aria-labelledby="new-space-title"
         className="w-full max-w-[420px] border border-[#343438] p-5"
         onPointerDown={(event) => event.stopPropagation()}
       >
         <div className="flex items-center gap-2.5">
           <Lock size={17} strokeWidth={1.8} className="text-[#A78BFA]" aria-hidden="true" />
-          <h2 id="new-private-space-title" className="text-[17px] font-medium text-[#F1F1F2]">
+          <h2 id="new-space-title" className="text-[17px] font-medium text-[#F1F1F2]">
             <Trans>New space</Trans>
           </h2>
         </div>

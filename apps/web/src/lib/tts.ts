@@ -1,4 +1,4 @@
-import { rpc, selectedPrivateSpaceId, withPrivateSpaceHeaders } from "./rpc.js";
+import { rpc, selectedSpaceId, withSpaceHeaders } from "./rpc.js";
 
 export type SpeechStatus = "idle" | "preparing" | "speaking";
 
@@ -78,13 +78,13 @@ export class Speaker {
     const controller = new AbortController();
     this.request = controller;
     const live = () => this.token === mine && !controller.signal.aborted;
-    const workspaceId = selectedPrivateSpaceId();
+    const spaceId = selectedSpaceId();
 
     this.set({ status: "preparing", botId: opts.botId, messageId: opts.messageId });
     let utterances: string[];
     try {
       utterances = await withAbort(controller.signal, () =>
-        this.prepare(text, opts, controller.signal, workspaceId),
+        this.prepare(text, opts, controller.signal, spaceId),
       );
     } catch (error) {
       if (live()) {
@@ -102,7 +102,7 @@ export class Speaker {
 
     type Rendered = { blob: Blob; error?: never } | { blob?: never; error: unknown };
     const render = (utterance: string): Promise<Rendered> =>
-      this.render(utterance, opts, controller.signal, workspaceId).then(
+      this.render(utterance, opts, controller.signal, spaceId).then(
         (blob) => ({ blob }),
         (error: unknown) => ({ error }),
       );
@@ -145,11 +145,11 @@ export class Speaker {
     text: string,
     opts: SpeakOptions,
     signal: AbortSignal,
-    workspaceId: string | null,
+    spaceId: string | null,
   ): Promise<string[]> {
     const body = await rpc.voice.prepare(
       { text, voiceId: opts.voiceId, botId: opts.botId },
-      { signal, context: { privateSpaceId: workspaceId } },
+      { signal, context: { spaceId } },
     );
     if (!body.ready) {
       throw new Error("Add a voice provider key and pick a voice in Voice settings.");
@@ -161,11 +161,11 @@ export class Speaker {
     text: string,
     opts: SpeakOptions,
     signal: AbortSignal,
-    workspaceId: string | null,
+    spaceId: string | null,
   ): Promise<Blob> {
     const res = await fetch("/api/voice/speak", {
       method: "POST",
-      headers: withPrivateSpaceHeaders({ "content-type": "application/json" }, workspaceId),
+      headers: withSpaceHeaders({ "content-type": "application/json" }, spaceId),
       credentials: "include",
       body: JSON.stringify({ text, voiceId: opts.voiceId, botId: opts.botId }),
       signal,

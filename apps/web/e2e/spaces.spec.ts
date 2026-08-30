@@ -5,7 +5,7 @@ test("spaces stay invisible by default and chat creation requires approval", asy
   page,
 }, testInfo) => {
   const stamp = Date.now();
-  await signup(page, `private-spaces-${stamp}@rakazo.test`, "password12", "Space Owner");
+  await signup(page, `spaces-${stamp}@rakazo.test`, "password12", "Space Owner");
   await completeOnboarding(page);
 
   const sidebar = page.locator("aside").first();
@@ -48,14 +48,14 @@ test("spaces stay invisible by default and chat creation requires approval", asy
   await supportSpace.getByRole("button", { name: "Open Customer support" }).click();
   await page.waitForURL(/\/onboarding/);
   await expect
-    .poll(() => page.evaluate(() => window.localStorage.getItem("rakazo:private-space-id")))
+    .poll(() => page.evaluate(() => window.localStorage.getItem("rakazo:space-id")))
     .toBe(supportSpaceId);
   await completeOnboarding(page);
 
   await expect(sidebar.getByText("Personal", { exact: true })).toBeVisible();
   await expect(sidebar.getByText("Customer support", { exact: true })).toBeVisible();
   await expect(sidebar.getByRole("button", { name: /^Chief/ })).toHaveCount(2);
-  await captureScreenshot(page, testInfo, "private-spaces-sidebar");
+  await captureScreenshot(page, testInfo, "spaces-sidebar");
 
   const personalSpace = sidebar
     .locator('[data-sidebar-group^="space:"]')
@@ -66,7 +66,7 @@ test("spaces stay invisible by default and chat creation requires approval", asy
   await personalSpace.getByRole("button", { name: /^Chief/ }).click();
   await page.waitForURL(/\/app\/[^/]+$/);
   await expect
-    .poll(() => page.evaluate(() => window.localStorage.getItem("rakazo:private-space-id")))
+    .poll(() => page.evaluate(() => window.localStorage.getItem("rakazo:space-id")))
     .toBe(personalSpaceId);
   await expect(sidebar.getByText("Customer support", { exact: true })).toBeVisible();
 });

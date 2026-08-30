@@ -2852,8 +2852,8 @@ msgid "Working…"
 msgstr "Çalışıyor…"
 
 #: src/pages/Shell.tsx:4905
-msgid "Workspace default"
-msgstr "Çalışma alanı varsayılanı"
+msgid "Space default"
+msgstr "Alan varsayılanı"
 
 #: src/pages/Shell.tsx:1257
 #: src/pages/Shell.tsx:1851
