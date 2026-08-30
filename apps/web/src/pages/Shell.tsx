@@ -137,8 +137,8 @@ import { markAfterPaint, markOnce } from "../lib/performance";
 import {
   clearPrivateSpaceSelection,
   rpc,
-  selectPrivateSpace,
   selectedPrivateSpaceId,
+  selectPrivateSpace,
 } from "../lib/rpc";
 import {
   activeThreadRuns,
