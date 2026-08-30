@@ -384,6 +384,8 @@ export function describeToolActivity(toolName: string, args: unknown): string {
   if (toolName === "computer_act") return "Operating the computer";
   if (toolName === "run_subagent") return `Delegating to helper: ${detail(record.name)}`;
   if (toolName === "remember") return "Saving a note to memory";
+  if (toolName === "web_search") return `Searching the web: ${detail(record.query)}`;
+  if (toolName === "web_fetch") return `Reading page: ${detail(redactActivityUrl(record.url))}`;
   if (toolName === "skill_read") return `Reading skill: ${detail(record.name)}`;
   if (toolName === "skill_create") return `Creating skill: ${detail(record.name ?? "skill")}`;
   if (toolName === "skill_update")
@@ -917,6 +919,23 @@ function sanitizeSensitiveText(message: string) {
       "$1[redacted]",
     )
     .replace(/((?:auth|authorization)\s*[=:]\s*)(?!Bearer\b)[^\s"',;&]+/gi, "$1[redacted]");
+}
+
+/** Origin + path only for activity chips; drop userinfo, query, and fragment. */
+function redactActivityUrl(value: unknown): string {
+  const raw = String(value ?? "").trim();
+  if (!raw) return raw;
+  try {
+    const url = new URL(raw);
+    url.username = "";
+    url.password = "";
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    // Never echo unparsed input — it may still contain userinfo/secrets.
+    return "[invalid URL]";
+  }
 }
 
 function sanitizeError(message: string) {

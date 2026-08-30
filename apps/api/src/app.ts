@@ -20,6 +20,7 @@ import {
   createRunExecutor,
   createRunSandbox,
   createRunSecretWriter,
+  createWebProvider,
   type DestinationEmulator,
   destroyBot,
   EncryptedSecretStore,
@@ -255,6 +256,7 @@ export async function createApp(
     jobs,
     events,
     phone: messaging ? createPhoneContextLoader(prisma) : undefined,
+    web: createWebProvider(),
   });
 
   const jobHandlers = createBackgroundJobHandlers({
