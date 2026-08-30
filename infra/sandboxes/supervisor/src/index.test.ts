@@ -16,6 +16,7 @@ import {
   DOCKER_BROWSER_ALIASES,
   demuxDockerStream,
   ensureScreenCommand,
+  hasComputerIdentity,
   hasValidBearerToken,
   interactiveScreenCommand,
   isComputerControlUnavailable,
@@ -195,6 +196,30 @@ describe("sandbox supervisor input containment", () => {
     expect(() =>
       assertRequestIdentity("bot", "other", { botId: "bot", spaceId: "workspace" }),
     ).toThrow(/identity mismatch/);
+  });
+
+  it("accepts the legacy workspace label without weakening container identity", () => {
+    expect(
+      hasComputerIdentity({ "rakazo.botId": "bot", "rakazo.workspaceId": "space" }, "bot", "space"),
+    ).toBe(true);
+    expect(
+      hasComputerIdentity(
+        { "rakazo.botId": "bot", "rakazo.workspaceId": "other-space" },
+        "bot",
+        "space",
+      ),
+    ).toBe(false);
+    expect(
+      hasComputerIdentity(
+        {
+          "rakazo.botId": "bot",
+          "rakazo.spaceId": "space",
+          "rakazo.workspaceId": "other-space",
+        },
+        "bot",
+        "space",
+      ),
+    ).toBe(true);
   });
 
   it("bounds scroll and wait actions before sending them to the computer", () => {

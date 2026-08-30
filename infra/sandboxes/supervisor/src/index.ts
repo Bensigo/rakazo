@@ -41,6 +41,7 @@ import {
   containerActionSteps,
   demuxDockerStream,
   ensureScreenCommand,
+  hasComputerIdentity,
   hasValidBearerToken,
   interactiveScreenCommand,
   isComputerControlUnavailable,
@@ -643,7 +644,9 @@ async function findBotContainer(botId: string, spaceId: string) {
   const listed = await docker.listContainers({
     all: true,
     filters: {
-      label: [`rakazo.botId=${botId}`, `rakazo.spaceId=${spaceId}`],
+      // Space IDs were preserved when workspaces became Spaces. Search by the
+      // stable bot label, then validate either generation of the Space label.
+      label: [`rakazo.botId=${botId}`],
     },
   });
   for (const item of listed) {
@@ -688,7 +691,7 @@ async function managedScreen(
 function isRakazoContainer(info: Docker.ContainerInspectInfo, botId: string, spaceId: string) {
   const labels = info.Config.Labels ?? {};
   const managed = labels["rakazo.managed"] === "true" || info.Config.Image === COMPUTER_IMAGE;
-  return managed && labels["rakazo.botId"] === botId && labels["rakazo.spaceId"] === spaceId;
+  return managed && hasComputerIdentity(labels, botId, spaceId);
 }
 
 function assertBotHomePath(homePath: string, botId: string) {

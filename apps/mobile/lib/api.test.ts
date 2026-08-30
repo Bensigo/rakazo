@@ -15,6 +15,7 @@ import {
   rpc,
   saveApiBase,
   selectedSpaceId,
+  selectInitialSpace,
   selectSpace,
   shouldApplyMobileThreadRefresh,
   signIn,
@@ -69,6 +70,22 @@ describe("mobile API authentication", () => {
       }),
     );
     expect(SecureStore.setItemAsync).toHaveBeenCalledWith("rakazo.session_token", "session-token");
+    expect(resumeLiveNotifications).not.toHaveBeenCalled();
+  });
+
+  it("starts notifications only after the inbox selects the default space", async () => {
+    vi.mocked(SecureStore.getItemAsync).mockImplementation(async (key) =>
+      key === "rakazo.session_token" ? "session-token" : null,
+    );
+
+    await expect(selectInitialSpace("space-default")).resolves.toBe(true);
+
+    expect(selectedSpaceId()).toBe("space-default");
+    expect(resumeLiveNotifications).toHaveBeenCalledWith(
+      "http://127.0.0.1:3100",
+      "session-token",
+      "space-default",
+    );
   });
 
   it("surfaces the server message and does not persist a failed sign-in", async () => {

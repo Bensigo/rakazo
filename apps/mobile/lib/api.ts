@@ -92,6 +92,11 @@ export function selectedSpaceId(): string | null {
   return cachedSpaceId || null;
 }
 
+export async function selectInitialSpace(id: string) {
+  if (selectedSpaceId()) return true;
+  return selectSpace(id);
+}
+
 async function clearSpace(): Promise<boolean> {
   const spaceCleared = await clearStoredValue(SPACE_KEY);
   const rollbackCleared = await clearStoredValue(SPACE_ROLLBACK_KEY);
@@ -295,7 +300,6 @@ export async function signIn(email: string, password: string) {
   if (!token) throw new Error("Sign-in did not return a session");
   if (!(await clearSpace())) throw new Error("Could not clear the previous space");
   await saveSessionToken(token);
-  await resumeLiveNotifications(currentApiBase(), token, "").catch(() => undefined);
 }
 
 export async function signOut() {

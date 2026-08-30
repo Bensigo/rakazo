@@ -36,6 +36,7 @@ import {
   type MobileSpaceNavigation,
   rpc,
   selectedSpaceId,
+  selectInitialSpace,
   selectSpace,
 } from "../lib/api";
 import { botTag, filterBots, formatThreadTime, userInitials } from "../lib/inbox";
@@ -108,6 +109,10 @@ export default function Home() {
         rpc<MobileSpaceNavigation>("spaces/list"),
         rpc<MobileMe>("me"),
       ]);
+      if (requestId !== inboxRequestId.current) return;
+      if (!(await selectInitialSpace(nextMe.spaceId))) {
+        throw new Error("Could not save the default space");
+      }
       if (requestId !== inboxRequestId.current) return;
       setBots(navigation.current.bots);
       setBotSections(navigation.current.botSections);

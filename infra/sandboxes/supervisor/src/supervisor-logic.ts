@@ -50,6 +50,15 @@ export function assertRequestIdentity(
   }
 }
 
+export function hasComputerIdentity(
+  labels: Record<string, string> | undefined,
+  botId: string,
+  spaceId: string,
+) {
+  const labeledSpaceId = labels?.["rakazo.spaceId"] ?? labels?.["rakazo.workspaceId"];
+  return labels?.["rakazo.botId"] === botId && labeledSpaceId === spaceId;
+}
+
 export function hasValidBearerToken(authorization: string | undefined, expectedToken: string) {
   const supplied = authorization?.startsWith("Bearer ") ? authorization.slice(7) : "";
   const actual = Buffer.from(expectedToken);
