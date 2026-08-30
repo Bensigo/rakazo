@@ -1319,13 +1319,13 @@ export function ShellPage() {
       setMobileSidebarOpen(false);
       if (workspaceId === bootstrapMe?.workspaceId) {
         clearPrivateSpaceSelection();
-        navigate(path);
-        return;
+      } else {
+        selectPrivateSpace(workspaceId);
       }
-      selectPrivateSpace(workspaceId);
+      // Full reload so bots/groups bootstrap matches the selected workspace boundary.
       window.location.assign(path);
     },
-    [bootstrapMe?.workspaceId, navigate],
+    [bootstrapMe?.workspaceId],
   );
   const toggleSidebarSection = useCallback(
     (key: string) => {
