@@ -1,5 +1,7 @@
--- Add the replacement constraints without scanning existing rows. Each
--- statement commits independently so locks are released before the next table.
+-- Add the replacement constraints without scanning existing rows. NOT VALID
+-- keeps every ACCESS EXCLUSIVE lock below to a metadata-only change; Prisma
+-- applies this file as one transaction, so the locks are held together until
+-- the file commits rather than table by table.
 ALTER TABLE "action_approval_rules" ADD CONSTRAINT "action_approval_rules_workspace_fkey" FOREIGN KEY ("workspaceId") REFERENCES "workspaces"("id") ON DELETE CASCADE ON UPDATE CASCADE NOT VALID;
 ALTER TABLE "action_auto_review_preferences" ADD CONSTRAINT "action_auto_review_preferences_workspace_fkey" FOREIGN KEY ("workspaceId") REFERENCES "workspaces"("id") ON DELETE CASCADE ON UPDATE CASCADE NOT VALID;
 ALTER TABLE "bots" ADD CONSTRAINT "bots_workspace_fkey" FOREIGN KEY ("workspaceId") REFERENCES "workspaces"("id") ON DELETE CASCADE ON UPDATE CASCADE NOT VALID;

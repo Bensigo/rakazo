@@ -1,5 +1,7 @@
--- PostgreSQL validates with a lighter lock than adding an immediately valid
--- foreign key, and each table releases that lock before the next validation.
+-- The row scans happen here, under SHARE UPDATE EXCLUSIVE instead of the
+-- ACCESS EXCLUSIVE an immediately valid foreign key would take, so reads and
+-- writes keep running. Prisma applies this file as one transaction: the locks
+-- span every validation, but they never block application traffic.
 ALTER TABLE "action_approval_rules" VALIDATE CONSTRAINT "action_approval_rules_workspace_fkey";
 ALTER TABLE "action_auto_review_preferences" VALIDATE CONSTRAINT "action_auto_review_preferences_workspace_fkey";
 ALTER TABLE "bots" VALIDATE CONSTRAINT "bots_workspace_fkey";
