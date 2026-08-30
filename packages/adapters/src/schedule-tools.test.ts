@@ -94,9 +94,10 @@ describe("filterBuiltinToolsForThread", () => {
     { name: "remember" },
   ];
 
-  it("keeps handoff only in groups and hides schedule tools outside 1:1", () => {
+  it("keeps handoff and schedule tools in groups", () => {
     expect(filterBuiltinToolsForThread(tools, "group-1").map((tool) => tool.name)).toEqual([
       "handoff_to_bot",
+      "schedule_create",
       "remember",
     ]);
     expect(filterBuiltinToolsForThread(tools, null).map((tool) => tool.name)).toEqual([
@@ -109,6 +110,7 @@ describe("filterBuiltinToolsForThread", () => {
   it("covers every schedule tool name", () => {
     for (const name of SCHEDULE_TOOL_NAMES) {
       expect(filterBuiltinToolsForThread([{ name }, { name: "remember" }], "group-1")).toEqual([
+        { name },
         { name: "remember" },
       ]);
     }
@@ -153,6 +155,7 @@ describe("schedule tool persistence", () => {
         data: expect.objectContaining({
           workspaceId: "ws-1",
           userId: "user-1",
+          threadId: "thread-1",
           crons: ["*/1 * * * *"],
           active: true,
         }),
@@ -322,7 +325,7 @@ describe("schedule tool persistence", () => {
     ).rejects.toThrow("deactivate failed");
   });
 
-  it("scopes list and cancel to workspace and user", async () => {
+  it("scopes group list and cancel to the current thread without narrowing DMs", async () => {
     const findMany = vi.fn(async () => []);
     const findFirst = vi.fn(async () => null);
     const deps = {
@@ -333,10 +336,20 @@ describe("schedule tool persistence", () => {
       jobs: { enqueue: vi.fn(async () => undefined), cancel: vi.fn(async () => undefined) },
     } as unknown as Parameters<typeof cancelScheduleFromTool>[0];
 
-    await listSchedulesFromTool(deps, { workspaceId: "ws-1", botId: "bot-1", userId: "user-1" });
+    await listSchedulesFromTool(deps, {
+      workspaceId: "ws-1",
+      botId: "bot-1",
+      userId: "user-1",
+      threadId: "group-thread-1",
+    });
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { workspaceId: "ws-1", botId: "bot-1", userId: "user-1" },
+        where: {
+          workspaceId: "ws-1",
+          botId: "bot-1",
+          userId: "user-1",
+          threadId: "group-thread-1",
+        },
       }),
     );
 
@@ -344,9 +357,37 @@ describe("schedule tool persistence", () => {
       workspaceId: "ws-1",
       botId: "bot-1",
       userId: "user-1",
+      threadId: "group-thread-1",
       routineId: "routine-1",
     });
     expect(cancelled).toEqual({ error: "Schedule not found." });
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          workspaceId: "ws-1",
+          botId: "bot-1",
+          userId: "user-1",
+          threadId: "group-thread-1",
+          id: "routine-1",
+        },
+      }),
+    );
+
+    findMany.mockClear();
+    await listSchedulesFromTool(deps, { workspaceId: "ws-1", botId: "bot-1", userId: "user-1" });
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { workspaceId: "ws-1", botId: "bot-1", userId: "user-1" },
+      }),
+    );
+
+    findFirst.mockClear();
+    await cancelScheduleFromTool(deps, {
+      workspaceId: "ws-1",
+      botId: "bot-1",
+      userId: "user-1",
+      routineId: "routine-1",
+    });
     expect(findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { workspaceId: "ws-1", botId: "bot-1", userId: "user-1", id: "routine-1" },

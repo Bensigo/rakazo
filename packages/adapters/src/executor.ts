@@ -502,6 +502,25 @@ export function createRunExecutor(deps: ExecutorDeps) {
         include: { thread: true },
       });
       if (!bot?.thread) return;
+      const targetThread = routine.threadId
+        ? await deps.prisma.thread.findFirst({
+            where: {
+              id: routine.threadId,
+              workspaceId: routine.workspaceId,
+              OR: [
+                { botId: bot.id },
+                {
+                  group: {
+                    archivedAt: null,
+                    members: { some: { botId: bot.id } },
+                  },
+                },
+              ],
+            },
+            select: { id: true },
+          })
+        : null;
+      const thread = targetThread ?? bot.thread;
       // A schedule with no valid parseable cron among its crons (e.g. a
       // legacy row accepted before cron validation was added) fires the
       // already-due run once, then nextRunAt stays null and the routine
@@ -533,7 +552,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           data: {
             workspaceId: routine.workspaceId,
             botId: bot.id,
-            threadId: bot.thread!.id,
+            threadId: thread.id,
             userId: routine.userId,
             prompt: routinePrompt,
             status: "queued",
@@ -543,7 +562,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           data: {
             workspaceId: routine.workspaceId,
             botId: bot.id,
-            threadId: bot.thread!.id,
+            threadId: thread.id,
             taskId: task.id,
             userId: routine.userId,
             status: "queued",
@@ -579,7 +598,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
       try {
         await deps.events.append({
           workspaceId: routine.workspaceId,
-          threadId: bot.thread.id,
+          threadId: thread.id,
           botId: bot.id,
           type: "routine.fired",
           runId: claimed.id,
@@ -1790,6 +1809,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               workspaceId: run.workspaceId,
               botId: bot.id,
               userId: run.userId,
+              ...(thread.groupId ? { threadId: thread.id } : {}),
             });
           }
           if (name === "schedule_cancel") {
@@ -1797,6 +1817,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               workspaceId: run.workspaceId,
               botId: bot.id,
               userId: run.userId,
+              ...(thread.groupId ? { threadId: thread.id } : {}),
               routineId: args.routineId ? String(args.routineId) : undefined,
               name: args.name ? String(args.name) : undefined,
             });

@@ -13,6 +13,7 @@ export { isOneShotRoutineCron, ONCE_ROUTINE_CRON };
 
 export const SCHEDULE_TOOL_NAMES = new Set(["schedule_create", "schedule_list", "schedule_cancel"]);
 
+/** Keep cross-bot messaging thread-specific while exposing schedules in DMs and groups. */
 export function filterBuiltinToolsForThread<T extends { name: string }>(
   tools: T[],
   groupId: string | null | undefined,
@@ -22,8 +23,7 @@ export function filterBuiltinToolsForThread<T extends { name: string }>(
       (groupId || tool.name !== "handoff_to_bot") &&
       // In a group the room is the shared surface: hand the stage to a member
       // rather than starting a private thread off to one side.
-      (!groupId || tool.name !== "message_bot") &&
-      (!groupId || !SCHEDULE_TOOL_NAMES.has(tool.name)),
+      (!groupId || tool.name !== "message_bot"),
   );
 }
 
@@ -165,6 +165,7 @@ export interface ScheduleToolDeps {
   jobs: JobPublisher;
 }
 
+/** Persist and enqueue a bot routine that wakes in the originating thread. */
 export async function createScheduleFromTool(
   deps: ScheduleToolDeps,
   input: {
@@ -192,6 +193,7 @@ export async function createScheduleFromTool(
       workspaceId: input.workspaceId,
       botId: input.botId,
       userId: input.userId,
+      threadId: input.threadId,
       name,
       prompt,
       crons: [resolved.cron],
@@ -239,12 +241,18 @@ export async function createScheduleFromTool(
   };
 }
 
+/** List bot routines, optionally restricted to the current group thread. */
 export async function listSchedulesFromTool(
   deps: Pick<ScheduleToolDeps, "prisma">,
-  input: { workspaceId: string; botId: string; userId: string },
+  input: { workspaceId: string; botId: string; userId: string; threadId?: string },
 ) {
   const rows = await deps.prisma.routine.findMany({
-    where: { workspaceId: input.workspaceId, botId: input.botId, userId: input.userId },
+    where: {
+      workspaceId: input.workspaceId,
+      botId: input.botId,
+      userId: input.userId,
+      ...(input.threadId ? { threadId: input.threadId } : {}),
+    },
     orderBy: { createdAt: "desc" },
   });
   return {
@@ -260,12 +268,14 @@ export async function listSchedulesFromTool(
   };
 }
 
+/** Cancel a bot routine, optionally restricted to the current group thread. */
 export async function cancelScheduleFromTool(
   deps: ScheduleToolDeps,
   input: {
     workspaceId: string;
     botId: string;
     userId: string;
+    threadId?: string;
     routineId?: string;
     name?: string;
   },
@@ -281,6 +291,7 @@ export async function cancelScheduleFromTool(
       workspaceId: input.workspaceId,
       botId: input.botId,
       userId: input.userId,
+      ...(input.threadId ? { threadId: input.threadId } : {}),
       ...(routineId ? { id: routineId } : { name: name! }),
     },
   });
