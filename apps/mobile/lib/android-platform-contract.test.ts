@@ -56,6 +56,11 @@ describe("Android mobile platform contract", () => {
       /export async function resumeLiveNotifications[\s\S]*normalizeApiBase\(endpoint\)[\s\S]*nativeNotifications\.resume\(parsed\.url/,
     );
     expect(service).toContain('connection.setRequestProperty("x-rakazo-space-id", spaceId)');
+    expect(service).toContain("storage.spaceId.isBlank()");
+    expect(service).toContain("private fun prepareHistorySpace(");
+    expect(service).toContain("knownCompleted.clear()");
+    expect(service).toContain("alertedAttention.clear()");
+    expect(service).toContain("SEEN_RUNS_SPACE_ID");
     expect(service).toContain(
       "getSharedPreferences(STATE_PREFERENCES, MODE_PRIVATE).edit().clear()",
     );
@@ -85,6 +90,11 @@ describe("Android mobile platform contract", () => {
     );
     expect(service).not.toContain("private fun postCompletion(");
     expect(service).toContain('"rakazo://group-thread?groupId=');
+    expect(service).toMatch(/&spaceId=\$\{Uri\.encode\(run\.spaceId\)\}/);
+    expect(service).toContain('putString("rakazo.spaceId", run.spaceId)');
+    expect(thread).toContain("export default function ThreadRoute()");
+    expect(thread).toContain("selectSpace(requestedSpaceId)");
+    expect(thread).toContain("routeMatchesSelectedSpace) return <Thread />");
     expect(service).toContain('if (run.groupId != null) put("groupId", run.groupId)');
     expect(service).toContain('if (message.optString("runId") != run.runId) continue');
     expect(service).toContain('if (block.optString("kind") == "handoff") return null');

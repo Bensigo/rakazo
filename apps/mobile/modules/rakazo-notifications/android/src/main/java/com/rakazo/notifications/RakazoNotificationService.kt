@@ -39,6 +39,7 @@ import kotlin.math.sin
 
 private data class RunRecord(
   val runId: String,
+  val spaceId: String,
   val botId: String,
   val botName: String,
   val groupId: String?,
@@ -58,12 +59,11 @@ class RakazoNotificationService : Service() {
   private var pollJob: Job? = null
   private val knownCompleted = mutableSetOf<String>()
   private val alertedAttention = mutableSetOf<String>()
+  private var historySpaceId: String? = null
 
   override fun onCreate() {
     super.onCreate()
     manager = getSystemService(NotificationManager::class.java)
-    knownCompleted += getSharedPreferences(STATE_PREFERENCES, MODE_PRIVATE)
-      .getStringSet(SEEN_RUNS, emptySet()).orEmpty()
     val state = getSharedPreferences(STATE_PREFERENCES, MODE_PRIVATE)
     if (!state.getBoolean(THREAD_NOTIFICATION_IDS, false)) {
       manager.cancelAll()
@@ -93,8 +93,6 @@ class RakazoNotificationService : Service() {
   }
 
   private suspend fun poll(generation: Long) {
-    var seeded = getSharedPreferences(STATE_PREFERENCES, MODE_PRIVATE)
-      .getBoolean(SEEN_RUNS_SEEDED, false)
     var selectedAvatarStyle: String? = null
     while (scope.isActive) {
       val storage = NotificationStorage(this)
@@ -103,11 +101,13 @@ class RakazoNotificationService : Service() {
         !settings.liveConnection ||
         storage.endpoint.isBlank() ||
         storage.token.isBlank() ||
+        storage.spaceId.isBlank() ||
         !isAllowedNotificationEndpoint(storage.endpoint)
       ) {
         stopIfCurrent(generation)
         return
       }
+      val seeded = prepareHistorySpace(generation, storage.spaceId) ?: return
       try {
         val avatarStyle = selectedAvatarStyle
           ?: avatarStyle(storage.endpoint, storage.token, storage.spaceId)
@@ -122,7 +122,6 @@ class RakazoNotificationService : Service() {
             if (visibleWorking.isEmpty()) clearLive() else showLive(visibleWorking, avatarStyle)
             if (!seeded) {
               knownCompleted += recent.map { it.runId }
-              seeded = true
             } else {
               recent.asReversed().filter { knownCompleted.add(it.runId) }.forEach { run ->
                 when {
@@ -203,6 +202,27 @@ class RakazoNotificationService : Service() {
     }
   }
 
+  private fun prepareHistorySpace(generation: Long, spaceId: String): Boolean? =
+    synchronized(sessionLock) {
+      if (generation != sessionGeneration.get()) return null
+      val state = getSharedPreferences(STATE_PREFERENCES, MODE_PRIVATE)
+      if (historySpaceId != spaceId) {
+        knownCompleted.clear()
+        alertedAttention.clear()
+        if (state.getString(SEEN_RUNS_SPACE_ID, null) == spaceId) {
+          knownCompleted += state.getStringSet(SEEN_RUNS, emptySet()).orEmpty()
+        } else {
+          state.edit()
+            .putString(SEEN_RUNS_SPACE_ID, spaceId)
+            .remove(SEEN_RUNS)
+            .putBoolean(SEEN_RUNS_SEEDED, false)
+            .apply()
+        }
+        historySpaceId = spaceId
+      }
+      state.getBoolean(SEEN_RUNS_SEEDED, false)
+    }
+
   private fun post(run: RunRecord, copy: NotificationCopy) {
     if (!run.notificationsEnabled || isOpenThread(run)) return
     val notification = builder(copy.channel)
@@ -212,6 +232,7 @@ class RakazoNotificationService : Service() {
       .setStyle(Notification.BigTextStyle().bigText(copy.body))
       .setContentIntent(openApp(run))
       .addExtras(Bundle().apply {
+        putString("rakazo.spaceId", run.spaceId)
         putString("rakazo.botId", run.botId)
         putString("rakazo.threadId", run.threadId)
       })
@@ -303,9 +324,9 @@ class RakazoNotificationService : Service() {
       packageManager.getLaunchIntentForPackage(packageName) ?: Intent(Intent.ACTION_VIEW, Uri.parse("rakazo://"))
     } else {
       val destination = if (run.groupId != null) {
-        "rakazo://group-thread?groupId=${Uri.encode(run.groupId)}&name=${Uri.encode(run.groupName.orEmpty())}"
+        "rakazo://group-thread?groupId=${Uri.encode(run.groupId)}&name=${Uri.encode(run.groupName.orEmpty())}&spaceId=${Uri.encode(run.spaceId)}"
       } else {
-        "rakazo://thread?botId=${Uri.encode(run.botId)}&name=${Uri.encode(run.botName)}"
+        "rakazo://thread?botId=${Uri.encode(run.botId)}&name=${Uri.encode(run.botName)}&spaceId=${Uri.encode(run.spaceId)}"
       }
       Intent(
         Intent.ACTION_VIEW,
@@ -347,6 +368,7 @@ class RakazoNotificationService : Service() {
     private const val STATE_PREFERENCES = "com.rakazo.notification_state"
     private const val SEEN_RUNS = "seen_runs"
     private const val SEEN_RUNS_SEEDED = "seen_runs_seeded"
+    private const val SEEN_RUNS_SPACE_ID = "seen_runs_space_id"
     private const val THREAD_NOTIFICATION_IDS = "thread_notification_ids"
     private val sessionLock = Any()
     private val sessionGeneration = AtomicLong()
@@ -414,6 +436,7 @@ private fun runs(endpoint: String, token: String, spaceId: String, filter: Strin
     val row = rows.optJSONObject(index) ?: throw IOException("Invalid activity response")
     RunRecord(
       runId = row.requiredString("runId"),
+      spaceId = spaceId,
       botId = row.requiredString("botId"),
       botName = row.requiredString("botName"),
       groupId = row.optionalString("groupId"),

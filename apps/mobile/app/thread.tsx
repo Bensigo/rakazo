@@ -26,6 +26,7 @@ import { Link, useFocusEffect, useLocalSearchParams, useNavigation, useRouter } 
 import { useHeaderHeight } from "expo-router/react-navigation";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   AppState,
   FlatList,
@@ -63,6 +64,7 @@ import {
   prependMobileMessagePage,
   rpc,
   selectedSpaceId,
+  selectSpace,
   shouldApplyMobileThreadRefresh,
   subscribeThread,
 } from "../lib/api";
@@ -120,7 +122,60 @@ function isWorkingStatus(status: string | undefined): boolean {
   return status === "queued" || status === "leased" || status === "running";
 }
 
-export default function Thread() {
+type NotificationRouteState = "loading" | "ready" | "failed";
+
+export default function ThreadRoute() {
+  const router = useRouter();
+  const { spaceId } = useLocalSearchParams<{ spaceId?: string | string[] }>();
+  const requestedSpaceId = typeof spaceId === "string" && spaceId ? spaceId : null;
+  const invalidSpaceId = spaceId !== undefined && requestedSpaceId === null;
+  const routeMatchesSelectedSpace =
+    requestedSpaceId === null || selectedSpaceId() === requestedSpaceId;
+  const [routeState, setRouteState] = useState<NotificationRouteState>(() => {
+    if (invalidSpaceId) return "failed";
+    return routeMatchesSelectedSpace ? "ready" : "loading";
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    if (invalidSpaceId) {
+      setRouteState("failed");
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (!requestedSpaceId || selectedSpaceId() === requestedSpaceId) {
+      setRouteState("ready");
+      return () => {
+        cancelled = true;
+      };
+    }
+    setRouteState("loading");
+    void selectSpace(requestedSpaceId).then((selected) => {
+      if (!cancelled) setRouteState(selected ? "ready" : "failed");
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [invalidSpaceId, requestedSpaceId]);
+
+  if (routeState === "ready" && !invalidSpaceId && routeMatchesSelectedSpace) return <Thread />;
+  return (
+    <View
+      style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#000" }}
+    >
+      {routeState === "loading" ? (
+        <ActivityIndicator color="#ECECEE" />
+      ) : (
+        <Pressable accessibilityRole="button" onPress={() => router.replace("/")}>
+          <Text style={{ color: "#ECECEE", fontSize: 16 }}>Return to inbox</Text>
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
+function Thread() {
   const navigation = useNavigation();
   const router = useRouter();
   const headerHeight = useHeaderHeight();
