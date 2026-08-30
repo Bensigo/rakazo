@@ -55,7 +55,7 @@ describe("Android mobile platform contract", () => {
     expect(live).toMatch(
       /export async function resumeLiveNotifications[\s\S]*normalizeApiBase\(endpoint\)[\s\S]*nativeNotifications\.resume\(parsed\.url/,
     );
-    expect(service).toContain('connection.setRequestProperty("x-rakazo-workspace-id", spaceId)');
+    expect(service).toContain('connection.setRequestProperty("x-rakazo-space-id", spaceId)');
     expect(service).toContain(
       "getSharedPreferences(STATE_PREFERENCES, MODE_PRIVATE).edit().clear()",
     );

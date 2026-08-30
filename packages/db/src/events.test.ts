@@ -44,7 +44,7 @@ class TestFanout implements RealtimeFanout {
 function event(seq: number) {
   return {
     id: `event-${seq}`,
-    workspaceId: "workspace-1",
+    spaceId: "workspace-1",
     threadId: "thread-1",
     botId: "bot-1",
     seq,
@@ -126,7 +126,7 @@ describe("finalizeComputerControlRelease", () => {
       finalizeComputerControlRelease(
         prisma,
         {
-          workspaceId: "workspace-1",
+          spaceId: "workspace-1",
           computerId: "computer-1",
           botId: "bot-1",
           runId: "run-1",
@@ -141,7 +141,7 @@ describe("finalizeComputerControlRelease", () => {
     expect(tx.computer.updateMany).toHaveBeenCalledWith({
       where: {
         id: "computer-1",
-        workspaceId: "workspace-1",
+        spaceId: "workspace-1",
         controlBotId: "bot-1",
         controlLeaseId: "lease-1",
         controlRunId: "run-1",
@@ -157,7 +157,7 @@ describe("finalizeComputerControlRelease", () => {
     expect(tx.run.updateMany).toHaveBeenCalledWith({
       where: {
         id: "run-1",
-        workspaceId: "workspace-1",
+        spaceId: "workspace-1",
         botId: "bot-1",
         status: "waiting_takeover",
       },
@@ -187,7 +187,7 @@ describe("finalizeComputerControlRelease", () => {
 
     await expect(
       finalizeComputerControlRelease(prisma, {
-        workspaceId: "workspace-1",
+        spaceId: "workspace-1",
         computerId: "computer-1",
         botId: "deleted-bot",
         runId: null,
@@ -241,7 +241,7 @@ describe("pauseRunForInput", () => {
       pauseRunForInput(
         prisma,
         {
-          workspaceId: "workspace-1",
+          spaceId: "workspace-1",
           threadId: "thread-1",
           botId: "bot-1",
           runId: "run-1",
@@ -305,7 +305,7 @@ describe("pauseRunForTakeover", () => {
       pauseRunForTakeover(
         prisma,
         {
-          workspaceId: "workspace-1",
+          spaceId: "workspace-1",
           threadId: "thread-1",
           botId: "bot-1",
           runId: "run-1",
@@ -385,7 +385,7 @@ describe("answerRunInput", () => {
       answerRunInput(
         prisma,
         {
-          workspaceId: "workspace-1",
+          spaceId: "workspace-1",
           threadId: "thread-1",
           runId: "run-1",
           messageId: "message-1",
@@ -464,7 +464,7 @@ describe("answerRunInput", () => {
       answerRunInput(
         prisma,
         {
-          workspaceId: "workspace-1",
+          spaceId: "workspace-1",
           threadId: "thread-1",
           runId: "run-1",
           messageId: "message-1",
@@ -479,7 +479,7 @@ describe("answerRunInput", () => {
     expect(tx.externalEffect.findFirst).toHaveBeenCalledWith({
       where: {
         id: "effect-1",
-        workspaceId: "workspace-1",
+        spaceId: "workspace-1",
         runId: "run-1",
         status: "intended",
       },
@@ -544,7 +544,7 @@ describe("answerRunInput", () => {
       answerRunInput(
         prisma,
         {
-          workspaceId: "workspace-1",
+          spaceId: "workspace-1",
           threadId: "thread-1",
           runId: "run-1",
           messageId: "message-1",
@@ -562,8 +562,8 @@ describe("answerRunInput", () => {
     });
     expect(tx.actionApprovalRule.upsert).toHaveBeenCalledWith({
       where: {
-        workspaceId_createdByUserId_effect_matchKind_matchValue: {
-          workspaceId: "workspace-1",
+        spaceId_createdByUserId_effect_matchKind_matchValue: {
+          spaceId: "workspace-1",
           createdByUserId: "user-1",
           effect: "always_allow",
           matchKind: "tool",
@@ -571,7 +571,7 @@ describe("answerRunInput", () => {
         },
       },
       create: {
-        workspaceId: "workspace-1",
+        spaceId: "workspace-1",
         createdByUserId: "user-1",
         effect: "always_allow",
         matchKind: "tool",
@@ -620,7 +620,7 @@ describe("answerRunInput", () => {
 
     await expect(
       answerRunInput(prisma, {
-        workspaceId: "workspace-1",
+        spaceId: "workspace-1",
         threadId: "thread-1",
         runId: "run-1",
         messageId: "message-1",
@@ -665,7 +665,7 @@ describe("answerRunInput", () => {
 
     await expect(
       answerRunInput(prisma, {
-        workspaceId: "workspace-1",
+        spaceId: "workspace-1",
         threadId: "thread-1",
         runId: "run-1",
         messageId: "message-1",
@@ -708,7 +708,7 @@ describe("answerRunInput", () => {
 
     await expect(
       answerRunInput(prisma, {
-        workspaceId: "workspace-1",
+        spaceId: "workspace-1",
         threadId: "thread-1",
         runId: "run-1",
         messageId: "message-1",
@@ -740,7 +740,7 @@ describe("answerRunInput", () => {
 
     await expect(
       answerRunInput(prisma, {
-        workspaceId: "workspace-1",
+        spaceId: "workspace-1",
         threadId: "thread-1",
         runId: "run-1",
         messageId: "message-1",
@@ -793,7 +793,7 @@ describe("answerRunInput", () => {
       answerRunInput(
         prisma,
         {
-          workspaceId: "workspace-1",
+          spaceId: "workspace-1",
           threadId: "thread-1",
           runId: "run-1",
           messageId: "message-1",
@@ -815,7 +815,7 @@ describe("answerRunInput", () => {
     expect(tx.externalEffect.updateMany).toHaveBeenCalledWith({
       where: {
         runId: "run-1",
-        workspaceId: "workspace-1",
+        spaceId: "workspace-1",
         kind: "request_secret",
         status: "intended",
       },
@@ -864,7 +864,7 @@ describe("answerRunInput", () => {
 
     await expect(
       answerRunInput(prisma, {
-        workspaceId: "workspace-1",
+        spaceId: "workspace-1",
         threadId: "thread-1",
         runId: "run-1",
         messageId: "message-1",
@@ -914,7 +914,7 @@ describe("sendUserMessage", () => {
       sendUserMessage(
         prisma,
         {
-          workspaceId: "workspace-1",
+          spaceId: "workspace-1",
           threadId: "thread-1",
           botId: "bot-1",
           userId: "user-1",
@@ -979,7 +979,7 @@ describe("sendUserMessage", () => {
 
     await expect(
       sendUserMessage(prisma, {
-        workspaceId: "workspace-1",
+        spaceId: "workspace-1",
         threadId: "thread-1",
         botId: "bot-1",
         userId: "user-1",
@@ -1030,11 +1030,7 @@ describe("clearThread", () => {
     } as unknown as PrismaClient;
 
     await expect(
-      clearThread(
-        prisma,
-        { workspaceId: "workspace-1", threadId: "thread-1", botId: "bot-1" },
-        fanout,
-      ),
+      clearThread(prisma, { spaceId: "workspace-1", threadId: "thread-1", botId: "bot-1" }, fanout),
     ).resolves.toMatchObject({
       event: { type: "thread.cleared" },
       cancelledRunIds: ["run-1"],
@@ -1100,7 +1096,7 @@ describe("clearThread", () => {
       clearThread(
         prisma,
         {
-          workspaceId: "workspace-1",
+          spaceId: "workspace-1",
           threadId: "thread-group",
           botId: "bot-1",
           groupId: "group-1",
@@ -1113,7 +1109,7 @@ describe("clearThread", () => {
       expect.objectContaining({
         where: expect.objectContaining({
           threadId: "thread-group",
-          workspaceId: "workspace-1",
+          spaceId: "workspace-1",
         }),
       }),
     );
@@ -1151,7 +1147,7 @@ describe("appendEvent", () => {
       appendEvent(
         prisma,
         {
-          workspaceId: "workspace-1",
+          spaceId: "workspace-1",
           threadId: "thread-1",
           botId: "bot-1",
           type: "thread.progress",
@@ -1186,7 +1182,7 @@ describe("appendEvent", () => {
       appendEvent(
         prisma,
         {
-          workspaceId: "workspace-1",
+          spaceId: "workspace-1",
           threadId: "thread-1",
           botId: "bot-1",
           type: "thread.progress",

@@ -197,7 +197,7 @@ describeWithDatabase("API authorization and resource isolation", () => {
     );
     const ownerActor = await rpc<Actor>(app, owner, "me");
     const intruderActor = await rpc<Actor>(app, intruder, "me");
-    expect(ownerActor.workspaceId).not.toBe(intruderActor.workspaceId);
+    expect(ownerActor.spaceId).not.toBe(intruderActor.spaceId);
 
     const ownerBot = await rpc<Bot>(app, owner, "bots/create", botInput("Owner Bot"));
     const intruderBot = await rpc<Bot>(app, intruder, "bots/create", botInput("Intruder Bot"));
@@ -214,7 +214,7 @@ describeWithDatabase("API authorization and resource isolation", () => {
     });
     const ownerSkill = await handles.prisma.taughtSkill.create({
       data: {
-        workspaceId: ownerActor.workspaceId,
+        spaceId: ownerActor.spaceId,
         botId: ownerBot.id,
         userId: ownerActor.userId,
         name: "Owner Skill",
@@ -243,7 +243,7 @@ describeWithDatabase("API authorization and resource isolation", () => {
     );
     const ownerMemory = await handles.prisma.memoryDocument.create({
       data: {
-        workspaceId: ownerActor.workspaceId,
+        spaceId: ownerActor.spaceId,
         userId: ownerActor.userId,
         botId: ownerBot.id,
         scope: "bot",
@@ -253,7 +253,7 @@ describeWithDatabase("API authorization and resource isolation", () => {
     });
     const ownerArtifact = await handles.prisma.artifact.create({
       data: {
-        workspaceId: ownerActor.workspaceId,
+        spaceId: ownerActor.spaceId,
         userId: ownerActor.userId,
         botId: ownerBot.id,
         name: "owner-secret.txt",
@@ -268,7 +268,7 @@ describeWithDatabase("API authorization and resource isolation", () => {
     });
     const ownerTask = await handles.prisma.task.create({
       data: {
-        workspaceId: ownerActor.workspaceId,
+        spaceId: ownerActor.spaceId,
         userId: ownerActor.userId,
         botId: ownerBot.id,
         threadId: ownerThread.id,
@@ -278,7 +278,7 @@ describeWithDatabase("API authorization and resource isolation", () => {
     });
     const ownerRun = await handles.prisma.run.create({
       data: {
-        workspaceId: ownerActor.workspaceId,
+        spaceId: ownerActor.spaceId,
         userId: ownerActor.userId,
         botId: ownerBot.id,
         threadId: ownerThread.id,
@@ -458,7 +458,7 @@ describeWithDatabase("API authorization and resource isolation", () => {
     expect(await handles.prisma.bot.findUnique({ where: { id: ownerBot.id } })).not.toBeNull();
   });
 
-  it("keeps approval rules private to each user in a shared workspace", async () => {
+  it("keeps approval rules private to each user in a shared Space", async () => {
     const owner = await signup(app, `approval-owner-${stamp}@rakazo.test`, "Approval Owner");
     const member = await signup(app, `approval-member-${stamp}@rakazo.test`, "Approval Member");
     const ownerActor = await rpc<Actor>(app, owner, "me");
@@ -468,22 +468,12 @@ describeWithDatabase("API authorization and resource isolation", () => {
     await handles.prisma.member.create({
       data: {
         id: `approval-member-${stamp}`,
-        organizationId: ownerActor.workspaceId,
+        organizationId: ownerActor.spaceId,
         userId: memberActor.userId,
         role: "member",
         createdAt: new Date(),
       },
     });
-    await handles.prisma.spaceMember.create({
-      data: {
-        id: `approval-space-member-${stamp}`,
-        spaceId: ownerActor.workspaceId,
-        organizationId: ownerActor.workspaceId,
-        userId: memberActor.userId,
-        createdAt: new Date(),
-      },
-    });
-
     const ownerRule = await rpc<{ id: string }>(app, owner, "approvalRules/set", {
       effect: "always_allow",
       matchKind: "tool",
@@ -517,11 +507,11 @@ describeWithDatabase("API authorization and resource isolation", () => {
       name: "Customer support",
     });
     const storedSpaces = await handles.prisma.space.findMany({
-      where: { id: { in: [original.workspaceId, support.id] } },
+      where: { id: { in: [original.spaceId, support.id] } },
       select: { id: true, organizationId: true },
     });
     expect(new Set(storedSpaces.map((space) => space.organizationId))).toEqual(
-      new Set([original.workspaceId]),
+      new Set([original.spaceId]),
     );
     const otherOrganizationId = `spaces-other-org-${stamp}`;
     const otherWorkspaceId = `spaces-other-workspace-${stamp}`;
@@ -562,7 +552,7 @@ describeWithDatabase("API authorization and resource isolation", () => {
     ]);
 
     const supportMe = await rpc<Actor>(app, cookie, "me", {}, support.id);
-    expect(supportMe.workspaceId).toBe(support.id);
+    expect(supportMe.spaceId).toBe(support.id);
     const supportBot = await rpc<Bot>(app, cookie, "bots/create", botInput("Support"), support.id);
 
     expect(await rpc<Array<{ id: string }>>(app, cookie, "bots/list")).toEqual([
@@ -577,14 +567,14 @@ describeWithDatabase("API authorization and resource isolation", () => {
     const navigation = await rpc<SpaceNavigation>(app, cookie, "spaces/list");
     expect(navigation.current).toEqual(
       expect.objectContaining({
-        id: original.workspaceId,
+        id: original.spaceId,
         bots: [expect.objectContaining({ id: originalBot.id })],
       }),
     );
     expect(navigation.spaces).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: original.workspaceId,
+          id: original.spaceId,
           bots: [expect.objectContaining({ id: originalBot.id, notifyOnFinish: false })],
         }),
         expect.objectContaining({
@@ -621,12 +611,12 @@ describeWithDatabase("API authorization and resource isolation", () => {
 
     const storedBots = await handles.prisma.bot.findMany({
       where: { id: { in: [originalBot.id, supportBot.id] } },
-      select: { id: true, workspaceId: true, computerId: true },
+      select: { id: true, spaceId: true, computerId: true },
     });
     const storedOriginal = storedBots.find((bot) => bot.id === originalBot.id);
     const storedSupport = storedBots.find((bot) => bot.id === supportBot.id);
-    expect(storedOriginal?.workspaceId).toBe(original.workspaceId);
-    expect(storedSupport?.workspaceId).toBe(support.id);
+    expect(storedOriginal?.spaceId).toBe(original.spaceId);
+    expect(storedSupport?.spaceId).toBe(support.id);
     expect(storedOriginal?.computerId).not.toBe(storedSupport?.computerId);
 
     const intruder = await signup(app, `spaces-intruder-${stamp}@rakazo.test`, "Intruder");
@@ -637,7 +627,7 @@ describeWithDatabase("API authorization and resource isolation", () => {
     const cookie = await signup(app, `space-limit-${stamp}@rakazo.test`, "Space Limit");
     const actor = await rpc<Actor>(app, cookie, "me");
     const currentSpace = await handles.prisma.space.findUniqueOrThrow({
-      where: { id: actor.workspaceId },
+      where: { id: actor.spaceId },
       select: { organizationId: true },
     });
     const extraSpaces = Array.from({ length: 30 }, (_, index) => ({
@@ -671,44 +661,91 @@ describeWithDatabase("API authorization and resource isolation", () => {
     ).resolves.toBe(32);
   });
 
-  it("isolates model defaults by workspace and switches them atomically", async () => {
-    const cookie = await signup(app, `model-defaults-${stamp}@rakazo.test`, "Model Defaults");
+  it("reuses provider credentials and copies their selections into a new Space", async () => {
+    const cookie = await signup(app, `space-provider-copy-${stamp}@rakazo.test`, "Provider Copy");
     const actor = await rpc<Actor>(app, cookie, "me");
-    const otherWorkspaceId = `other-model-workspace-${stamp}`;
-    const otherSecret = await handles.prisma.secret.create({
-      data: {
-        userId: actor.userId,
-        workspaceId: otherWorkspaceId,
-        kind: "model",
-        ciphertext: "encrypted-other-workspace-key",
-      },
+    const model = await rpc<ModelCredential>(app, cookie, "models/connect", {
+      provider: "copy-provider",
+      apiKey: "fake-copy-model-key",
+      label: "Copy provider",
+      modelId: "copy/model",
     });
-    const otherCredential = await handles.prisma.userModelCredential.create({
-      data: {
-        userId: actor.userId,
-        workspaceId: otherWorkspaceId,
-        provider: "other-provider",
-        label: "Other workspace",
-        secretId: otherSecret.id,
-        isDefault: true,
-        defaultModel: "other/model",
-      },
+    const voice = await rpc<{ id: string; voiceId: string }>(app, cookie, "voice/connect", {
+      provider: "scripted",
+      apiKey: "fake-copy-voice-key",
     });
 
-    const beforeConnect = await rpc<Me>(app, cookie, "me");
-    expect(beforeConnect.workspaceId).toBe(actor.workspaceId);
-    expect(beforeConnect.defaultProvider).not.toBe("other-provider");
-    expect(beforeConnect.defaultModel).not.toBe("other/model");
-    const expectWorkspaceModelDefault = async (provider: string, defaultModel: string) => {
-      const rows = await handles.prisma.userModelCredential.findMany({
-        where: { userId: actor.userId, workspaceId: actor.workspaceId },
+    const created = await rpc<Space>(app, cookie, "spaces/create", { name: "Copied defaults" });
+    const [modelPreference, voicePreference] = await Promise.all([
+      handles.prisma.spaceModelPreference.findUnique({
+        where: {
+          spaceId_userId_credentialId: {
+            spaceId: created.id,
+            userId: actor.userId,
+            credentialId: model.id,
+          },
+        },
+      }),
+      handles.prisma.spaceVoicePreference.findUnique({
+        where: {
+          spaceId_userId_credentialId: {
+            spaceId: created.id,
+            userId: actor.userId,
+            credentialId: voice.id,
+          },
+        },
+      }),
+    ]);
+
+    expect(modelPreference).toMatchObject({ modelId: "copy/model", isDefault: true });
+    expect(voicePreference).toMatchObject({ voiceId: voice.voiceId, isDefault: true });
+    await rpc(
+      app,
+      cookie,
+      "voice/setVoice",
+      { provider: "scripted", voiceId: "space-specific-voice" },
+      created.id,
+    );
+    await expect(
+      handles.prisma.spaceVoicePreference.findUniqueOrThrow({
+        where: {
+          spaceId_userId_credentialId: {
+            spaceId: actor.spaceId,
+            userId: actor.userId,
+            credentialId: voice.id,
+          },
+        },
+      }),
+    ).resolves.toMatchObject({ voiceId: voice.voiceId, isDefault: true });
+    await expect(
+      handles.prisma.spaceVoicePreference.findUniqueOrThrow({
+        where: {
+          spaceId_userId_credentialId: {
+            spaceId: created.id,
+            userId: actor.userId,
+            credentialId: voice.id,
+          },
+        },
+      }),
+    ).resolves.toMatchObject({ voiceId: "space-specific-voice", isDefault: true });
+    await expect(
+      handles.prisma.userModelCredential.count({ where: { userId: actor.userId } }),
+    ).resolves.toBe(1);
+    await expect(
+      handles.prisma.userVoiceCredential.count({ where: { userId: actor.userId } }),
+    ).resolves.toBe(1);
+  });
+
+  it("shares model credentials while keeping defaults private to each space", async () => {
+    const cookie = await signup(app, `model-defaults-${stamp}@rakazo.test`, "Model Defaults");
+    const actor = await rpc<Actor>(app, cookie, "me");
+    const support = await rpc<Space>(app, cookie, "spaces/create", { name: "Support models" });
+    const expectSpaceModelDefault = async (spaceId: string, provider: string, modelId: string) => {
+      const preference = await handles.prisma.spaceModelPreference.findFirst({
+        where: { userId: actor.userId, spaceId, isDefault: true },
+        include: { credential: true },
       });
-      expect(rows.filter((row) => row.isDefault)).toHaveLength(1);
-      expect(rows.find((row) => row.provider === provider)).toMatchObject({
-        isDefault: true,
-        defaultModel,
-      });
-      expect(rows.filter((row) => row.isDefault)[0]?.provider).toBe(provider);
+      expect(preference).toMatchObject({ modelId, credential: { provider } });
     };
 
     const connectedA = await rpc<ModelCredential>(app, cookie, "models/connect", {
@@ -736,15 +773,36 @@ describeWithDatabase("API authorization and resource isolation", () => {
     expect(
       await handles.prisma.secret.findUnique({ where: { id: providerABeforeRotation.secretId } }),
     ).toBeNull();
+    await expect(
+      handles.prisma.secret.findUniqueOrThrow({ where: { id: providerAAfterRotation.secretId } }),
+    ).resolves.toMatchObject({ userId: actor.userId, spaceId: null, kind: "model" });
     expect(
       await handles.prisma.userModelCredential.count({
-        where: {
-          userId: actor.userId,
-          workspaceId: actor.workspaceId,
-          provider: "provider-a",
-        },
+        where: { userId: actor.userId, provider: "provider-a" },
       }),
     ).toBe(1);
+
+    const supportCredentials = await rpc<ModelCredential[]>(
+      app,
+      cookie,
+      "models/credentials",
+      {},
+      support.id,
+    );
+    expect(supportCredentials).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: connectedA.id, provider: "provider-a", isDefault: false }),
+      ]),
+    );
+    await rpc(
+      app,
+      cookie,
+      "models/setDefault",
+      { provider: "provider-a", modelId: "a/support" },
+      support.id,
+    );
+    await expectSpaceModelDefault(support.id, "provider-a", "a/support");
+    await expectSpaceModelDefault(actor.spaceId, "provider-a", "a/rotated");
 
     const connectedB = await rpc<ModelCredential>(app, cookie, "models/connect", {
       provider: "provider-b",
@@ -753,25 +811,17 @@ describeWithDatabase("API authorization and resource isolation", () => {
       modelId: "b/one",
     });
     expect(connectedB.isDefault).toBe(true);
-    expect(
-      await handles.prisma.userModelCredential.count({
-        where: { userId: actor.userId, workspaceId: actor.workspaceId, isDefault: true },
-      }),
-    ).toBe(1);
+    await expectSpaceModelDefault(actor.spaceId, "provider-b", "b/one");
 
     await rpc(app, cookie, "models/setDefault", { provider: "provider-a", modelId: "a/two" });
-    await expectWorkspaceModelDefault("provider-a", "a/two");
+    await expectSpaceModelDefault(actor.spaceId, "provider-a", "a/two");
 
     await rpc(app, cookie, "models/setDefault", { provider: "provider-b", modelId: "b/two" });
-    await expectWorkspaceModelDefault("provider-b", "b/two");
+    await expectSpaceModelDefault(actor.spaceId, "provider-b", "b/two");
 
     await rpc(app, cookie, "models/setDefault", { provider: "provider-a", modelId: "a/three" });
-    await expectWorkspaceModelDefault("provider-a", "a/three");
-
-    const otherAfter = await handles.prisma.userModelCredential.findUniqueOrThrow({
-      where: { id: otherCredential.id },
-    });
-    expect(otherAfter).toMatchObject({ isDefault: true, defaultModel: "other/model" });
+    await expectSpaceModelDefault(actor.spaceId, "provider-a", "a/three");
+    await expectSpaceModelDefault(support.id, "provider-a", "a/support");
     const listed = await rpc<ModelCredential[]>(app, cookie, "models/credentials");
     expect(JSON.stringify(listed)).not.toContain("fake-provider-a-key");
     expect(JSON.stringify(listed)).not.toContain("fake-provider-b-key");
@@ -848,7 +898,7 @@ describeWithDatabase("API authorization and resource isolation", () => {
     const olderSecret = await handles.prisma.secret.create({
       data: {
         userId: actor.userId,
-        workspaceId: actor.workspaceId,
+        spaceId: null,
         kind: "model",
         ciphertext: "encrypted-older-key",
       },
@@ -856,7 +906,7 @@ describeWithDatabase("API authorization and resource isolation", () => {
     const newerSecret = await handles.prisma.secret.create({
       data: {
         userId: actor.userId,
-        workspaceId: actor.workspaceId,
+        spaceId: null,
         kind: "model",
         ciphertext: "encrypted-newer-key",
       },
@@ -864,12 +914,9 @@ describeWithDatabase("API authorization and resource isolation", () => {
     const older = await handles.prisma.userModelCredential.create({
       data: {
         userId: actor.userId,
-        workspaceId: actor.workspaceId,
         provider: "duplicate-provider",
         label: "Older",
         secretId: olderSecret.id,
-        isDefault: true,
-        defaultModel: "older/model",
         createdAt: new Date("2026-01-01T00:00:00.000Z"),
         updatedAt: new Date("2026-01-02T00:00:00.000Z"),
       },
@@ -877,13 +924,20 @@ describeWithDatabase("API authorization and resource isolation", () => {
     const newer = await handles.prisma.userModelCredential.create({
       data: {
         userId: actor.userId,
-        workspaceId: actor.workspaceId,
         provider: "duplicate-provider",
         label: "Newer",
         secretId: newerSecret.id,
-        defaultModel: "newer/model",
         createdAt: new Date("2026-02-01T00:00:00.000Z"),
         updatedAt: new Date("2026-02-02T00:00:00.000Z"),
+      },
+    });
+    await handles.prisma.spaceModelPreference.create({
+      data: {
+        spaceId: actor.spaceId,
+        userId: actor.userId,
+        credentialId: older.id,
+        modelId: "older/model",
+        isDefault: true,
       },
     });
 
@@ -892,21 +946,19 @@ describeWithDatabase("API authorization and resource isolation", () => {
       modelId: "newer/selected",
     });
 
-    const rows = await handles.prisma.userModelCredential.findMany({
-      where: {
-        userId: actor.userId,
-        workspaceId: actor.workspaceId,
-        provider: "duplicate-provider",
-      },
+    const preferences = await handles.prisma.spaceModelPreference.findMany({
+      where: { userId: actor.userId, spaceId: actor.spaceId },
     });
-    expect(rows.filter((row) => row.isDefault).map((row) => row.id)).toEqual([newer.id]);
-    expect(rows.find((row) => row.id === newer.id)).toMatchObject({
+    expect(preferences.filter((row) => row.isDefault).map((row) => row.credentialId)).toEqual([
+      newer.id,
+    ]);
+    expect(preferences.find((row) => row.credentialId === newer.id)).toMatchObject({
       isDefault: true,
-      defaultModel: "newer/selected",
+      modelId: "newer/selected",
     });
-    expect(rows.find((row) => row.id === older.id)).toMatchObject({
+    expect(preferences.find((row) => row.credentialId === older.id)).toMatchObject({
       isDefault: false,
-      defaultModel: "older/model",
+      modelId: "older/model",
     });
     const listed = await rpc<ModelCredential[]>(app, cookie, "models/credentials");
     expect(
@@ -1042,14 +1094,14 @@ async function raw(
   cookie: string,
   procedure: string,
   body: unknown = {},
-  workspaceId?: string,
+  spaceId?: string,
 ) {
   return app.request(`/rpc/${procedure}`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
       ...(cookie ? { cookie } : {}),
-      ...(workspaceId ? { "x-rakazo-workspace-id": workspaceId } : {}),
+      ...(spaceId ? { "x-rakazo-space-id": spaceId } : {}),
       origin: "http://127.0.0.1:5173",
     },
     body: JSON.stringify({ json: body ?? {} }),
@@ -1061,9 +1113,9 @@ async function rpc<T>(
   cookie: string,
   procedure: string,
   body: unknown = {},
-  workspaceId?: string,
+  spaceId?: string,
 ): Promise<T> {
-  const response = await raw(app, cookie, procedure, body, workspaceId);
+  const response = await raw(app, cookie, procedure, body, spaceId);
   const text = await response.text();
   const payload = JSON.parse(text) as { json?: T; error?: { message?: string } };
   if (response.status >= 400 || payload.error) {
@@ -1077,9 +1129,9 @@ async function expectDenied(
   cookie: string,
   procedure: string,
   body: unknown,
-  workspaceId?: string,
+  spaceId?: string,
 ) {
-  const response = await raw(app, cookie, procedure, body, workspaceId);
+  const response = await raw(app, cookie, procedure, body, spaceId);
   if (procedure === "threads/subscribe" && response.status === 200) {
     // Streaming transports commit the HTTP 200 before advancing the async iterator. The
     // ownership error is therefore encoded in the iterator response instead of the status.
@@ -1097,12 +1149,7 @@ async function expectForbidden(app: App, cookie: string, procedure: string, body
 
 interface Actor {
   userId: string;
-  workspaceId: string;
-}
-
-interface Me extends Actor {
-  defaultProvider: string | null;
-  defaultModel: string | null;
+  spaceId: string;
 }
 
 interface ModelCredential {

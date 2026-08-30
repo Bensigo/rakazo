@@ -19,7 +19,7 @@ function createDeps(
           id: "pi-1",
           phoneE164: "+15551111111",
           userId: "user-1",
-          workspaceId: "ws-1",
+          spaceId: "ws-1",
           botId: "bot-1",
           verifiedAt: null,
           lastInboundAt: null,
@@ -36,7 +36,7 @@ function createDeps(
   const provision = vi.fn(async (phone: string) => ({
     phoneE164: phone,
     userId: "user-new",
-    workspaceId: "ws-new",
+    spaceId: "ws-new",
     botId: "bot-new",
     threadId: "thread-new",
     created: true,
@@ -246,7 +246,7 @@ describe("createPhoneInboundHandler DM routing", () => {
       }),
     );
     expect(deps.sendUserMessage).toHaveBeenCalledWith({
-      workspaceId: "ws-1",
+      spaceId: "ws-1",
       threadId: "thread-1",
       botId: "bot-1",
       userId: "user-1",
@@ -268,7 +268,7 @@ describe("createPhoneInboundHandler DM routing", () => {
     expect(deps.provision).toHaveBeenCalledWith("+15551111111", signupPolicy);
     expect(deps.sendUserMessage).toHaveBeenCalledWith(
       expect.objectContaining({
-        workspaceId: "ws-new",
+        spaceId: "ws-new",
         threadId: "thread-new",
         botId: "bot-new",
         userId: "user-new",
@@ -455,7 +455,7 @@ describe("createPhoneInboundHandler owner commands", () => {
             id: "pi-9",
             phoneE164: "+15559999999",
             userId: "user-9",
-            workspaceId: "ws-9",
+            spaceId: "ws-9",
             botId: "bot-9",
             outboundSinceInbound: 0,
           };
@@ -464,7 +464,7 @@ describe("createPhoneInboundHandler owner commands", () => {
           id: "pi-1",
           phoneE164: "+15551111111",
           userId: "user-1",
-          workspaceId: "ws-1",
+          spaceId: "ws-1",
           botId: "bot-1",
           outboundSinceInbound: 0,
         };
@@ -571,7 +571,7 @@ describe("createPhoneInboundHandler channel routing", () => {
       id: "pi-2",
       phoneE164: "+15553333333",
       userId: "user-2",
-      workspaceId: "ws-2",
+      spaceId: "ws-2",
       botId: "bot-2",
       outboundSinceInbound: 0,
     };
@@ -582,7 +582,7 @@ describe("createPhoneInboundHandler channel routing", () => {
           id: "pi-1",
           phoneE164: "+15551111111",
           userId: "user-1",
-          workspaceId: "ws-1",
+          spaceId: "ws-1",
           botId: "bot-1",
           outboundSinceInbound: 0,
         };
@@ -607,7 +607,7 @@ describe("createPhoneInboundHandler channel routing", () => {
         },
       ]);
     }
-    expect(fanout.map((input) => (input as { workspaceId: string }).workspaceId).sort()).toEqual([
+    expect(fanout.map((input) => (input as { spaceId: string }).spaceId).sort()).toEqual([
       "ws-1",
       "ws-2",
     ]);

@@ -108,7 +108,7 @@ async function runWithModel(
     {
       operationId: "1",
       traceId: "1",
-      workspaceId: "w",
+      spaceId: "w",
       userId: "u",
       signal,
     },

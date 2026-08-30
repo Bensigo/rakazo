@@ -8,7 +8,7 @@ const identity = {
   id: "pi-1",
   phoneE164: "+15551111111",
   userId: "user-1",
-  workspaceId: "ws-1",
+  spaceId: "ws-1",
   botId: "bot-1",
   outboundSinceInbound: 0,
 };
@@ -204,7 +204,7 @@ function phoneDeps(
     dataDir: "/tmp/rakazo-router-test",
   } as unknown as RouterDeps;
   const actor = {
-    workspaceId: "ws-1",
+    spaceId: "ws-1",
     userId: "user-1",
     email: "user@rakazo.test",
     isDeploymentOwner: false,

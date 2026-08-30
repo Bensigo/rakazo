@@ -457,7 +457,7 @@ describePhone("phone surface journeys", () => {
     const group = await provider.getGroup(groupId, {
       operationId: "journey-get-group",
       traceId: "journey-get-group",
-      workspaceId: "ws",
+      spaceId: "ws",
       userId: "user",
       signal: AbortSignal.timeout(5_000),
     });

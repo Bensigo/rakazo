@@ -474,7 +474,7 @@ private fun rpc(
     connection.setRequestProperty("Origin", "rakazo://")
     connection.setRequestProperty("Authorization", "Bearer $token")
     if (spaceId.isNotBlank()) {
-      connection.setRequestProperty("x-rakazo-workspace-id", spaceId)
+      connection.setRequestProperty("x-rakazo-space-id", spaceId)
     }
     connection.outputStream.use {
       it.write(JSONObject().put("json", input).toString().toByteArray(Charsets.UTF_8))

@@ -6,14 +6,14 @@ import { IsolationError } from "./scope.js";
 
 const actor: Actor = {
   userId: "user-1",
-  workspaceId: "ws-1",
+  spaceId: "ws-1",
   email: "test@example.com",
   isDeploymentOwner: false,
 };
 
 const baseBot = {
   id: "bot-1",
-  workspaceId: "ws-1",
+  spaceId: "ws-1",
   userId: "user-1",
   name: "Test Bot",
   title: "",
@@ -62,7 +62,7 @@ describe("createRepos.listSpaceBotsForSpaces", () => {
     const findMany = vi.fn(async (_query: { where: unknown; select: Record<string, unknown> }) => [
       {
         id: "bot-2",
-        workspaceId: "ws-2",
+        spaceId: "ws-2",
         name: "Support",
         title: "Customer support",
         color: "#123456",
@@ -82,7 +82,7 @@ describe("createRepos.listSpaceBotsForSpaces", () => {
     await expect(repos.listSpaceBotsForSpaces(actor, ["ws-2"])).resolves.toEqual([
       {
         id: "bot-2",
-        workspaceId: "ws-2",
+        spaceId: "ws-2",
         name: "Support",
         title: "Customer support",
         color: "#123456",
@@ -97,7 +97,7 @@ describe("createRepos.listSpaceBotsForSpaces", () => {
     ]);
     const query = findMany.mock.calls[0]![0];
     expect(query.where).toEqual(
-      expect.objectContaining({ workspaceId: { in: ["ws-2"] }, userId: actor.userId }),
+      expect.objectContaining({ spaceId: { in: ["ws-2"] }, userId: actor.userId }),
     );
     expect(query.select).not.toHaveProperty("description");
     expect(query.select).not.toHaveProperty("instructions");

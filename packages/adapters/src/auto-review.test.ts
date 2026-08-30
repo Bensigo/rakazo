@@ -184,7 +184,7 @@ describe("runAutoReviewJudge timeout", () => {
         checker: { provider: "openrouter", model: "x" },
         prompt: "test",
         runId: "run",
-        workspaceId: "ws",
+        spaceId: "ws",
         userId: "user",
         botId: "bot",
         threadId: "thread",

@@ -10,7 +10,7 @@ const requesterIdentity = {
   id: "pi-1",
   phoneE164: "+15551111111",
   userId: "user-1",
-  workspaceId: "ws-1",
+  spaceId: "ws-1",
   botId: "bot-1",
   outboundSinceInbound: 0,
 };
@@ -18,7 +18,7 @@ const targetIdentity = {
   id: "pi-2",
   phoneE164: "+15552222222",
   userId: "user-2",
-  workspaceId: "ws-2",
+  spaceId: "ws-2",
   botId: "bot-2",
   outboundSinceInbound: 0,
 };
@@ -98,12 +98,12 @@ function createDeps(
           ? {
               id: "bot-2",
               name: "Helper",
-              workspaceId: "ws-2",
+              spaceId: "ws-2",
               userId: "user-2",
               archivedAt: null,
               thread: { id: "thread-2" },
             }
-          : { id: "bot-1", name: "Assistant", workspaceId: "ws-1", userId: "user-1" },
+          : { id: "bot-1", name: "Assistant", spaceId: "ws-1", userId: "user-1" },
       ),
     },
     agentConnection: {
@@ -176,7 +176,7 @@ function createDeps(
 
 const run = {
   id: "run-1",
-  workspaceId: "ws-1",
+  spaceId: "ws-1",
   threadId: "thread-1",
   botId: "bot-1",
   userId: "user-1",
@@ -321,7 +321,7 @@ describe("messageConnectedAgent", () => {
     const wake = deps.txCalls.runCreate[0] as Record<string, unknown>;
     expect(wake).toEqual(
       expect.objectContaining({
-        workspaceId: "ws-2",
+        spaceId: "ws-2",
         userId: "user-2",
         botId: "bot-2",
         trigger: "bot_message",

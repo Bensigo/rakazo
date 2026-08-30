@@ -163,7 +163,7 @@ function ShellSkeleton() {
       <main className="flex flex-1 flex-col">
         <div className="h-[74px] border-b border-[#141416]" />
         <div className="flex flex-1 items-center justify-center text-[14px] text-[#55555A]">
-          <Trans>Opening your workspace…</Trans>
+          <Trans>Opening your Space…</Trans>
         </div>
         <div className="mx-6 mb-6 h-[54px] rounded-full border border-[#202023] bg-[#131315]" />
       </main>

@@ -1617,7 +1617,7 @@ msgid "Low"
 msgstr "낮음"
 
 #: src/pages/MemorySettingsOverlay.tsx:138
-msgid "Manage the workspace semantic memory provider."
+msgid "Manage the Space semantic memory provider."
 msgstr "작업공간에서 사용할 장기 기억 서비스를 관리합니다."
 
 #: src/pages/BotContextMenu.tsx:96
@@ -1864,7 +1864,7 @@ msgstr "사용 가능한 모델 목록이 없습니다."
 msgid "No providers found."
 msgstr "검색된 AI 서비스가 없습니다."
 
-#: src/pages/WorkspaceSearch.tsx:23
+#: src/pages/SpaceSearch.tsx:23
 msgid "No results"
 msgstr "검색 결과가 없습니다"
 
@@ -1965,7 +1965,7 @@ msgid "Opened its thread."
 msgstr "대화가 만들어졌습니다."
 
 #: src/App.tsx:166
-msgid "Opening your workspace…"
+msgid "Opening your Space…"
 msgstr "작업공간을 여는 중…"
 
 #: src/pages/ModelSettingsOverlay.tsx:636
@@ -2336,7 +2336,7 @@ msgstr "AI 서비스 검색"
 msgid "Search providers and models"
 msgstr "AI 서비스 또는 모델 검색"
 
-#: src/pages/WorkspaceSearch.tsx:16
+#: src/pages/SpaceSearch.tsx:16
 msgid "Searching…"
 msgstr "검색 중…"
 

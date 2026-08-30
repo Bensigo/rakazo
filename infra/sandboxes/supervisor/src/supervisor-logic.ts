@@ -42,10 +42,10 @@ export const DOCKER_BROWSER_ALIASES = new Set([
 
 export function assertRequestIdentity(
   botId: string | undefined,
-  workspaceId: string | undefined,
-  expected: { botId: string; workspaceId: string },
+  spaceId: string | undefined,
+  expected: { botId: string; spaceId: string },
 ) {
-  if (botId !== expected.botId || workspaceId !== expected.workspaceId) {
+  if (botId !== expected.botId || spaceId !== expected.spaceId) {
     throw new Error("computer identity mismatch");
   }
 }

@@ -165,7 +165,7 @@ function idleHarness(options: { exportError?: Error } = {}) {
     providerRef: "computer",
     kind: "e2b",
     state: "running",
-    workspaceId: "workspace",
+    spaceId: "workspace",
     userId: "user",
     controlHolder: "none",
     controlLeaseId: null,

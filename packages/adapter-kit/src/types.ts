@@ -3,7 +3,7 @@ import type { ConnectionCatalogItem, SandboxKind } from "@rakazo/contracts";
 export interface AdapterContext {
   operationId: string;
   traceId: string;
-  workspaceId: string;
+  spaceId: string;
   userId: string;
   botId?: string;
   runId?: string;

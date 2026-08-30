@@ -14,7 +14,7 @@ const config = {
 };
 
 const context = {
-  workspaceId: "ws-1",
+  spaceId: "ws-1",
   userId: "user-1",
   botId: "bot-1",
   runId: "run-1",

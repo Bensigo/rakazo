@@ -27,7 +27,7 @@ describe("requireMembership", () => {
 
     await expect(requireMembership(prisma, "user-1", "space-support")).resolves.toEqual({
       userId: "user-1",
-      workspaceId: "space-support",
+      spaceId: "space-support",
       email: "owner@example.test",
       isDeploymentOwner: true,
     });
@@ -42,5 +42,17 @@ describe("requireMembership", () => {
     await expect(
       requireMembership(prismaForMembership(false), "user-1", "space-foreign"),
     ).rejects.toBeInstanceOf(IsolationError);
+  });
+
+  it("selects the explicit default Space before older non-default memberships", async () => {
+    const prisma = prismaForMembership(true);
+
+    await requireMembership(prisma, "user-1");
+
+    expect(prisma.spaceMember.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ space: { isDefault: "desc" } }, { createdAt: "asc" }, { id: "asc" }],
+      }),
+    );
   });
 });

@@ -21,7 +21,7 @@ import { GroupAvatar } from "../components/group-avatar";
 import { NativeSymbol } from "../components/native-symbol";
 import {
   activityStatusLabel,
-  fetchWorkspaceActivity,
+  fetchSpaceActivity,
   formatActivityRelativeTime,
 } from "../lib/activity";
 import { loadActivityMode, saveActivityMode } from "../lib/activity-mode";
@@ -43,7 +43,7 @@ import { dismissThreadNotifications, resumeLiveNotifications } from "../lib/live
 import { native } from "../lib/native";
 import { previewSnippet } from "../lib/preview";
 import { registerPushToken } from "../lib/push";
-import { queryWorkspaceSearch } from "../lib/search";
+import { querySpaceSearch } from "../lib/search";
 import { mobileSearchDestination } from "../lib/search-destination";
 
 const FALLBACK_COLOR = "#9B5CF6";
@@ -166,7 +166,7 @@ export default function Home() {
     }
     const requestId = ++activityRequestId.current;
     try {
-      const next = await fetchWorkspaceActivity();
+      const next = await fetchSpaceActivity();
       if (requestId !== activityRequestId.current) return;
       setActivity(next);
     } catch {
@@ -207,7 +207,7 @@ export default function Home() {
     const abort = new AbortController();
     const timer = setTimeout(() => {
       setSearchLoading(true);
-      void queryWorkspaceSearch(trimmed)
+      void querySpaceSearch(trimmed)
         .then((hits) => {
           if (!abort.signal.aborted) setSearchHits(hits);
         })
@@ -239,7 +239,7 @@ export default function Home() {
     const sidebarSpaces =
       spaces.length > 0
         ? spaces.map((space) =>
-            space.id === me?.workspaceId
+            space.id === me?.spaceId
               ? { ...space, bots: visible, groups: visibleGroups, botSections }
               : {
                   ...space,
@@ -254,8 +254,9 @@ export default function Home() {
         : me
           ? [
               {
-                id: me.workspaceId,
+                id: me.spaceId,
                 name: "Personal",
+                isDefault: true,
                 bots: visible,
                 groups: visibleGroups,
                 botSections,
@@ -430,7 +431,7 @@ export default function Home() {
             <GroupRow
               group={item.group}
               onPress={() => {
-                void openMobileSpace(item.group.workspaceId, () =>
+                void openMobileSpace(item.group.spaceId, () =>
                   router.push({
                     pathname: "/group-thread",
                     params: { groupId: item.group.id, name: item.group.name },
@@ -438,7 +439,7 @@ export default function Home() {
                 );
               }}
               onLongPress={
-                item.group.workspaceId === me?.workspaceId
+                item.group.spaceId === me?.spaceId
                   ? () => setOrganizeTarget({ kind: "group", id: item.group.id })
                   : undefined
               }
@@ -447,7 +448,7 @@ export default function Home() {
             <BotRow
               bot={item.bot}
               onPress={() => {
-                void openMobileSpace(item.bot.workspaceId, () =>
+                void openMobileSpace(item.bot.spaceId, () =>
                   router.push({
                     pathname: "/thread",
                     params: { botId: item.bot.id, name: item.bot.name },
@@ -455,7 +456,7 @@ export default function Home() {
                 );
               }}
               onLongPress={
-                item.bot.workspaceId === me?.workspaceId
+                item.bot.spaceId === me?.spaceId
                   ? () => setOrganizeTarget({ kind: "bot", id: item.bot.id })
                   : undefined
               }

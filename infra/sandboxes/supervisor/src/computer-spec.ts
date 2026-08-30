@@ -55,7 +55,7 @@ export interface ComputerCreateInput {
   name: string;
   image: string;
   botId: string;
-  workspaceId: string;
+  spaceId: string;
   homePath: string;
   user?: string;
   controlToken?: string;
@@ -93,7 +93,7 @@ export function containerCreateOptions(input: ComputerCreateInput) {
     Labels: {
       "rakazo.managed": "true",
       "rakazo.botId": input.botId,
-      "rakazo.workspaceId": input.workspaceId,
+      "rakazo.spaceId": input.spaceId,
     },
     ExposedPorts: ports.ExposedPorts,
     HostConfig: {

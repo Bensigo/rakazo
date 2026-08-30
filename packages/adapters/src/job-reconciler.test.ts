@@ -269,7 +269,7 @@ describe("createJobReconciler", () => {
   it("retries terminal bot outcomes that were not returned", async () => {
     const terminalRun = {
       id: "run-terminal",
-      workspaceId: "workspace-1",
+      spaceId: "workspace-1",
       threadId: "thread-1",
       botId: "bot-1",
       userId: "user-1",

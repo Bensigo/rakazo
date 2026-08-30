@@ -14,12 +14,12 @@ function createDeps(
   overrides: {
     bot?: {
       id: string;
-      workspaceId: string;
+      spaceId: string;
       userId: string;
       webhookSecretId: string | null;
       thread: { id: string } | null;
     } | null;
-    secret?: { ciphertext: string; kind: string; userId: string; workspaceId: string } | null;
+    secret?: { ciphertext: string; kind: string; userId: string; spaceId: string } | null;
     load?: (ciphertext: string) => string;
   } = {},
 ): WebhookDeps & {
@@ -30,7 +30,7 @@ function createDeps(
     overrides.bot === undefined
       ? {
           id: "bot-1",
-          workspaceId: "ws-1",
+          spaceId: "ws-1",
           userId: "user-1",
           webhookSecretId: "secret-1",
           thread: { id: "thread-1" },
@@ -42,7 +42,7 @@ function createDeps(
           ciphertext: "cipher",
           kind: WEBHOOK_SECRET_KIND,
           userId: "user-1",
-          workspaceId: "ws-1",
+          spaceId: "ws-1",
         }
       : overrides.secret;
 
@@ -141,7 +141,7 @@ describe("inbound webhook HTTP route", () => {
     const deps = createDeps({
       bot: {
         id: "bot-1",
-        workspaceId: "ws-1",
+        spaceId: "ws-1",
         userId: "user-1",
         webhookSecretId: null,
         thread: { id: "thread-1" },

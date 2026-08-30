@@ -22,7 +22,12 @@ export class InvalidSpaceNameError extends Error {
 
 type SpaceClient = Pick<
   PrismaClient,
-  "space" | "spaceMember" | "memoryDocument" | "notificationPreference"
+  | "space"
+  | "spaceMember"
+  | "spaceModelPreference"
+  | "spaceVoicePreference"
+  | "memoryDocument"
+  | "notificationPreference"
 >;
 
 interface CreateSpaceInput {
@@ -40,6 +45,7 @@ async function createSpace(prisma: SpaceClient, input: CreateSpaceInput): Promis
       id: input.spaceId,
       organizationId: input.organizationId,
       name: input.name,
+      createdByUserId: input.userId,
       createdAt: input.createdAt,
     },
   });
@@ -49,6 +55,7 @@ async function createSpace(prisma: SpaceClient, input: CreateSpaceInput): Promis
       spaceId: input.spaceId,
       organizationId: input.organizationId,
       userId: input.userId,
+      role: "owner",
       createdAt: input.createdAt,
     },
   });
@@ -60,7 +67,7 @@ async function createSpaceDefaults(
 ): Promise<void> {
   await prisma.memoryDocument.create({
     data: {
-      workspaceId: input.spaceId,
+      spaceId: input.spaceId,
       userId: input.userId,
       scope: "user",
       path: "MEMORY.md",
@@ -69,10 +76,52 @@ async function createSpaceDefaults(
   });
   await prisma.notificationPreference.create({
     data: {
-      workspaceId: input.spaceId,
+      spaceId: input.spaceId,
       userId: input.userId,
     },
   });
+}
+
+async function copyProviderPreferences(
+  prisma: SpaceClient,
+  input: { sourceSpaceId: string; targetSpaceId: string; userId: string; createdAt: Date },
+): Promise<void> {
+  const [modelPreferences, voicePreferences] = await Promise.all([
+    prisma.spaceModelPreference.findMany({
+      where: { spaceId: input.sourceSpaceId, userId: input.userId },
+    }),
+    prisma.spaceVoicePreference.findMany({
+      where: { spaceId: input.sourceSpaceId, userId: input.userId },
+    }),
+  ]);
+  await Promise.all([
+    modelPreferences.length
+      ? prisma.spaceModelPreference.createMany({
+          data: modelPreferences.map((preference) => ({
+            spaceId: input.targetSpaceId,
+            userId: input.userId,
+            credentialId: preference.credentialId,
+            modelId: preference.modelId,
+            isDefault: preference.isDefault,
+            createdAt: input.createdAt,
+            updatedAt: input.createdAt,
+          })),
+        })
+      : Promise.resolve(),
+    voicePreferences.length
+      ? prisma.spaceVoicePreference.createMany({
+          data: voicePreferences.map((preference) => ({
+            spaceId: input.targetSpaceId,
+            userId: input.userId,
+            credentialId: preference.credentialId,
+            voiceId: preference.voiceId,
+            isDefault: preference.isDefault,
+            createdAt: input.createdAt,
+            updatedAt: input.createdAt,
+          })),
+        })
+      : Promise.resolve(),
+  ]);
 }
 
 /** Create a sibling privacy boundary for a member of the active organization. */
@@ -122,6 +171,12 @@ export async function createSpaceForMember(
           spaceId,
           userId: input.userId,
           memoryContent: "# Space memory\n\n",
+        });
+        await copyProviderPreferences(tx, {
+          sourceSpaceId: input.currentSpaceId,
+          targetSpaceId: spaceId,
+          userId: input.userId,
+          createdAt,
         });
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },

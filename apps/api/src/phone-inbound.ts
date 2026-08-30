@@ -30,7 +30,7 @@ type PhoneIdentityRow = {
   id: string;
   phoneE164: string;
   userId: string;
-  workspaceId: string;
+  spaceId: string;
   botId: string;
 };
 
@@ -85,7 +85,7 @@ async function handleDirectEvent(
     ids = {
       phoneE164: existing.phoneE164,
       userId: existing.userId,
-      workspaceId: existing.workspaceId,
+      spaceId: existing.spaceId,
       botId: existing.botId,
       threadId: thread.id,
       created: false,
@@ -95,7 +95,7 @@ async function handleDirectEvent(
   }
 
   const sent = await deps.events.sendUserMessage({
-    workspaceId: ids.workspaceId,
+    spaceId: ids.spaceId,
     threadId: ids.threadId,
     botId: ids.botId,
     userId: ids.userId,
@@ -396,7 +396,7 @@ async function handleChannelEvent(
     const thread = await deps.prisma.thread.findFirst({ where: { botId: identity.botId } });
     if (!thread) continue;
     const sent = await deps.events.sendUserMessage({
-      workspaceId: identity.workspaceId,
+      spaceId: identity.spaceId,
       threadId: thread.id,
       botId: identity.botId,
       userId: identity.userId,

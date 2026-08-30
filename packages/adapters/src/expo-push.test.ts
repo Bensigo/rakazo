@@ -20,7 +20,7 @@ afterEach(async () => {
 const notifyContext = {
   operationId: "n",
   traceId: "n",
-  workspaceId: "w",
+  spaceId: "w",
   userId: "user-1",
   signal: new AbortController().signal,
 };
@@ -72,7 +72,7 @@ describe("expo push", () => {
       {
         operationId: "n",
         traceId: "n",
-        workspaceId: "w",
+        spaceId: "w",
         userId: "missing",
         signal: new AbortController().signal,
       },

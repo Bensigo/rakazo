@@ -25,7 +25,7 @@ export type ThinkingLevel = z.infer<typeof ThinkingLevelSchema>;
 
 export const BotSchema = z.object({
   id: Id,
-  workspaceId: Id,
+  spaceId: Id,
   name: z.string(),
   title: z.string(),
   description: z.string(),
@@ -74,7 +74,7 @@ export const GROUP_MEMBER_MAX = 6;
 
 export const GroupSchema = z.object({
   id: Id,
-  workspaceId: Id,
+  spaceId: Id,
   name: z.string(),
   pinned: z.boolean(),
   sectionId: Id.nullable(),
@@ -130,7 +130,7 @@ export type BotSection = z.infer<typeof BotSectionSchema>;
  */
 export const SpaceBotSchema = BotSchema.pick({
   id: true,
-  workspaceId: true,
+  spaceId: true,
   name: true,
   title: true,
   color: true,
@@ -146,7 +146,7 @@ export type SpaceBot = z.infer<typeof SpaceBotSchema>;
 
 export const SpaceGroupSchema = GroupSchema.pick({
   id: true,
-  workspaceId: true,
+  spaceId: true,
   name: true,
   pinned: true,
   sectionId: true,
@@ -160,6 +160,7 @@ export type SpaceGroup = z.infer<typeof SpaceGroupSchema>;
 export const SpaceSchema = z.object({
   id: Id,
   name: z.string(),
+  isDefault: z.boolean(),
   bots: z.array(SpaceBotSchema),
   groups: z.array(SpaceGroupSchema),
   botSections: z.array(BotSectionSchema),
@@ -532,7 +533,7 @@ export type McpServerConfigInput = z.infer<typeof McpServerConfigInput>;
 
 export const McpServerSchema = z.object({
   id: Id,
-  workspaceId: Id,
+  spaceId: Id,
   slug: z.string(),
   name: z.string(),
   description: z.string(),
@@ -755,13 +756,13 @@ export const ModelOAuthBeginSchema = z.discriminatedUnion("mode", [
 ]);
 export type ModelOAuthBegin = z.infer<typeof ModelOAuthBeginSchema>;
 
-export const WorkspaceMemoryConfigSchema = z.object({
+export const SpaceMemoryConfigSchema = z.object({
   provider: z.string(),
   settings: z.record(z.string(), z.string()),
   defaultMemoryScope: MemoryScopeSchema,
   updatedAt: z.string(),
 });
-export type WorkspaceMemoryConfig = z.infer<typeof WorkspaceMemoryConfigSchema>;
+export type SpaceMemoryConfig = z.infer<typeof SpaceMemoryConfigSchema>;
 
 export const ModelCatalogEntrySchema = z.object({
   provider: z.string(),
@@ -931,7 +932,7 @@ export const MeSchema = z.object({
   userId: Id,
   email: z.string().email(),
   name: z.string(),
-  workspaceId: Id,
+  spaceId: Id,
   isDeploymentOwner: z.boolean(),
   needsModel: z.boolean(),
   defaultProvider: z.string().nullable(),

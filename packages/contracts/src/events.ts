@@ -242,7 +242,7 @@ export type MessageBlock = z.infer<typeof MessageBlock>;
 
 export const ProductEventSchema = z.object({
   id: Id,
-  workspaceId: Id,
+  spaceId: Id,
   threadId: Id,
   botId: Id,
   seq: z.number().int().nonnegative(),

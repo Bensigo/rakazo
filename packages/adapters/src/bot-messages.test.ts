@@ -10,7 +10,7 @@ import type { ExecutorDeps } from "./executor.js";
 
 const run = {
   id: "run-1",
-  workspaceId: "workspace-1",
+  spaceId: "workspace-1",
   threadId: "thread-sender",
   botId: "bot-sender",
   userId: "user-1",

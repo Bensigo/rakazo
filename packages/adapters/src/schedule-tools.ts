@@ -168,7 +168,7 @@ export interface ScheduleToolDeps {
 export async function createScheduleFromTool(
   deps: ScheduleToolDeps,
   input: {
-    workspaceId: string;
+    spaceId: string;
     botId: string;
     userId: string;
     threadId: string;
@@ -189,7 +189,7 @@ export async function createScheduleFromTool(
 
   const row = await deps.prisma.routine.create({
     data: {
-      workspaceId: input.workspaceId,
+      spaceId: input.spaceId,
       botId: input.botId,
       userId: input.userId,
       name,
@@ -219,7 +219,7 @@ export async function createScheduleFromTool(
 
   try {
     await deps.events.append({
-      workspaceId: input.workspaceId,
+      spaceId: input.spaceId,
       threadId: input.threadId,
       botId: input.botId,
       type: "routine.created",
@@ -241,10 +241,10 @@ export async function createScheduleFromTool(
 
 export async function listSchedulesFromTool(
   deps: Pick<ScheduleToolDeps, "prisma">,
-  input: { workspaceId: string; botId: string; userId: string },
+  input: { spaceId: string; botId: string; userId: string },
 ) {
   const rows = await deps.prisma.routine.findMany({
-    where: { workspaceId: input.workspaceId, botId: input.botId, userId: input.userId },
+    where: { spaceId: input.spaceId, botId: input.botId, userId: input.userId },
     orderBy: { createdAt: "desc" },
   });
   return {
@@ -263,7 +263,7 @@ export async function listSchedulesFromTool(
 export async function cancelScheduleFromTool(
   deps: ScheduleToolDeps,
   input: {
-    workspaceId: string;
+    spaceId: string;
     botId: string;
     userId: string;
     routineId?: string;
@@ -278,7 +278,7 @@ export async function cancelScheduleFromTool(
 
   const existing = await deps.prisma.routine.findFirst({
     where: {
-      workspaceId: input.workspaceId,
+      spaceId: input.spaceId,
       botId: input.botId,
       userId: input.userId,
       ...(routineId ? { id: routineId } : { name: name! }),

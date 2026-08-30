@@ -8,7 +8,7 @@ describe("provisionPhoneIdentity", () => {
       id: "pi-1",
       phoneE164: "+15551234567",
       userId: "user-1",
-      workspaceId: "ws-1",
+      spaceId: "ws-1",
       botId: "bot-1",
       verifiedAt: null,
       lastInboundAt: null,
@@ -29,7 +29,7 @@ describe("provisionPhoneIdentity", () => {
     expect(result).toEqual({
       phoneE164: "+15551234567",
       userId: "user-1",
-      workspaceId: "ws-1",
+      spaceId: "ws-1",
       botId: "bot-1",
       threadId: "thread-1",
       created: false,
@@ -55,7 +55,7 @@ describe("provisionPhoneIdentity", () => {
       id: "pi-1",
       phoneE164: "+15551234567",
       userId: "user-1",
-      workspaceId: "ws-1",
+      spaceId: "ws-1",
       botId: "bot-1",
       verifiedAt: null,
       lastInboundAt: null,
@@ -82,7 +82,7 @@ describe("provisionPhoneIdentity create race", () => {
       id: "pi-winner",
       phoneE164: "+15551234567",
       userId: "user-1",
-      workspaceId: "ws-1",
+      spaceId: "ws-1",
       botId: "bot-winner",
     };
     const prisma = {
@@ -112,7 +112,7 @@ describe("provisionPhoneIdentity create race", () => {
     expect(result).toEqual({
       phoneE164: "+15551234567",
       userId: "user-1",
-      workspaceId: "ws-1",
+      spaceId: "ws-1",
       botId: "bot-winner",
       threadId: "thread-winner",
       created: false,

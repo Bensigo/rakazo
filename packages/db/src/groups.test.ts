@@ -8,7 +8,7 @@ describe("listSpaceGroupsForSpaces", () => {
     const findMany = vi.fn(async (_query: { where: unknown; select: Record<string, unknown> }) => [
       {
         id: "group-1",
-        workspaceId: "workspace-2",
+        spaceId: "workspace-2",
         name: "Support crew",
         pinned: true,
         sectionId: null,
@@ -32,7 +32,7 @@ describe("listSpaceGroupsForSpaces", () => {
     ]);
     const repos = createGroupRepos({ chatGroup: { findMany } } as unknown as PrismaClient);
     const actor = {
-      workspaceId: "workspace-1",
+      spaceId: "workspace-1",
       userId: "user-1",
       email: "user@example.test",
       isDeploymentOwner: false,
@@ -41,7 +41,7 @@ describe("listSpaceGroupsForSpaces", () => {
     await expect(repos.listSpaceGroupsForSpaces(actor, ["workspace-2"])).resolves.toEqual([
       {
         id: "group-1",
-        workspaceId: "workspace-2",
+        spaceId: "workspace-2",
         name: "Support crew",
         pinned: true,
         sectionId: null,
@@ -63,7 +63,7 @@ describe("listSpaceGroupsForSpaces", () => {
 
 describe("archiveGroup", () => {
   const actor = {
-    workspaceId: "workspace-1",
+    spaceId: "workspace-1",
     userId: "user-1",
     email: "user@example.com",
     isDeploymentOwner: true,

@@ -162,11 +162,11 @@ describe("sandbox supervisor HTTP boundary", () => {
         authorization: `Bearer ${token}`,
         "content-type": "application/json",
         "x-rakazo-bot-id": "other-bot",
-        "x-rakazo-workspace-id": "workspace",
+        "x-rakazo-space-id": "workspace",
       },
       body: JSON.stringify({
         botId: "bot",
-        workspaceId: "workspace",
+        spaceId: "workspace",
         homePath: "/tmp/never-used",
       }),
     });
@@ -187,13 +187,13 @@ describe("sandbox supervisor input containment", () => {
 
   it("requires both bot and workspace identities to match", () => {
     expect(() =>
-      assertRequestIdentity("bot", "workspace", { botId: "bot", workspaceId: "workspace" }),
+      assertRequestIdentity("bot", "workspace", { botId: "bot", spaceId: "workspace" }),
     ).not.toThrow();
     expect(() =>
-      assertRequestIdentity(undefined, "workspace", { botId: "bot", workspaceId: "workspace" }),
+      assertRequestIdentity(undefined, "workspace", { botId: "bot", spaceId: "workspace" }),
     ).toThrow(/identity mismatch/);
     expect(() =>
-      assertRequestIdentity("bot", "other", { botId: "bot", workspaceId: "workspace" }),
+      assertRequestIdentity("bot", "other", { botId: "bot", spaceId: "workspace" }),
     ).toThrow(/identity mismatch/);
   });
 

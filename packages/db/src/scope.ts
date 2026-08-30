@@ -18,7 +18,7 @@ export async function requireMembership(
       userId,
       ...(requestedSpaceId ? { spaceId: requestedSpaceId } : {}),
     },
-    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    orderBy: [{ space: { isDefault: "desc" } }, { createdAt: "asc" }, { id: "asc" }],
     include: { member: { include: { user: true } } },
   });
   if (!membership) {
@@ -29,17 +29,17 @@ export async function requireMembership(
   });
   return {
     userId: membership.userId,
-    workspaceId: membership.spaceId,
+    spaceId: membership.spaceId,
     email: membership.member.user.email,
     isDeploymentOwner: settings?.ownerUserId === membership.userId,
   };
 }
 
-export function scoped<T extends { workspaceId: string; userId?: string }>(
+export function scoped<T extends { spaceId: string; userId?: string }>(
   actor: Actor,
   record: T | null,
 ): T {
-  if (!record || record.workspaceId !== actor.workspaceId) {
+  if (!record || record.spaceId !== actor.spaceId) {
     throw new IsolationError();
   }
   if (record.userId && record.userId !== actor.userId) {

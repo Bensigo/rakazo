@@ -12,7 +12,7 @@ import {
 const context: AdapterContext = {
   operationId: "op-1",
   traceId: "trace-1",
-  workspaceId: "ws-1",
+  spaceId: "ws-1",
   userId: "user-1",
   signal: new AbortController().signal,
 };
@@ -21,7 +21,7 @@ const identity = {
   id: "pi-1",
   phoneE164: "+15551234567",
   userId: "user-1",
-  workspaceId: "ws-1",
+  spaceId: "ws-1",
   botId: "bot-1",
   outboundSinceInbound: 0,
 };
@@ -517,7 +517,7 @@ function createChannelDeps(
     id: "pi-1",
     phoneE164: "+15551111111",
     userId: "user-1",
-    workspaceId: "ws-1",
+    spaceId: "ws-1",
     botId: "bot-1",
     outboundSinceInbound: 0,
   };
@@ -525,7 +525,7 @@ function createChannelDeps(
     id: "pi-2",
     phoneE164: "+15553333333",
     userId: "user-2",
-    workspaceId: "ws-2",
+    spaceId: "ws-2",
     botId: "bot-2",
     outboundSinceInbound: 0,
   };
@@ -709,7 +709,7 @@ describe("deliverPhoneOutbound channel runs", () => {
 
     expect(deps.sendUserMessage).toHaveBeenCalledWith(
       expect.objectContaining({
-        workspaceId: "ws-2",
+        spaceId: "ws-2",
         threadId: "thread-2",
         botId: "bot-2",
         trigger: "phone",

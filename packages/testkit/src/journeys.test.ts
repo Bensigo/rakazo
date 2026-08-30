@@ -140,7 +140,7 @@ describeJourneys("required product journeys", () => {
 
     const adaMe = await rpc<Me>(app, ada, "me");
     const bobMe = await rpc<Me>(app, bob, "me");
-    expect(adaMe.workspaceId).not.toBe(bobMe.workspaceId);
+    expect(adaMe.spaceId).not.toBe(bobMe.spaceId);
 
     const chief = await rpc<Bot>(app, ada, "bots/create", {
       name: "Chief",
@@ -311,7 +311,7 @@ describeJourneys("required product journeys", () => {
     const thread = await prisma.thread.findUniqueOrThrow({ where: { botId: bot.id } });
     const task = await prisma.task.create({
       data: {
-        workspaceId: thread.workspaceId,
+        spaceId: thread.spaceId,
         userId: thread.userId,
         botId: bot.id,
         threadId: thread.id,
@@ -321,7 +321,7 @@ describeJourneys("required product journeys", () => {
     });
     const run = await prisma.run.create({
       data: {
-        workspaceId: thread.workspaceId,
+        spaceId: thread.spaceId,
         userId: thread.userId,
         botId: bot.id,
         threadId: thread.id,
@@ -380,7 +380,7 @@ describeJourneys("required product journeys", () => {
 
     await expect(
       appendEvent(prisma, {
-        workspaceId: thread.workspaceId,
+        spaceId: thread.spaceId,
         threadId: thread.id,
         botId: bot.id,
         type: "thread.progress",
@@ -893,7 +893,7 @@ describeJourneys("required product journeys", () => {
     const legacyDueAt = new Date(Date.now() - 1_000);
     const legacy = await prisma.routine.create({
       data: {
-        workspaceId: advanced.workspaceId,
+        spaceId: advanced.spaceId,
         userId: advanced.userId,
         botId: bot.id,
         name: "Legacy schedule",
@@ -933,7 +933,7 @@ describeJourneys("required product journeys", () => {
     await Promise.all(
       Array.from({ length: 40 }, (_, index) =>
         appendEvent(prisma, {
-          workspaceId: actor.workspaceId,
+          spaceId: actor.spaceId,
           threadId: thread.id,
           botId: bot.id,
           type: "thread.progress",
@@ -963,7 +963,7 @@ describeJourneys("required product journeys", () => {
     const ctx = {
       operationId: "1",
       traceId: "1",
-      workspaceId: "w",
+      spaceId: "w",
       userId: "u",
       signal: new AbortController().signal,
     };
@@ -1185,7 +1185,7 @@ describeJourneys("required product journeys", () => {
 
     expect(deleted.status).toBe(200);
     expect(await prisma.user.findUnique({ where: { id: me.userId } })).toBeNull();
-    expect(await prisma.organization.findUnique({ where: { id: me.workspaceId } })).toBeNull();
+    expect(await prisma.organization.findUnique({ where: { id: me.spaceId } })).toBeNull();
     expect(await prisma.bot.findUnique({ where: { id: bot.id } })).toBeNull();
     expect((await raw(app, cookie, "me")).status).toBeGreaterThanOrEqual(400);
   });
@@ -1551,7 +1551,7 @@ describeJourneys("required product journeys", () => {
     );
     const concurrentTask = await prisma.task.create({
       data: {
-        workspaceId: botA.workspaceId,
+        spaceId: botA.spaceId,
         botId: botA.id,
         threadId: group.threadId,
         userId: adaMe.userId,
@@ -1561,7 +1561,7 @@ describeJourneys("required product journeys", () => {
     });
     const concurrentRun = await prisma.run.create({
       data: {
-        workspaceId: botA.workspaceId,
+        spaceId: botA.spaceId,
         botId: botA.id,
         threadId: group.threadId,
         taskId: concurrentTask.id,
@@ -1609,7 +1609,7 @@ describeJourneys("required product journeys", () => {
 
     const staleTask = await prisma.task.create({
       data: {
-        workspaceId: botB.workspaceId,
+        spaceId: botB.spaceId,
         botId: botB.id,
         threadId: group.threadId,
         userId: adaMe.userId,
@@ -1619,7 +1619,7 @@ describeJourneys("required product journeys", () => {
     });
     const staleRun = await prisma.run.create({
       data: {
-        workspaceId: botB.workspaceId,
+        spaceId: botB.spaceId,
         botId: botB.id,
         threadId: group.threadId,
         taskId: staleTask.id,
@@ -1670,7 +1670,7 @@ describeJourneys("required product journeys", () => {
       { prisma, events: createThreadEvents(prisma), jobs },
       {
         id: staleRun.id,
-        workspaceId: botB.workspaceId,
+        spaceId: botB.spaceId,
         threadId: group.threadId,
         botId: botB.id,
         userId: staleTask.userId,
@@ -1809,7 +1809,7 @@ describeJourneys("required product journeys", () => {
     await rpc(app, ada, "bots/archive", { botId: archiveMember.id });
     const dissolvingTask = await prisma.task.create({
       data: {
-        workspaceId: archivePartner.workspaceId,
+        spaceId: archivePartner.spaceId,
         botId: archivePartner.id,
         threadId: archiveThread.id,
         userId: adaMe.userId,
@@ -1819,7 +1819,7 @@ describeJourneys("required product journeys", () => {
     });
     const dissolvingRun = await prisma.run.create({
       data: {
-        workspaceId: archivePartner.workspaceId,
+        spaceId: archivePartner.spaceId,
         botId: archivePartner.id,
         threadId: archiveThread.id,
         taskId: dissolvingTask.id,
@@ -2205,7 +2205,7 @@ describeJourneys("required product journeys", () => {
     });
     const routine = await prisma.routine.create({
       data: {
-        workspaceId: me.workspaceId,
+        spaceId: me.spaceId,
         userId: me.userId,
         botId: bot.id,
         name: "Remind once",
@@ -2316,7 +2316,7 @@ describeJourneys("required product journeys", () => {
   });
 });
 
-type Me = { workspaceId: string; userId: string; canChooseHostComputer: boolean };
+type Me = { spaceId: string; userId: string; canChooseHostComputer: boolean };
 type Bot = {
   id: string;
   name: string;

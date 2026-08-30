@@ -197,7 +197,7 @@ export const builtinAgentTools: ConnectorTool[] = [
   {
     name: "add_mcp_server",
     description:
-      "Connect an MCP tool server to this workspace when the user asks you to add one and provides the details (URL or command, optional token/headers/env). The server is created immediately and assigned to you. If it needs browser OAuth authorization, an approval card appears in the chat for the user to complete — tell them to click Authorize. Do not invent endpoints; only use details the user provided.",
+      "Connect an MCP tool server to this Space when the user asks you to add one and provides the details (URL or command, optional token/headers/env). The server is created immediately and assigned to you. If it needs browser OAuth authorization, an approval card appears in the chat for the user to complete — tell them to click Authorize. Do not invent endpoints; only use details the user provided.",
     inputSchema: {
       type: "object",
       properties: {
@@ -257,7 +257,7 @@ export const builtinAgentTools: ConnectorTool[] = [
     },
   },
   // Semantic-memory tools: exposed by selectMemoryTools() only when a
-  // workspace memory provider is configured (which hides `remember`).
+  // A Space memory provider is configured (which hides `remember`).
   {
     name: "save_memory",
     description:

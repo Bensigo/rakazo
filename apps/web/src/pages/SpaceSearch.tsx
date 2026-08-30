@@ -1,7 +1,7 @@
 import { Trans } from "@lingui/react/macro";
 import type { SearchHit } from "@rakazo/contracts";
 
-export function WorkspaceSearchResults({
+export function SpaceSearchResults({
   hits,
   loading,
   onSelect,

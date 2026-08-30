@@ -185,7 +185,7 @@ describe("Pi connector tool dispatch", () => {
       {
         operationId: "1",
         traceId: "1",
-        workspaceId: "w",
+        spaceId: "w",
         userId: "u",
         signal: new AbortController().signal,
       },
@@ -221,7 +221,7 @@ describe("Pi connector tool dispatch", () => {
       {
         operationId: "tool-only",
         traceId: "tool-only",
-        workspaceId: "w",
+        spaceId: "w",
         userId: "u",
         signal: new AbortController().signal,
       },
@@ -254,7 +254,7 @@ describe("Pi connector tool dispatch", () => {
       {
         operationId: "bot-wake-silent",
         traceId: "bot-wake-silent",
-        workspaceId: "w",
+        spaceId: "w",
         userId: "u",
         signal: new AbortController().signal,
       },
@@ -286,7 +286,7 @@ describe("Pi connector tool dispatch", () => {
       {
         operationId: "user-empty",
         traceId: "user-empty",
-        workspaceId: "w",
+        spaceId: "w",
         userId: "u",
         signal: new AbortController().signal,
       },
@@ -319,7 +319,7 @@ describe("Pi connector tool dispatch", () => {
       {
         operationId: "peer-result-empty",
         traceId: "peer-result-empty",
-        workspaceId: "w",
+        spaceId: "w",
         userId: "u",
         signal: new AbortController().signal,
       },
@@ -358,7 +358,7 @@ describe("Pi connector tool dispatch", () => {
       {
         operationId: "peer-result-blank",
         traceId: "peer-result-blank",
-        workspaceId: "w",
+        spaceId: "w",
         userId: "u",
         signal: new AbortController().signal,
       },
@@ -390,7 +390,7 @@ describe("Pi connector tool dispatch", () => {
       {
         operationId: "2a",
         traceId: "2a",
-        workspaceId: "w",
+        spaceId: "w",
         userId: "u",
         signal: new AbortController().signal,
       },
@@ -430,7 +430,7 @@ describe("Pi connector tool dispatch", () => {
       {
         operationId: "2b",
         traceId: "2b",
-        workspaceId: "w",
+        spaceId: "w",
         userId: "u",
         signal: new AbortController().signal,
       },
@@ -483,7 +483,7 @@ describe("Pi connector tool dispatch", () => {
       {
         operationId: "2",
         traceId: "2",
-        workspaceId: "w",
+        spaceId: "w",
         userId: "u",
         signal: new AbortController().signal,
       },
@@ -556,7 +556,7 @@ describe("Pi connector tool dispatch", () => {
       {
         operationId: "3",
         traceId: "3",
-        workspaceId: "w",
+        spaceId: "w",
         userId: "u",
         signal: new AbortController().signal,
       },

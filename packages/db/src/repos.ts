@@ -15,7 +15,7 @@ import { activeRunSelection, previewFromBlocks } from "./thread-listing.js";
 function mapBot(
   bot: {
     id: string;
-    workspaceId: string;
+    spaceId: string;
     name: string;
     title: string;
     description: string;
@@ -46,7 +46,7 @@ function mapBot(
   }
   return {
     id: bot.id,
-    workspaceId: bot.workspaceId,
+    spaceId: bot.spaceId,
     name: bot.name,
     title: bot.title,
     description: bot.description,
@@ -78,15 +78,15 @@ export function createRepos(prisma: PrismaClient) {
   async function listBotSectionsForSpaces(
     actor: Actor,
     spaceIds: string[],
-  ): Promise<Array<BotSection & { workspaceId: string }>> {
+  ): Promise<Array<BotSection & { spaceId: string }>> {
     if (spaceIds.length === 0) return [];
     const sections = await prisma.botSection.findMany({
-      where: { workspaceId: { in: spaceIds }, userId: actor.userId },
+      where: { spaceId: { in: spaceIds }, userId: actor.userId },
       orderBy: [{ position: "asc" }, { createdAt: "asc" }],
     });
     return sections.map((section) => ({
       id: section.id,
-      workspaceId: section.workspaceId,
+      spaceId: section.spaceId,
       name: section.name,
       position: section.position,
       createdAt: section.createdAt.toISOString(),
@@ -98,13 +98,13 @@ export function createRepos(prisma: PrismaClient) {
     if (spaceIds.length === 0) return [];
     const bots = await prisma.bot.findMany({
       where: {
-        workspaceId: { in: spaceIds },
+        spaceId: { in: spaceIds },
         userId: actor.userId,
         archivedAt: null,
       },
       select: {
         id: true,
-        workspaceId: true,
+        spaceId: true,
         name: true,
         title: true,
         color: true,
@@ -130,7 +130,7 @@ export function createRepos(prisma: PrismaClient) {
       if (!bot.thread) throw new IsolationError("Bot is missing its thread");
       return {
         id: bot.id,
-        workspaceId: bot.workspaceId,
+        spaceId: bot.spaceId,
         name: bot.name,
         title: bot.title,
         color: bot.color,
@@ -147,7 +147,7 @@ export function createRepos(prisma: PrismaClient) {
 
   return {
     async listBotSections(actor: Actor): Promise<BotSection[]> {
-      return listBotSectionsForSpaces(actor, [actor.workspaceId]);
+      return listBotSectionsForSpaces(actor, [actor.spaceId]);
     },
 
     listBotSectionsForSpaces,
@@ -162,7 +162,7 @@ export function createRepos(prisma: PrismaClient) {
           ? await tx.bot.findFirst({
               where: {
                 id: input.botId,
-                workspaceId: actor.workspaceId,
+                spaceId: actor.spaceId,
                 userId: actor.userId,
                 archivedAt: null,
               },
@@ -171,7 +171,7 @@ export function createRepos(prisma: PrismaClient) {
           : await tx.chatGroup.findFirst({
               where: {
                 id: input.groupId,
-                workspaceId: actor.workspaceId,
+                spaceId: actor.spaceId,
                 userId: actor.userId,
                 archivedAt: null,
               },
@@ -180,12 +180,12 @@ export function createRepos(prisma: PrismaClient) {
         if (!target) throw new IsolationError();
 
         const aggregate = await tx.botSection.aggregate({
-          where: { workspaceId: actor.workspaceId, userId: actor.userId },
+          where: { spaceId: actor.spaceId, userId: actor.userId },
           _max: { position: true },
         });
         await tx.botSection.createMany({
           data: {
-            workspaceId: actor.workspaceId,
+            spaceId: actor.spaceId,
             userId: actor.userId,
             name,
             position: (aggregate._max.position ?? -1) + 1,
@@ -194,8 +194,8 @@ export function createRepos(prisma: PrismaClient) {
         });
         const section = await tx.botSection.findUniqueOrThrow({
           where: {
-            workspaceId_userId_name: {
-              workspaceId: actor.workspaceId,
+            spaceId_userId_name: {
+              spaceId: actor.spaceId,
               userId: actor.userId,
               name,
             },
@@ -222,7 +222,7 @@ export function createRepos(prisma: PrismaClient) {
     async listBots(actor: Actor, options: { archived?: boolean } = {}): Promise<Bot[]> {
       const bots = await prisma.bot.findMany({
         where: {
-          workspaceId: actor.workspaceId,
+          spaceId: actor.spaceId,
           userId: actor.userId,
           archivedAt: options.archived ? { not: null } : null,
         },
@@ -249,7 +249,7 @@ export function createRepos(prisma: PrismaClient) {
       const bot = await prisma.bot.findFirst({
         where: {
           id: botId,
-          workspaceId: actor.workspaceId,
+          spaceId: actor.spaceId,
           userId: actor.userId,
           ...(options.includeArchived ? {} : { archivedAt: null }),
         },
@@ -284,7 +284,7 @@ export function createRepos(prisma: PrismaClient) {
       let color = input.color;
       if (color === undefined) {
         const count = await prisma.bot.count({
-          where: { workspaceId: actor.workspaceId, userId: actor.userId },
+          where: { spaceId: actor.spaceId, userId: actor.userId },
         });
         color = BOT_COLORS[count % BOT_COLORS.length] ?? BOT_COLORS[0];
       }
@@ -295,7 +295,7 @@ export function createRepos(prisma: PrismaClient) {
         const parent = await prisma.bot.findFirst({
           where: {
             id: input.parentBotId,
-            workspaceId: actor.workspaceId,
+            spaceId: actor.spaceId,
             userId: actor.userId,
           },
         });
@@ -312,18 +312,18 @@ export function createRepos(prisma: PrismaClient) {
         envKind === "docker" && settings?.computerHost === "this-mac" ? "desktop" : envKind;
       const bot = await prisma.$transaction(async (tx) => {
         const positions = await tx.bot.aggregate({
-          where: { workspaceId: actor.workspaceId, userId: actor.userId },
+          where: { spaceId: actor.spaceId, userId: actor.userId },
           _max: { position: true },
         });
         const teamComputer = await ensureComputerRecord(tx, {
           mode: "team",
-          workspaceId: actor.workspaceId,
+          spaceId: actor.spaceId,
           userId: actor.userId,
           kind,
         });
         const created = await tx.bot.create({
           data: {
-            workspaceId: actor.workspaceId,
+            spaceId: actor.spaceId,
             userId: actor.userId,
             name: input.name,
             title: input.title,
@@ -342,7 +342,7 @@ export function createRepos(prisma: PrismaClient) {
         });
         const thread = await tx.thread.create({
           data: {
-            workspaceId: actor.workspaceId,
+            spaceId: actor.spaceId,
             botId: created.id,
             userId: actor.userId,
           },
@@ -356,7 +356,7 @@ export function createRepos(prisma: PrismaClient) {
         if (input.computerMode === "dedicated") {
           const dedicated = await ensureComputerRecord(tx, {
             mode: "dedicated",
-            workspaceId: actor.workspaceId,
+            spaceId: actor.spaceId,
             userId: actor.userId,
             botId: created.id,
             kind,
@@ -365,14 +365,14 @@ export function createRepos(prisma: PrismaClient) {
         }
         await tx.browserProfile.create({
           data: {
-            workspaceId: actor.workspaceId,
+            spaceId: actor.spaceId,
             botId: created.id,
             userId: actor.userId,
           },
         });
         await tx.memoryDocument.create({
           data: {
-            workspaceId: actor.workspaceId,
+            spaceId: actor.spaceId,
             userId: actor.userId,
             botId: created.id,
             scope: "bot",
@@ -392,7 +392,7 @@ export function createRepos(prisma: PrismaClient) {
       await prisma.$transaction(async (tx) => {
         const bots = await tx.bot.findMany({
           where: {
-            workspaceId: actor.workspaceId,
+            spaceId: actor.spaceId,
             userId: actor.userId,
             archivedAt: null,
           },
@@ -411,13 +411,13 @@ export function createRepos(prisma: PrismaClient) {
 
     async setBotComputer(actor: Actor, botId: string, mode: ComputerMode): Promise<Bot> {
       const bot = await prisma.bot.findFirst({
-        where: { id: botId, workspaceId: actor.workspaceId, userId: actor.userId },
+        where: { id: botId, spaceId: actor.spaceId, userId: actor.userId },
         include: { computer: true },
       });
       if (!bot?.computer) throw new IsolationError();
       const computer = await ensureComputerRecord(prisma, {
         mode,
-        workspaceId: actor.workspaceId,
+        spaceId: actor.spaceId,
         userId: actor.userId,
         botId,
         kind: bot.computer.kind,

@@ -5,7 +5,7 @@ import { ComposioEmulator } from "./composio-emulator.js";
 const context = {
   operationId: "test",
   traceId: "test",
-  workspaceId: "workspace",
+  spaceId: "workspace",
   userId: "user-1",
   signal: new AbortController().signal,
 };

@@ -199,7 +199,7 @@ export async function runAutoReviewJudge(input: {
   };
   prompt: string;
   runId: string;
-  workspaceId: string;
+  spaceId: string;
   userId: string;
   botId: string;
   threadId: string;
@@ -231,7 +231,7 @@ export async function runAutoReviewJudge(input: {
       {
         operationId: `auto-review:${input.runId}`,
         traceId: `auto-review:${input.runId}`,
-        workspaceId: input.workspaceId,
+        spaceId: input.spaceId,
         userId: input.userId,
         signal: AbortSignal.timeout(timeoutMs),
       },

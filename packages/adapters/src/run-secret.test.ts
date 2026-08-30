@@ -112,7 +112,7 @@ describe("reconcileManagedConnection", () => {
   const context = {
     operationId: "run-1",
     traceId: "run-1",
-    workspaceId: "workspace-1",
+    spaceId: "workspace-1",
     userId: "user-1",
     signal: new AbortController().signal,
   };
@@ -138,7 +138,7 @@ describe("reconcileManagedConnection", () => {
       reconcileManagedConnection(
         prisma as never,
         connectors as never,
-        { workspaceId: "workspace-1", userId: "user-1" },
+        { spaceId: "workspace-1", userId: "user-1" },
         context,
         "conn-1",
       ),
@@ -156,7 +156,7 @@ describe("tryCompleteConnectionWithCode", () => {
   const context = {
     operationId: "run-1",
     traceId: "run-1",
-    workspaceId: "workspace-1",
+    spaceId: "workspace-1",
     userId: "user-1",
     signal: new AbortController().signal,
   };
@@ -184,7 +184,7 @@ describe("tryCompleteConnectionWithCode", () => {
       tryCompleteConnectionWithCode(
         prisma as never,
         connectors as never,
-        { workspaceId: "workspace-1", userId: "user-1" },
+        { spaceId: "workspace-1", userId: "user-1" },
         context,
         "conn-1",
         "123456",
@@ -194,7 +194,7 @@ describe("tryCompleteConnectionWithCode", () => {
     expect(prisma.connection.findFirst).toHaveBeenCalledWith({
       where: {
         id: "conn-1",
-        workspaceId: "workspace-1",
+        spaceId: "workspace-1",
         userId: "user-1",
         status: { in: ["pending", "connected"] },
       },
@@ -228,7 +228,7 @@ describe("tryCompleteConnectionWithCode", () => {
       tryCompleteConnectionWithCode(
         prisma as never,
         connectors as never,
-        { workspaceId: "workspace-1", userId: "user-1" },
+        { spaceId: "workspace-1", userId: "user-1" },
         context,
         "conn-1",
         "123456",
@@ -261,7 +261,7 @@ describe("tryCompleteConnectionWithCode", () => {
       tryCompleteConnectionWithCode(
         prisma as never,
         connectors as never,
-        { workspaceId: "workspace-1", userId: "user-1" },
+        { spaceId: "workspace-1", userId: "user-1" },
         context,
         "conn-1",
         "bad",

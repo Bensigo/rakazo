@@ -1617,7 +1617,7 @@ msgid "Low"
 msgstr "Baixo"
 
 #: src/pages/MemorySettingsOverlay.tsx:138
-msgid "Manage the workspace semantic memory provider."
+msgid "Manage the Space semantic memory provider."
 msgstr "Gerencie o provedor de memória semântica do espaço de trabalho."
 
 #: src/pages/BotContextMenu.tsx:96
@@ -1864,7 +1864,7 @@ msgstr "Nenhum catálogo de modelos está disponível."
 msgid "No providers found."
 msgstr "Nenhum provedor encontrado"
 
-#: src/pages/WorkspaceSearch.tsx:23
+#: src/pages/SpaceSearch.tsx:23
 msgid "No results"
 msgstr "Nenhum resultado"
 
@@ -1965,7 +1965,7 @@ msgid "Opened its thread."
 msgstr "Abriu a conversa."
 
 #: src/App.tsx:166
-msgid "Opening your workspace…"
+msgid "Opening your Space…"
 msgstr "Abrindo seu espaço de trabalho..."
 
 #: src/pages/ModelSettingsOverlay.tsx:636
@@ -2336,7 +2336,7 @@ msgstr "Pesquisar provedores"
 msgid "Search providers and models"
 msgstr "Pesquisar fornecedores e modelos"
 
-#: src/pages/WorkspaceSearch.tsx:16
+#: src/pages/SpaceSearch.tsx:16
 msgid "Searching…"
 msgstr "Pesquisando…"
 

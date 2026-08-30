@@ -1,6 +1,7 @@
 export * from "./bootstrap-user.js";
 export * from "./client.js";
 export * from "./computers.js";
+export * from "./credential-secrets.js";
 export * from "./events.js";
 export * from "./groups.js";
 export * from "./memory-config.js";

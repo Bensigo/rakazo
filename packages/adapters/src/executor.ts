@@ -338,7 +338,7 @@ export function isProtectedComputerLifecycleCommand(command: string): boolean {
   return false;
 }
 
-/** Cap the roster so a large workspace cannot flood the prompt. */
+/** Cap the roster so a large Space cannot flood the prompt. */
 const BOT_DIRECTORY_LIMIT = 40;
 
 export interface ExecutorDeps {
@@ -387,7 +387,7 @@ async function loadLivePluginSlugs(
 
 async function persistLivePluginConnections(
   prisma: PrismaClient,
-  owner: { userId: string; workspaceId: string },
+  owner: { userId: string; spaceId: string },
   rows: PluginConnectionRow[],
   liveSlugs: string[],
 ): Promise<void> {
@@ -397,7 +397,7 @@ async function persistLivePluginConnections(
       where: {
         id: { in: sync.connectIds },
         userId: owner.userId,
-        workspaceId: owner.workspaceId,
+        spaceId: owner.spaceId,
       },
       data: { status: "connected" },
     });
@@ -407,7 +407,7 @@ async function persistLivePluginConnections(
       where: {
         id: { in: sync.revokeIds },
         userId: owner.userId,
-        workspaceId: owner.workspaceId,
+        spaceId: owner.spaceId,
       },
       data: { status: "revoked" },
     });
@@ -432,7 +432,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
   return {
     async resolveModel(scope: {
       userId: string;
-      workspaceId: string;
+      spaceId: string;
       botId?: string;
     }): Promise<AgentRunRequest["model"]> {
       const override = scope.botId
@@ -440,7 +440,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             where: {
               id: scope.botId,
               userId: scope.userId,
-              workspaceId: scope.workspaceId,
+              spaceId: scope.spaceId,
             },
             select: { modelProvider: true, modelId: true, thinkingLevel: true },
           })
@@ -454,7 +454,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
         deps.prisma.deploymentSettings.findUnique({ where: { id: "default" } }),
       ]);
       // Keep provider/model/credential as one unit — never pair an override
-      // provider with a workspace or deployment secret from another provider.
+      // provider with a Space or deployment secret from another provider.
       const useOverride = Boolean(hasOverride && overrideCredential);
       const credential = useOverride ? overrideCredential : defaultCredential;
       const deployment = deps.deploymentModelKey ? resolveDeploymentModel() : null;
@@ -474,7 +474,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
       const resolved = await resolveModelKey(
         deps,
         scope.userId,
-        scope.workspaceId,
+        scope.spaceId,
         credential,
         provider,
       );
@@ -484,7 +484,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
         apiKey: resolved.oauth ? undefined : resolved.apiKey,
         baseUrl: resolved.baseUrl,
         thinkingLevel:
-          // Apply bot thinking with a successful override or workspace default.
+          // Apply bot thinking with a successful override or Space default.
           // Drop it only when an override existed but its credential was missing.
           hasOverride && !useOverride
             ? null
@@ -519,7 +519,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           );
       const previousLastRunAt = routine.lastRunAt;
       const skillRecords = await listAgentSkillRecords(deps.prisma, {
-        workspaceId: routine.workspaceId,
+        spaceId: routine.spaceId,
         userId: routine.userId,
       });
       const routinePrompt = expandSkillReferencesInPrompt(routine.prompt, skillRecords);
@@ -535,7 +535,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
         if (updated.count !== 1) return null;
         const task = await tx.task.create({
           data: {
-            workspaceId: routine.workspaceId,
+            spaceId: routine.spaceId,
             botId: bot.id,
             threadId: bot.thread!.id,
             userId: routine.userId,
@@ -545,7 +545,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
         });
         return tx.run.create({
           data: {
-            workspaceId: routine.workspaceId,
+            spaceId: routine.spaceId,
             botId: bot.id,
             threadId: bot.thread!.id,
             taskId: task.id,
@@ -582,7 +582,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
       }
       try {
         await deps.events.append({
-          workspaceId: routine.workspaceId,
+          spaceId: routine.spaceId,
           threadId: bot.thread.id,
           botId: bot.id,
           type: "routine.fired",
@@ -739,7 +739,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             : Promise.resolve(undefined),
           deps.prisma.task.findUniqueOrThrow({ where: { id: run.taskId } }),
           deps.prisma.connection.findMany({
-            where: { userId: run.userId, workspaceId: run.workspaceId },
+            where: { userId: run.userId, spaceId: run.spaceId },
             select: {
               id: true,
               connectorId: true,
@@ -751,12 +751,12 @@ export function createRunExecutor(deps: ExecutorDeps) {
           }),
           findDefaultModelCredential(deps.prisma, run),
           deps.prisma.deploymentSettings.findUnique({ where: { id: "default" } }),
-          deps.memoryProviders.resolve(run.workspaceId),
+          deps.memoryProviders.resolve(run.spaceId),
           deps.prisma.taughtSkill.findMany({
-            where: { botId: run.botId, workspaceId: run.workspaceId, status: "saved" },
+            where: { botId: run.botId, spaceId: run.spaceId, status: "saved" },
           }),
           listAgentSkillRecords(deps.prisma, {
-            workspaceId: run.workspaceId,
+            spaceId: run.spaceId,
             userId: run.userId,
           }),
         ]);
@@ -765,7 +765,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           hasModelOverride && bot.modelProvider
             ? await findModelCredential(deps.prisma, run, bot.modelProvider)
             : null;
-        // Keep provider/model/credential as one unit — never use the workspace
+        // Keep provider/model/credential as one unit — never use the Space
         // default secret for a different override provider.
         const useModelOverride = Boolean(hasModelOverride && overrideCredential);
         const credential = useModelOverride ? overrideCredential! : defaultCredential;
@@ -796,7 +796,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
         const context = {
           operationId: runId,
           traceId: runId,
-          workspaceId: run.workspaceId,
+          spaceId: run.spaceId,
           userId: run.userId,
           botId: bot.id,
           runId,
@@ -817,7 +817,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
         const semanticMemory: SemanticMemoryProvider | null = configuredMemory?.provider ?? null;
 
         await deps.events.append({
-          workspaceId: run.workspaceId,
+          spaceId: run.spaceId,
           threadId: thread.id,
           botId: bot.id,
           type: "run.started",
@@ -891,7 +891,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             loadCurrentTurnImages(deps, turnBlocks, context),
             loadAgentMemoryContext(deps.memory, bot.id, context),
             loadAgentScratchpadContext(deps, {
-              workspaceId: run.workspaceId,
+              spaceId: run.spaceId,
               botId: bot.id,
             }),
             recallPromise,
@@ -932,7 +932,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
         const resolved = await resolveModelKey(
           deps,
           run.userId,
-          run.workspaceId,
+          run.spaceId,
           credential,
           runModelProvider,
           (values) => runSecrets.push(...values),
@@ -1009,7 +1009,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
         const loadApprovalRules = () => {
           approvalRulesPromise ??= deps.prisma.actionApprovalRule
             .findMany({
-              where: { workspaceId: run.workspaceId, createdByUserId: run.userId },
+              where: { spaceId: run.spaceId, createdByUserId: run.userId },
               select: { effect: true, matchKind: true, matchValue: true },
             })
             .then((rules) => rules as ActionApprovalRule[]);
@@ -1020,8 +1020,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
           autoReviewPreferencePromise ??= deps.prisma.actionAutoReviewPreference
             .findUnique({
               where: {
-                workspaceId_userId: {
-                  workspaceId: run.workspaceId,
+                spaceId_userId: {
+                  spaceId: run.spaceId,
                   userId: run.userId,
                 },
               },
@@ -1080,7 +1080,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
         const flushProgress = async () => {
           if (scripted || !pendingProgress) return;
           await deps.events.append({
-            workspaceId: run.workspaceId,
+            spaceId: run.spaceId,
             threadId: thread.id,
             botId: bot.id,
             type: "thread.progress",
@@ -1159,7 +1159,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 Boolean(
                   await findModelCredential(
                     deps.prisma,
-                    { userId: run.userId, workspaceId: run.workspaceId },
+                    { userId: run.userId, spaceId: run.spaceId },
                     checker.provider,
                   ),
                 )
@@ -1192,13 +1192,13 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   ? credential
                   : await findModelCredential(
                       deps.prisma,
-                      { userId: run.userId, workspaceId: run.workspaceId },
+                      { userId: run.userId, spaceId: run.spaceId },
                       checker.provider,
                     );
               const judgeKey = await resolveModelKey(
                 deps,
                 run.userId,
-                run.workspaceId,
+                run.spaceId,
                 reviewCredential,
                 checker.provider,
                 (values) => runSecrets.push(...values),
@@ -1220,7 +1220,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   matchingRules: approvalResolved.matchingRules,
                 }),
                 runId,
-                workspaceId: run.workspaceId,
+                spaceId: run.spaceId,
                 userId: run.userId,
                 botId: bot.id,
                 threadId: thread.id,
@@ -1318,7 +1318,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             }
             await checkpointAndRecordComputerWorkspace(deps, storedComputer, computer, context);
             const paused = await deps.events.pauseRunForInput({
-              workspaceId: run.workspaceId,
+              spaceId: run.spaceId,
               threadId: run.threadId,
               botId: run.botId,
               runId,
@@ -1353,7 +1353,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               if (name === "request_secret") {
                 const replacementSecret = await deps.prisma.secret.findFirst({
                   where: {
-                    workspaceId: run.workspaceId,
+                    spaceId: run.spaceId,
                     userId: run.userId,
                     kind: runSecretKind(runId),
                   },
@@ -1423,7 +1423,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           const finish = async (result: unknown) =>
             (await persistEffectResult(result)) ? result : uncertainEffectResult(name);
           if (name === "computer_observe") {
-            if (await getActiveTeachingSession(deps.prisma, run.workspaceId, run.botId)) {
+            if (await getActiveTeachingSession(deps.prisma, run.spaceId, run.botId)) {
               return { error: "Teaching is in progress. Stop teaching before using the computer." };
             }
             return computerScreenToolResult(async () =>
@@ -1431,7 +1431,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             );
           }
           if (name === "computer_act") {
-            if (await getActiveTeachingSession(deps.prisma, run.workspaceId, run.botId)) {
+            if (await getActiveTeachingSession(deps.prisma, run.spaceId, run.botId)) {
               return { error: "Teaching is in progress. Stop teaching before using the computer." };
             }
             return computerScreenToolResult(async () => {
@@ -1582,7 +1582,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 const result = await attachWorkspaceFileToThread(
                   { prisma: deps.prisma, artifacts: deps.artifacts },
                   {
-                    workspaceId: run.workspaceId,
+                    spaceId: run.spaceId,
                     userId: run.userId,
                     botId: bot.id,
                     runId: run.id,
@@ -1626,7 +1626,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               const attached = await attachWorkspaceFileToThread(
                 { prisma: deps.prisma, artifacts: deps.artifacts },
                 {
-                  workspaceId: run.workspaceId,
+                  spaceId: run.spaceId,
                   userId: run.userId,
                   botId: bot.id,
                   groupId: thread.groupId ?? undefined,
@@ -1730,14 +1730,14 @@ export function createRunExecutor(deps: ExecutorDeps) {
           }
           if (name === "scratchpad_list") {
             return listScratchpadItemsFromTool(deps, {
-              workspaceId: run.workspaceId,
+              spaceId: run.spaceId,
               botId: bot.id,
               includeDone: Boolean(args.includeDone),
             });
           }
           if (name === "scratchpad_add") {
             const created = await addScratchpadItemFromTool(deps, {
-              workspaceId: run.workspaceId,
+              spaceId: run.spaceId,
               botId: bot.id,
               userId: run.userId,
               title: String(args.title ?? ""),
@@ -1748,7 +1748,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           }
           if (name === "scratchpad_update") {
             const updated = await updateScratchpadItemFromTool(deps, {
-              workspaceId: run.workspaceId,
+              spaceId: run.spaceId,
               botId: bot.id,
               userId: run.userId,
               itemId: String(args.itemId ?? ""),
@@ -1760,7 +1760,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           }
           if (name === "scratchpad_complete") {
             const completed = await completeScratchpadItemFromTool(deps, {
-              workspaceId: run.workspaceId,
+              spaceId: run.spaceId,
               botId: bot.id,
               userId: run.userId,
               itemId: String(args.itemId ?? ""),
@@ -1769,7 +1769,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           }
           if (name === "scratchpad_remove") {
             const removed = await removeScratchpadItemFromTool(deps, {
-              workspaceId: run.workspaceId,
+              spaceId: run.spaceId,
               botId: bot.id,
               userId: run.userId,
               itemId: String(args.itemId ?? ""),
@@ -1778,7 +1778,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           }
           if (name === "schedule_create") {
             const created = await createScheduleFromTool(deps, {
-              workspaceId: run.workspaceId,
+              spaceId: run.spaceId,
               botId: bot.id,
               userId: run.userId,
               threadId: thread.id,
@@ -1798,14 +1798,14 @@ export function createRunExecutor(deps: ExecutorDeps) {
           }
           if (name === "schedule_list") {
             return listSchedulesFromTool(deps, {
-              workspaceId: run.workspaceId,
+              spaceId: run.spaceId,
               botId: bot.id,
               userId: run.userId,
             });
           }
           if (name === "schedule_cancel") {
             const cancelled = await cancelScheduleFromTool(deps, {
-              workspaceId: run.workspaceId,
+              spaceId: run.spaceId,
               botId: bot.id,
               userId: run.userId,
               routineId: args.routineId ? String(args.routineId) : undefined,
@@ -1817,7 +1817,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             return skillReadFromTool(
               deps.prisma,
               {
-                workspaceId: run.workspaceId,
+                spaceId: run.spaceId,
                 userId: run.userId,
               },
               {
@@ -1831,7 +1831,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               await skillCreateFromTool(
                 deps.prisma,
                 {
-                  workspaceId: run.workspaceId,
+                  spaceId: run.spaceId,
                   userId: run.userId,
                 },
                 {
@@ -1848,7 +1848,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               await skillUpdateFromTool(
                 deps.prisma,
                 {
-                  workspaceId: run.workspaceId,
+                  spaceId: run.spaceId,
                   userId: run.userId,
                 },
                 {
@@ -1868,7 +1868,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               await skillDeleteFromTool(
                 deps.prisma,
                 {
-                  workspaceId: run.workspaceId,
+                  spaceId: run.spaceId,
                   userId: run.userId,
                 },
                 {
@@ -1895,7 +1895,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               storedCredential = await deps.secretStore.put(credentialBlob, {
                 operationId: executionId,
                 traceId: executionId,
-                workspaceId: run.workspaceId,
+                spaceId: run.spaceId,
                 userId: run.userId,
                 botId: bot.id,
                 signal: new AbortController().signal,
@@ -1911,7 +1911,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                     data: {
                       id: storedCredential.id,
                       userId: run.userId,
-                      workspaceId: run.workspaceId,
+                      spaceId: run.spaceId,
                       kind: "mcp",
                       ciphertext: storedCredential.ciphertext,
                     },
@@ -1919,7 +1919,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 }
                 const server = await tx.mcpServer.create({
                   data: {
-                    workspaceId: run.workspaceId,
+                    spaceId: run.spaceId,
                     userId: run.userId,
                     slug: parsed.slug,
                     name: parsed.name,
@@ -2012,7 +2012,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             const secretKind = runSecretKind(runId);
             const storedSecret = await deps.prisma.secret.findFirst({
               where: {
-                workspaceId: run.workspaceId,
+                spaceId: run.spaceId,
                 userId: run.userId,
                 kind: secretKind,
               },
@@ -2144,7 +2144,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             }
             await checkpointAndRecordComputerWorkspace(deps, storedComputer, computer, context);
             const paused = await deps.events.pauseRunForInput({
-              workspaceId: run.workspaceId,
+              spaceId: run.spaceId,
               threadId: run.threadId,
               botId: run.botId,
               runId,
@@ -2182,7 +2182,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           if (name === "create_space") {
             try {
               const space = await createSpaceForMember(deps.prisma, {
-                currentSpaceId: run.workspaceId,
+                currentSpaceId: run.spaceId,
                 userId: run.userId,
                 name: String(args.name ?? ""),
               });
@@ -2199,7 +2199,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               spawnedBy: {
                 id: bot.id,
                 name: bot.name,
-                workspaceId: bot.workspaceId,
+                spaceId: bot.spaceId,
                 userId: run.userId,
               },
               runId,
@@ -2222,7 +2222,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 },
               ]);
               await deps.events.append({
-                workspaceId: run.workspaceId,
+                spaceId: run.spaceId,
                 threadId: thread.id,
                 botId: bot.id,
                 runId: run.id,
@@ -2306,7 +2306,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               {
                 spawnedByBotId: bot.id,
                 userId: run.userId,
-                workspaceId: run.workspaceId,
+                spaceId: run.spaceId,
                 confirmName: String(args.confirm_name ?? args.confirmName ?? ""),
                 botId: args.bot_id
                   ? String(args.bot_id)
@@ -2328,7 +2328,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 },
               ]);
               await deps.events.append({
-                workspaceId: run.workspaceId,
+                spaceId: run.spaceId,
                 threadId: thread.id,
                 botId: bot.id,
                 runId: run.id,
@@ -2351,7 +2351,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 const logIds = collectLogIds(event.data);
                 for (const logId of logIds) {
                   await deps.events.append({
-                    workspaceId: run.workspaceId,
+                    spaceId: run.spaceId,
                     threadId: thread.id,
                     botId: bot.id,
                     runId: run.id,
@@ -2428,7 +2428,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               (
                 await deps.prisma.bot.findMany({
                   where: {
-                    workspaceId: run.workspaceId,
+                    spaceId: run.spaceId,
                     userId: run.userId,
                     archivedAt: null,
                     id: { not: bot.id },
@@ -2540,7 +2540,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               // ahead of text the model streamed before the tool call.
               if (pendingProgress) {
                 await deps.events.append({
-                  workspaceId: run.workspaceId,
+                  spaceId: run.spaceId,
                   threadId: thread.id,
                   botId: bot.id,
                   type: "thread.progress",
@@ -2551,7 +2551,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 lastProgressAt = Date.now();
               }
               await deps.events.append({
-                workspaceId: run.workspaceId,
+                spaceId: run.spaceId,
                 threadId: thread.id,
                 botId: bot.id,
                 type: "thread.progress",
@@ -2566,7 +2566,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 : event.detail;
               await checkpointAndRecordComputerWorkspace(deps, storedComputer, computer, context);
               const paused = await deps.events.pauseRunForInput({
-                workspaceId: run.workspaceId,
+                spaceId: run.spaceId,
                 threadId: run.threadId,
                 botId: run.botId,
                 runId,
@@ -2611,7 +2611,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 throw new Error("Computer lease expired before takeover");
               }
               const paused = await deps.events.pauseRunForTakeover({
-                workspaceId: run.workspaceId,
+                spaceId: run.spaceId,
                 threadId: run.threadId,
                 botId: run.botId,
                 runId,
@@ -2635,7 +2635,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               // client must see that text before the tool call it describes.
               await flushProgress();
               await deps.events.append({
-                workspaceId: run.workspaceId,
+                spaceId: run.spaceId,
                 threadId: thread.id,
                 botId: bot.id,
                 type: "agent.tool.called",
@@ -2657,7 +2657,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 terminalCheckpointComplete = true;
                 const stuckText = `I got stuck calling ${humanizeToolName(event.name)} with the same input ${toolCallStreak.count} times in a row without making progress, so I stopped early. Try rephrasing this, or ask me to try a different approach.`;
                 const stopped = await deps.events.finalizeRun({
-                  workspaceId: run.workspaceId,
+                  spaceId: run.spaceId,
                   threadId: thread.id,
                   botId: bot.id,
                   runId,
@@ -2691,7 +2691,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 : undefined;
               const safeResult = event.result ? redactSecrets(event.result, runSecrets) : undefined;
               await deps.events.append({
-                workspaceId: run.workspaceId,
+                spaceId: run.spaceId,
                 threadId: thread.id,
                 botId: bot.id,
                 type: "thread.subagent",
@@ -2721,7 +2721,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             } else if (event.type === "usage") {
               await deps.prisma.usageRecord.create({
                 data: {
-                  workspaceId: run.workspaceId,
+                  spaceId: run.spaceId,
                   botId: bot.id,
                   userId: run.userId,
                   runId,
@@ -2768,7 +2768,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 context,
               );
               await deps.events.append({
-                workspaceId: run.workspaceId,
+                spaceId: run.spaceId,
                 threadId: thread.id,
                 botId: bot.id,
                 type: "memory.revised",
@@ -2798,7 +2798,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           }
           if (!(await renewRunLease(deps, runId, workerId, fence))) return;
           const completed = await deps.events.finalizeRun({
-            workspaceId: run.workspaceId,
+            spaceId: run.spaceId,
             threadId: thread.id,
             botId: bot.id,
             runId,
@@ -2865,7 +2865,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             runSecrets,
           );
           const failed = await deps.events.finalizeRun({
-            workspaceId: run.workspaceId,
+            spaceId: run.spaceId,
             threadId: thread.id,
             botId: bot.id,
             runId,
@@ -2969,13 +2969,13 @@ async function computerScreenToolResult(
 
 export async function runNotificationsEnabled(
   prisma: PrismaClient,
-  run: { workspaceId: string; userId: string; botId: string; threadId: string },
+  run: { spaceId: string; userId: string; botId: string; threadId: string },
 ): Promise<boolean> {
   const source = await prisma.run.findFirst({
     where: {
       botId: run.botId,
       threadId: run.threadId,
-      workspaceId: run.workspaceId,
+      spaceId: run.spaceId,
       userId: run.userId,
     },
     select: {
@@ -2988,7 +2988,7 @@ export async function runNotificationsEnabled(
 
 async function notifyRun(
   deps: ExecutorDeps,
-  run: { workspaceId: string; userId: string; botId: string; threadId: string },
+  run: { spaceId: string; userId: string; botId: string; threadId: string },
   message: NotificationMessage,
 ) {
   if (!deps.notifications) return;
@@ -3001,7 +3001,7 @@ async function notifyRun(
     .send(message, {
       operationId: "notify",
       traceId: run.botId,
-      workspaceId: run.workspaceId,
+      spaceId: run.spaceId,
       userId: run.userId,
       botId: run.botId,
       signal: new AbortController().signal,
@@ -3120,7 +3120,7 @@ function redactBlocks(blocks: MessageBlock[], secrets: string[]): MessageBlock[]
 
 async function publishMessage(
   deps: ExecutorDeps,
-  run: { id: string; workspaceId: string; threadId: string; botId: string },
+  run: { id: string; spaceId: string; threadId: string; botId: string },
   role: "user" | "bot" | "system",
   blocks: MessageBlock[],
 ) {
@@ -3135,7 +3135,7 @@ async function publishMessage(
 
 async function persistMessageInTransaction(
   tx: Prisma.TransactionClient,
-  run: { id: string; workspaceId: string; threadId: string; botId: string },
+  run: { id: string; spaceId: string; threadId: string; botId: string },
   role: "user" | "bot" | "system",
   blocks: MessageBlock[],
 ) {
@@ -3147,7 +3147,7 @@ async function persistMessageInTransaction(
     runId: run.id,
   });
   const event = await appendEventInTransaction(tx, {
-    workspaceId: run.workspaceId,
+    spaceId: run.spaceId,
     threadId: run.threadId,
     botId: run.botId,
     type: "thread.message.created",
@@ -3159,7 +3159,7 @@ async function persistMessageInTransaction(
 
 async function recordEffect(
   deps: ExecutorDeps,
-  run: { id: string; workspaceId: string; threadId: string; botId: string },
+  run: { id: string; spaceId: string; threadId: string; botId: string },
   kind: string,
   executionId: string,
   request: Record<string, unknown>,
@@ -3169,7 +3169,7 @@ async function recordEffect(
   });
   if (existing) {
     await deps.events.append({
-      workspaceId: run.workspaceId,
+      spaceId: run.spaceId,
       threadId: run.threadId,
       botId: run.botId,
       type: "effect.reconciled",
@@ -3180,7 +3180,7 @@ async function recordEffect(
   }
   const effect = await deps.prisma.externalEffect.create({
     data: {
-      workspaceId: run.workspaceId,
+      spaceId: run.spaceId,
       runId: run.id,
       kind,
       idempotencyKey: executionId,
@@ -3221,7 +3221,7 @@ async function runSandboxCommand(
   context: {
     operationId: string;
     traceId: string;
-    workspaceId: string;
+    spaceId: string;
     userId: string;
     botId?: string;
     runId?: string;
@@ -3256,7 +3256,7 @@ function deploymentKeyFor(deps: ExecutorDeps, provider: string): string | undefi
 async function resolveModelKey(
   deps: ExecutorDeps,
   userId: string,
-  workspaceId: string,
+  spaceId: string,
   credential: { secretId: string; provider: string } | null,
   provider: string,
   registerSecrets?: (values: string[]) => void,
@@ -3269,7 +3269,9 @@ async function resolveModelKey(
 }> {
   if (credential) {
     return withModelCredentialLock(credential.secretId, async () => {
-      const row = await deps.prisma.secret.findUnique({ where: { id: credential.secretId } });
+      const row = await deps.prisma.secret.findFirst({
+        where: { id: credential.secretId, userId, spaceId: null },
+      });
       if (!row) return { apiKey: deploymentKeyFor(deps, provider), redact: [] };
       const plaintext = deps.secretStore.load(row.ciphertext, row.id);
       registerSecrets?.(secretValuesToRedact(parseModelSecret(plaintext)));
@@ -3279,7 +3281,7 @@ async function resolveModelKey(
           {
             operationId: "cred",
             traceId: "cred-refresh",
-            workspaceId,
+            spaceId,
             userId,
             signal: new AbortController().signal,
           },
@@ -3303,8 +3305,8 @@ async function resolveModelKey(
         persistOAuth: oauth
           ? async (next) => {
               await withModelCredentialLock(credential.secretId, async () => {
-                const currentRow = await deps.prisma.secret.findUnique({
-                  where: { id: credential.secretId },
+                const currentRow = await deps.prisma.secret.findFirst({
+                  where: { id: credential.secretId, userId, spaceId: null },
                 });
                 if (!currentRow) return;
                 const current = parseModelSecret(
@@ -3361,7 +3363,7 @@ async function loadCurrentTurnImages(
   context: {
     operationId: string;
     traceId: string;
-    workspaceId: string;
+    spaceId: string;
     userId: string;
     botId: string;
     runId: string;
@@ -3377,7 +3379,7 @@ async function loadCurrentTurnImages(
   const rows = await deps.prisma.artifact.findMany({
     where: {
       id: { in: imageBlocks.map((block) => block.artifactId) },
-      workspaceId: context.workspaceId,
+      spaceId: context.spaceId,
       userId: context.userId,
     },
   });

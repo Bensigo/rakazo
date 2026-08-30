@@ -5,7 +5,7 @@ import { DockerSandboxProvider } from "./docker-sandbox.js";
 const context = {
   operationId: "docker-test",
   traceId: "docker-test",
-  workspaceId: "workspace",
+  spaceId: "workspace",
   userId: "user",
   botId: "bot",
   screenLeaseId: "run-1:1",
@@ -66,7 +66,7 @@ describe("Docker sandbox", () => {
           authorization: "Bearer test-token",
           "x-rakazo-bot-id": "home-bot",
           "x-rakazo-screen-lease-id": "run-1:1",
-          "x-rakazo-workspace-id": "workspace",
+          "x-rakazo-space-id": "workspace",
         }),
       }),
     );

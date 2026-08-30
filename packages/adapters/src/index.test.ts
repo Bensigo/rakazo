@@ -10,7 +10,7 @@ describe("secret store", () => {
     const record = await store.put("sk-or-v1-secretvalue", {
       operationId: "1",
       traceId: "1",
-      workspaceId: "w",
+      spaceId: "w",
       userId: "u",
       signal: new AbortController().signal,
     });
@@ -94,7 +94,7 @@ describe("scripted runtime", () => {
     const ctx = {
       operationId: "1",
       traceId: "1",
-      workspaceId: "w",
+      spaceId: "w",
       userId: "u",
       signal: new AbortController().signal,
     };
@@ -191,7 +191,7 @@ describe("fake sandbox", () => {
     const ctx = {
       operationId: "1",
       traceId: "1",
-      workspaceId: "w",
+      spaceId: "w",
       userId: "u",
       signal: new AbortController().signal,
     };

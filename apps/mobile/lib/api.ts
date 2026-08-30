@@ -263,7 +263,7 @@ export async function authHeaders(
   const token = await loadSessionToken();
   return {
     ...(token ? { authorization: `Bearer ${token}` } : {}),
-    ...(spaceId ? { "x-rakazo-workspace-id": spaceId } : {}),
+    ...(spaceId ? { "x-rakazo-space-id": spaceId } : {}),
   };
 }
 
@@ -377,19 +377,13 @@ export type MobileBot = Pick<
   | "updatedAt"
   | "computerMode"
 > &
-  Partial<Pick<Bot, "parentBotId" | "workspaceId">>;
+  Partial<Pick<Bot, "parentBotId" | "spaceId">>;
 
 export type MobileBotSection = BotSection;
 
 export type MobileMe = Pick<
   Me,
-  | "name"
-  | "email"
-  | "workspaceId"
-  | "defaultProvider"
-  | "defaultModel"
-  | "needsModel"
-  | "avatarStyle"
+  "name" | "email" | "spaceId" | "defaultProvider" | "defaultModel" | "needsModel" | "avatarStyle"
 >;
 
 export type MobileModel = ModelCatalogEntry;
@@ -419,7 +413,7 @@ export type MobileGroup = Pick<
   | "updatedAt"
   | "members"
 > &
-  Partial<Pick<Group, "workspaceId">>;
+  Partial<Pick<Group, "spaceId">>;
 
 export type MobileSpace = Space;
 export type MobileSpaceNavigation = SpaceNavigation;

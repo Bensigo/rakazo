@@ -12,7 +12,7 @@ import { activeRunSelection, activeRunStatuses, previewFromBlocks } from "./thre
 
 type GroupRecord = {
   id: string;
-  workspaceId: string;
+  spaceId: string;
   userId: string;
   name: string;
   pinned: boolean;
@@ -37,7 +37,7 @@ type GroupRecord = {
 
 type SpaceGroupRecord = Pick<
   GroupRecord,
-  "id" | "workspaceId" | "name" | "pinned" | "sectionId" | "updatedAt" | "members"
+  "id" | "spaceId" | "name" | "pinned" | "sectionId" | "updatedAt" | "members"
 > & {
   thread: {
     unread: boolean;
@@ -59,7 +59,7 @@ function mapGroup(group: GroupRecord): Group {
   const preview = previewFromBlocks(group.thread.messages[0]?.blocks);
   return {
     id: group.id,
-    workspaceId: group.workspaceId,
+    spaceId: group.spaceId,
     name: group.name,
     pinned: group.pinned,
     sectionId: group.sectionId,
@@ -77,7 +77,7 @@ function mapSpaceGroup(group: SpaceGroupRecord): SpaceGroup {
   if (!group.thread) throw new IsolationError("Group is missing its thread");
   return {
     id: group.id,
-    workspaceId: group.workspaceId,
+    spaceId: group.spaceId,
     name: group.name,
     pinned: group.pinned,
     sectionId: group.sectionId,
@@ -106,7 +106,7 @@ async function assertOwnedBots(
   const bots = await prisma.bot.findMany({
     where: {
       id: { in: unique },
-      workspaceId: actor.workspaceId,
+      spaceId: actor.spaceId,
       userId: actor.userId,
       archivedAt: null,
     },
@@ -166,13 +166,13 @@ export function createGroupRepos(prisma: PrismaClient) {
     if (spaceIds.length === 0) return [];
     const groups = await prisma.chatGroup.findMany({
       where: {
-        workspaceId: { in: spaceIds },
+        spaceId: { in: spaceIds },
         userId: actor.userId,
         archivedAt: null,
       },
       select: {
         id: true,
-        workspaceId: true,
+        spaceId: true,
         name: true,
         pinned: true,
         sectionId: true,
@@ -200,7 +200,7 @@ export function createGroupRepos(prisma: PrismaClient) {
     async listGroups(actor: Actor, options: { archived?: boolean } = {}): Promise<Group[]> {
       const groups = await prisma.chatGroup.findMany({
         where: {
-          workspaceId: actor.workspaceId,
+          spaceId: actor.spaceId,
           userId: actor.userId,
           archivedAt: options.archived ? { not: null } : null,
         },
@@ -218,7 +218,7 @@ export function createGroupRepos(prisma: PrismaClient) {
       const group = await prisma.chatGroup.findFirst({
         where: {
           id: groupId,
-          workspaceId: actor.workspaceId,
+          spaceId: actor.spaceId,
           userId: actor.userId,
           ...(options.includeArchived ? {} : { archivedAt: null }),
         },
@@ -232,7 +232,7 @@ export function createGroupRepos(prisma: PrismaClient) {
       const group = await prisma.chatGroup.findFirst({
         where: {
           id: groupId,
-          workspaceId: actor.workspaceId,
+          spaceId: actor.spaceId,
           userId: actor.userId,
           archivedAt: null,
         },
@@ -247,7 +247,7 @@ export function createGroupRepos(prisma: PrismaClient) {
       const created = await prisma.$transaction(async (tx) => {
         const group = await tx.chatGroup.create({
           data: {
-            workspaceId: actor.workspaceId,
+            spaceId: actor.spaceId,
             userId: actor.userId,
             name: input.name.trim(),
           },
@@ -257,7 +257,7 @@ export function createGroupRepos(prisma: PrismaClient) {
         });
         await tx.thread.create({
           data: {
-            workspaceId: actor.workspaceId,
+            spaceId: actor.spaceId,
             groupId: group.id,
             userId: actor.userId,
           },
@@ -286,7 +286,7 @@ export function createGroupRepos(prisma: PrismaClient) {
         const current = await tx.chatGroup.findFirst({
           where: {
             id: input.groupId,
-            workspaceId: actor.workspaceId,
+            spaceId: actor.spaceId,
             userId: actor.userId,
             archivedAt: null,
           },
@@ -382,7 +382,7 @@ export function createGroupRepos(prisma: PrismaClient) {
         const current = await tx.chatGroup.findFirst({
           where: {
             id: groupId,
-            workspaceId: actor.workspaceId,
+            spaceId: actor.spaceId,
             userId: actor.userId,
             archivedAt: null,
           },
@@ -454,7 +454,7 @@ export function createGroupRepos(prisma: PrismaClient) {
 
     async restoreGroup(actor: Actor, groupId: string) {
       const restored = await prisma.chatGroup.updateMany({
-        where: { id: groupId, workspaceId: actor.workspaceId, userId: actor.userId },
+        where: { id: groupId, spaceId: actor.spaceId, userId: actor.userId },
         data: { archivedAt: null },
       });
       if (restored.count !== 1) throw new IsolationError();
@@ -486,14 +486,14 @@ export function createGroupRepos(prisma: PrismaClient) {
 
 export async function lockOwnedGroup(
   prisma: Pick<Prisma.TransactionClient, "$queryRaw">,
-  actor: Pick<Actor, "workspaceId" | "userId">,
+  actor: Pick<Actor, "spaceId" | "userId">,
   groupId: string,
 ) {
   const locked = await prisma.$queryRaw<Array<{ id: string }>>`
     SELECT id
     FROM chat_groups
     WHERE id = ${groupId}
-      AND "workspaceId" = ${actor.workspaceId}
+      AND "spaceId" = ${actor.spaceId}
       AND "userId" = ${actor.userId}
     FOR UPDATE
   `;

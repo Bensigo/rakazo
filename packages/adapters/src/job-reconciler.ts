@@ -220,7 +220,7 @@ export function createJobReconciler(
           take: batchSize,
           select: {
             id: true,
-            workspaceId: true,
+            spaceId: true,
             threadId: true,
             botId: true,
             userId: true,

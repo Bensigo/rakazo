@@ -27,12 +27,12 @@ function isUniqueViolation(error: unknown): boolean {
  * through the app (phone provisioning): a first texter must never become
  * the deployment owner.
  */
-export async function bootstrapUserWorkspace(
+export async function bootstrapUserSpace(
   prisma: PrismaClient,
   user: { id: string },
   env: SignupPolicyEnv,
   options: { claimDeploymentOwner?: boolean } = {},
-): Promise<{ workspaceId: string }> {
+): Promise<{ spaceId: string }> {
   const claimDeploymentOwner = options.claimDeploymentOwner ?? true;
   // Concurrent bootstraps for the same user (e.g. overlapping first phone
   // inbounds) race on every unique key below; each step either wins or
@@ -66,6 +66,8 @@ export async function bootstrapUserWorkspace(
         id: orgId,
         organizationId: orgId,
         name: "Personal",
+        isDefault: true,
+        createdByUserId: user.id,
         createdAt: new Date(),
       },
     })
@@ -79,6 +81,7 @@ export async function bootstrapUserWorkspace(
         spaceId: orgId,
         organizationId: orgId,
         userId: user.id,
+        role: "owner",
         createdAt: new Date(),
       },
     })
@@ -105,17 +108,17 @@ export async function bootstrapUserWorkspace(
     });
   }
   const hasMemory = await prisma.memoryDocument.findFirst({
-    where: { workspaceId: orgId, userId: user.id, scope: "user", path: "MEMORY.md" },
+    where: { spaceId: orgId, userId: user.id, scope: "user", path: "MEMORY.md" },
   });
   if (!hasMemory) {
     await prisma.memoryDocument
       .create({
         data: {
-          workspaceId: orgId,
+          spaceId: orgId,
           userId: user.id,
           scope: "user",
           path: "MEMORY.md",
-          content: "# User memory\n\nAccount-wide preferences live here.\n",
+          content: "# Space memory\n\nPreferences and context kept within this space live here.\n",
         },
       })
       .catch((error: unknown) => {
@@ -125,12 +128,12 @@ export async function bootstrapUserWorkspace(
   await prisma.notificationPreference
     .create({
       data: {
-        workspaceId: orgId,
+        spaceId: orgId,
         userId: user.id,
       },
     })
     .catch((error: unknown) => {
       if (!isUniqueViolation(error)) throw error;
     });
-  return { workspaceId: orgId };
+  return { spaceId: orgId };
 }

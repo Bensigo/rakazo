@@ -19,13 +19,13 @@ import type {
   Routine,
   SearchHit,
   Space,
+  SpaceMemoryConfig,
   TaughtSkill,
   ThinkingLevel,
   ThreadMessage,
   ThreadSnapshot,
   VoiceInfo,
   VoiceStatus,
-  WorkspaceMemoryConfig,
 } from "@rakazo/contracts";
 import {
   ATTACHMENT_ALLOWED_MIME_TYPES,
@@ -171,8 +171,8 @@ import {
   RoutineListRow,
   routineNeedsOneShotArm,
 } from "./RoutineEditor";
+import { SpaceSearchResults } from "./SpaceSearch";
 import { WindowChrome } from "./WindowChrome";
-import { WorkspaceSearchResults } from "./WorkspaceSearch";
 
 const BotContextMenu = lazy(() =>
   import("./BotContextMenu").then((module) => ({ default: module.BotContextMenu })),
@@ -373,7 +373,7 @@ export function ShellPage() {
   const [modelsOpen, setModelsOpen] = useState(false);
   const [memorySettingsOpen, setMemorySettingsOpen] = useState(false);
   const [memoryProviderConfig, setMemoryProviderConfig] = useState<
-    WorkspaceMemoryConfig | null | undefined
+    SpaceMemoryConfig | null | undefined
   >(undefined);
   const memoryProviderConfigRevision = useRef(0);
   const [voiceOpen, setVoiceOpen] = useState(false);
@@ -1303,13 +1303,14 @@ export function ShellPage() {
     const sidebarSpaces =
       spaces.length > 0
         ? spaces.map((space) =>
-            space.id === bootstrapMe?.workspaceId ? { ...space, bots, groups, botSections } : space,
+            space.id === bootstrapMe?.spaceId ? { ...space, bots, groups, botSections } : space,
           )
         : bootstrapMe
           ? [
               {
-                id: bootstrapMe.workspaceId,
+                id: bootstrapMe.spaceId,
                 name: "Personal",
+                isDefault: true,
                 bots,
                 groups,
                 botSections,
@@ -1339,7 +1340,7 @@ export function ShellPage() {
             : space.name
           : group.title,
         showLock: showSpaceNames,
-        emptyWorkspaceId: undefined as string | undefined,
+        emptySpaceId: undefined as string | undefined,
       }));
       if (sections.length > 0) return sections;
       // Keep empty spaces selectable; chat clicks are the only switch control.
@@ -1351,7 +1352,7 @@ export function ShellPage() {
           title: space.name,
           bots: [],
           showLock: true,
-          emptyWorkspaceId: space.id,
+          emptySpaceId: space.id,
         },
       ];
     });
@@ -1364,7 +1365,7 @@ export function ShellPage() {
       // Persist the active space (including primary) so voice/RPC headers match the chat.
       const selectionStored = selectSpace(spaceId);
       if (!selectionStored) return;
-      const previousEffective = previousSpaceId ?? bootstrapMe?.workspaceId;
+      const previousEffective = previousSpaceId ?? bootstrapMe?.spaceId;
       const boundaryChanged = previousEffective !== spaceId;
       // Soft-navigate within the same space; reload only when the auth boundary changes
       // so bootstrapped bots/groups match the request header.
@@ -1374,7 +1375,7 @@ export function ShellPage() {
       }
       navigate(path);
     },
-    [bootstrapMe?.workspaceId, navigate],
+    [bootstrapMe?.spaceId, navigate],
   );
   const flushBotOrder = useCallback(async () => {
     if (savingBotOrderRef.current) return;
@@ -1435,11 +1436,11 @@ export function ShellPage() {
     },
     [userId],
   );
-  const workspaceQuery = query.trim();
-  const showWorkspaceSearch = workspaceQuery.length > 0;
+  const spaceQuery = query.trim();
+  const showSpaceSearch = spaceQuery.length > 0;
 
   useEffect(() => {
-    if (!showWorkspaceSearch) {
+    if (!showSpaceSearch) {
       setSearchHits([]);
       setSearchLoading(false);
       return;
@@ -1448,7 +1449,7 @@ export function ShellPage() {
     const timer = window.setTimeout(() => {
       setSearchLoading(true);
       void rpc.search
-        .query({ q: workspaceQuery })
+        .query({ q: spaceQuery })
         .then((result) => {
           if (!abort.signal.aborted) setSearchHits(result.hits);
         })
@@ -1463,7 +1464,7 @@ export function ShellPage() {
       abort.abort();
       window.clearTimeout(timer);
     };
-  }, [showWorkspaceSearch, workspaceQuery]);
+  }, [showSpaceSearch, spaceQuery]);
 
   async function jumpToSearchHit(hit: SearchHit) {
     setQuery("");
@@ -2337,8 +2338,8 @@ export function ShellPage() {
           />
         </div>
         <div className="rk-scroll flex flex-1 flex-col gap-0.5 overflow-y-auto px-2.5 pb-2.5">
-          {showWorkspaceSearch ? (
-            <WorkspaceSearchResults
+          {showSpaceSearch ? (
+            <SpaceSearchResults
               hits={searchHits}
               loading={searchLoading}
               onSelect={(hit) => void jumpToSearchHit(hit)}
@@ -2367,15 +2368,15 @@ export function ShellPage() {
                           type="button"
                           className="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium text-[#6C6C70] hover:bg-[#1A1A1D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#8B5CF6]"
                           onClick={() => {
-                            if (group.emptyWorkspaceId) {
-                              openSpaceChat(group.emptyWorkspaceId, "/onboarding");
+                            if (group.emptySpaceId) {
+                              openSpaceChat(group.emptySpaceId, "/onboarding");
                               return;
                             }
                             toggleSidebarSection(group.key);
                           }}
-                          aria-expanded={group.emptyWorkspaceId ? undefined : !collapsed}
+                          aria-expanded={group.emptySpaceId ? undefined : !collapsed}
                           aria-label={
-                            group.emptyWorkspaceId
+                            group.emptySpaceId
                               ? t`Open ${group.title}`
                               : collapsed
                                 ? t`Expand ${group.title}`
@@ -2388,7 +2389,7 @@ export function ShellPage() {
                             ) : null}
                             <span className="truncate">{group.title}</span>
                           </span>
-                          {group.emptyWorkspaceId ? null : (
+                          {group.emptySpaceId ? null : (
                             <ChevronDown
                               size={14}
                               strokeWidth={1.8}
@@ -2451,14 +2452,14 @@ export function ShellPage() {
                           }}
                           onClick={() => {
                             openSpaceChat(
-                              item.chat.workspaceId,
+                              item.chat.spaceId,
                               item.kind === "bot"
                                 ? `/app/${item.chat.id}`
                                 : `/app/g/${item.chat.id}`,
                             );
                           }}
                           onContextMenu={(event) => {
-                            if (item.chat.workspaceId !== bootstrapMe?.workspaceId) return;
+                            if (item.chat.spaceId !== bootstrapMe?.spaceId) return;
                             event.preventDefault();
                             setBotMenu({
                               kind: item.kind,
@@ -2562,7 +2563,7 @@ export function ShellPage() {
               })}
             </>
           )}
-          {archivedBots.length + archivedGroups.length > 0 && !showWorkspaceSearch ? (
+          {archivedBots.length + archivedGroups.length > 0 && !showSpaceSearch ? (
             <div className="mt-2 border-t border-[#202023] pt-2">
               <button
                 type="button"

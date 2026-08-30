@@ -170,7 +170,7 @@ async function mirrorChannelRun(
         : false;
       if (mentioned && !botMessageHopExhausted(hop)) {
         const sent = await deps.events.sendUserMessage({
-          workspaceId: peerIdentity.workspaceId,
+          spaceId: peerIdentity.spaceId,
           threadId: peerThread.id,
           botId: peerIdentity.botId,
           userId: peerIdentity.userId,
@@ -199,7 +199,7 @@ async function mirrorChannelRun(
           clientNonce,
         });
         return appendEventInTransaction(tx, {
-          workspaceId: peerIdentity.workspaceId,
+          spaceId: peerIdentity.spaceId,
           threadId: peerThread.id,
           botId: peerIdentity.botId,
           type: "thread.message.created",

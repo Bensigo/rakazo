@@ -50,7 +50,7 @@ export function createBackgroundJobHandlers(deps: {
         {
           operationId: `phone.deliver:${payload.runId ?? "drain"}`,
           traceId: `phone.deliver:${payload.runId ?? "drain"}`,
-          workspaceId: "",
+          spaceId: "",
           userId: "",
           signal: new AbortController().signal,
         },

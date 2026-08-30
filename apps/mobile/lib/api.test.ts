@@ -181,7 +181,7 @@ describe("mobile API authentication", () => {
 
     await expect(authHeaders()).resolves.toEqual({
       authorization: "Bearer session-token",
-      "x-rakazo-workspace-id": "space-support",
+      "x-rakazo-space-id": "space-support",
     });
   });
 
@@ -293,7 +293,7 @@ describe("mobile API authentication", () => {
     });
     await expect(authHeaders()).resolves.toEqual({
       authorization: "Bearer session-token",
-      "x-rakazo-workspace-id": "space-support",
+      "x-rakazo-space-id": "space-support",
     });
     expect(SecureStore.setItemAsync).not.toHaveBeenCalledWith(
       "rakazo.api_base",
@@ -324,7 +324,7 @@ describe("mobile API authentication", () => {
     expect(currentApiBase()).toBe(previous);
     await expect(authHeaders()).resolves.toEqual({
       authorization: "Bearer session-token",
-      "x-rakazo-workspace-id": "space-support",
+      "x-rakazo-space-id": "space-support",
     });
   });
 
@@ -350,7 +350,7 @@ describe("mobile API authentication", () => {
     });
     expect(currentApiBase()).toBe(previous);
     await expect(authHeaders()).resolves.toEqual({
-      "x-rakazo-workspace-id": "space-support",
+      "x-rakazo-space-id": "space-support",
     });
     expect(SecureStore.setItemAsync).toHaveBeenCalledWith("rakazo.space_id", "space-support");
   });
@@ -395,7 +395,7 @@ describe("mobile API authentication", () => {
     );
     await expect(authHeaders()).resolves.toEqual({
       authorization: "Bearer session-token",
-      "x-rakazo-workspace-id": "space-support",
+      "x-rakazo-space-id": "space-support",
     });
   });
 
@@ -449,7 +449,7 @@ describe("mobile API authentication", () => {
 
     await expect(authHeaders()).resolves.toEqual({
       authorization: "Bearer session-token",
-      "x-rakazo-workspace-id": "space-support",
+      "x-rakazo-space-id": "space-support",
     });
     expect(SecureStore.setItemAsync).not.toHaveBeenCalledWith(
       "rakazo.api_base",
@@ -476,7 +476,7 @@ describe("mobile API authentication", () => {
     expect(currentApiBase()).toBe(previous);
     await expect(authHeaders()).resolves.toEqual({
       authorization: "Bearer session-token",
-      "x-rakazo-workspace-id": "space-support",
+      "x-rakazo-space-id": "space-support",
     });
 
     vi.mocked(SecureStore.getItemAsync).mockReset();
@@ -507,7 +507,7 @@ describe("mobile API authentication", () => {
       error: "Could not save the server URL",
     });
     await expect(authHeaders()).resolves.toEqual({
-      "x-rakazo-workspace-id": "space-support",
+      "x-rakazo-space-id": "space-support",
     });
     expect(storage.get("rakazo.space_rollback")).toBe(
       JSON.stringify({ apiBase: "http://127.0.0.1:3100", spaceId: "space-support" }),

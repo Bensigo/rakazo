@@ -138,7 +138,7 @@ describe("schedule tool persistence", () => {
     } as unknown as Parameters<typeof createScheduleFromTool>[0];
 
     const result = await createScheduleFromTool(deps, {
-      workspaceId: "ws-1",
+      spaceId: "ws-1",
       botId: "bot-1",
       userId: "user-1",
       threadId: "thread-1",
@@ -151,7 +151,7 @@ describe("schedule tool persistence", () => {
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          workspaceId: "ws-1",
+          spaceId: "ws-1",
           userId: "user-1",
           crons: ["*/1 * * * *"],
           active: true,
@@ -188,7 +188,7 @@ describe("schedule tool persistence", () => {
     } as unknown as Parameters<typeof createScheduleFromTool>[0];
 
     const result = await createScheduleFromTool(deps, {
-      workspaceId: "ws-1",
+      spaceId: "ws-1",
       botId: "bot-1",
       userId: "user-1",
       threadId: "thread-1",
@@ -226,7 +226,7 @@ describe("schedule tool persistence", () => {
     } as unknown as Parameters<typeof createScheduleFromTool>[0];
 
     const result = await createScheduleFromTool(deps, {
-      workspaceId: "ws-1",
+      spaceId: "ws-1",
       botId: "bot-1",
       userId: "user-1",
       threadId: "thread-1",
@@ -266,7 +266,7 @@ describe("schedule tool persistence", () => {
     } as unknown as Parameters<typeof createScheduleFromTool>[0];
 
     const result = await createScheduleFromTool(deps, {
-      workspaceId: "ws-1",
+      spaceId: "ws-1",
       botId: "bot-1",
       userId: "user-1",
       threadId: "thread-1",
@@ -311,7 +311,7 @@ describe("schedule tool persistence", () => {
 
     await expect(
       createScheduleFromTool(deps, {
-        workspaceId: "ws-1",
+        spaceId: "ws-1",
         botId: "bot-1",
         userId: "user-1",
         threadId: "thread-1",
@@ -333,15 +333,15 @@ describe("schedule tool persistence", () => {
       jobs: { enqueue: vi.fn(async () => undefined), cancel: vi.fn(async () => undefined) },
     } as unknown as Parameters<typeof cancelScheduleFromTool>[0];
 
-    await listSchedulesFromTool(deps, { workspaceId: "ws-1", botId: "bot-1", userId: "user-1" });
+    await listSchedulesFromTool(deps, { spaceId: "ws-1", botId: "bot-1", userId: "user-1" });
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { workspaceId: "ws-1", botId: "bot-1", userId: "user-1" },
+        where: { spaceId: "ws-1", botId: "bot-1", userId: "user-1" },
       }),
     );
 
     const cancelled = await cancelScheduleFromTool(deps, {
-      workspaceId: "ws-1",
+      spaceId: "ws-1",
       botId: "bot-1",
       userId: "user-1",
       routineId: "routine-1",
@@ -349,7 +349,7 @@ describe("schedule tool persistence", () => {
     expect(cancelled).toEqual({ error: "Schedule not found." });
     expect(findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { workspaceId: "ws-1", botId: "bot-1", userId: "user-1", id: "routine-1" },
+        where: { spaceId: "ws-1", botId: "bot-1", userId: "user-1", id: "routine-1" },
       }),
     );
   });

@@ -10,12 +10,12 @@ describePostgres("provisionPhoneIdentity (PostgreSQL)", () => {
   const phone = "+15550001111";
   let prisma: PrismaClient;
   let close: () => Promise<void>;
-  let provisioned: { userId: string; workspaceId: string; botId: string } | null = null;
+  let provisioned: { userId: string; spaceId: string; botId: string } | null = null;
 
   afterAll(async () => {
     if (provisioned) {
       await prisma.phoneIdentity.deleteMany({ where: { phoneE164: phone } });
-      await prisma.organization.deleteMany({ where: { id: provisioned.workspaceId } });
+      await prisma.organization.deleteMany({ where: { id: provisioned.spaceId } });
       await prisma.user.deleteMany({ where: { id: provisioned.userId } });
     }
     await close?.();
@@ -46,15 +46,15 @@ describePostgres("provisionPhoneIdentity (PostgreSQL)", () => {
     expect(user!.email).toBe("phone-15550001111@phone.invalid");
     expect(user!.accounts).toHaveLength(0);
     expect(user!.members).toHaveLength(1);
-    expect(user!.members[0]!.organizationId).toBe(result.workspaceId);
+    expect(user!.members[0]!.organizationId).toBe(result.spaceId);
     expect(user!.members[0]!.role).toBe("owner");
 
-    const org = await prisma.organization.findUnique({ where: { id: result.workspaceId } });
+    const org = await prisma.organization.findUnique({ where: { id: result.spaceId } });
     expect(org!.name).toBe("Personal");
     expect(org!.slug).toBe(`user-${result.userId.slice(0, 12)}`);
 
     const space = await prisma.space.findUnique({
-      where: { id: result.workspaceId },
+      where: { id: result.spaceId },
       include: { memberships: true },
     });
     expect(space).toMatchObject({
@@ -68,7 +68,7 @@ describePostgres("provisionPhoneIdentity (PostgreSQL)", () => {
       include: { thread: true },
     });
     expect(bot).toBeTruthy();
-    expect(bot!.workspaceId).toBe(result.workspaceId);
+    expect(bot!.spaceId).toBe(result.spaceId);
     expect(bot!.userId).toBe(result.userId);
     expect(bot!.thread).toBeTruthy();
     expect(result.threadId).toBe(bot!.thread!.id);
@@ -76,19 +76,19 @@ describePostgres("provisionPhoneIdentity (PostgreSQL)", () => {
     const identity = await prisma.phoneIdentity.findUnique({ where: { phoneE164: phone } });
     expect(identity).toBeTruthy();
     expect(identity!.userId).toBe(result.userId);
-    expect(identity!.workspaceId).toBe(result.workspaceId);
+    expect(identity!.spaceId).toBe(result.spaceId);
     expect(identity!.botId).toBe(result.botId);
     expect(identity!.outboundSinceInbound).toBe(0);
     expect(identity!.verifiedAt).toBeNull();
 
     // bootstrap parity: same surrounding rows the auth signup hook creates
     const memories = await prisma.memoryDocument.findMany({
-      where: { workspaceId: result.workspaceId, userId: result.userId },
+      where: { spaceId: result.spaceId, userId: result.userId },
     });
     expect(memories.some((m) => m.scope === "user" && m.path === "MEMORY.md")).toBe(true);
     expect(memories.some((m) => m.scope === "bot" && m.botId === result.botId)).toBe(true);
     const pref = await prisma.notificationPreference.findFirst({
-      where: { workspaceId: result.workspaceId, userId: result.userId },
+      where: { spaceId: result.spaceId, userId: result.userId },
     });
     expect(pref).toBeTruthy();
   });
@@ -106,7 +106,7 @@ describePostgres("provisionPhoneIdentity (PostgreSQL)", () => {
 
     expect(again.created).toBe(false);
     expect(again.userId).toBe(provisioned!.userId);
-    expect(again.workspaceId).toBe(provisioned!.workspaceId);
+    expect(again.spaceId).toBe(provisioned!.spaceId);
     expect(again.botId).toBe(provisioned!.botId);
 
     const users = await prisma.user.findMany({
@@ -119,7 +119,7 @@ describePostgres("provisionPhoneIdentity (PostgreSQL)", () => {
 
   it("resumes after a partial first attempt that only created the user row", async () => {
     const partialPhone = "+15550002222";
-    // Simulates a crash between user.create and bootstrapUserWorkspace.
+    // Simulates a crash between user.create and bootstrapUserSpace.
     const orphan = await prisma.user.create({
       data: {
         id: `partial${Date.now()}`,
@@ -141,12 +141,12 @@ describePostgres("provisionPhoneIdentity (PostgreSQL)", () => {
       });
       expect(identity).toBeTruthy();
       const bots = await prisma.bot.findMany({
-        where: { workspaceId: result.workspaceId, userId: orphan.id },
+        where: { spaceId: result.spaceId, userId: orphan.id },
       });
       expect(bots).toHaveLength(1);
 
       await prisma.phoneIdentity.deleteMany({ where: { phoneE164: partialPhone } });
-      await prisma.organization.deleteMany({ where: { id: result.workspaceId } });
+      await prisma.organization.deleteMany({ where: { id: result.spaceId } });
     } finally {
       await prisma.user.deleteMany({ where: { id: orphan.id } });
     }
@@ -167,15 +167,15 @@ describePostgres("provisionPhoneIdentity (PostgreSQL)", () => {
       });
 
       expect(second.userId).toBe(first.userId);
-      expect(second.workspaceId).toBe(first.workspaceId);
+      expect(second.spaceId).toBe(first.spaceId);
       expect(second.botId).toBe(first.botId);
       const bots = await prisma.bot.findMany({
-        where: { workspaceId: first.workspaceId, userId: first.userId },
+        where: { spaceId: first.spaceId, userId: first.userId },
       });
       expect(bots).toHaveLength(1);
     } finally {
       await prisma.phoneIdentity.deleteMany({ where: { phoneE164: partialPhone } });
-      await prisma.organization.deleteMany({ where: { id: first.workspaceId } });
+      await prisma.organization.deleteMany({ where: { id: first.spaceId } });
       await prisma.user.deleteMany({ where: { id: first.userId } });
     }
   });
