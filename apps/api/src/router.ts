@@ -373,25 +373,30 @@ export function createRouter(deps: RouterDeps) {
       create: authed.privateSpaces.create.handler(async ({ context, input }) => {
         const workspaceId = randomUUID();
         const createdAt = new Date();
-        await deps.prisma.$transaction(async (tx) => {
-          const count = await tx.member.count({ where: { userId: context.actor.userId } });
-          if (count >= 32) {
-            throw new ORPCError("BAD_REQUEST", { message: "Private space limit reached" });
-          }
-          await createOwnedWorkspace(tx, {
-            workspaceId,
-            membershipId: randomUUID(),
-            userId: context.actor.userId,
-            name: input.name,
-            slug: `space-${randomUUID()}`,
-            createdAt,
-          });
-          await createWorkspaceDefaults(tx, {
-            workspaceId,
-            userId: context.actor.userId,
-            memoryContent: "# Space memory\n\n",
-          });
-        });
+        await withSerializableRetry(() =>
+          deps.prisma.$transaction(
+            async (tx) => {
+              const count = await tx.member.count({ where: { userId: context.actor.userId } });
+              if (count >= 32) {
+                throw new ORPCError("BAD_REQUEST", { message: "Private space limit reached" });
+              }
+              await createOwnedWorkspace(tx, {
+                workspaceId,
+                membershipId: randomUUID(),
+                userId: context.actor.userId,
+                name: input.name,
+                slug: `space-${randomUUID()}`,
+                createdAt,
+              });
+              await createWorkspaceDefaults(tx, {
+                workspaceId,
+                userId: context.actor.userId,
+                memoryContent: "# Space memory\n\n",
+              });
+            },
+            { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+          ),
+        );
         return {
           id: workspaceId,
           name: input.name,
