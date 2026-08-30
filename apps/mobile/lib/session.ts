@@ -37,6 +37,20 @@ export async function clearSessionToken(): Promise<boolean> {
   }
 }
 
+/** Drop the in-memory gate when a failed wipe left the bearer in SecureStore. */
+export function acknowledgeStoredSession() {
+  sessionInvalidated = false;
+}
+
+/** Read the stored token even if the in-memory gate is set (for restore snapshots). */
+export async function peekStoredSessionToken() {
+  try {
+    return (await SecureStore.getItemAsync(SESSION_KEY)) ?? "";
+  } catch {
+    return "";
+  }
+}
+
 export function tokenFromAuthResponse(res: Response, body: unknown) {
   const fromJson = jsonToken(body);
   if (fromJson) return fromJson;

@@ -133,6 +133,34 @@ describe("mobile API authentication", () => {
       "https://second-server.example",
     );
   });
+
+  it("restores the active session when only one credential clear succeeds", async () => {
+    vi.mocked(SecureStore.getItemAsync).mockImplementation(async (key) => {
+      if (key === "rakazo.session_token") return "session-token";
+      return null;
+    });
+    await selectPrivateSpace("space-support");
+    vi.mocked(SecureStore.deleteItemAsync).mockImplementation(async (key) => {
+      if (key === "rakazo.private_space_id") throw new Error("device locked");
+    });
+    vi.mocked(SecureStore.setItemAsync).mockImplementation(async (key) => {
+      if (key === "rakazo.private_space_id") throw new Error("device locked");
+    });
+
+    await expect(saveApiBase("https://second-server.example")).resolves.toEqual({
+      ok: false,
+      error: "Could not clear the previous server session",
+    });
+    await expect(authHeaders()).resolves.toEqual({
+      authorization: "Bearer session-token",
+      "x-rakazo-workspace-id": "space-support",
+    });
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith("rakazo.session_token", "session-token");
+    expect(SecureStore.setItemAsync).not.toHaveBeenCalledWith(
+      "rakazo.api_base",
+      "https://second-server.example",
+    );
+  });
 });
 
 describe("mobile thread subscription", () => {

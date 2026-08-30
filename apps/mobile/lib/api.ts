@@ -24,8 +24,10 @@ import {
 import * as SecureStore from "expo-secure-store";
 import { defaultApiBase, type EndpointResult, normalizeApiBase } from "./endpoint";
 import {
+  acknowledgeStoredSession,
   clearSessionToken,
   loadSessionToken,
+  peekStoredSessionToken,
   saveSessionToken,
   tokenFromAuthResponse,
 } from "./session";
@@ -92,17 +94,35 @@ async function clearPrivateSpace(): Promise<boolean> {
   }
 }
 
+/** Clears session + space for an endpoint change. Restores both if either wipe fails. */
+async function clearCredentialsForEndpointChange(): Promise<EndpointResult | null> {
+  const previousToken = await peekStoredSessionToken();
+  const previousSpace = cachedPrivateSpaceId;
+  const sessionCleared = await clearSessionToken();
+  const spaceCleared = await clearPrivateSpace();
+  if (sessionCleared && spaceCleared) return null;
+
+  if (previousToken) {
+    try {
+      await saveSessionToken(previousToken);
+    } catch {
+      if (!sessionCleared) acknowledgeStoredSession();
+    }
+  } else if (!sessionCleared) {
+    acknowledgeStoredSession();
+  }
+  if (previousSpace) await selectPrivateSpace(previousSpace);
+  return { ok: false, error: "Could not clear the previous server session" };
+}
+
 export async function saveApiBase(input: string): Promise<EndpointResult> {
   const parsed = normalizeApiBase(input);
   if (!parsed.ok) return parsed;
   if (parsed.url === defaultApiBase()) return resetApiBase();
   const previous = currentApiBase();
   if (parsed.url !== previous) {
-    const sessionCleared = await clearSessionToken();
-    const spaceCleared = await clearPrivateSpace();
-    if (!sessionCleared || !spaceCleared) {
-      return { ok: false, error: "Could not clear the previous server session" };
-    }
+    const failed = await clearCredentialsForEndpointChange();
+    if (failed) return failed;
   }
   await SecureStore.setItemAsync(ENDPOINT_KEY, parsed.url);
   cachedApiBase = parsed.url;
@@ -113,11 +133,8 @@ export async function resetApiBase(): Promise<EndpointResult> {
   const previous = currentApiBase();
   const url = defaultApiBase();
   if (url !== previous) {
-    const sessionCleared = await clearSessionToken();
-    const spaceCleared = await clearPrivateSpace();
-    if (!sessionCleared || !spaceCleared) {
-      return { ok: false, error: "Could not clear the previous server session" };
-    }
+    const failed = await clearCredentialsForEndpointChange();
+    if (failed) return failed;
   }
   try {
     await SecureStore.deleteItemAsync(ENDPOINT_KEY);
