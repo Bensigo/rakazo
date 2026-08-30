@@ -506,3 +506,42 @@ export interface MessagingOutboundStatus {
 }
 
 export type MessagingInboundEvent = MessagingInboundMessage | MessagingOutboundStatus;
+
+export interface WebSearchCapabilities {
+  search: boolean;
+  /** True when results come from the active model’s native search, not a third-party API. */
+  native?: boolean;
+  /** True when search works without a hosted search vendor or API key. */
+  keyless?: boolean;
+}
+
+export interface WebFetchCapabilities {
+  fetch: boolean;
+  /** True when readable extraction runs without executing page JavaScript. */
+  readability: boolean;
+}
+
+export interface WebSearchRequest {
+  query: string;
+  maxResults?: number;
+  signal?: AbortSignal;
+}
+
+export interface WebSearchHit {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
+export interface WebFetchRequest {
+  url: string;
+  maxChars?: number;
+  signal?: AbortSignal;
+}
+
+export interface WebFetchResult {
+  url: string;
+  title: string;
+  text: string;
+  truncated: boolean;
+}
