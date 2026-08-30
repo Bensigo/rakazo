@@ -7,6 +7,7 @@ import {
   createBackgroundJobHandlers,
   createConnectorStack,
   createJobReconciler,
+  createPhoneContextLoader,
   createPostgresReconciliationLeadership,
   createRunExecutor,
   createRunSandbox,
@@ -18,6 +19,7 @@ import {
   InMemoryJobQueue,
   InstalledConnectorProvider,
   isComposioEnabled,
+  isPhoneSurfaceEnabled,
   isPipedreamEnabled,
   LocalAgentHomeStore,
   LocalArtifactStore,
@@ -30,6 +32,8 @@ import {
   resolveDeploymentModel,
   resolveSandboxProvider,
   ScriptedAgentRuntime,
+  SendBlueMessagingProvider,
+  sendBlueConfigFromEnv,
   WorkspaceMemoryProviderResolver,
 } from "@rakazo/adapters";
 import { resolveEncryptionKey, resolveSupervisorToken } from "@rakazo/core";
@@ -89,6 +93,15 @@ async function main() {
   const pipedream = isPipedreamEnabled(pipedreamConfig)
     ? new PipedreamConnector(pipedreamConfig)
     : undefined;
+  const sendBlueConfig = sendBlueConfigFromEnv({
+    sendblueApiKeyId: process.env.SENDBLUE_API_KEY_ID,
+    sendblueApiSecret: process.env.SENDBLUE_API_SECRET,
+    sendblueSigningSecret: process.env.SENDBLUE_SIGNING_SECRET,
+    sendbluePhoneNumber: process.env.SENDBLUE_PHONE_NUMBER,
+  });
+  const messaging = isPhoneSurfaceEnabled(sendBlueConfig, deploymentModelKey)
+    ? new SendBlueMessagingProvider(sendBlueConfig)
+    : undefined;
   const stack = createConnectorStack(isComposioEnabled(process.env.COMPOSIO_API_KEY), undefined, [
     new InstalledConnectorProvider(prisma, secrets),
     ...(pipedream ? [pipedream] : []),
@@ -120,6 +133,7 @@ async function main() {
     notifications: new ExpoPushProvider(dataDir),
     jobs,
     events,
+    phone: messaging ? createPhoneContextLoader(prisma) : undefined,
   });
 
   const jobHandlers = createBackgroundJobHandlers({
@@ -134,6 +148,7 @@ async function main() {
     secretStore: secrets,
     memoryProviders,
     deploymentModelKey,
+    messaging,
   });
   await jobHost.start(jobHandlers);
   const reconciler = createJobReconciler({
