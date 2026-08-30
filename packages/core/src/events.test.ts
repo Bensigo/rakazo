@@ -679,4 +679,20 @@ describe("sanitizeUtf16ForJson", () => {
       nested: ["\uFFFD"],
     });
   });
+
+  it("sanitizes nested object keys and disambiguates collisions after replacement", () => {
+    expect(
+      sanitizeJsonValue({
+        outer: {
+          ["meta\uD83D"]: "ok",
+          ["meta\uDE00"]: "also",
+        },
+      }),
+    ).toEqual({
+      outer: {
+        "meta\uFFFD": "ok",
+        "meta\uFFFD#2": "also",
+      },
+    });
+  });
 });

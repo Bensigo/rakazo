@@ -371,8 +371,14 @@ export function sanitizeJsonValue<T>(value: T): T {
   if (Array.isArray(value)) return value.map((item) => sanitizeJsonValue(item)) as T;
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
+    const used = new Map<string, number>();
     for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
-      out[key] = sanitizeJsonValue(nested);
+      let safeKey = sanitizeUtf16ForJson(key);
+      const seen = used.get(safeKey) ?? 0;
+      used.set(safeKey, seen + 1);
+      // Deterministic collision handling when sanitizing collapses distinct keys.
+      if (seen > 0) safeKey = `${safeKey}#${seen + 1}`;
+      out[safeKey] = sanitizeJsonValue(nested);
     }
     return out as T;
   }
