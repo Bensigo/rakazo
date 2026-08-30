@@ -187,15 +187,18 @@ describe("mobile API authentication", () => {
     });
   });
 
-  it("restores a SecureStore space when the in-memory cache was never primed", async () => {
+  it("restores a persisted workspace when its initial load failed", async () => {
     vi.mocked(SecureStore.getItemAsync).mockResolvedValue(null);
-    await loadApiBase(); // clear any leftover in-memory selection from earlier tests
+    await loadApiBase();
+    const previous = currentApiBase();
+    let privateSpaceReads = 0;
     vi.mocked(SecureStore.getItemAsync).mockImplementation(async (key) => {
-      if (key === "rakazo.session_token") return "session-token";
-      if (key === "rakazo.private_space_id") return "space-support";
-      return null;
+      if (key !== "rakazo.private_space_id") return null;
+      privateSpaceReads += 1;
+      if (privateSpaceReads === 1) throw new Error("device locked");
+      return "space-support";
     });
-    // Leave cachedPrivateSpaceId empty: load failed / never ran, but SecureStore still has the space.
+    await loadApiBase();
     vi.mocked(SecureStore.setItemAsync).mockImplementation(async (key) => {
       if (key === "rakazo.api_base") throw new Error("device locked");
     });
@@ -204,14 +207,31 @@ describe("mobile API authentication", () => {
       ok: false,
       error: "Could not save the server URL",
     });
+    expect(currentApiBase()).toBe(previous);
     await expect(authHeaders()).resolves.toEqual({
-      authorization: "Bearer session-token",
       "x-rakazo-workspace-id": "space-support",
     });
     expect(SecureStore.setItemAsync).toHaveBeenCalledWith(
       "rakazo.private_space_id",
       "space-support",
     );
+  });
+
+  it("refuses an endpoint switch when the active workspace cannot be snapshotted", async () => {
+    vi.mocked(SecureStore.getItemAsync).mockResolvedValue(null);
+    await loadApiBase();
+    vi.mocked(SecureStore.getItemAsync).mockImplementation(async (key) => {
+      if (key === "rakazo.private_space_id") throw new Error("device locked");
+      return null;
+    });
+    await loadApiBase();
+    vi.mocked(SecureStore.deleteItemAsync).mockClear();
+
+    await expect(saveApiBase("https://second-server.example")).resolves.toEqual({
+      ok: false,
+      error: "Could not clear the previous server session",
+    });
+    expect(SecureStore.deleteItemAsync).not.toHaveBeenCalled();
   });
 
   it("keeps the in-memory session across consecutive failed endpoint switches", async () => {

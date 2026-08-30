@@ -79,16 +79,6 @@ export async function selectPrivateSpace(id: string) {
   }
 }
 
-/** Active space for restore snapshots, including SecureStore when the cache was never primed. */
-async function peekStoredPrivateSpaceId() {
-  if (cachedPrivateSpaceId) return cachedPrivateSpaceId;
-  try {
-    return (await SecureStore.getItemAsync(PRIVATE_SPACE_KEY)) ?? "";
-  } catch {
-    return "";
-  }
-}
-
 async function clearPrivateSpace(): Promise<boolean> {
   cachedPrivateSpaceId = "";
   try {
@@ -104,20 +94,35 @@ async function clearPrivateSpace(): Promise<boolean> {
   }
 }
 
+async function snapshotPrivateSpace(): Promise<{ ok: true; value: string } | { ok: false }> {
+  if (cachedPrivateSpaceId) return { ok: true, value: cachedPrivateSpaceId };
+  try {
+    return { ok: true, value: (await SecureStore.getItemAsync(PRIVATE_SPACE_KEY)) ?? "" };
+  } catch {
+    return { ok: false };
+  }
+}
+
 /** Clears session + space for an endpoint change. Restores both if either wipe fails. */
 async function clearCredentialsForEndpointChange(): Promise<
   { ok: true; previousToken: string; previousSpace: string } | { ok: false; result: EndpointResult }
 > {
   const previousToken = await peekStoredSessionToken();
-  const previousSpace = await peekStoredPrivateSpaceId();
+  const previousSpace = await snapshotPrivateSpace();
+  if (!previousSpace.ok) {
+    return {
+      ok: false,
+      result: { ok: false, error: "Could not clear the previous server session" },
+    };
+  }
   const sessionCleared = await clearSessionToken();
   const spaceCleared = await clearPrivateSpace();
   if (sessionCleared && spaceCleared) {
-    return { ok: true, previousToken, previousSpace };
+    return { ok: true, previousToken, previousSpace: previousSpace.value };
   }
 
   await restoreSessionToken(previousToken);
-  if (previousSpace) await selectPrivateSpace(previousSpace);
+  if (previousSpace.value) await selectPrivateSpace(previousSpace.value);
   return { ok: false, result: { ok: false, error: "Could not clear the previous server session" } };
 }
 
