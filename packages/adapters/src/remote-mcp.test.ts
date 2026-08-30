@@ -60,6 +60,24 @@ describe("remote MCP URL policy", () => {
     ).rejects.toThrow(/private host/i);
   });
 
+  it("rejects MagicDNS hosts that resolve outside Tailscale CGNAT", async () => {
+    await expect(
+      assertSafeRemoteUrl("https://api.tail12345.ts.net/openapi.json", async () => [
+        { address: "127.0.0.1", family: 4 as const },
+      ]),
+    ).rejects.toThrow("private address");
+    await expect(
+      assertSafeRemoteUrl("https://api.tail12345.ts.net/openapi.json", async () => [
+        { address: "10.1.2.3", family: 4 as const },
+      ]),
+    ).rejects.toThrow("private address");
+    await expect(
+      assertSafeRemoteUrl("https://api.tail12345.ts.net/openapi.json", async () => [
+        { address: "169.254.169.254", family: 4 as const },
+      ]),
+    ).rejects.toThrow("private address");
+  });
+
   it("rejects private addresses in the lookup used by the network connection", async () => {
     const safeLookup = createSafeLookup(async () => [{ address: "10.1.2.3", family: 4 }]);
     const error = await new Promise<Error | null>((resolve) => {

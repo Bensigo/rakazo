@@ -167,6 +167,16 @@ function isTailscaleMagicDnsHostname(hostname: string): boolean {
   return normalized === "ts.net" || normalized.endsWith(".ts.net");
 }
 
+/** Tailscale assigns CGNAT 100.64.0.0/10; MagicDNS may resolve there. */
+function isTailscaleCgnatAddress(address: string): boolean {
+  const value = address.toLowerCase().replace(/^\[|\]$/g, "");
+  const mapped = value.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/)?.[1];
+  const ipv4 = mapped ?? (isIP(value) === 4 ? value : undefined);
+  if (!ipv4) return false;
+  const [a, b] = ipv4.split(".").map(Number);
+  return a === 100 && b != null && b >= 64 && b <= 127;
+}
+
 function isPrivateHostname(hostname: string): boolean {
   const normalized = hostname.toLowerCase().replace(/\.$/, "");
   if (isTailscaleMagicDnsHostname(normalized)) return false;
@@ -181,13 +191,17 @@ function isPrivateHostname(hostname: string): boolean {
 }
 
 function assertPublicAddresses(addresses: ResolvedAddress[], hostname?: string): void {
-  if (hostname && isTailscaleMagicDnsHostname(hostname)) {
-    if (addresses.length === 0) {
-      throw new Error("Connector URL resolves to a private address");
-    }
-    return;
+  if (addresses.length === 0) {
+    throw new Error("Connector URL resolves to a private address");
   }
-  if (addresses.length === 0 || addresses.some((entry) => isPrivateAddress(entry.address))) {
+  const magicDns = hostname != null && isTailscaleMagicDnsHostname(hostname);
+  if (
+    addresses.some((entry) => {
+      if (!isPrivateAddress(entry.address)) return false;
+      // Allow only Tailscale CGNAT for MagicDNS; keep other private ranges blocked.
+      return !(magicDns && isTailscaleCgnatAddress(entry.address));
+    })
+  ) {
     throw new Error("Connector URL resolves to a private address");
   }
 }
