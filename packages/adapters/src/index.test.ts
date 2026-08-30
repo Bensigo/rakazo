@@ -68,6 +68,17 @@ describe("scripted runtime", () => {
     expect(script?.some((t) => t.toolCalls?.some((c) => c.args.name === "Scout"))).toBe(true);
   });
 
+  it("proposes a named space", () => {
+    const script = inferScript("create a space named Customer support");
+    expect(
+      script?.some((turn) =>
+        turn.toolCalls?.some(
+          (call) => call.name === "create_space" && call.args.name === "Customer support",
+        ),
+      ),
+    ).toBe(true);
+  });
+
   it("runs an in-thread subagent", () => {
     const script = inferScript("run a subagent to summarize the notes");
     expect(script?.some((t) => t.toolCalls?.some((c) => c.name === "run_subagent"))).toBe(true);
@@ -162,6 +173,7 @@ describe("builtin tools", () => {
         "request_takeover",
         "request_secret",
         "run_subagent",
+        "create_space",
         "spawn_bot",
         "archive_bot",
         "skill_read",

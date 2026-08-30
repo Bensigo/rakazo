@@ -341,7 +341,7 @@ export default function Home() {
               Alert.alert("Create", undefined, [
                 { text: "New bot", onPress: () => router.push("/new") },
                 { text: "New group", onPress: () => router.push("/new-group") },
-                { text: "New private space", onPress: () => router.push("/new-space") },
+                { text: "New space", onPress: () => router.push("/new-space") },
                 { text: "Cancel", style: "cancel" },
               ])
             }

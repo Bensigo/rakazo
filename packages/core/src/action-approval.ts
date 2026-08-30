@@ -20,6 +20,7 @@ const APPROVAL_EXEMPT_TOOLS = new Set([
 ]);
 
 const APPROVAL_REQUIRED_BUILTIN_TOOLS = new Set(["destination.write", "delete_bot", "archive_bot"]);
+const EXPLICIT_APPROVAL_BUILTIN_TOOLS = new Set(["create_space"]);
 
 const READ_ONLY_CONNECTOR_PATTERN = /(^|_)(get|list|search|find|read)(_|$)/i;
 const MUTATING_CONNECTOR_PATTERN =
@@ -53,9 +54,15 @@ export function connectorToolRequiresApproval(toolName: string): boolean {
 
 export function toolRequiresApproval(toolName: string, viaConnector: boolean): boolean {
   if (APPROVAL_EXEMPT_TOOLS.has(toolName)) return false;
+  if (toolRequiresExplicitApproval(toolName)) return true;
   if (APPROVAL_REQUIRED_BUILTIN_TOOLS.has(toolName)) return true;
   if (viaConnector) return connectorToolRequiresApproval(toolName);
   return false;
+}
+
+/** Security-boundary changes cannot be auto-reviewed or permanently allowed. */
+export function toolRequiresExplicitApproval(toolName: string): boolean {
+  return EXPLICIT_APPROVAL_BUILTIN_TOOLS.has(toolName);
 }
 
 function categoryMatches(category: string, toolName: string, connectorKind: string): boolean {

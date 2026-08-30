@@ -91,12 +91,12 @@ import {
   appendEventInTransaction,
   createGroupRepos,
   createRepos,
+  createSpaceForMember,
   createThreadMessageInTransaction,
-  createWorkspace,
-  createWorkspaceDefaults,
   findDefaultModelCredential,
   findDefaultVoiceCredential,
   findWorkspaceMemoryConfig,
+  InvalidSpaceNameError,
   IsolationError,
   lockOwnedGroup,
   newestModelCredentialOrder,
@@ -104,6 +104,7 @@ import {
   Prisma,
   type PrismaClient,
   parseComputerMode,
+  SpaceLimitError,
   type ThreadEvents,
   touchGroupUpdatedAt,
 } from "@rakazo/db";
@@ -375,45 +376,22 @@ export function createRouter(deps: RouterDeps) {
         privateSpaceNavigationDto(deps, context.actor, repos, groupRepos),
       ),
       create: authed.privateSpaces.create.handler(async ({ context, input }) => {
-        const workspaceId = randomUUID();
-        const createdAt = new Date();
-        await withSerializableRetry(() =>
-          deps.prisma.$transaction(
-            async (tx) => {
-              const currentWorkspace = await tx.workspace.findUnique({
-                where: { id: context.actor.workspaceId },
-                select: { organizationId: true },
-              });
-              if (!currentWorkspace) throw new IsolationError();
-              const count = await tx.workspaceMember.count({
-                where: {
-                  userId: context.actor.userId,
-                  organizationId: currentWorkspace.organizationId,
-                },
-              });
-              if (count >= 32) {
-                throw new ORPCError("BAD_REQUEST", { message: "Private space limit reached" });
-              }
-              await createWorkspace(tx, {
-                workspaceId,
-                workspaceMembershipId: randomUUID(),
-                organizationId: currentWorkspace.organizationId,
-                userId: context.actor.userId,
-                name: input.name,
-                createdAt,
-              });
-              await createWorkspaceDefaults(tx, {
-                workspaceId,
-                userId: context.actor.userId,
-                memoryContent: "# Space memory\n\n",
-              });
-            },
-            { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-          ),
-        );
+        let space: { id: string; name: string };
+        try {
+          space = await createSpaceForMember(deps.prisma, {
+            currentWorkspaceId: context.actor.workspaceId,
+            userId: context.actor.userId,
+            name: input.name,
+          });
+        } catch (error) {
+          if (error instanceof SpaceLimitError || error instanceof InvalidSpaceNameError) {
+            throw new ORPCError("BAD_REQUEST", { message: error.message });
+          }
+          throw error;
+        }
         return {
-          id: workspaceId,
-          name: input.name,
+          id: space.id,
+          name: space.name,
           bots: [],
           groups: [],
           botSections: [],

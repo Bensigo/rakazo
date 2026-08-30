@@ -11,17 +11,26 @@ function formatAnsweredState(
   answer: string | undefined,
   approval: boolean,
   secret: boolean,
+  outcome?: "created" | "cancelled",
 ): string {
   if (secret) return t`Submitted`;
   if (!answer) return t`Answered`;
   if (!approval) return t`Answered: ${answer}`;
+  if (outcome === "created") return t`Created`;
+  if (outcome === "cancelled") return t`Cancelled`;
   if (answer === "allow") return t`Allowed once`;
   if (answer === "always") return t`Always allowed`;
   if (answer === "deny") return t`Denied`;
   return t`Answered: ${answer}`;
 }
 
-function approvalActionLabel(id: string, fallback: string): string {
+function approvalActionLabel(
+  id: string,
+  fallback: string,
+  outcome?: "created" | "cancelled",
+): string {
+  if (outcome === "created") return t`Create space`;
+  if (outcome === "cancelled") return t`Cancel`;
   if (id === "allow") return t`Allow once`;
   if (id === "always") return t`Always allow this tool`;
   if (id === "deny") return t`Deny`;
@@ -73,7 +82,12 @@ export function AskCard({
       ) : null}
       {block.status === "answered" ? (
         <div className="mt-3.5 text-[13.5px] font-medium text-[#4ECB71]">
-          {formatAnsweredState(block.answer, Boolean(approvalActions), secretInput)}
+          {formatAnsweredState(
+            block.answer,
+            Boolean(approvalActions),
+            secretInput,
+            approvalActions?.find((action) => action.id === block.answer)?.outcome,
+          )}
         </div>
       ) : !canAnswer ? (
         <div className="mt-3.5 text-[13.5px] font-medium text-[#85858A]">
@@ -96,7 +110,7 @@ export function AskCard({
               {pendingAction === action.id ? (
                 <Trans>Sending…</Trans>
               ) : (
-                approvalActionLabel(action.id, action.label)
+                approvalActionLabel(action.id, action.label, action.outcome)
               )}
             </button>
           ))}

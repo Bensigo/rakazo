@@ -10,6 +10,7 @@ import {
   resolveActionApproval,
   resolveActionApprovalDetail,
   toolRequiresApproval,
+  toolRequiresExplicitApproval,
 } from "./action-approval.js";
 
 describe("toolRequiresApproval", () => {
@@ -18,6 +19,9 @@ describe("toolRequiresApproval", () => {
     expect(toolRequiresApproval("destination.write", true)).toBe(true);
     expect(toolRequiresApproval("delete_bot", false)).toBe(true);
     expect(toolRequiresApproval("archive_bot", false)).toBe(true);
+    expect(toolRequiresApproval("create_space", false)).toBe(true);
+    expect(toolRequiresExplicitApproval("create_space")).toBe(true);
+    expect(toolRequiresExplicitApproval("archive_bot")).toBe(false);
   });
 
   it("does not gate read-only or local work", () => {

@@ -383,6 +383,7 @@ export function describeToolActivity(toolName: string, args: unknown): string {
   if (toolName === "computer_observe") return "Looking at the screen";
   if (toolName === "computer_act") return "Operating the computer";
   if (toolName === "run_subagent") return `Delegating to helper: ${detail(record.name)}`;
+  if (toolName === "create_space") return `Creating space: ${detail(record.name)}`;
   if (toolName === "remember") return "Saving a note to memory";
   if (toolName === "skill_read") return `Reading skill: ${detail(record.name)}`;
   if (toolName === "skill_create") return `Creating skill: ${detail(record.name ?? "skill")}`;
@@ -523,6 +524,9 @@ function toAgentTool(tool: ConnectorTool, host: ToolHost, exposedName: string): 
           instructions: raw.instructions ? String(raw.instructions) : "",
           prompt: raw.prompt ? String(raw.prompt) : "",
         };
+      }
+      if (tool.name === "create_space") {
+        return { name: String(raw.name ?? "") };
       }
       if (tool.name === "archive_bot" || tool.name === "delete_bot") {
         return {
@@ -785,6 +789,9 @@ function parametersFor(tool: ConnectorTool) {
       instructions: Type.Optional(Type.String()),
       prompt: Type.Optional(Type.String()),
     });
+  }
+  if (tool.name === "create_space") {
+    return Type.Object({ name: Type.String({ minLength: 1, maxLength: 60 }) });
   }
   if (tool.name === "archive_bot" || tool.name === "delete_bot") {
     return Type.Object({

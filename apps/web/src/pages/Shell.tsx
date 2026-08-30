@@ -2326,7 +2326,7 @@ export function ShellPage() {
                   }}
                 >
                   <Lock size={14} strokeWidth={1.8} aria-hidden="true" />
-                  <Trans>New private space</Trans>
+                  <Trans>New space</Trans>
                 </button>
               </div>
             ) : null}
@@ -5675,7 +5675,7 @@ function NewPrivateSpaceDialog({
     setSaving(true);
     setError(null);
     void onConfirm(trimmed).catch((reason: unknown) => {
-      setError(reason instanceof Error ? reason.message : t`Could not create private space`);
+      setError(reason instanceof Error ? reason.message : t`Could not create space`);
       setSaving(false);
     });
   };
@@ -5698,7 +5698,7 @@ function NewPrivateSpaceDialog({
         <div className="flex items-center gap-2.5">
           <Lock size={17} strokeWidth={1.8} className="text-[#A78BFA]" aria-hidden="true" />
           <h2 id="new-private-space-title" className="text-[17px] font-medium text-[#F1F1F2]">
-            <Trans>New private space</Trans>
+            <Trans>New space</Trans>
           </h2>
         </div>
         <label className="mt-4 block text-[13.5px] text-[#C9C9CE]">

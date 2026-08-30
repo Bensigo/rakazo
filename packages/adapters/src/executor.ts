@@ -55,19 +55,23 @@ import {
   sandboxCommandTimeoutMs,
   type ToolCallStreak,
   toolRequiresApproval,
+  toolRequiresExplicitApproval,
   userTurnBlocksForRun,
 } from "@rakazo/core";
 import { approvalEffectKey } from "@rakazo/core/node/approval-effect-key";
 import {
   appendEventInTransaction,
+  createSpaceForMember,
   createThreadMessageInTransaction,
   effectiveMemoryScope,
   findDefaultModelCredential,
   findModelCredential,
+  InvalidSpaceNameError,
   type McpServer,
   type Prisma,
   type PrismaClient,
   parseComputerMode,
+  SpaceLimitError,
   type ThreadEvents,
 } from "@rakazo/db";
 import { parse as parseShellCommand } from "shell-quote";
@@ -1133,17 +1137,22 @@ export function createRunExecutor(deps: ExecutorDeps) {
           args = approvedEffectReplays.take(name) ?? args;
           const viaConnector = !BUILTIN_AGENT_TOOL_NAMES.has(name);
           const requiresApprovalByDefault = toolRequiresApproval(name, viaConnector);
+          const requiresExplicitApproval = toolRequiresExplicitApproval(name);
           const connectorKind = connectorKindFromToolName(
             name,
             connectedPlugins.map((plugin) => plugin.provider),
           );
-          const approvalResolved = resolveActionApprovalDetail({
-            toolName: name,
-            connectorKind,
-            rules: await loadApprovalRules(),
-          });
-          const autoReviewPref = await loadAutoReviewPreference();
-          const checker = resolveAutoReviewChecker();
+          const approvalResolved = requiresExplicitApproval
+            ? { decision: "ask" as const, source: "default" as const, matchingRules: [] }
+            : resolveActionApprovalDetail({
+                toolName: name,
+                connectorKind,
+                rules: await loadApprovalRules(),
+              });
+          const autoReviewPref = requiresExplicitApproval
+            ? false
+            : await loadAutoReviewPreference();
+          const checker = requiresExplicitApproval ? undefined : resolveAutoReviewChecker();
           const checkerConfigured =
             autoReviewPref && checker
               ? isAutoReviewCheckerConfigured({}) ||
@@ -1155,12 +1164,14 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   ),
                 )
               : false;
-          const plan = planActionGate({
-            resolved: approvalResolved,
-            consequential: requiresApprovalByDefault,
-            autoReviewEnabled: autoReviewPref,
-            checkerConfigured,
-          });
+          const plan = requiresExplicitApproval
+            ? "ask"
+            : planActionGate({
+                resolved: approvalResolved,
+                consequential: requiresApprovalByDefault,
+                autoReviewEnabled: autoReviewPref,
+                checkerConfigured,
+              });
           let reviewReason: string | undefined;
           let gateDecision: "ask" | "allow" = plan === "ask" ? "ask" : "allow";
           const needsApprovalEarly = plan === "ask" || plan === "judge";
@@ -2168,6 +2179,21 @@ export function createRunExecutor(deps: ExecutorDeps) {
               result: String(args.task ?? "done."),
             };
           }
+          if (name === "create_space") {
+            try {
+              const space = await createSpaceForMember(deps.prisma, {
+                currentWorkspaceId: run.workspaceId,
+                userId: run.userId,
+                name: String(args.name ?? ""),
+              });
+              return finish({ ok: true, spaceId: space.id, name: space.name });
+            } catch (error) {
+              if (error instanceof SpaceLimitError || error instanceof InvalidSpaceNameError) {
+                return finish({ error: error.message });
+              }
+              throw error;
+            }
+          }
           if (name === "spawn_bot") {
             const spawned = await spawnBot(deps, {
               spawnedBy: {
@@ -2439,6 +2465,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 `${computerInstruction} Use remember for durable facts. Use scratchpad_add / scratchpad_update / scratchpad_complete for open work that should outlive this turn (not reminders — those are schedule_*). Use request_takeover when the user must provide protected input or human judgment. Use destination_write only for connected destination records.`,
                 workspaceInstruction,
                 "A bot and a subagent are different. Never use both for the same request.",
+                "create_space proposes a new privacy boundary inside the current organization. Use it when the user asks to create a space or separate data between teams or projects. It always pauses for explicit user approval; never claim the space exists before the tool succeeds.",
                 "spawn_bot creates a lasting regular bot (own chat, computer, memory) that appears in the user's bot list. If the user asked to create a bot, call spawn_bot once and stop. Do not run_subagent to demo it.",
                 "run_subagent is a short helper inside this turn only. It is not a bot, has no thread, and does not show in the list. Use it for parallel work you will summarize here.",
                 botDirectory,

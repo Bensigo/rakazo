@@ -19,6 +19,9 @@ describe("describeToolActivity", () => {
     expect(describeToolActivity("run_subagent", { name: "scout", task: "…" })).toBe(
       "Delegating to helper: scout",
     );
+    expect(describeToolActivity("create_space", { name: "Customer support" })).toBe(
+      "Creating space: Customer support",
+    );
   });
 
   it("names MCP server and remote tool", () => {

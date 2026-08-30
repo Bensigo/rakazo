@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { captureScreenshot, completeOnboarding, signup } from "./helpers";
 
-test("private spaces keep all bots in the sidebar and switch the request boundary", async ({
+test("spaces stay invisible by default and chat creation requires approval", async ({
   page,
 }, testInfo) => {
   const stamp = Date.now();
@@ -14,32 +14,48 @@ test("private spaces keep all bots in the sidebar and switch the request boundar
   await captureScreenshot(page, testInfo, "single-space-sidebar");
 
   await page.getByTitle("Create").click();
-  await page.getByRole("button", { name: "New private space" }).click();
-  const dialog = page.getByRole("dialog", { name: "New private space" });
+  await page.getByRole("button", { name: "New space" }).click();
+  const dialog = page.getByRole("dialog", { name: "New space" });
   await expect(dialog.getByLabel("Name")).toBeVisible();
   await dialog.getByLabel("Name").fill("Customer support");
-  await captureScreenshot(page, testInfo, "new-private-space-dialog");
-  await dialog.getByRole("button", { name: "Create space" }).click();
+  await captureScreenshot(page, testInfo, "new-space-dialog");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
 
-  await page.waitForURL(/\/onboarding/);
-  const supportSpaceId = await page.evaluate(() =>
-    window.localStorage.getItem("rakazo:private-space-id"),
-  );
+  const composer = page.getByRole("textbox", { name: "Message Chief" });
+  await composer.fill("Create a space named Customer support");
+  await composer.press("Enter");
+  await expect(page.getByRole("button", { name: "Create space", exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByRole("button", { name: "Cancel", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Always allow this tool" })).toHaveCount(0);
+  await expect(sidebar.getByText("Customer support", { exact: true })).toHaveCount(0);
+  await captureScreenshot(page, testInfo, "create-space-chat-approval");
+  await page.getByRole("button", { name: "Create space", exact: true }).click();
+  await expect(page.getByText("Created", { exact: true })).toBeVisible();
+
+  await expect(sidebar.getByText("Personal", { exact: true })).toBeVisible();
+  await expect(sidebar.getByText("Customer support", { exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
+
+  const supportSpace = sidebar
+    .locator('[data-sidebar-group^="space:"]')
+    .filter({ hasText: "Customer support" });
+  const supportSpaceGroup = await supportSpace.getAttribute("data-sidebar-group");
+  const supportSpaceId = supportSpaceGroup?.split(":")[1];
   expect(supportSpaceId).toBeTruthy();
+  await supportSpace.getByRole("button", { name: "Open Customer support" }).click();
+  await page.waitForURL(/\/onboarding/);
+  await expect
+    .poll(() => page.evaluate(() => window.localStorage.getItem("rakazo:private-space-id")))
+    .toBe(supportSpaceId);
   await completeOnboarding(page);
 
   await expect(sidebar.getByText("Personal", { exact: true })).toBeVisible();
   await expect(sidebar.getByText("Customer support", { exact: true })).toBeVisible();
   await expect(sidebar.getByRole("button", { name: /^Chief/ })).toHaveCount(2);
   await captureScreenshot(page, testInfo, "private-spaces-sidebar");
-
-  const supportSpace = sidebar
-    .locator(`[data-sidebar-group^="space:${supportSpaceId}:"]`)
-    .filter({ hasText: "Customer support" });
-  await supportSpace.getByRole("button", { name: /^Chief/ }).click();
-  await expect
-    .poll(() => page.evaluate(() => window.localStorage.getItem("rakazo:private-space-id")))
-    .toBe(supportSpaceId);
 
   const personalSpace = sidebar
     .locator('[data-sidebar-group^="space:"]')

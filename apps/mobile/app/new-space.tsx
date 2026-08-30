@@ -21,7 +21,7 @@ export default function NewPrivateSpace() {
       router.dismissAll();
       router.replace("/");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not create private space");
+      setError(reason instanceof Error ? reason.message : "Could not create space");
       setPending(false);
     }
   }
@@ -56,7 +56,7 @@ export default function NewPrivateSpace() {
             padding: 18,
           }}
         >
-          <Text style={{ color: "#F1F1F2", fontSize: 18, fontWeight: "600" }}>Private space</Text>
+          <Text style={{ color: "#F1F1F2", fontSize: 18, fontWeight: "600" }}>Space</Text>
           <Text style={{ color: "#85858A", fontSize: 14, marginTop: 20 }}>Name</Text>
           <TextInput
             autoFocus

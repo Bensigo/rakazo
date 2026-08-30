@@ -94,6 +94,7 @@ import {
 import { playMpeg, speakUtterance } from "../lib/voice";
 
 type PendingAttachment = PickedAttachment & { threadKey: string };
+type AskAction = NonNullable<Extract<MessageBlock, { kind: "ask" }>["actions"]>[number];
 
 function newClientNonce(): string {
   const webCrypto = globalThis.crypto;
@@ -103,8 +104,11 @@ function newClientNonce(): string {
   return `m-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function formatApprovalAnswer(answer: string | undefined): string {
+function formatApprovalAnswer(answer: string | undefined, actions?: AskAction[]): string {
   if (!answer) return "Answered";
+  const outcome = actions?.find((action) => action.id === answer)?.outcome;
+  if (outcome === "created") return "Created";
+  if (outcome === "cancelled") return "Cancelled";
   if (answer === "allow") return "Allowed once";
   if (answer === "always") return "Always allowed";
   if (answer === "deny") return "Denied";
@@ -2017,7 +2021,7 @@ const MessageBubble = memo(function MessageBubble({
                 fontWeight: "600",
               }}
             >
-              {formatApprovalAnswer(askBlock.answer)}
+              {formatApprovalAnswer(askBlock.answer, askBlock.actions)}
             </Text>
           ) : canAnswer && onAnswer ? (
             <AskActions

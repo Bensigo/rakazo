@@ -67,7 +67,7 @@ export default function Layout() {
                 <Stack.Screen
                   name="new-space"
                   options={{
-                    title: "New private space",
+                    title: "New space",
                     presentation: "modal",
                     gestureEnabled: true,
                     headerBackVisible: false,
