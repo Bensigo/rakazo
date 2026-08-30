@@ -259,7 +259,7 @@ describe("mobile API authentication", () => {
     });
   });
 
-  it("restores a persisted workspace when its initial load failed", async () => {
+  it("restores a persisted space when its initial load failed", async () => {
     vi.mocked(SecureStore.getItemAsync).mockResolvedValue(null);
     await loadApiBase();
     const previous = currentApiBase();
@@ -286,7 +286,7 @@ describe("mobile API authentication", () => {
     expect(SecureStore.setItemAsync).toHaveBeenCalledWith("rakazo.space_id", "space-support");
   });
 
-  it("refuses an endpoint switch when the active workspace cannot be snapshotted", async () => {
+  it("refuses an endpoint switch when the active space cannot be snapshotted", async () => {
     vi.mocked(SecureStore.getItemAsync).mockResolvedValue(null);
     await loadApiBase();
     vi.mocked(SecureStore.getItemAsync).mockImplementation(async (key) => {
@@ -414,6 +414,69 @@ describe("mobile API authentication", () => {
     vi.mocked(SecureStore.setItemAsync).mockReset();
     vi.mocked(SecureStore.deleteItemAsync).mockReset();
     await resetApiBase();
+  });
+
+  it("recovers the active space after rollback persistence fails", async () => {
+    vi.mocked(SecureStore.getItemAsync).mockResolvedValue(null);
+    await loadApiBase();
+    await selectSpace("space-support");
+
+    const storage = new Map<string, string>();
+    vi.mocked(SecureStore.getItemAsync).mockImplementation(async (key) => storage.get(key) ?? null);
+    vi.mocked(SecureStore.deleteItemAsync).mockImplementation(async (key) => {
+      storage.delete(key);
+    });
+    vi.mocked(SecureStore.setItemAsync).mockImplementation(async (key, value) => {
+      if (key === "rakazo.api_base" || (key === "rakazo.space_id" && value === "space-support")) {
+        throw new Error("device locked");
+      }
+      storage.set(key, value);
+    });
+
+    await expect(saveApiBase("https://second-server.example")).resolves.toEqual({
+      ok: false,
+      error: "Could not save the server URL",
+    });
+    await expect(authHeaders()).resolves.toEqual({
+      "x-rakazo-workspace-id": "space-support",
+    });
+    expect(storage.get("rakazo.space_rollback")).toBe(
+      JSON.stringify({ apiBase: "http://127.0.0.1:3100", spaceId: "space-support" }),
+    );
+
+    vi.mocked(SecureStore.setItemAsync).mockImplementation(async (key, value) => {
+      storage.set(key, value);
+    });
+    vi.resetModules();
+    const restartedApi = await import("./api.js");
+    await restartedApi.loadApiBase();
+
+    expect(restartedApi.selectedSpaceId()).toBe("space-support");
+    expect(storage.get("rakazo.space_id")).toBe("space-support");
+    expect(storage.has("rakazo.space_rollback")).toBe(false);
+  });
+
+  it("does not recover a space on a different endpoint", async () => {
+    const storage = new Map([
+      ["rakazo.api_base", "https://second-server.example"],
+      [
+        "rakazo.space_rollback",
+        JSON.stringify({ apiBase: "http://127.0.0.1:3100", spaceId: "space-support" }),
+      ],
+    ]);
+    vi.mocked(SecureStore.getItemAsync).mockImplementation(async (key) => storage.get(key) ?? null);
+    vi.mocked(SecureStore.setItemAsync).mockImplementation(async (key, value) => {
+      storage.set(key, value);
+    });
+    vi.mocked(SecureStore.deleteItemAsync).mockImplementation(async (key) => {
+      storage.delete(key);
+    });
+    vi.resetModules();
+    const restartedApi = await import("./api.js");
+
+    await expect(restartedApi.loadApiBase()).resolves.toBe("https://second-server.example");
+    expect(restartedApi.selectedSpaceId()).toBeNull();
+    expect(storage.has("rakazo.space_rollback")).toBe(false);
   });
 });
 

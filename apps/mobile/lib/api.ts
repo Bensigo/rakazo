@@ -34,6 +34,7 @@ import {
 
 const ENDPOINT_KEY = "rakazo.api_base";
 const SPACE_KEY = "rakazo.space_id";
+const SPACE_ROLLBACK_KEY = "rakazo.space_rollback";
 const RPC_TIMEOUT_MS = 8_000;
 
 let cachedApiBase: string | undefined;
@@ -50,24 +51,26 @@ export function currentApiBase() {
 }
 
 export async function loadApiBase() {
-  try {
-    cachedSpaceId = (await SecureStore.getItemAsync(SPACE_KEY)) ?? "";
-  } catch {
-    // Keep any in-memory selection when SecureStore is temporarily unavailable.
-  }
+  let apiBase = defaultApiBase();
   try {
     const stored = await SecureStore.getItemAsync(ENDPOINT_KEY);
     if (stored) {
       const parsed = normalizeApiBase(stored);
       if (parsed.ok) {
-        cachedApiBase = parsed.url;
-        return cachedApiBase;
+        apiBase = parsed.url;
       }
     }
   } catch {
     // SecureStore is unavailable in some test / web hosts.
   }
-  cachedApiBase = defaultApiBase();
+  cachedApiBase = apiBase;
+  try {
+    const storedSpace = (await SecureStore.getItemAsync(SPACE_KEY)) ?? "";
+    cachedSpaceId = storedSpace;
+    if (!storedSpace) await recoverSpaceRollback(cachedApiBase);
+  } catch {
+    // Keep any in-memory selection when SecureStore is temporarily unavailable.
+  }
   return cachedApiBase;
 }
 
@@ -75,6 +78,7 @@ export async function selectSpace(id: string) {
   cachedSpaceId = id;
   try {
     await SecureStore.setItemAsync(SPACE_KEY, id);
+    await clearStoredValue(SPACE_ROLLBACK_KEY);
   } catch {
     // Keep the in-memory selection so create/switch still work when SecureStore fails.
   }
@@ -86,12 +90,18 @@ export function selectedSpaceId(): string | null {
 
 async function clearSpace(): Promise<boolean> {
   cachedSpaceId = "";
+  const spaceCleared = await clearStoredValue(SPACE_KEY);
+  const rollbackCleared = await clearStoredValue(SPACE_ROLLBACK_KEY);
+  return spaceCleared && rollbackCleared;
+}
+
+async function clearStoredValue(key: string): Promise<boolean> {
   try {
-    await SecureStore.deleteItemAsync(SPACE_KEY);
+    await SecureStore.deleteItemAsync(key);
     return true;
   } catch {
     try {
-      await SecureStore.setItemAsync(SPACE_KEY, "");
+      await SecureStore.setItemAsync(key, "");
       return true;
     } catch {
       return false;
@@ -120,8 +130,18 @@ async function clearCredentialsForEndpointChange(): Promise<
       result: { ok: false, error: "Could not clear the previous server session" },
     };
   }
+  const rollbackReady = previousSpace.value
+    ? await saveSpaceRollback(previousSpace.value)
+    : await clearStoredValue(SPACE_ROLLBACK_KEY);
+  if (!rollbackReady) {
+    return {
+      ok: false,
+      result: { ok: false, error: "Could not clear the previous server session" },
+    };
+  }
   const sessionCleared = await clearSessionToken();
-  const spaceCleared = await clearSpace();
+  cachedSpaceId = "";
+  const spaceCleared = await clearStoredValue(SPACE_KEY);
   if (sessionCleared && spaceCleared) {
     return { ok: true, previousToken: previousToken.value, previousSpace: previousSpace.value };
   }
@@ -132,7 +152,50 @@ async function clearCredentialsForEndpointChange(): Promise<
 
 async function restoreCredentials(previousToken: string, previousSpace: string) {
   if (previousToken) await restoreSessionToken(previousToken);
-  if (previousSpace) await selectSpace(previousSpace);
+  if (previousSpace) {
+    cachedSpaceId = previousSpace;
+    try {
+      await SecureStore.setItemAsync(SPACE_KEY, previousSpace);
+      await clearStoredValue(SPACE_ROLLBACK_KEY);
+    } catch {
+      // The endpoint-bound rollback record restores this selection after restart.
+    }
+  }
+}
+
+async function saveSpaceRollback(spaceId: string): Promise<boolean> {
+  try {
+    await SecureStore.setItemAsync(
+      SPACE_ROLLBACK_KEY,
+      JSON.stringify({ apiBase: currentApiBase(), spaceId }),
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function recoverSpaceRollback(apiBase: string) {
+  const stored = await SecureStore.getItemAsync(SPACE_ROLLBACK_KEY);
+  if (!stored) return;
+  let rollback: { apiBase?: unknown; spaceId?: unknown };
+  try {
+    rollback = JSON.parse(stored) as { apiBase?: unknown; spaceId?: unknown };
+  } catch {
+    await clearStoredValue(SPACE_ROLLBACK_KEY);
+    return;
+  }
+  if (rollback.apiBase !== apiBase || typeof rollback.spaceId !== "string" || !rollback.spaceId) {
+    await clearStoredValue(SPACE_ROLLBACK_KEY);
+    return;
+  }
+  try {
+    cachedSpaceId = rollback.spaceId;
+    await SecureStore.setItemAsync(SPACE_KEY, rollback.spaceId);
+    await clearStoredValue(SPACE_ROLLBACK_KEY);
+  } catch {
+    // Keep a valid recovery record for the next launch when storage is writable.
+  }
 }
 
 export async function saveApiBase(input: string): Promise<EndpointResult> {
@@ -153,6 +216,7 @@ export async function saveApiBase(input: string): Promise<EndpointResult> {
     return { ok: false, error: "Could not save the server URL" };
   }
   cachedApiBase = parsed.url;
+  await clearStoredValue(SPACE_ROLLBACK_KEY);
   return parsed;
 }
 
@@ -174,6 +238,7 @@ export async function resetApiBase(): Promise<EndpointResult> {
     }
   }
   cachedApiBase = url;
+  await clearStoredValue(SPACE_ROLLBACK_KEY);
   return { ok: true, url };
 }
 
