@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearSessionToken,
   loadSessionToken,
+  peekStoredSessionToken,
   restoreSessionToken,
   saveSessionToken,
   tokenFromAuthResponse,
@@ -57,6 +58,7 @@ describe("mobile session storage", () => {
 
     await restoreSessionToken("secret-token");
     await expect(loadSessionToken()).resolves.toBe("secret-token");
+    await expect(peekStoredSessionToken()).resolves.toBe("secret-token");
 
     vi.mocked(SecureStore.deleteItemAsync).mockRejectedValue(new Error("device locked"));
     await expect(clearSessionToken()).resolves.toBe(false);

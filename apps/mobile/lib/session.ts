@@ -53,8 +53,9 @@ export async function restoreSessionToken(token: string) {
   }
 }
 
-/** Read the stored token even if the in-memory gate is set (for restore snapshots). */
+/** Read the active token for restore snapshots, including in-memory fallbacks. */
 export async function peekStoredSessionToken() {
+  if (sessionFallback !== undefined) return sessionFallback;
   try {
     return (await SecureStore.getItemAsync(SESSION_KEY)) ?? "";
   } catch {

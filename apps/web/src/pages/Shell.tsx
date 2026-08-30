@@ -1318,6 +1318,7 @@ export function ShellPage() {
     (workspaceId: string, path: string) => {
       setMobileSidebarOpen(false);
       if (workspaceId === bootstrapMe?.workspaceId) {
+        clearPrivateSpaceSelection();
         navigate(path);
         return;
       }
