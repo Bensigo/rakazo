@@ -161,11 +161,13 @@ export async function provisionComputer(
 
 async function reconnectComputer(
   deps: {
+    prisma: PrismaClient;
     sandbox: SandboxProvider;
     home: AgentHomeStore;
     dataDir?: string;
   },
   computer: {
+    id: string;
     homeKey: string;
     providerRef: string | null;
     kind: string;
@@ -191,6 +193,15 @@ async function reconnectComputer(
     context.botId,
     context,
   );
+  if (ref.providerRef !== computer.providerRef || ref.kind !== computer.kind) {
+    await deps.prisma.computer.update({
+      where: { id: computer.id },
+      data: {
+        providerRef: ref.providerRef,
+        kind: ref.kind,
+      },
+    });
+  }
   return ref;
 }
 

@@ -100,6 +100,64 @@ describe("computer provisioning", () => {
     }
   });
 
+  it("updates computer providerRef if reconnect provisions a different ref", async () => {
+    const dataDir = await mkdtemp(path.join(tmpdir(), "rakazo-provision-reconnect-update-"));
+    const ref = {
+      id: "provider-2",
+      botId: "bot-1",
+      kind: "cloud" as const,
+      providerRef: "provider-2",
+      fresh: false,
+    };
+    const prepare = vi.fn().mockResolvedValue(undefined);
+    const prisma = {
+      computer: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue({
+          id: "computer-1",
+          homeKey: "bot-1",
+          providerRef: "provider-1",
+          kind: "cloud",
+          scope: "dedicated",
+          state: "running",
+          controlLeaseId: null,
+        }),
+        updateMany: vi.fn(),
+        update: vi.fn(),
+      },
+    } as unknown as PrismaClient;
+    const sandbox = {
+      provision: vi.fn().mockResolvedValue(ref),
+      prepare,
+    } as unknown as SandboxProvider;
+
+    try {
+      await expect(
+        provisionComputer(
+          {
+            prisma,
+            sandbox,
+            home: {} as AgentHomeStore,
+            jobs: {} as JobPublisher,
+            events: {} as ThreadEvents,
+            dataDir,
+          },
+          "computer-1",
+          context,
+        ),
+      ).resolves.toEqual(ref);
+      expect(prepare).toHaveBeenCalledWith(ref, context);
+      expect(prisma.computer.update).toHaveBeenCalledWith({
+        where: { id: "computer-1" },
+        data: {
+          providerRef: "provider-2",
+          kind: "cloud",
+        },
+      });
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     { fresh: true, cleanup: "destroy" as const },
     { fresh: false, cleanup: "stop" as const },
@@ -308,6 +366,7 @@ describe("computer provisioning", () => {
           controlLeaseId: null,
         }),
         updateMany: vi.fn(),
+        update: vi.fn(),
       },
     } as unknown as PrismaClient;
     const sandbox = {
@@ -332,6 +391,7 @@ describe("computer provisioning", () => {
       ).resolves.toEqual(ref);
       expect(prepare).toHaveBeenCalledWith(ref, context);
       expect(prisma.computer.updateMany).not.toHaveBeenCalled();
+      expect(prisma.computer.update).not.toHaveBeenCalled();
     } finally {
       await rm(dataDir, { recursive: true, force: true });
     }
