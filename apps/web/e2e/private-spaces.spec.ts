@@ -8,6 +8,11 @@ test("private spaces keep all bots in the sidebar and switch the request boundar
   await signup(page, `private-spaces-${stamp}@rakazo.test`, "password12", "Space Owner");
   await completeOnboarding(page);
 
+  const sidebar = page.locator("aside").first();
+  await expect(sidebar.getByText("Personal", { exact: true })).toHaveCount(0);
+  await expect(sidebar.getByRole("button", { name: /^Chief/ })).toHaveCount(1);
+  await captureScreenshot(page, testInfo, "single-space-sidebar");
+
   await page.getByTitle("Create").click();
   await page.getByRole("button", { name: "New private space" }).click();
   const dialog = page.getByRole("dialog", { name: "New private space" });
@@ -23,7 +28,6 @@ test("private spaces keep all bots in the sidebar and switch the request boundar
   expect(supportSpaceId).toBeTruthy();
   await completeOnboarding(page);
 
-  const sidebar = page.locator("aside").first();
   await expect(sidebar.getByText("Personal", { exact: true })).toBeVisible();
   await expect(sidebar.getByText("Customer support", { exact: true })).toBeVisible();
   await expect(sidebar.getByRole("button", { name: /^Chief/ })).toHaveCount(2);
