@@ -264,6 +264,7 @@ describe("web SSRF policy", () => {
         headers: { location: "https://example.test/next" },
       });
 
+    let destroyed = false;
     const started = Date.now();
     await expect(
       fetchSafeWebText("https://example.test/start", {
@@ -274,8 +275,12 @@ describe("web SSRF policy", () => {
           new Promise(() => {
             // hanging dispatcher.close()
           }),
+        destroy: () => {
+          destroyed = true;
+        },
       }),
     ).rejects.toThrow();
+    expect(destroyed).toBe(true);
     expect(Date.now() - started).toBeLessThan(500);
   });
 

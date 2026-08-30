@@ -27,6 +27,11 @@ export interface SafeWebFetchOptions {
    * Always raced against the shared operation deadline.
    */
   cleanup?: () => Promise<void>;
+  /**
+   * Test seam for force-teardown after cleanup. Defaults to `Agent.destroy()`.
+   * Invoked without awaiting so a hanging destroy cannot extend the deadline.
+   */
+  destroy?: () => void;
 }
 
 const defaultResolveHostname: ResolveHostname = (hostname) =>
@@ -93,6 +98,7 @@ export async function fetchSafeWebText(
         () => undefined,
         () => undefined,
       ));
+  const destroy = options.destroy ?? (() => dispatcher.destroy());
 
   try {
     return await followRedirects(url, {
@@ -106,13 +112,16 @@ export async function fetchSafeWebText(
       redirectsRemaining: MAX_REDIRECTS,
     });
   } finally {
-    // Race graceful close against the deadline, then always destroy so a hung
-    // close cannot retain sockets/FDs after we stop awaiting.
+    // Race graceful close against the shared deadline. Do not wait unbounded on close().
     await withAbort(cleanup(), signal).catch(() => undefined);
-    try {
-      dispatcher.destroy();
-    } catch {
-      // already closed / destroyed
+    // If the deadline aborted (close hung or already timed out), force-destroy
+    // without awaiting so sockets/FDs cannot leak past the timeout.
+    if (signal.aborted) {
+      try {
+        destroy();
+      } catch {
+        // already closed / destroyed
+      }
     }
   }
 }
