@@ -20,6 +20,7 @@ import {
   signOut,
   subscribeThread,
 } from "./api.js";
+import { saveSessionToken } from "./session.js";
 
 vi.mock("expo-secure-store", () => ({
   getItemAsync: vi.fn(),
@@ -297,6 +298,33 @@ describe("mobile API authentication", () => {
       error: "Could not clear the previous server session",
     });
     expect(SecureStore.deleteItemAsync).not.toHaveBeenCalled();
+  });
+
+  it("preserves credentials when the active session cannot be snapshotted", async () => {
+    await saveSessionToken("session-token");
+    await selectPrivateSpace("space-support");
+    vi.mocked(SecureStore.getItemAsync).mockRejectedValue(new Error("device locked"));
+    vi.mocked(SecureStore.deleteItemAsync).mockClear();
+    const previous = currentApiBase();
+    const next =
+      previous === "https://second-server.example"
+        ? "https://third-server.example"
+        : "https://second-server.example";
+
+    await expect(saveApiBase(next)).resolves.toEqual({
+      ok: false,
+      error: "Could not clear the previous server session",
+    });
+    expect(currentApiBase()).toBe(previous);
+    expect(SecureStore.deleteItemAsync).not.toHaveBeenCalled();
+
+    vi.mocked(SecureStore.getItemAsync).mockImplementation(async (key) =>
+      key === "rakazo.session_token" ? "session-token" : null,
+    );
+    await expect(authHeaders()).resolves.toEqual({
+      authorization: "Bearer session-token",
+      "x-rakazo-workspace-id": "space-support",
+    });
   });
 
   it("keeps the in-memory session across consecutive failed endpoint switches", async () => {

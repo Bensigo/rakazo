@@ -28,9 +28,9 @@ import { resumeLiveNotifications } from "./live-notifications";
 import {
   clearSessionToken,
   loadSessionToken,
-  peekStoredSessionToken,
   restoreSessionToken,
   saveSessionToken,
+  snapshotSessionToken,
   tokenFromAuthResponse,
 } from "./session";
 
@@ -110,9 +110,9 @@ async function snapshotPrivateSpace(): Promise<{ ok: true; value: string } | { o
 async function clearCredentialsForEndpointChange(): Promise<
   { ok: true; previousToken: string; previousSpace: string } | { ok: false; result: EndpointResult }
 > {
-  const previousToken = await peekStoredSessionToken();
+  const previousToken = await snapshotSessionToken();
   const previousSpace = await snapshotPrivateSpace();
-  if (!previousSpace.ok) {
+  if (!previousToken.ok || !previousSpace.ok) {
     return {
       ok: false,
       result: { ok: false, error: "Could not clear the previous server session" },
@@ -121,10 +121,10 @@ async function clearCredentialsForEndpointChange(): Promise<
   const sessionCleared = await clearSessionToken();
   const spaceCleared = await clearPrivateSpace();
   if (sessionCleared && spaceCleared) {
-    return { ok: true, previousToken, previousSpace: previousSpace.value };
+    return { ok: true, previousToken: previousToken.value, previousSpace: previousSpace.value };
   }
 
-  await restoreSessionToken(previousToken);
+  await restoreSessionToken(previousToken.value);
   if (previousSpace.value) await selectPrivateSpace(previousSpace.value);
   return { ok: false, result: { ok: false, error: "Could not clear the previous server session" } };
 }

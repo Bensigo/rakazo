@@ -8,13 +8,8 @@ let sessionInvalidated = false;
 let sessionFallback: string | undefined;
 
 export async function loadSessionToken() {
-  if (sessionFallback !== undefined) return sessionFallback;
-  if (sessionInvalidated) return "";
-  try {
-    return (await SecureStore.getItemAsync(SESSION_KEY)) ?? "";
-  } catch {
-    return "";
-  }
+  const snapshot = await snapshotSessionToken();
+  return snapshot.ok ? snapshot.value : "";
 }
 
 export async function saveSessionToken(token: string) {
@@ -60,13 +55,14 @@ export async function restoreSessionToken(token: string) {
   }
 }
 
-/** Read the active token for restore snapshots, including in-memory fallbacks. */
-export async function peekStoredSessionToken() {
-  if (sessionFallback) return sessionFallback;
+/** Snapshots the active token without treating an unreadable store as an empty session. */
+export async function snapshotSessionToken(): Promise<{ ok: true; value: string } | { ok: false }> {
+  if (sessionFallback !== undefined) return { ok: true, value: sessionFallback };
+  if (sessionInvalidated) return { ok: true, value: "" };
   try {
-    return (await SecureStore.getItemAsync(SESSION_KEY)) ?? "";
+    return { ok: true, value: (await SecureStore.getItemAsync(SESSION_KEY)) ?? "" };
   } catch {
-    return "";
+    return { ok: false };
   }
 }
 

@@ -3,9 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearSessionToken,
   loadSessionToken,
-  peekStoredSessionToken,
   restoreSessionToken,
   saveSessionToken,
+  snapshotSessionToken,
   tokenFromAuthResponse,
 } from "./session.js";
 
@@ -61,11 +61,18 @@ describe("mobile session storage", () => {
 
     await restoreSessionToken("secret-token");
     await expect(loadSessionToken()).resolves.toBe("secret-token");
-    await expect(peekStoredSessionToken()).resolves.toBe("secret-token");
+    await expect(snapshotSessionToken()).resolves.toEqual({ ok: true, value: "secret-token" });
 
     vi.mocked(SecureStore.deleteItemAsync).mockRejectedValue(new Error("device locked"));
     await expect(clearSessionToken()).resolves.toBe(false);
     await expect(loadSessionToken()).resolves.toBe("");
+  });
+
+  it("distinguishes an unreadable token store from an empty session", async () => {
+    await saveSessionToken("secret-token");
+    vi.mocked(SecureStore.getItemAsync).mockRejectedValueOnce(new Error("device locked"));
+
+    await expect(snapshotSessionToken()).resolves.toEqual({ ok: false });
   });
 });
 
