@@ -174,4 +174,47 @@ describe("web SSRF policy", () => {
     });
     expect(result.body).toBe("hello world");
   });
+
+  it("uses one deadline across the whole redirect chain", async () => {
+    let hops = 0;
+    const fetchMock: typeof fetch = async (input, init) => {
+      hops += 1;
+      const signal = init?.signal;
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, 80);
+        signal?.addEventListener(
+          "abort",
+          () => {
+            clearTimeout(timer);
+            reject(signal.reason ?? new Error("aborted"));
+          },
+          { once: true },
+        );
+      });
+      const href = String(input);
+      if (href.endsWith("/a")) {
+        return new Response(null, {
+          status: 302,
+          headers: { location: "https://example.test/b" },
+        });
+      }
+      if (href.endsWith("/b")) {
+        return new Response(null, {
+          status: 302,
+          headers: { location: "https://example.test/c" },
+        });
+      }
+      return new Response("done", { status: 200 });
+    };
+
+    await expect(
+      fetchSafeWebText("https://example.test/a", {
+        fetch: fetchMock,
+        resolveHostname: publicResolver,
+        timeoutMs: 100,
+      }),
+    ).rejects.toThrow();
+    // Per-hop 100ms would allow all three hops; one shared deadline stops earlier.
+    expect(hops).toBeLessThan(3);
+  });
 });

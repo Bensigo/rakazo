@@ -78,17 +78,18 @@ export async function fetchSafeWebText(
   const dispatcher = new Agent({
     connect: { lookup: createAddressCheckedLookup(resolve, assertPublicAddresses) },
   });
+  // One deadline for the whole redirect chain + body read, not per hop.
+  const signal = combineSignals(options.signal, AbortSignal.timeout(timeoutMs));
 
   try {
     return await followRedirects(url, {
       baseFetch,
       resolve,
       dispatcher,
-      timeoutMs,
       maxBytes,
       userAgent: options.userAgent ?? "Rakazo/0.1 (+https://github.com/elie222/rakazo)",
       headers: options.headers,
-      signal: options.signal,
+      signal,
       redirectsRemaining: MAX_REDIRECTS,
     });
   } finally {
@@ -102,20 +103,23 @@ async function followRedirects(
     baseFetch: typeof globalThis.fetch;
     resolve: ResolveHostname;
     dispatcher: Agent;
-    timeoutMs: number;
     maxBytes: number;
     userAgent: string;
     headers?: Record<string, string>;
-    signal?: AbortSignal;
+    signal: AbortSignal;
     redirectsRemaining: number;
   },
 ): Promise<{ url: string; body: string; contentType: string | null }> {
+  if (state.signal.aborted) {
+    throw state.signal.reason instanceof Error
+      ? state.signal.reason
+      : new Error("Request timed out");
+  }
   const validated = await assertSafeWebUrl(rawUrl, state.resolve);
-  const signal = combineSignals(state.signal, AbortSignal.timeout(state.timeoutMs));
   const response = await state.baseFetch(validated.href, {
     method: "GET",
     redirect: "manual",
-    signal,
+    signal: state.signal,
     headers: {
       "user-agent": state.userAgent,
       accept: "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.5",
@@ -147,7 +151,7 @@ async function followRedirects(
     throw new Error("Response is too large");
   }
 
-  const buffer = await readBodyCapped(response, state.maxBytes);
+  const buffer = await readBodyCapped(response, state.maxBytes, state.signal);
 
   return {
     url: validated.href,
@@ -157,7 +161,11 @@ async function followRedirects(
 }
 
 /** Read the body as a stream and abort once maxBytes is exceeded (DoS guard). */
-export async function readBodyCapped(response: Response, maxBytes: number): Promise<Uint8Array> {
+export async function readBodyCapped(
+  response: Response,
+  maxBytes: number,
+  signal?: AbortSignal,
+): Promise<Uint8Array> {
   if (!response.body) {
     const buffer = await response.arrayBuffer();
     if (buffer.byteLength > maxBytes) throw new Error("Response is too large");
@@ -169,6 +177,10 @@ export async function readBodyCapped(response: Response, maxBytes: number): Prom
   let total = 0;
   try {
     for (;;) {
+      if (signal?.aborted) {
+        await reader.cancel().catch(() => undefined);
+        throw signal.reason instanceof Error ? signal.reason : new Error("Request timed out");
+      }
       const { done, value } = await reader.read();
       if (done) break;
       if (!value?.byteLength) continue;
