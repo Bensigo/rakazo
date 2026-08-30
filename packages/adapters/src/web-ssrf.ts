@@ -94,7 +94,8 @@ export async function fetchSafeWebText(
       redirectsRemaining: MAX_REDIRECTS,
     });
   } finally {
-    await dispatcher.close().catch(() => undefined);
+    // destroy() tears down immediately; close() can wait on unread redirect bodies.
+    dispatcher.destroy();
   }
 }
 
@@ -128,25 +129,31 @@ async function followRedirects(
   } as RequestInit & { dispatcher: Agent });
 
   if (response.status >= 300 && response.status < 400) {
-    if (state.redirectsRemaining <= 0) {
-      throw new Error("Too many redirects");
+    try {
+      if (state.redirectsRemaining <= 0) {
+        throw new Error("Too many redirects");
+      }
+      const location = response.headers.get("location");
+      if (!location) throw new Error("Redirect missing Location header");
+      const next = new URL(location, validated.href).href;
+      // Re-validate every hop — a public host must not 302 into a private one.
+      return await followRedirects(next, {
+        ...state,
+        redirectsRemaining: state.redirectsRemaining - 1,
+      });
+    } finally {
+      await cancelResponseBody(response);
     }
-    const location = response.headers.get("location");
-    if (!location) throw new Error("Redirect missing Location header");
-    const next = new URL(location, validated.href).href;
-    // Re-validate every hop — a public host must not 302 into a private one.
-    return followRedirects(next, {
-      ...state,
-      redirectsRemaining: state.redirectsRemaining - 1,
-    });
   }
 
   if (!response.ok) {
+    await cancelResponseBody(response);
     throw new Error(`Request failed: HTTP ${response.status}`);
   }
 
   const contentLength = response.headers.get("content-length");
   if (contentLength && Number(contentLength) > state.maxBytes) {
+    await cancelResponseBody(response);
     throw new Error("Response is too large");
   }
 
@@ -157,6 +164,10 @@ async function followRedirects(
     body: new TextDecoder().decode(buffer),
     contentType: response.headers.get("content-type"),
   };
+}
+
+async function cancelResponseBody(response: Response): Promise<void> {
+  await response.body?.cancel().catch(() => undefined);
 }
 
 /** Read the body as a stream and abort once maxBytes is exceeded (DoS guard). */

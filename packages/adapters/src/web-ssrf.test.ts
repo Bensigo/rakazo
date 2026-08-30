@@ -218,6 +218,35 @@ describe("web SSRF policy", () => {
     expect(hops).toBeLessThan(3);
   });
 
+  it("cancels redirect response bodies before following the next hop", async () => {
+    let cancelled = false;
+    const redirectBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("redirect-body"));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const fetchMock: typeof fetch = async (input) => {
+      const href = String(input);
+      if (href.endsWith("/start")) {
+        return new Response(redirectBody, {
+          status: 302,
+          headers: { location: "https://example.test/final" },
+        });
+      }
+      return new Response("ok", { status: 200 });
+    };
+
+    const result = await fetchSafeWebText("https://example.test/start", {
+      fetch: fetchMock,
+      resolveHostname: publicResolver,
+    });
+    expect(result.body).toBe("ok");
+    expect(cancelled).toBe(true);
+  });
+
   it("aborts stalled DNS under the shared deadline", async () => {
     let resolveCalls = 0;
     const stalledResolver = () =>
