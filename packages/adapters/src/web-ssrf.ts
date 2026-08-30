@@ -30,6 +30,7 @@ const defaultResolveHostname: ResolveHostname = (hostname) =>
 export async function assertSafeWebUrl(
   value: string,
   resolve: ResolveHostname = defaultResolveHostname,
+  signal?: AbortSignal,
 ): Promise<URL> {
   let url: URL;
   try {
@@ -47,7 +48,7 @@ export async function assertSafeWebUrl(
   if (isBlockedHostname(hostname)) {
     throw new Error("URL targets a private or internal host");
   }
-  assertPublicAddresses(await resolve(hostname));
+  assertPublicAddresses(await withAbort(resolve(hostname), signal));
   return url;
 }
 
@@ -111,11 +112,9 @@ async function followRedirects(
   },
 ): Promise<{ url: string; body: string; contentType: string | null }> {
   if (state.signal.aborted) {
-    throw state.signal.reason instanceof Error
-      ? state.signal.reason
-      : new Error("Request timed out");
+    throw abortError(state.signal);
   }
-  const validated = await assertSafeWebUrl(rawUrl, state.resolve);
+  const validated = await assertSafeWebUrl(rawUrl, state.resolve, state.signal);
   const response = await state.baseFetch(validated.href, {
     method: "GET",
     redirect: "manual",
@@ -179,7 +178,7 @@ export async function readBodyCapped(
     for (;;) {
       if (signal?.aborted) {
         await reader.cancel().catch(() => undefined);
-        throw signal.reason instanceof Error ? signal.reason : new Error("Request timed out");
+        throw abortError(signal);
       }
       const { done, value } = await reader.read();
       if (done) break;
@@ -212,6 +211,30 @@ function assertPublicAddresses(addresses: ResolvedAddress[]): void {
   if (addresses.length === 0 || addresses.some((entry) => isPrivateAddress(entry.address))) {
     throw new Error("URL resolves to a private address");
   }
+}
+
+function abortError(signal: AbortSignal): Error {
+  return signal.reason instanceof Error ? signal.reason : new Error("Request timed out");
+}
+
+/** Race a promise against an AbortSignal so stalled DNS cannot outlive the deadline. */
+export function withAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(abortError(signal));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(abortError(signal));
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
 }
 
 function combineSignals(...signals: Array<AbortSignal | undefined>): AbortSignal {

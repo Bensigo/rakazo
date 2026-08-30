@@ -9,7 +9,7 @@ import type {
 } from "@rakazo/adapter-kit";
 import { JSDOM } from "jsdom";
 import { clampMaxChars, clampMaxResults } from "./web-limits.js";
-import { assertSafeWebUrl, fetchSafeWebText, type ResolveHostname } from "./web-ssrf.js";
+import { fetchSafeWebText, type ResolveHostname } from "./web-ssrf.js";
 
 export {
   clampMaxChars,
@@ -104,9 +104,8 @@ export class KeylessHttpWebProvider implements WebProvider {
   }
 
   async fetch(request: WebFetchRequest, context: AdapterContext): Promise<WebFetchResult> {
-    const validated = await assertSafeWebUrl(request.url, this.resolveHostname);
     const maxChars = clampMaxChars(request.maxChars);
-    const { url, body } = await fetchSafeWebText(validated.href, {
+    const { url, body } = await fetchSafeWebText(request.url, {
       fetch: this.fetchImpl,
       resolveHostname: this.resolveHostname,
       timeoutMs: this.fetchTimeoutMs,

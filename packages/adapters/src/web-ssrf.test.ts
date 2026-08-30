@@ -217,4 +217,22 @@ describe("web SSRF policy", () => {
     // Per-hop 100ms would allow all three hops; one shared deadline stops earlier.
     expect(hops).toBeLessThan(3);
   });
+
+  it("aborts stalled DNS under the shared deadline", async () => {
+    let resolveCalls = 0;
+    const stalledResolver = () =>
+      new Promise<Array<{ address: string; family: number }>>((resolve) => {
+        resolveCalls += 1;
+        setTimeout(() => resolve([{ address: "203.0.113.10", family: 4 }]), 500);
+      });
+
+    await expect(
+      fetchSafeWebText("https://example.test/slow-dns", {
+        fetch: async () => new Response("nope", { status: 200 }),
+        resolveHostname: stalledResolver,
+        timeoutMs: 50,
+      }),
+    ).rejects.toThrow();
+    expect(resolveCalls).toBe(1);
+  });
 });
