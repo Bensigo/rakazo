@@ -187,6 +187,20 @@ export async function authHeaders(
   };
 }
 
+export type ApiRequestContext = {
+  apiBase: string;
+  headers: Record<string, string>;
+};
+
+export async function captureApiRequestContext(): Promise<ApiRequestContext> {
+  const apiBase = currentApiBase();
+  const headers = await authHeaders(selectedPrivateSpaceId());
+  if (apiBase !== currentApiBase()) {
+    throw new Error("The server changed while starting the request");
+  }
+  return { apiBase, headers };
+}
+
 export async function signIn(email: string, password: string) {
   const res = await fetch(`${currentApiBase()}/api/auth/sign-in/email`, {
     method: "POST",
@@ -236,7 +250,7 @@ export async function rpc<T>(
   options: {
     signal?: AbortSignal;
     timeoutMs?: number | null;
-    privateSpaceId?: string | null;
+    requestContext?: ApiRequestContext;
   } = {},
 ): Promise<T> {
   const controller = new AbortController();
@@ -246,12 +260,12 @@ export async function rpc<T>(
   const timer =
     options.timeoutMs === null ? undefined : setTimeout(abort, options.timeoutMs ?? RPC_TIMEOUT_MS);
   try {
-    const res = await fetch(`${currentApiBase()}/rpc/${proc}`, {
+    const res = await fetch(`${options.requestContext?.apiBase ?? currentApiBase()}/rpc/${proc}`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
         origin: "rakazo://",
-        ...(await authHeaders(options.privateSpaceId)),
+        ...(options.requestContext?.headers ?? (await authHeaders())),
       },
       body: JSON.stringify({ json: body }),
       signal: controller.signal,

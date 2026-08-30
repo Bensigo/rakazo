@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { authHeaders, rpc, selectedPrivateSpaceId } from "./api";
+import { captureApiRequestContext, currentApiBase, rpc } from "./api";
 import { speakText } from "./voice";
 
 vi.mock("expo-file-system", () => ({ File: class {}, Paths: {} }));
 vi.mock("./api", () => ({
   authHeaders: vi.fn(),
+  captureApiRequestContext: vi.fn(),
   currentApiBase: vi.fn(() => "https://api.example"),
   rpc: vi.fn(),
-  selectedPrivateSpaceId: vi.fn(),
 }));
 
 class FakeAudio {
@@ -24,15 +24,15 @@ class FakeAudio {
 
 describe("mobile speech", () => {
   beforeEach(() => {
-    vi.mocked(selectedPrivateSpaceId).mockReturnValue("space-support");
-    vi.mocked(authHeaders).mockImplementation(
-      async (privateSpaceId): Promise<Record<string, string>> => {
-        if (!privateSpaceId) return {};
-        return { "x-rakazo-workspace-id": privateSpaceId };
+    vi.mocked(captureApiRequestContext).mockResolvedValue({
+      apiBase: "https://support.example",
+      headers: {
+        authorization: "Bearer support-token",
+        "x-rakazo-workspace-id": "space-support",
       },
-    );
+    });
     vi.mocked(rpc).mockImplementation(async () => {
-      vi.mocked(selectedPrivateSpaceId).mockReturnValue("space-finance");
+      vi.mocked(currentApiBase).mockReturnValue("https://finance.example");
       return { ready: true, utterances: ["First", "Second"] } as never;
     });
     vi.stubGlobal("Audio", FakeAudio);
@@ -47,17 +47,27 @@ describe("mobile speech", () => {
     vi.unstubAllGlobals();
   });
 
-  it("keeps every request on the space captured before preparation", async () => {
+  it("keeps every request on the server and space captured before preparation", async () => {
     await expect(speakText("Read this", { botId: "bot-1" })).resolves.toBe(true);
 
+    const requestContext = {
+      apiBase: "https://support.example",
+      headers: {
+        authorization: "Bearer support-token",
+        "x-rakazo-workspace-id": "space-support",
+      },
+    };
     expect(rpc).toHaveBeenCalledWith(
       "voice/prepare",
       { text: "Read this", voiceId: undefined, botId: "bot-1" },
-      { privateSpaceId: "space-support" },
+      { requestContext },
     );
-    expect(selectedPrivateSpaceId).toHaveBeenCalledTimes(1);
-    expect(authHeaders).toHaveBeenCalledTimes(2);
-    expect(authHeaders).toHaveBeenNthCalledWith(1, "space-support");
-    expect(authHeaders).toHaveBeenNthCalledWith(2, "space-support");
+    expect(captureApiRequestContext).toHaveBeenCalledTimes(1);
+    const fetchMock = vi.mocked(fetch);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    for (const [url, init] of fetchMock.mock.calls) {
+      expect(url).toBe("https://support.example/api/voice/speak");
+      expect(init?.headers).toMatchObject(requestContext.headers);
+    }
   });
 });
