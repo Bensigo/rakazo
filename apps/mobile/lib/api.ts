@@ -70,7 +70,11 @@ export async function loadApiBase() {
 
 export async function selectPrivateSpace(id: string) {
   cachedPrivateSpaceId = id;
-  await SecureStore.setItemAsync(PRIVATE_SPACE_KEY, id);
+  try {
+    await SecureStore.setItemAsync(PRIVATE_SPACE_KEY, id);
+  } catch {
+    // Keep the in-memory selection so create/switch still work when SecureStore fails.
+  }
 }
 
 async function clearPrivateSpace() {

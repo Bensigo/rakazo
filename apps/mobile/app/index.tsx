@@ -228,7 +228,9 @@ export default function Home() {
                   ...space,
                   bots: filterBots(space.bots, query),
                   groups: space.groups.filter((group) =>
-                    `${group.name} ${group.preview}`.toLowerCase().includes(query.toLowerCase()),
+                    `${group.name} ${group.preview}`
+                      .toLowerCase()
+                      .includes(query.trim().toLowerCase()),
                   ),
                 },
           )

@@ -1281,7 +1281,7 @@ export function ShellPage() {
       const visibleGroups = space.groups.filter((group) =>
         `${group.name} ${group.preview}`.toLowerCase().includes(needle),
       );
-      return groupBotsForSidebar(
+      const sections = groupBotsForSidebar(
         [
           ...visibleBots.map((chat) => ({ kind: "bot" as const, chat })),
           ...visibleGroups.map((chat) => ({ kind: "group" as const, chat })),
@@ -1296,7 +1296,21 @@ export function ShellPage() {
             : space.name
           : group.title,
         showLock: showSpaceNames,
+        emptyWorkspaceId: undefined as string | undefined,
       }));
+      if (sections.length > 0) return sections;
+      // Keep empty private spaces selectable; chat clicks are the only switch control.
+      if (!showSpaceNames) return [];
+      if (needle && (space.bots.length > 0 || space.groups.length > 0)) return [];
+      return [
+        {
+          key: `space:${space.id}:empty`,
+          title: space.name,
+          bots: [],
+          showLock: true,
+          emptyWorkspaceId: space.id,
+        },
+      ];
     });
   }, [bootstrapMe, botSections, bots, groups, privateSpaces, query]);
 
@@ -2259,10 +2273,20 @@ export function ShellPage() {
                         <button
                           type="button"
                           className="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium text-[#6C6C70] hover:bg-[#1A1A1D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#8B5CF6]"
-                          onClick={() => toggleSidebarSection(group.key)}
-                          aria-expanded={!collapsed}
+                          onClick={() => {
+                            if (group.emptyWorkspaceId) {
+                              openPrivateSpaceChat(group.emptyWorkspaceId, "/onboarding");
+                              return;
+                            }
+                            toggleSidebarSection(group.key);
+                          }}
+                          aria-expanded={group.emptyWorkspaceId ? undefined : !collapsed}
                           aria-label={
-                            collapsed ? t`Expand ${group.title}` : t`Collapse ${group.title}`
+                            group.emptyWorkspaceId
+                              ? t`Open ${group.title}`
+                              : collapsed
+                                ? t`Expand ${group.title}`
+                                : t`Collapse ${group.title}`
                           }
                         >
                           <span className="flex min-w-0 items-center gap-1.5 truncate">
@@ -2271,14 +2295,18 @@ export function ShellPage() {
                             ) : null}
                             <span className="truncate">{group.title}</span>
                           </span>
-                          <ChevronDown
-                            size={14}
-                            strokeWidth={1.8}
-                            className={
-                              collapsed ? "-rotate-90 transition-transform" : "transition-transform"
-                            }
-                            aria-hidden="true"
-                          />
+                          {group.emptyWorkspaceId ? null : (
+                            <ChevronDown
+                              size={14}
+                              strokeWidth={1.8}
+                              className={
+                                collapsed
+                                  ? "-rotate-90 transition-transform"
+                                  : "transition-transform"
+                              }
+                              aria-hidden="true"
+                            />
+                          )}
                         </button>
                       </div>
                     ) : null}
@@ -5474,6 +5502,14 @@ function NewPrivateSpaceDialog({
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !saving) onCancel();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onCancel, saving]);
 
   const create = () => {
     const trimmed = name.trim();
