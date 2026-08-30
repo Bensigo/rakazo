@@ -4,7 +4,7 @@ import {
   MessageBlock as MessageBlockSchema,
   type ProductEvent,
 } from "@rakazo/contracts";
-import { isApprovalAskBlock, isSecretAskBlock } from "@rakazo/core";
+import { isApprovalAskBlock, isSecretAskBlock, sanitizeJsonValue } from "@rakazo/core";
 import type { Prisma, PrismaClient } from "./client.js";
 import {
   assertRunCanWriteHistory,
@@ -832,6 +832,8 @@ export async function appendEventInTransaction(
     select: { nextEventSeq: true },
   });
   await assertRunCanWriteHistory(tx, input.runId);
+  // Unpaired UTF-16 surrogates (e.g. a split emoji high half) are invalid JSON for Postgres.
+  const payload = sanitizeJsonValue(input.payload);
   return tx.event.create({
     data: {
       workspaceId: input.workspaceId,
@@ -839,7 +841,7 @@ export async function appendEventInTransaction(
       botId: input.botId,
       seq: thread.nextEventSeq - 1,
       type: input.type,
-      payload: input.payload as Prisma.InputJsonValue,
+      payload: payload as Prisma.InputJsonValue,
       runId: input.runId,
     },
   });

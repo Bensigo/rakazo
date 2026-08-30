@@ -1199,4 +1199,49 @@ describe("appendEvent", () => {
     expect(tx.event.create).toHaveBeenCalled();
     expect(publish).toHaveBeenCalled();
   });
+
+  it("does not persist a split-emoji high surrogate that would crash JSON insert", async () => {
+    const fanout = new TestFanout();
+    const created = {
+      ...event(3),
+      type: "thread.progress",
+      runId: "run-3",
+      payload: { delta: "hello \uFFFD", streaming: true },
+    };
+    const tx = {
+      thread: { update: vi.fn().mockResolvedValue({ nextEventSeq: 4 }) },
+      run: { findUnique: vi.fn().mockResolvedValue({ status: "running" }) },
+      event: { create: vi.fn().mockResolvedValue(created) },
+    };
+    const prisma = {
+      $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+    } as unknown as PrismaClient;
+
+    // Orphaned UTF-16 high surrogate (e.g. 😀 split across stream chunks as \uD83D alone).
+    const orphanedHigh = "hello \uD83D";
+    await expect(
+      appendEvent(
+        prisma,
+        {
+          workspaceId: "workspace-1",
+          threadId: "thread-1",
+          botId: "bot-1",
+          type: "thread.progress",
+          runId: "run-3",
+          payload: { delta: orphanedHigh, streaming: true },
+        },
+        fanout,
+      ),
+    ).resolves.toMatchObject({ type: "thread.progress", runId: "run-3" });
+
+    expect(tx.event.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        payload: { delta: "hello \uFFFD", streaming: true },
+      }),
+    });
+    const persisted = tx.event.create.mock.calls[0]![0].data.payload as { delta: string };
+    // Postgres rejects unpaired surrogates in json; the sanitized form must not contain any.
+    expect(persisted.delta).not.toMatch(/[\uD800-\uDFFF]/);
+    expect(() => JSON.stringify(persisted)).not.toThrow();
+  });
 });
