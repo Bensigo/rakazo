@@ -124,13 +124,12 @@ async function clearCredentialsForEndpointChange(): Promise<
     return { ok: true, previousToken: previousToken.value, previousSpace: previousSpace.value };
   }
 
-  await restoreSessionToken(previousToken.value);
-  if (previousSpace.value) await selectPrivateSpace(previousSpace.value);
+  await restoreCredentials(previousToken.value, previousSpace.value);
   return { ok: false, result: { ok: false, error: "Could not clear the previous server session" } };
 }
 
 async function restoreCredentials(previousToken: string, previousSpace: string) {
-  await restoreSessionToken(previousToken);
+  if (previousToken) await restoreSessionToken(previousToken);
   if (previousSpace) await selectPrivateSpace(previousSpace);
 }
 
