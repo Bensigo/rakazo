@@ -1,4 +1,4 @@
-import { selectedPrivateSpaceId, withPrivateSpaceHeaders } from "./rpc.js";
+import { rpc, selectedPrivateSpaceId, withPrivateSpaceHeaders } from "./rpc.js";
 
 export type SpeechStatus = "idle" | "preparing" | "speaking";
 
@@ -84,7 +84,7 @@ export class Speaker {
     let utterances: string[];
     try {
       utterances = await withAbort(controller.signal, () =>
-        this.prepare(text, opts, controller.signal),
+        this.prepare(text, opts, controller.signal, workspaceId),
       );
     } catch (error) {
       if (live()) {
@@ -141,11 +141,15 @@ export class Speaker {
     if (this.request === controller) this.request = null;
   }
 
-  private async prepare(text: string, opts: SpeakOptions, signal: AbortSignal): Promise<string[]> {
-    const { rpc } = await import("./rpc.js");
+  private async prepare(
+    text: string,
+    opts: SpeakOptions,
+    signal: AbortSignal,
+    workspaceId: string | null,
+  ): Promise<string[]> {
     const body = await rpc.voice.prepare(
       { text, voiceId: opts.voiceId, botId: opts.botId },
-      { signal },
+      { signal, context: { privateSpaceId: workspaceId } },
     );
     if (!body.ready) {
       throw new Error("Add a voice provider key and pick a voice in Voice settings.");

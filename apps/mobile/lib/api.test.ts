@@ -4,6 +4,7 @@ import {
   applyMobileThreadEvent,
   authHeaders,
   blockText,
+  currentApiBase,
   type MobileMessage,
   type MobileSnapshot,
   mergeMobileSnapshot,
@@ -164,6 +165,7 @@ describe("mobile API authentication", () => {
   });
 
   it("restores credentials when the new endpoint cannot be persisted", async () => {
+    const previous = currentApiBase();
     vi.mocked(SecureStore.getItemAsync).mockImplementation(async (key) => {
       if (key === "rakazo.session_token") return "session-token";
       return null;
@@ -177,6 +179,7 @@ describe("mobile API authentication", () => {
       ok: false,
       error: "Could not save the server URL",
     });
+    expect(currentApiBase()).toBe(previous);
     await expect(authHeaders()).resolves.toEqual({
       authorization: "Bearer session-token",
       "x-rakazo-workspace-id": "space-support",
@@ -212,6 +215,34 @@ describe("mobile API authentication", () => {
       "rakazo.api_base",
       expect.stringMatching(/second-server|third-server/),
     );
+  });
+
+  it("restores credentials when resetting the endpoint cannot be persisted", async () => {
+    await saveApiBase("https://second-server.example");
+    const previous = currentApiBase();
+    vi.mocked(SecureStore.getItemAsync).mockImplementation(async (key) => {
+      if (key === "rakazo.session_token") return "session-token";
+      return null;
+    });
+    await selectPrivateSpace("space-support");
+    vi.mocked(SecureStore.deleteItemAsync).mockImplementation(async (key) => {
+      if (key === "rakazo.api_base") throw new Error("device locked");
+    });
+
+    await expect(resetApiBase()).resolves.toEqual({
+      ok: false,
+      error: "Could not clear the custom server URL",
+    });
+    expect(currentApiBase()).toBe(previous);
+    await expect(authHeaders()).resolves.toEqual({
+      authorization: "Bearer session-token",
+      "x-rakazo-workspace-id": "space-support",
+    });
+
+    vi.mocked(SecureStore.getItemAsync).mockReset();
+    vi.mocked(SecureStore.setItemAsync).mockReset();
+    vi.mocked(SecureStore.deleteItemAsync).mockReset();
+    await resetApiBase();
   });
 });
 

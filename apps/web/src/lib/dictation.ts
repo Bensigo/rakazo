@@ -60,7 +60,6 @@ export class Dictation {
   private audioContext: AudioContext | null = null;
   private vadTimer: ReturnType<typeof setInterval> | undefined;
   private onFinal: ((text: string) => void) | null = null;
-  private workspaceId: string | null = null;
 
   subscribe(fn: (s: DictationSnapshot) => void): () => void {
     this.watchers.add(fn);
@@ -121,15 +120,15 @@ export class Dictation {
   }): Promise<void> {
     this.stop("replace");
     const mine = this.token;
+    const workspaceId = selectedPrivateSpaceId();
     this.onFinal = opts.onFinal;
-    this.workspaceId = selectedPrivateSpaceId();
     this.set({ status: "listening", transcript: "" });
     if (webSpeechAvailable()) {
       this.listenWebSpeech(opts.mode, opts.endpointMs ?? 850, mine);
       return;
     }
     if (opts.transcribe) {
-      await this.listenRecorder(mine, opts.mode, opts.endpointMs ?? 850);
+      await this.listenRecorder(mine, opts.mode, opts.endpointMs ?? 850, workspaceId);
       return;
     }
     this.set({
@@ -191,7 +190,12 @@ export class Dictation {
     rec.start();
   }
 
-  private async listenRecorder(mine: number, mode: DictationMode, endpointMs: number) {
+  private async listenRecorder(
+    mine: number,
+    mode: DictationMode,
+    endpointMs: number,
+    workspaceId: string | null,
+  ) {
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -223,7 +227,7 @@ export class Dictation {
       for (const track of stream.getTracks()) track.stop();
       if (this.token !== mine) return;
       this.stopVad();
-      void this.transcribeChunks(mine);
+      void this.transcribeChunks(mine, workspaceId);
     };
     media.start(mode === "endpoint" ? 250 : undefined);
   }
@@ -282,7 +286,7 @@ export class Dictation {
     if (ctx) void ctx.close().catch(() => undefined);
   }
 
-  private async transcribeChunks(mine: number) {
+  private async transcribeChunks(mine: number, workspaceId: string | null) {
     if (this.token !== mine) return;
     const blob = new Blob(this.chunks, { type: this.chunks[0]?.type || "audio/webm" });
     this.chunks = [];
@@ -298,7 +302,7 @@ export class Dictation {
       if (this.token !== mine) return;
       const res = await fetch("/api/voice/transcribe", {
         method: "POST",
-        headers: withPrivateSpaceHeaders({ "content-type": "application/json" }, this.workspaceId),
+        headers: withPrivateSpaceHeaders({ "content-type": "application/json" }, workspaceId),
         credentials: "include",
         body: JSON.stringify({ audioBase64, mimeType: blob.type }),
         signal: abort.signal,

@@ -105,64 +105,7 @@ describe("Dictation recorder fallback", () => {
     expect(dictation.state.status).toBe("listening");
   });
 
-  it("forwards the selected private space on transcribe requests", async () => {
-    const store = new Map<string, string>([["rakazo:private-space-id", "space-support"]]);
-    const localStorage = {
-      getItem: (key: string) => store.get(key) ?? null,
-      setItem: (key: string, value: string) => {
-        store.set(key, value);
-      },
-      removeItem: (key: string) => {
-        store.delete(key);
-      },
-    };
-    vi.stubGlobal("window", { localStorage });
-    vi.stubGlobal("localStorage", localStorage);
-
-    const track = { stop: vi.fn() };
-    vi.stubGlobal("navigator", {
-      mediaDevices: {
-        getUserMedia: vi.fn(async () => ({ getTracks: () => [track] })),
-      },
-      language: "en-US",
-    });
-    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => ({
-      ok: true,
-      json: async () => ({ text: "hello" }),
-    }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    class FakeRecorder {
-      state = "inactive";
-      ondataavailable: ((event: { data: Blob }) => void) | null = null;
-      onstop: (() => void) | null = null;
-      start() {
-        this.state = "recording";
-      }
-      stop() {
-        this.state = "inactive";
-        this.ondataavailable?.({ data: new Blob(["audio"], { type: "audio/webm" }) });
-        this.onstop?.();
-      }
-    }
-    vi.stubGlobal("MediaRecorder", FakeRecorder);
-
-    const onFinal = vi.fn();
-    const dictation = new Dictation();
-    await dictation.listen({ mode: "hold", transcribe: true, onFinal });
-    dictation.submitHold();
-    await vi.waitFor(() => expect(onFinal).toHaveBeenCalledWith("hello"));
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/voice/transcribe",
-      expect.objectContaining({ credentials: "include" }),
-    );
-    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
-    expect(headers.get("x-rakazo-workspace-id")).toBe("space-support");
-    expect(headers.get("content-type")).toBe("application/json");
-  });
-
-  it("keeps the transcribe workspace when selection changes mid-flight", async () => {
+  it("keeps transcription in the private space where recording started", async () => {
     const store = new Map<string, string>([["rakazo:private-space-id", "space-support"]]);
     const localStorage = {
       getItem: (key: string) => store.get(key) ?? null,
@@ -211,8 +154,13 @@ describe("Dictation recorder fallback", () => {
     dictation.submitHold();
     await vi.waitFor(() => expect(onFinal).toHaveBeenCalledWith("hello"));
 
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/voice/transcribe",
+      expect.objectContaining({ credentials: "include" }),
+    );
     const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
     expect(headers.get("x-rakazo-workspace-id")).toBe("space-support");
+    expect(headers.get("content-type")).toBe("application/json");
   });
 
   it("ignores leftover audio from a replaced recorder", async () => {
