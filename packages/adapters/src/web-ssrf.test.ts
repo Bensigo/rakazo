@@ -319,6 +319,35 @@ describe("web SSRF policy", () => {
     expect(Date.now() - started).toBeLessThan(500);
   });
 
+  it("swallows a rejecting destroy promise without extending the deadline", async () => {
+    const hangingBody = new ReadableStream<Uint8Array>({
+      start() {
+        // never enqueues or closes
+      },
+    });
+    const fetchMock: typeof fetch = async () =>
+      new Response(hangingBody, {
+        status: 200,
+        headers: { "content-type": "text/plain" },
+      });
+
+    let destroyCalled = false;
+    const started = Date.now();
+    await expect(
+      fetchSafeWebText("https://example.test/hang", {
+        fetch: fetchMock,
+        resolveHostname: publicResolver,
+        timeoutMs: 40,
+        destroy: () => {
+          destroyCalled = true;
+          return Promise.reject(new Error("destroy failed"));
+        },
+      }),
+    ).rejects.toThrow();
+    expect(destroyCalled).toBe(true);
+    expect(Date.now() - started).toBeLessThan(500);
+  });
+
   it("aborts stalled DNS under the shared deadline", async () => {
     let resolveCalls = 0;
     const stalledResolver = () =>

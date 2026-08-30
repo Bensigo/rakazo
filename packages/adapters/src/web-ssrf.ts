@@ -30,8 +30,9 @@ export interface SafeWebFetchOptions {
   /**
    * Test seam for force-teardown after cleanup. Defaults to `Agent.destroy()`.
    * Invoked without awaiting so a hanging destroy cannot extend the deadline.
+   * May return a Promise (`Agent.destroy()` does); rejections are swallowed.
    */
-  destroy?: () => void;
+  destroy?: () => void | Promise<void>;
 }
 
 const defaultResolveHostname: ResolveHostname = (hostname) =>
@@ -116,11 +117,12 @@ export async function fetchSafeWebText(
     await withAbort(cleanup(), signal).catch(() => undefined);
     // If the deadline aborted (close hung or already timed out), force-destroy
     // without awaiting so sockets/FDs cannot leak past the timeout.
+    // Agent.destroy() returns a Promise — swallow async rejection (sync try/catch cannot).
     if (signal.aborted) {
       try {
-        destroy();
+        void Promise.resolve(destroy()).catch(() => undefined);
       } catch {
-        // already closed / destroyed
+        // sync throw from destroy seam
       }
     }
   }
