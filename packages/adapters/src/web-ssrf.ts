@@ -203,6 +203,14 @@ async function cancelResponseBody(response: Response, signal: AbortSignal): Prom
   ).catch(() => undefined);
 }
 
+/** Best-effort cancel that never waits past an already-fired deadline. */
+async function cancelReader(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  signal?: AbortSignal,
+): Promise<void> {
+  await withAbort(reader.cancel().catch(() => undefined), signal).catch(() => undefined);
+}
+
 /** Read the body as a stream and abort once maxBytes is exceeded (DoS guard). */
 export async function readBodyCapped(
   response: Response,
@@ -210,7 +218,7 @@ export async function readBodyCapped(
   signal?: AbortSignal,
 ): Promise<Uint8Array> {
   if (!response.body) {
-    const buffer = await response.arrayBuffer();
+    const buffer = await withAbort(response.arrayBuffer(), signal);
     if (buffer.byteLength > maxBytes) throw new Error("Response is too large");
     return new Uint8Array(buffer);
   }
@@ -220,20 +228,21 @@ export async function readBodyCapped(
   let total = 0;
   try {
     for (;;) {
-      if (signal?.aborted) {
-        await reader.cancel().catch(() => undefined);
-        throw abortError(signal);
-      }
-      const { done, value } = await reader.read();
+      if (signal?.aborted) throw abortError(signal);
+      // Race each pull against the deadline — hanging streams must not block cleanup.
+      const { done, value } = await withAbort(reader.read(), signal);
       if (done) break;
       if (!value?.byteLength) continue;
       total += value.byteLength;
       if (total > maxBytes) {
-        await reader.cancel().catch(() => undefined);
+        await cancelReader(reader, signal);
         throw new Error("Response is too large");
       }
       chunks.push(value);
     }
+  } catch (error) {
+    await cancelReader(reader, signal);
+    throw error;
   } finally {
     try {
       reader.releaseLock();

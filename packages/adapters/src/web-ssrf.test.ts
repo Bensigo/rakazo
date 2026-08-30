@@ -247,6 +247,34 @@ describe("web SSRF policy", () => {
     expect(cancelled).toBe(true);
   });
 
+  it("aborts a hanging response body under the shared deadline", async () => {
+    const hangingBody = new ReadableStream<Uint8Array>({
+      start() {
+        // never enqueues or closes — simulates a fetch body that ignores abort
+      },
+    });
+    const fetchMock: typeof fetch = async () =>
+      new Response(hangingBody, {
+        status: 200,
+        headers: { "content-type": "text/plain" },
+      });
+
+    let destroyed = false;
+    const started = Date.now();
+    await expect(
+      fetchSafeWebText("https://example.test/hang", {
+        fetch: fetchMock,
+        resolveHostname: publicResolver,
+        timeoutMs: 40,
+        destroy: () => {
+          destroyed = true;
+        },
+      }),
+    ).rejects.toThrow();
+    expect(destroyed).toBe(true);
+    expect(Date.now() - started).toBeLessThan(500);
+  });
+
   it("finishes when the deadline fires despite hanging body cancel and close", async () => {
     const hangingBody = new ReadableStream<Uint8Array>({
       start() {
