@@ -12,6 +12,7 @@ import {
   createRunExecutor,
   createRunSandbox,
   createRunSecretWriter,
+  createWebProvider,
   EncryptedSecretStore,
   ExpoPushProvider,
   GraphileJobPublisher,
@@ -134,6 +135,7 @@ async function main() {
     jobs,
     events,
     phone: messaging ? createPhoneContextLoader(prisma) : undefined,
+    web: createWebProvider(),
   });
 
   const jobHandlers = createBackgroundJobHandlers({

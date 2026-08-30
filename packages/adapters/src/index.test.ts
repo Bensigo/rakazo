@@ -180,6 +180,8 @@ describe("builtin tools", () => {
         "skill_create",
         "skill_update",
         "skill_delete",
+        "web_search",
+        "web_fetch",
       ]),
     );
   });

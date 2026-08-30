@@ -256,6 +256,40 @@ export const builtinAgentTools: ConnectorTool[] = [
       required: ["content"],
     },
   },
+  {
+    name: "web_search",
+    description:
+      "Search the public web. Returns titles, URLs, and snippets. Use when you need current information or links; follow with web_fetch to read a page. Does not need a computer.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search query." },
+        maxResults: {
+          type: "number",
+          description: "Max results to return (default 5, max 10).",
+        },
+      },
+      required: ["query"],
+    },
+    readOnly: true,
+  },
+  {
+    name: "web_fetch",
+    description:
+      "Fetch a public http(s) page and return readable text (title + content). Read-only; no JavaScript. Use after web_search when you need the page itself.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "Page URL (http or https)." },
+        maxChars: {
+          type: "number",
+          description: "Max characters of body text (default 8000).",
+        },
+      },
+      required: ["url"],
+    },
+    readOnly: true,
+  },
   // Semantic-memory tools: exposed by selectMemoryTools() only when a
   // A Space memory provider is configured (which hides `remember`).
   {
