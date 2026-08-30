@@ -269,13 +269,15 @@ describe("mobile API authentication", () => {
     );
   });
 
-  it("restores the active session when only one credential clear succeeds", async () => {
+  it("restores notifications to the selected space when endpoint rollback succeeds", async () => {
     const previousApiBase = currentApiBase();
     vi.mocked(SecureStore.getItemAsync).mockImplementation(async (key) => {
       if (key === "rakazo.session_token") return "session-token";
       return null;
     });
+    await selectSpace("space-social");
     await selectSpace("space-support");
+    vi.mocked(resumeLiveNotifications).mockClear();
     vi.mocked(SecureStore.deleteItemAsync).mockImplementation(async (key) => {
       if (key === "rakazo.space_id") throw new Error("device locked");
     });
@@ -297,7 +299,11 @@ describe("mobile API authentication", () => {
       "rakazo.api_base",
       "https://second-server.example",
     );
-    expect(resumeLiveNotifications).toHaveBeenCalledWith(previousApiBase, "session-token");
+    expect(resumeLiveNotifications).toHaveBeenCalledWith(
+      previousApiBase,
+      "session-token",
+      "space-support",
+    );
   });
 
   it("restores credentials when the new endpoint cannot be persisted", async () => {

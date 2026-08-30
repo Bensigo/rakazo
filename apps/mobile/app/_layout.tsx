@@ -5,7 +5,7 @@ import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { AvatarStyleProvider } from "../components/avatar-style";
-import { currentApiBase, loadApiBase, loadSessionToken } from "../lib/api";
+import { currentApiBase, loadApiBase, loadSessionToken, selectedSpaceId } from "../lib/api";
 import {
   configureForegroundNotifications,
   resumeLiveNotifications,
@@ -20,7 +20,13 @@ export default function Layout() {
 
   useEffect(() => {
     void loadApiBase()
-      .then(async () => resumeLiveNotifications(currentApiBase(), await loadSessionToken()))
+      .then(async () =>
+        resumeLiveNotifications(
+          currentApiBase(),
+          await loadSessionToken(),
+          selectedSpaceId() ?? "",
+        ),
+      )
       .catch(() => undefined)
       .finally(() => setReady(true));
   }, []);

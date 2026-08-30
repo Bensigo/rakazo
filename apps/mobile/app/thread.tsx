@@ -62,6 +62,7 @@ import {
   mergeMobileSnapshot,
   prependMobileMessagePage,
   rpc,
+  selectedSpaceId,
   shouldApplyMobileThreadRefresh,
   subscribeThread,
 } from "../lib/api";
@@ -890,7 +891,7 @@ export default function Thread() {
             },
       );
       void loadSessionToken()
-        .then((token) => resumeLiveNotifications(currentApiBase(), token))
+        .then((token) => resumeLiveNotifications(currentApiBase(), token, selectedSpaceId() ?? ""))
         .catch(() => undefined);
       clearOriginComposer();
       if (reroutedToGroup && groupTarget) {

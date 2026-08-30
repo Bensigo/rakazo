@@ -35,6 +35,7 @@ import {
   type MobileSpace,
   type MobileSpaceNavigation,
   rpc,
+  selectedSpaceId,
   selectSpace,
 } from "../lib/api";
 import { botTag, filterBots, formatThreadTime, userInitials } from "../lib/inbox";
@@ -473,9 +474,11 @@ export default function Home() {
               ...update,
             });
             if (organizeTarget.kind === "bot" && update.notifyOnFinish !== undefined) {
-              await resumeLiveNotifications(currentApiBase(), await loadSessionToken()).catch(
-                () => undefined,
-              );
+              await resumeLiveNotifications(
+                currentApiBase(),
+                await loadSessionToken(),
+                selectedSpaceId() ?? "",
+              ).catch(() => undefined);
               if (!update.notifyOnFinish && "threadId" in organizeChat) {
                 await dismissThreadNotifications({ threadId: organizeChat.threadId }).catch(
                   () => undefined,

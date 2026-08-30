@@ -79,6 +79,9 @@ export async function selectSpace(id: string) {
   try {
     await SecureStore.setItemAsync(SPACE_KEY, id);
     cachedSpaceId = id;
+    await resumeLiveNotifications(currentApiBase(), await loadSessionToken(), id).catch(
+      () => undefined,
+    );
     return true;
   } catch {
     return false;
@@ -164,7 +167,9 @@ async function restoreCredentials(previousToken: string, previousSpace: string) 
     }
   }
   if (previousToken) {
-    await resumeLiveNotifications(currentApiBase(), previousToken).catch(() => undefined);
+    await resumeLiveNotifications(currentApiBase(), previousToken, previousSpace).catch(
+      () => undefined,
+    );
   }
 }
 
@@ -290,7 +295,7 @@ export async function signIn(email: string, password: string) {
   if (!token) throw new Error("Sign-in did not return a session");
   if (!(await clearSpace())) throw new Error("Could not clear the previous space");
   await saveSessionToken(token);
-  await resumeLiveNotifications(currentApiBase(), token).catch(() => undefined);
+  await resumeLiveNotifications(currentApiBase(), token, "").catch(() => undefined);
 }
 
 export async function signOut() {
