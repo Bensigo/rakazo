@@ -128,7 +128,7 @@ export async function assertSafeRemoteUrl(
   if (url.hash) throw new Error("Connector URL must not contain a fragment");
   const hostname = url.hostname.replace(/^\[|\]$/g, "");
   if (isPrivateHostname(hostname)) throw new Error("Connector URL targets a private host");
-  assertPublicAddresses(await resolve(hostname));
+  assertPublicAddresses(await resolve(hostname), hostname);
   return url;
 }
 
@@ -161,8 +161,15 @@ export function createSafeLookup(resolve: ResolveHostname = resolveHostname): Lo
   return createAddressCheckedLookup(resolve, assertPublicAddresses);
 }
 
+/** Tailscale MagicDNS names (*.ts.net) are public DNS names, not private IP literals. */
+function isTailscaleMagicDnsHostname(hostname: string): boolean {
+  const normalized = hostname.toLowerCase().replace(/\.$/, "");
+  return normalized === "ts.net" || normalized.endsWith(".ts.net");
+}
+
 function isPrivateHostname(hostname: string): boolean {
   const normalized = hostname.toLowerCase().replace(/\.$/, "");
+  if (isTailscaleMagicDnsHostname(normalized)) return false;
   return (
     normalized === "localhost" ||
     normalized.endsWith(".localhost") ||
@@ -173,7 +180,13 @@ function isPrivateHostname(hostname: string): boolean {
   );
 }
 
-function assertPublicAddresses(addresses: ResolvedAddress[]): void {
+function assertPublicAddresses(addresses: ResolvedAddress[], hostname?: string): void {
+  if (hostname && isTailscaleMagicDnsHostname(hostname)) {
+    if (addresses.length === 0) {
+      throw new Error("Connector URL resolves to a private address");
+    }
+    return;
+  }
   if (addresses.length === 0 || addresses.some((entry) => isPrivateAddress(entry.address))) {
     throw new Error("Connector URL resolves to a private address");
   }
