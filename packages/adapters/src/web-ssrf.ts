@@ -147,16 +147,53 @@ async function followRedirects(
     throw new Error("Response is too large");
   }
 
-  const buffer = await response.arrayBuffer();
-  if (buffer.byteLength > state.maxBytes) {
-    throw new Error("Response is too large");
-  }
+  const buffer = await readBodyCapped(response, state.maxBytes);
 
   return {
     url: validated.href,
     body: new TextDecoder().decode(buffer),
     contentType: response.headers.get("content-type"),
   };
+}
+
+/** Read the body as a stream and abort once maxBytes is exceeded (DoS guard). */
+export async function readBodyCapped(response: Response, maxBytes: number): Promise<Uint8Array> {
+  if (!response.body) {
+    const buffer = await response.arrayBuffer();
+    if (buffer.byteLength > maxBytes) throw new Error("Response is too large");
+    return new Uint8Array(buffer);
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value?.byteLength) continue;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw new Error("Response is too large");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // already cancelled / released
+    }
+  }
+
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
 }
 
 function assertPublicAddresses(addresses: ResolvedAddress[]): void {

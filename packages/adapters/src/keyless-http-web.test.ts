@@ -2,12 +2,11 @@ import type { AdapterContext } from "@rakazo/adapter-kit";
 import { describe, expect, it } from "vitest";
 import { FakeWebProvider } from "./fake-web.js";
 import {
-  clampMaxChars,
-  clampMaxResults,
   extractReadableText,
   KeylessHttpWebProvider,
   parseDuckDuckGoResults,
 } from "./keyless-http-web.js";
+import { clampMaxChars, clampMaxResults } from "./web-limits.js";
 import { createWebProvider, resolveWebProviderKind } from "./web-provider-factory.js";
 import { webFetchFromTool, webSearchFromTool } from "./web-tools.js";
 
@@ -80,7 +79,7 @@ describe("keyless HTTP web provider", () => {
     expect(extracted.text).toContain("just text here");
   });
 
-  it("parses DuckDuckGo HTML results with a cap", () => {
+  it("parses HTML search results with a cap", () => {
     const html = Array.from({ length: 12 }, (_, i) => {
       return `<div class="result"><a class="result__a" href="https://example.test/${i}">T${i}</a><div class="result__snippet">S${i}</div></div>`;
     }).join("");

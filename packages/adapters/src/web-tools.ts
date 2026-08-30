@@ -1,5 +1,5 @@
 import type { AdapterContext, WebFetchProvider, WebSearchProvider } from "@rakazo/adapter-kit";
-import { clampMaxChars, clampMaxResults } from "./keyless-http-web.js";
+import { clampMaxChars, clampMaxResults } from "./web-limits.js";
 
 export async function webSearchFromTool(
   search: WebSearchProvider,

@@ -8,13 +8,18 @@ import type {
   WebSearchRequest,
 } from "@rakazo/adapter-kit";
 import { JSDOM } from "jsdom";
+import { clampMaxChars, clampMaxResults } from "./web-limits.js";
 import { assertSafeWebUrl, fetchSafeWebText, type ResolveHostname } from "./web-ssrf.js";
 
-export const DEFAULT_WEB_SEARCH_MAX_RESULTS = 5;
-export const MAX_WEB_SEARCH_RESULTS = 10;
-export const DEFAULT_WEB_FETCH_MAX_CHARS = 8_000;
-export const MAX_WEB_FETCH_MAX_CHARS = 50_000;
-export const MIN_WEB_FETCH_MAX_CHARS = 100;
+export {
+  clampMaxChars,
+  clampMaxResults,
+  DEFAULT_WEB_FETCH_MAX_CHARS,
+  DEFAULT_WEB_SEARCH_MAX_RESULTS,
+  MAX_WEB_FETCH_MAX_CHARS,
+  MAX_WEB_SEARCH_RESULTS,
+  MIN_WEB_FETCH_MAX_CHARS,
+} from "./web-limits.js";
 
 const DEFAULT_SEARCH_ENDPOINT = "https://html.duckduckgo.com/html/";
 
@@ -94,9 +99,6 @@ export class KeylessHttpWebProvider implements WebProvider {
       maxBytes: 1024 * 1024,
       userAgent: this.userAgent,
       signal: request.signal ?? context.signal,
-      headers: {
-        "content-type": "application/x-www-form-urlencoded",
-      },
     });
     return this.searchBackend.parse(body, maxResults);
   }
@@ -124,18 +126,6 @@ export class KeylessHttpWebProvider implements WebProvider {
       truncated,
     };
   }
-}
-
-export function clampMaxResults(value: unknown): number {
-  const n = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(n)) return DEFAULT_WEB_SEARCH_MAX_RESULTS;
-  return Math.min(MAX_WEB_SEARCH_RESULTS, Math.max(1, Math.floor(n)));
-}
-
-export function clampMaxChars(value: unknown): number {
-  const n = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(n)) return DEFAULT_WEB_FETCH_MAX_CHARS;
-  return Math.min(MAX_WEB_FETCH_MAX_CHARS, Math.max(MIN_WEB_FETCH_MAX_CHARS, Math.floor(n)));
 }
 
 export function parseDuckDuckGoResults(html: string, maxResults: number): WebSearchHit[] {

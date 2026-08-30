@@ -74,6 +74,7 @@ export * from "./teaching-session.js";
 export * from "./third-party-connector-emulator.js";
 export * from "./voice-factory.js";
 export * from "./wakeup.js";
+export * from "./web-limits.js";
 export * from "./web-provider-factory.js";
 export * from "./web-ssrf.js";
 export * from "./web-tools.js";

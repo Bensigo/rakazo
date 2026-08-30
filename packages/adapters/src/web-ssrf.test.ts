@@ -91,4 +91,87 @@ describe("web SSRF policy", () => {
     expect(result.url).toBe("https://example.test/final");
     expect(result.body).toContain("hello");
   });
+
+  it("rejects oversized Content-Length before reading", async () => {
+    const fetchMock: typeof fetch = async () =>
+      new Response("ignored", {
+        status: 200,
+        headers: { "content-length": String(10 * 1024 * 1024) },
+      });
+    await expect(
+      fetchSafeWebText("https://example.test/big", {
+        fetch: fetchMock,
+        resolveHostname: publicResolver,
+        maxBytes: 1024,
+      }),
+    ).rejects.toThrow(/too large/i);
+  });
+
+  it("aborts while streaming once maxBytes is exceeded", async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(600).fill(65));
+        controller.enqueue(new Uint8Array(600).fill(66));
+        controller.close();
+      },
+    });
+    const fetchMock: typeof fetch = async () =>
+      new Response(stream, {
+        status: 200,
+        headers: { "content-type": "text/plain" },
+      });
+
+    await expect(
+      fetchSafeWebText("https://example.test/stream", {
+        fetch: fetchMock,
+        resolveHostname: publicResolver,
+        maxBytes: 1000,
+      }),
+    ).rejects.toThrow(/too large/i);
+  });
+
+  it("readBodyCapped stops once the byte budget is exceeded", async () => {
+    const { readBodyCapped } = await import("./web-ssrf.js");
+    let pulls = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1;
+        if (pulls === 1) {
+          controller.enqueue(new Uint8Array(400).fill(1));
+          return;
+        }
+        if (pulls === 2) {
+          controller.enqueue(new Uint8Array(400).fill(2));
+          return;
+        }
+        controller.enqueue(new Uint8Array(400).fill(3));
+        controller.close();
+      },
+    });
+    const response = new Response(stream, { status: 200 });
+    await expect(readBodyCapped(response, 500)).rejects.toThrow(/too large/i);
+    // Second chunk already exceeds; a third pull must not be needed.
+    expect(pulls).toBeLessThanOrEqual(2);
+  });
+
+  it("accepts a streamed body that stays under maxBytes", async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("hello "));
+        controller.enqueue(new TextEncoder().encode("world"));
+        controller.close();
+      },
+    });
+    const fetchMock: typeof fetch = async () =>
+      new Response(stream, {
+        status: 200,
+        headers: { "content-type": "text/plain" },
+      });
+    const result = await fetchSafeWebText("https://example.test/ok", {
+      fetch: fetchMock,
+      resolveHostname: publicResolver,
+      maxBytes: 100,
+    });
+    expect(result.body).toBe("hello world");
+  });
 });
