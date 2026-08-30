@@ -276,11 +276,14 @@ describe("web SSRF policy", () => {
   });
 
   it("finishes when the deadline fires despite hanging body cancel and close", async () => {
+    let bodyCancelStarted = false;
+    let cleanupStarted = false;
     const hangingBody = new ReadableStream<Uint8Array>({
       start() {
         // never enqueues or closes
       },
       cancel() {
+        bodyCancelStarted = true;
         return new Promise(() => {
           // never settles
         });
@@ -299,15 +302,19 @@ describe("web SSRF policy", () => {
         fetch: fetchMock,
         resolveHostname: publicResolver,
         timeoutMs: 40,
-        cleanup: () =>
-          new Promise(() => {
+        cleanup: () => {
+          cleanupStarted = true;
+          return new Promise(() => {
             // hanging dispatcher.close()
-          }),
+          });
+        },
         destroy: () => {
           destroyed = true;
         },
       }),
     ).rejects.toThrow();
+    expect(bodyCancelStarted).toBe(true);
+    expect(cleanupStarted).toBe(true);
     expect(destroyed).toBe(true);
     expect(Date.now() - started).toBeLessThan(500);
   });

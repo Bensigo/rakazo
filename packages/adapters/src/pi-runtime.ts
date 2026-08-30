@@ -933,7 +933,8 @@ function redactActivityUrl(value: unknown): string {
     url.hash = "";
     return url.toString();
   } catch {
-    return raw;
+    // Never echo unparsed input — it may still contain userinfo/secrets.
+    return "[invalid URL]";
   }
 }
 

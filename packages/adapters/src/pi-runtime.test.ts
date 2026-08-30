@@ -66,6 +66,15 @@ describe("describeToolActivity", () => {
     expect(line).not.toContain("frag");
   });
 
+  it("does not echo secrets from malformed web_fetch URLs", () => {
+    const line = describeToolActivity("web_fetch", {
+      url: "https://user:secret@[",
+    });
+    expect(line).toBe("Reading page: [invalid URL]");
+    expect(line).not.toContain("secret");
+    expect(line).not.toContain("user:");
+  });
+
   it("falls back to the tool name", () => {
     expect(describeToolActivity("destination_write", undefined)).toBe("Using destination_write");
   });
