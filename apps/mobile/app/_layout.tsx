@@ -54,6 +54,15 @@ export default function Layout() {
                   gestureEnabled: true,
                 }}
               />
+              <Stack.Screen
+                name="new-space"
+                options={{
+                  title: "New private space",
+                  presentation: "modal",
+                  gestureEnabled: true,
+                  headerBackVisible: false,
+                }}
+              />
               <Stack.Screen name="group-thread" options={{ title: "Group" }} />
               <Stack.Screen name="group-settings" options={{ title: "Group settings" }} />
               <Stack.Screen name="bot-settings" options={{ title: "Chat settings" }} />

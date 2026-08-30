@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ComposioEmulator } from "@rakazo/adapters";
-import type { appContract } from "@rakazo/contracts";
+import type { appContract, PrivateSpace, PrivateSpaceNavigation } from "@rakazo/contracts";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { sessionCookieHeader } from "./index.js";
 
@@ -66,6 +66,8 @@ describeWithDatabase("API authorization and resource isolation", () => {
       ["models/finishOAuth", { loginId: "missing-login" }],
       ["models/cancelOAuth", { loginId: "missing-login" }],
       ["models/setDefault", { provider: "test", modelId: "test/model" }],
+      ["privateSpaces/list"],
+      ["privateSpaces/create", { name: "Nope" }],
       ["bots/list"],
       ["bots/listArchived"],
       ["bots/get", { botId: "missing-bot" }],
@@ -498,6 +500,75 @@ describeWithDatabase("API authorization and resource isolation", () => {
     ).not.toBeNull();
   });
 
+  it("keeps private-space data and computers behind the selected workspace boundary", async () => {
+    const cookie = await signup(app, `private-spaces-${stamp}@rakazo.test`, "Space Owner");
+    const original = await rpc<Actor>(app, cookie, "me");
+    const originalBot = await rpc<Bot>(app, cookie, "bots/create", botInput("Open source"));
+    const support = await rpc<PrivateSpace>(app, cookie, "privateSpaces/create", {
+      name: "Customer support",
+    });
+
+    const supportMe = await rpc<Actor>(app, cookie, "me", {}, support.id);
+    expect(supportMe.workspaceId).toBe(support.id);
+    const supportBot = await rpc<Bot>(app, cookie, "bots/create", botInput("Support"), support.id);
+
+    expect(await rpc<Array<{ id: string }>>(app, cookie, "bots/list")).toEqual([
+      expect.objectContaining({ id: originalBot.id }),
+    ]);
+    expect(await rpc<Array<{ id: string }>>(app, cookie, "bots/list", {}, support.id)).toEqual([
+      expect.objectContaining({ id: supportBot.id }),
+    ]);
+    await expectDenied(app, cookie, "bots/get", { botId: supportBot.id });
+    await expectDenied(app, cookie, "bots/get", { botId: originalBot.id }, support.id);
+
+    const navigation = await rpc<PrivateSpaceNavigation>(app, cookie, "privateSpaces/list");
+    expect(navigation.current).toEqual(
+      expect.objectContaining({
+        id: original.workspaceId,
+        bots: [expect.objectContaining({ id: originalBot.id })],
+      }),
+    );
+    expect(navigation.privateSpaces).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: original.workspaceId,
+          bots: [expect.objectContaining({ id: originalBot.id })],
+        }),
+        expect.objectContaining({
+          id: support.id,
+          name: "Customer support",
+          bots: [expect.objectContaining({ id: supportBot.id })],
+        }),
+      ]),
+    );
+    const supportNavigation = await rpc<PrivateSpaceNavigation>(
+      app,
+      cookie,
+      "privateSpaces/list",
+      {},
+      support.id,
+    );
+    expect(supportNavigation.current).toEqual(
+      expect.objectContaining({
+        id: support.id,
+        bots: [expect.objectContaining({ id: supportBot.id })],
+      }),
+    );
+
+    const storedBots = await handles.prisma.bot.findMany({
+      where: { id: { in: [originalBot.id, supportBot.id] } },
+      select: { id: true, workspaceId: true, computerId: true },
+    });
+    const storedOriginal = storedBots.find((bot) => bot.id === originalBot.id);
+    const storedSupport = storedBots.find((bot) => bot.id === supportBot.id);
+    expect(storedOriginal?.workspaceId).toBe(original.workspaceId);
+    expect(storedSupport?.workspaceId).toBe(support.id);
+    expect(storedOriginal?.computerId).not.toBe(storedSupport?.computerId);
+
+    const intruder = await signup(app, `private-spaces-intruder-${stamp}@rakazo.test`, "Intruder");
+    await expectDenied(app, intruder, "bots/list", {}, support.id);
+  });
+
   it("isolates model defaults by workspace and switches them atomically", async () => {
     const cookie = await signup(app, `model-defaults-${stamp}@rakazo.test`, "Model Defaults");
     const actor = await rpc<Actor>(app, cookie, "me");
@@ -864,20 +935,33 @@ async function signup(app: App, email: string, name: string) {
   return sessionCookieHeader(response);
 }
 
-async function raw(app: App, cookie: string, procedure: string, body: unknown = {}) {
+async function raw(
+  app: App,
+  cookie: string,
+  procedure: string,
+  body: unknown = {},
+  workspaceId?: string,
+) {
   return app.request(`/rpc/${procedure}`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
       ...(cookie ? { cookie } : {}),
+      ...(workspaceId ? { "x-rakazo-workspace-id": workspaceId } : {}),
       origin: "http://127.0.0.1:5173",
     },
     body: JSON.stringify({ json: body ?? {} }),
   });
 }
 
-async function rpc<T>(app: App, cookie: string, procedure: string, body: unknown = {}): Promise<T> {
-  const response = await raw(app, cookie, procedure, body);
+async function rpc<T>(
+  app: App,
+  cookie: string,
+  procedure: string,
+  body: unknown = {},
+  workspaceId?: string,
+): Promise<T> {
+  const response = await raw(app, cookie, procedure, body, workspaceId);
   const text = await response.text();
   const payload = JSON.parse(text) as { json?: T; error?: { message?: string } };
   if (response.status >= 400 || payload.error) {
@@ -886,8 +970,14 @@ async function rpc<T>(app: App, cookie: string, procedure: string, body: unknown
   return payload.json as T;
 }
 
-async function expectDenied(app: App, cookie: string, procedure: string, body: unknown) {
-  const response = await raw(app, cookie, procedure, body);
+async function expectDenied(
+  app: App,
+  cookie: string,
+  procedure: string,
+  body: unknown,
+  workspaceId?: string,
+) {
+  const response = await raw(app, cookie, procedure, body, workspaceId);
   if (procedure === "threads/subscribe" && response.status === 200) {
     // Streaming transports commit the HTTP 200 before advancing the async iterator. The
     // ownership error is therefore encoded in the iterator response instead of the status.

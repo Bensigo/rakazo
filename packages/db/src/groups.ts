@@ -155,21 +155,32 @@ const groupTargetInclude = {
 } as const;
 
 export function createGroupRepos(prisma: PrismaClient) {
+  async function listGroupsForWorkspaces(
+    actor: Actor,
+    workspaceIds: string[],
+    options: { archived?: boolean } = {},
+  ): Promise<Group[]> {
+    if (workspaceIds.length === 0) return [];
+    const groups = await prisma.chatGroup.findMany({
+      where: {
+        workspaceId: { in: workspaceIds },
+        userId: actor.userId,
+        archivedAt: options.archived ? { not: null } : null,
+      },
+      include: groupInclude,
+      orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
+    });
+    return groups
+      .filter((group) => hasMinimumActiveMembers(group.members))
+      .map((group) => mapGroup(group as GroupRecord));
+  }
+
   return {
     async listGroups(actor: Actor, options: { archived?: boolean } = {}): Promise<Group[]> {
-      const groups = await prisma.chatGroup.findMany({
-        where: {
-          workspaceId: actor.workspaceId,
-          userId: actor.userId,
-          archivedAt: options.archived ? { not: null } : null,
-        },
-        include: groupInclude,
-        orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
-      });
-      return groups
-        .filter((group) => hasMinimumActiveMembers(group.members))
-        .map((group) => mapGroup(group as GroupRecord));
+      return listGroupsForWorkspaces(actor, [actor.workspaceId], options);
     },
+
+    listGroupsForWorkspaces,
 
     async getGroup(actor: Actor, groupId: string, options: { includeArchived?: boolean } = {}) {
       const group = await prisma.chatGroup.findFirst({

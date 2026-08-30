@@ -115,6 +115,60 @@ export const BotSectionSchema = z.object({
 });
 export type BotSection = z.infer<typeof BotSectionSchema>;
 
+/**
+ * A private space is a real workspace boundary, not just sidebar organization.
+ * Bots are included so clients can keep every space visible without granting
+ * those bots access to the currently active space.
+ */
+export const PrivateSpaceBotSchema = BotSchema.pick({
+  id: true,
+  workspaceId: true,
+  name: true,
+  title: true,
+  color: true,
+  pinned: true,
+  sectionId: true,
+  unread: true,
+  preview: true,
+  status: true,
+  updatedAt: true,
+});
+export type PrivateSpaceBot = z.infer<typeof PrivateSpaceBotSchema>;
+
+export const PrivateSpaceGroupSchema = GroupSchema.pick({
+  id: true,
+  workspaceId: true,
+  name: true,
+  pinned: true,
+  sectionId: true,
+  members: true,
+  preview: true,
+  unread: true,
+  updatedAt: true,
+});
+export type PrivateSpaceGroup = z.infer<typeof PrivateSpaceGroupSchema>;
+
+export const PrivateSpaceSchema = z.object({
+  id: Id,
+  name: z.string(),
+  bots: z.array(PrivateSpaceBotSchema),
+  groups: z.array(PrivateSpaceGroupSchema),
+  botSections: z.array(BotSectionSchema),
+});
+export type PrivateSpace = z.infer<typeof PrivateSpaceSchema>;
+
+export const PrivateSpaceNavigationSchema = z.object({
+  current: z.object({
+    id: Id,
+    name: z.string(),
+    bots: z.array(BotSchema),
+    groups: z.array(GroupSchema),
+    botSections: z.array(BotSectionSchema),
+  }),
+  privateSpaces: z.array(PrivateSpaceSchema),
+});
+export type PrivateSpaceNavigation = z.infer<typeof PrivateSpaceNavigationSchema>;
+
 export const BOT_NAME_MAX_LENGTH = 80;
 export const BOT_TITLE_MAX_LENGTH = 500;
 export const BOT_DESCRIPTION_MAX_LENGTH = 4000;
@@ -856,11 +910,13 @@ export type Me = z.infer<typeof MeSchema>;
 export const AppBootstrapSchema = z.object({
   me: MeSchema,
   bots: z.array(BotSchema),
+  groups: z.array(GroupSchema),
   botSections: z.array(BotSectionSchema),
   archivedBots: z.array(BotSchema),
   archivedGroups: z.array(GroupSchema),
   thread: ThreadSnapshotSchema.nullable(),
   routines: z.array(RoutineSchema),
+  privateSpaces: z.array(PrivateSpaceSchema),
 });
 export type AppBootstrap = z.infer<typeof AppBootstrapSchema>;
 

@@ -74,6 +74,7 @@ import {
   type McpServer,
   type Me,
   OPENAI_COMPATIBLE_PROVIDER_ID,
+  type PrivateSpaceNavigation,
 } from "@rakazo/contracts";
 import {
   ACTIVE_RUN_STATUSES,
@@ -87,8 +88,10 @@ import {
 import {
   appendEventInTransaction,
   createGroupRepos,
+  createOwnedWorkspace,
   createRepos,
   createThreadMessageInTransaction,
+  createWorkspaceDefaults,
   findDefaultModelCredential,
   findDefaultVoiceCredential,
   findWorkspaceMemoryConfig,
@@ -363,15 +366,50 @@ export function createRouter(deps: RouterDeps) {
         return meDto(deps, context.actor);
       }),
     },
+    privateSpaces: {
+      list: authed.privateSpaces.list.handler(async ({ context }) =>
+        privateSpaceNavigationDto(deps, context.actor),
+      ),
+      create: authed.privateSpaces.create.handler(async ({ context, input }) => {
+        const count = await deps.prisma.member.count({ where: { userId: context.actor.userId } });
+        if (count >= 32) {
+          throw new ORPCError("BAD_REQUEST", { message: "Private space limit reached" });
+        }
+        const workspaceId = randomUUID();
+        const createdAt = new Date();
+        await deps.prisma.$transaction(async (tx) => {
+          await createOwnedWorkspace(tx, {
+            workspaceId,
+            membershipId: randomUUID(),
+            userId: context.actor.userId,
+            name: input.name,
+            slug: `space-${randomUUID()}`,
+            createdAt,
+          });
+          await createWorkspaceDefaults(tx, {
+            workspaceId,
+            userId: context.actor.userId,
+            memoryContent: "# Space memory\n\n",
+          });
+        });
+        return {
+          id: workspaceId,
+          name: input.name,
+          bots: [],
+          groups: [],
+          botSections: [],
+        };
+      }),
+    },
     bootstrap: authed.bootstrap.handler(async ({ context, input }) => {
       const actor = context.actor;
-      const [me, bots, botSections, archivedBots, archivedGroups] = await Promise.all([
+      const [me, navigation, archivedBots, archivedGroups] = await Promise.all([
         meDto(deps, actor),
-        repos.listBots(actor),
-        repos.listBotSections(actor),
+        privateSpaceNavigationDto(deps, actor),
         repos.listBots(actor, { archived: true }),
         groupRepos.listGroups(actor, { archived: true }),
       ]);
+      const { bots, groups, botSections } = navigation.current;
       const active = bots.find((bot) => bot.id === input.botId) ?? bots[0];
       const [thread, routines] = active
         ? await Promise.all([
@@ -381,7 +419,17 @@ export function createRouter(deps: RouterDeps) {
             listRoutinesDto(deps, actor, active.id),
           ])
         : [null, []];
-      return { me, bots, botSections, archivedBots, archivedGroups, thread, routines };
+      return {
+        me,
+        bots,
+        groups,
+        botSections,
+        archivedBots,
+        archivedGroups,
+        thread,
+        routines,
+        privateSpaces: navigation.privateSpaces,
+      };
     }),
     deployment: {
       get: authed.deployment.get.handler(async ({ context }) => {
@@ -3148,6 +3196,99 @@ function mapUpdaterError(error: unknown): never {
   throw new ORPCError("INTERNAL_SERVER_ERROR", {
     message: error instanceof Error ? error.message : "Update failed.",
   });
+}
+
+async function privateSpaceNavigationDto(
+  deps: RouterDeps,
+  actor: Actor,
+): Promise<PrivateSpaceNavigation> {
+  const memberships = await deps.prisma.member.findMany({
+    where: { userId: actor.userId },
+    select: {
+      organizationId: true,
+      organization: { select: { name: true } },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+  const repos = createRepos(deps.prisma);
+  const groupRepos = createGroupRepos(deps.prisma);
+  const workspaceIds = memberships.map((membership) => membership.organizationId);
+  const [bots, groups, botSections] = await Promise.all([
+    repos.listBotsForWorkspaces(actor, workspaceIds),
+    groupRepos.listGroupsForWorkspaces(actor, workspaceIds),
+    repos.listBotSectionsForWorkspaces(actor, workspaceIds),
+  ]);
+  const currentMembership = memberships.find(
+    (membership) => membership.organizationId === actor.workspaceId,
+  );
+  if (!currentMembership) throw new IsolationError();
+  const botsByWorkspace = partitionByWorkspace(bots);
+  const groupsByWorkspace = partitionByWorkspace(groups);
+  const sectionsByWorkspace = partitionByWorkspace(botSections);
+  const botsFor = (workspaceId: string) => botsByWorkspace.get(workspaceId) ?? [];
+  const groupsFor = (workspaceId: string) => groupsByWorkspace.get(workspaceId) ?? [];
+  const sectionsFor = (workspaceId: string) => sectionsByWorkspace.get(workspaceId) ?? [];
+  const currentBots = botsFor(actor.workspaceId);
+  const currentGroups = groupsFor(actor.workspaceId);
+
+  return {
+    current: {
+      id: actor.workspaceId,
+      name: currentMembership.organization.name,
+      bots: currentBots,
+      groups: currentGroups,
+      botSections: sectionsFor(actor.workspaceId),
+    },
+    privateSpaces: memberships.map((membership) => {
+      const workspaceBots =
+        membership.organizationId === actor.workspaceId
+          ? currentBots
+          : botsFor(membership.organizationId);
+      const workspaceGroups =
+        membership.organizationId === actor.workspaceId
+          ? currentGroups
+          : groupsFor(membership.organizationId);
+      return {
+        id: membership.organizationId,
+        name: membership.organization.name,
+        bots: workspaceBots.map((bot) => ({
+          id: bot.id,
+          workspaceId: bot.workspaceId,
+          name: bot.name,
+          title: bot.title,
+          color: bot.color,
+          pinned: bot.pinned,
+          sectionId: bot.sectionId,
+          unread: bot.unread,
+          preview: bot.preview,
+          status: bot.status,
+          updatedAt: bot.updatedAt,
+        })),
+        groups: workspaceGroups.map((group) => ({
+          id: group.id,
+          workspaceId: group.workspaceId,
+          name: group.name,
+          pinned: group.pinned,
+          sectionId: group.sectionId,
+          members: group.members,
+          preview: group.preview,
+          unread: group.unread,
+          updatedAt: group.updatedAt,
+        })),
+        botSections: sectionsFor(membership.organizationId),
+      };
+    }),
+  };
+}
+
+function partitionByWorkspace<T extends { workspaceId: string }>(rows: T[]): Map<string, T[]> {
+  const partitioned = new Map<string, T[]>();
+  for (const row of rows) {
+    const workspaceRows = partitioned.get(row.workspaceId) ?? [];
+    workspaceRows.push(row);
+    partitioned.set(row.workspaceId, workspaceRows);
+  }
+  return partitioned;
 }
 
 async function loadAutoReviewSettings(deps: RouterDeps, actor: Actor) {

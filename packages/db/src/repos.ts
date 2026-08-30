@@ -73,20 +73,70 @@ function mapBot(
 }
 
 export function createRepos(prisma: PrismaClient) {
+  async function listBotSectionsForWorkspaces(
+    actor: Actor,
+    workspaceIds: string[],
+  ): Promise<Array<BotSection & { workspaceId: string }>> {
+    if (workspaceIds.length === 0) return [];
+    const sections = await prisma.botSection.findMany({
+      where: { workspaceId: { in: workspaceIds }, userId: actor.userId },
+      orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+    });
+    return sections.map((section) => ({
+      id: section.id,
+      workspaceId: section.workspaceId,
+      name: section.name,
+      position: section.position,
+      createdAt: section.createdAt.toISOString(),
+      updatedAt: section.updatedAt.toISOString(),
+    }));
+  }
+
+  async function listBotsForWorkspaces(
+    actor: Actor,
+    workspaceIds: string[],
+    options: { archived?: boolean } = {},
+  ): Promise<Bot[]> {
+    if (workspaceIds.length === 0) return [];
+    const bots = await prisma.bot.findMany({
+      where: {
+        workspaceId: { in: workspaceIds },
+        userId: actor.userId,
+        archivedAt: options.archived ? { not: null } : null,
+      },
+      include: {
+        thread: {
+          include: {
+            messages: { orderBy: { seq: "desc" }, take: 1 },
+          },
+        },
+        runs: {
+          where: {
+            status: { in: ["running", "queued", "leased", "waiting_input", "waiting_takeover"] },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
+        computer: { select: { scope: true } },
+      },
+      orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
+    });
+    return bots.map((bot) => {
+      const blocks = (bot.thread?.messages[0]?.blocks ?? []) as Array<{
+        kind?: string;
+        text?: string;
+      }>;
+      const preview = blocks.find((block) => block.text)?.text ?? "";
+      return mapBot(bot, preview, bot.runs[0]?.status ?? "idle");
+    });
+  }
+
   return {
     async listBotSections(actor: Actor): Promise<BotSection[]> {
-      const sections = await prisma.botSection.findMany({
-        where: { workspaceId: actor.workspaceId, userId: actor.userId },
-        orderBy: [{ position: "asc" }, { createdAt: "asc" }],
-      });
-      return sections.map((section) => ({
-        id: section.id,
-        name: section.name,
-        position: section.position,
-        createdAt: section.createdAt.toISOString(),
-        updatedAt: section.updatedAt.toISOString(),
-      }));
+      return listBotSectionsForWorkspaces(actor, [actor.workspaceId]);
     },
+
+    listBotSectionsForWorkspaces,
 
     async createBotSection(
       actor: Actor,
@@ -156,38 +206,10 @@ export function createRepos(prisma: PrismaClient) {
     },
 
     async listBots(actor: Actor, options: { archived?: boolean } = {}): Promise<Bot[]> {
-      const bots = await prisma.bot.findMany({
-        where: {
-          workspaceId: actor.workspaceId,
-          userId: actor.userId,
-          archivedAt: options.archived ? { not: null } : null,
-        },
-        include: {
-          thread: {
-            include: {
-              messages: { orderBy: { seq: "desc" }, take: 1 },
-            },
-          },
-          runs: {
-            where: {
-              status: { in: ["running", "queued", "leased", "waiting_input", "waiting_takeover"] },
-            },
-            orderBy: { createdAt: "desc" },
-            take: 1,
-          },
-          computer: { select: { scope: true } },
-        },
-        orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
-      });
-      return bots.map((bot) => {
-        const blocks = (bot.thread?.messages[0]?.blocks ?? []) as Array<{
-          kind?: string;
-          text?: string;
-        }>;
-        const preview = blocks.find((block) => block.text)?.text ?? "";
-        return mapBot(bot, preview, bot.runs[0]?.status ?? "idle");
-      });
+      return listBotsForWorkspaces(actor, [actor.workspaceId], options);
     },
+
+    listBotsForWorkspaces,
 
     async getBot(actor: Actor, botId: string, options: { includeArchived?: boolean } = {}) {
       const bot = await prisma.bot.findFirst({

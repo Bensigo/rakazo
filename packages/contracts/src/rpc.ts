@@ -37,6 +37,8 @@ import {
   ModelConnectInputSchema,
   ModelCredentialSchema,
   ModelOAuthBeginSchema,
+  PrivateSpaceNavigationSchema,
+  PrivateSpaceSchema,
   RoutineSchema,
   ScratchpadItemSchema,
   ScratchpadItemStatusSchema,
@@ -120,6 +122,12 @@ export const appContract = {
   me: oc.output(MeSchema),
   preferences: {
     update: oc.input(z.object({ avatarStyle: AvatarStyleSchema })).output(MeSchema),
+  },
+  privateSpaces: {
+    list: oc.output(PrivateSpaceNavigationSchema),
+    create: oc
+      .input(z.object({ name: z.string().trim().min(1).max(60) }))
+      .output(PrivateSpaceSchema),
   },
   bootstrap: oc.input(z.object({ botId: Id.optional() })).output(AppBootstrapSchema),
   deployment: {

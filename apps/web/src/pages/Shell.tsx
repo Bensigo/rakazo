@@ -15,6 +15,7 @@ import type {
   MessageBlock,
   ModelCatalogEntry,
   ModelCredential,
+  PrivateSpace,
   ProductEvent,
   Routine,
   SearchHit,
@@ -72,6 +73,7 @@ import {
   Copy,
   Cpu,
   Gauge,
+  Lock,
   LogOut,
   Menu,
   Mic,
@@ -132,7 +134,7 @@ import { localTimezone } from "../lib/local-timezone";
 import { connectMcpOauth } from "../lib/mcp-connect";
 import { isFileDrag, revokePendingAttachmentPreviews } from "../lib/pending-attachments";
 import { markAfterPaint, markOnce } from "../lib/performance";
-import { rpc } from "../lib/rpc";
+import { clearPrivateSpaceSelection, rpc, selectPrivateSpace } from "../lib/rpc";
 import {
   activeThreadRuns,
   clearActiveThreadRuns,
@@ -268,6 +270,7 @@ export function ShellPage() {
   const botsRef = useRef(bots);
   botsRef.current = bots;
   const [botSections, setBotSections] = useState<BotSection[]>([]);
+  const [privateSpaces, setPrivateSpaces] = useState<PrivateSpace[]>([]);
   const [archivedBots, setArchivedBots] = useState<Bot[]>([]);
   const [archivedGroups, setArchivedGroups] = useState<Group[]>([]);
   const [archivedOpen, setArchivedOpen] = useState(false);
@@ -374,6 +377,7 @@ export function ShellPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const [newPrivateSpaceOpen, setNewPrivateSpaceOpen] = useState(false);
   const [activityMode, setActivityMode] = useState(readActivityMode);
   const toggleActivityMode = useCallback(() => {
     setActivityMode((on) => {
@@ -573,13 +577,12 @@ export function ShellPage() {
       const archivedRequest = includeArchived ? ++archivedBotsRefreshEpoch.current : null;
       botsRefreshInFlight.current += 1;
       try {
-        const [list, sections, archived, groupList, archivedGroupList] = await Promise.all([
-          rpc.bots.list(),
-          rpc.botSections.list(),
+        const [navigation, archived, archivedGroupList] = await Promise.all([
+          rpc.privateSpaces.list(),
           includeArchived ? rpc.bots.listArchived() : Promise.resolve(null),
-          rpc.groups.list(),
           includeArchived ? rpc.groups.listArchived() : Promise.resolve(null),
         ]);
+        const { bots: list, botSections: sections, groups: groupList } = navigation.current;
         markOnce("rk:renderer:bots-response");
         const botsFresh = request === botsRefreshEpoch.current;
         const archivedFresh =
@@ -594,6 +597,7 @@ export function ShellPage() {
         setBots(list);
         setBotSections(sections);
         setGroups(groupList);
+        setPrivateSpaces(navigation.privateSpaces);
         setInitialBotsLoaded(true);
         botsRefreshApplied.current = request;
         if (
@@ -795,9 +799,10 @@ export function ShellPage() {
         }
       });
     const appliedAtStart = botsRefreshApplied.current;
-    void Promise.all([takeInitialBootstrap(botId), rpc.groups.list()])
-      .then(([bootstrap, groupList]) => {
+    void takeInitialBootstrap(botId)
+      .then((bootstrap) => {
         if (cancelled) return;
+        const groupList = bootstrap.groups;
         setBootstrapMe(bootstrap.me);
         // Skip list/route writes only if a later refreshBots() successfully
         // committed (failed refreshes bump epoch but not botsRefreshApplied).
@@ -808,6 +813,7 @@ export function ShellPage() {
           setArchivedBots(bootstrap.archivedBots);
           setArchivedGroups(bootstrap.archivedGroups);
           setGroups(groupList);
+          setPrivateSpaces(bootstrap.privateSpaces);
           setInitialBotsLoaded(true);
         }
         if (!groupId && bootstrap.thread) {
@@ -1249,28 +1255,62 @@ export function ShellPage() {
     };
   }, [activeGroup?.id, groupId, notifyBrowserForEvent]);
 
-  const filtered = useMemo(
-    () =>
-      bots.filter((b) =>
-        `${b.name} ${b.title ?? ""} ${b.preview ?? ""}`.toLowerCase().includes(query.toLowerCase()),
-      ),
-    [bots, query],
-  );
-  const filteredGroups = useMemo(
-    () =>
-      groups.filter((g) => `${g.name} ${g.preview}`.toLowerCase().includes(query.toLowerCase())),
-    [groups, query],
-  );
-  const sidebarGroups = useMemo(
-    () =>
-      groupBotsForSidebar(
+  const sidebarGroups = useMemo(() => {
+    const needle = query.toLowerCase();
+    const spaces =
+      privateSpaces.length > 0
+        ? privateSpaces.map((space) =>
+            space.id === bootstrapMe?.workspaceId ? { ...space, bots, groups, botSections } : space,
+          )
+        : bootstrapMe
+          ? [
+              {
+                id: bootstrapMe.workspaceId,
+                name: "Personal",
+                bots,
+                groups,
+                botSections,
+              },
+            ]
+          : [];
+    const showSpaceNames = spaces.length > 1;
+    return spaces.flatMap((space) => {
+      const visibleBots = space.bots.filter((bot) =>
+        `${bot.name} ${bot.title ?? ""} ${bot.preview ?? ""}`.toLowerCase().includes(needle),
+      );
+      const visibleGroups = space.groups.filter((group) =>
+        `${group.name} ${group.preview}`.toLowerCase().includes(needle),
+      );
+      return groupBotsForSidebar(
         [
-          ...filtered.map((chat) => ({ kind: "bot" as const, chat })),
-          ...filteredGroups.map((chat) => ({ kind: "group" as const, chat })),
+          ...visibleBots.map((chat) => ({ kind: "bot" as const, chat })),
+          ...visibleGroups.map((chat) => ({ kind: "group" as const, chat })),
         ].map((item) => ({ ...item, pinned: item.chat.pinned, sectionId: item.chat.sectionId })),
-        botSections,
-      ),
-    [botSections, filtered, filteredGroups],
+        space.botSections,
+      ).map((group) => ({
+        ...group,
+        key: showSpaceNames ? `space:${space.id}:${group.key}` : group.key,
+        title: showSpaceNames
+          ? group.title
+            ? `${space.name} · ${group.title}`
+            : space.name
+          : group.title,
+        showLock: showSpaceNames,
+      }));
+    });
+  }, [bootstrapMe, botSections, bots, groups, privateSpaces, query]);
+
+  const openPrivateSpaceChat = useCallback(
+    (workspaceId: string, path: string) => {
+      setMobileSidebarOpen(false);
+      if (workspaceId === bootstrapMe?.workspaceId) {
+        navigate(path);
+        return;
+      }
+      selectPrivateSpace(workspaceId);
+      window.location.assign(path);
+    },
+    [bootstrapMe?.workspaceId, navigate],
   );
   const toggleSidebarSection = useCallback(
     (key: string) => {
@@ -2167,6 +2207,18 @@ export function ShellPage() {
                 >
                   <Trans>New group</Trans>
                 </button>
+                <div className="my-1 border-t border-[#26262A]" />
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3.5 py-2 text-start text-[14px] text-[#ECECEE] hover:bg-[#1A1A1D]"
+                  onClick={() => {
+                    setCreateMenuOpen(false);
+                    setNewPrivateSpaceOpen(true);
+                  }}
+                >
+                  <Lock size={14} strokeWidth={1.8} aria-hidden="true" />
+                  <Trans>New private space</Trans>
+                </button>
               </div>
             ) : null}
           </div>
@@ -2213,7 +2265,12 @@ export function ShellPage() {
                             collapsed ? t`Expand ${group.title}` : t`Collapse ${group.title}`
                           }
                         >
-                          <span>{group.title}</span>
+                          <span className="flex min-w-0 items-center gap-1.5 truncate">
+                            {group.showLock ? (
+                              <Lock size={11} strokeWidth={2} aria-hidden="true" />
+                            ) : null}
+                            <span className="truncate">{group.title}</span>
+                          </span>
                           <ChevronDown
                             size={14}
                             strokeWidth={1.8}
@@ -2231,14 +2288,15 @@ export function ShellPage() {
                           key={`${item.kind}:${item.chat.id}`}
                           type="button"
                           onClick={() => {
-                            setMobileSidebarOpen(false);
-                            navigate(
+                            openPrivateSpaceChat(
+                              item.chat.workspaceId,
                               item.kind === "bot"
                                 ? `/app/${item.chat.id}`
                                 : `/app/g/${item.chat.id}`,
                             );
                           }}
                           onContextMenu={(event) => {
+                            if (item.chat.workspaceId !== bootstrapMe?.workspaceId) return;
                             event.preventDefault();
                             setBotMenu({
                               kind: item.kind,
@@ -2511,7 +2569,12 @@ export function ShellPage() {
               ) : null}
               <button
                 type="button"
-                onClick={() => void authClient.signOut().then(() => navigate("/"))}
+                onClick={() =>
+                  void authClient.signOut().then(() => {
+                    clearPrivateSpaceSelection();
+                    navigate("/");
+                  })
+                }
                 className="flex w-full items-center gap-3 rounded-[11px] px-3 py-2.5 hover:bg-[#232327]"
               >
                 <LogOut size={16} strokeWidth={1.7} className="text-[#9A9AA0]" />
@@ -3244,6 +3307,17 @@ export function ShellPage() {
               );
               setNewSectionTarget(null);
               await refreshBots();
+            }}
+          />
+        ) : null}
+
+        {newPrivateSpaceOpen ? (
+          <NewPrivateSpaceDialog
+            onCancel={() => setNewPrivateSpaceOpen(false)}
+            onConfirm={async (name) => {
+              const space = await rpc.privateSpaces.create({ name });
+              selectPrivateSpace(space.id);
+              window.location.assign("/onboarding");
             }}
           />
         ) : null}
@@ -5387,6 +5461,81 @@ function catalogLabel(
 ) {
   if (!provider) return undefined;
   return catalog.find((entry) => entry.provider === provider && entry.id === modelId)?.label;
+}
+
+function NewPrivateSpaceDialog({
+  onCancel,
+  onConfirm,
+}: {
+  onCancel: () => void;
+  onConfirm: (name: string) => Promise<void>;
+}) {
+  const { t } = useLingui();
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const create = () => {
+    const trimmed = name.trim();
+    if (!trimmed || saving) return;
+    setSaving(true);
+    setError(null);
+    void onConfirm(trimmed).catch((reason: unknown) => {
+      setError(reason instanceof Error ? reason.message : t`Could not create private space`);
+      setSaving(false);
+    });
+  };
+
+  return (
+    <div
+      role="presentation"
+      className="absolute inset-0 z-50 grid place-items-center bg-[rgba(4,4,5,.76)] px-5"
+      onPointerDown={() => {
+        if (!saving) onCancel();
+      }}
+    >
+      <BuiCard
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-private-space-title"
+        className="w-full max-w-[420px] border border-[#343438] p-5"
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center gap-2.5">
+          <Lock size={17} strokeWidth={1.8} className="text-[#A78BFA]" aria-hidden="true" />
+          <h2 id="new-private-space-title" className="text-[17px] font-medium text-[#F1F1F2]">
+            <Trans>New private space</Trans>
+          </h2>
+        </div>
+        <p className="mt-2 text-[14px] leading-6 text-[#9A9AA0]">
+          <Trans>Computers, memory, integrations, files, and chats stay inside this space.</Trans>
+        </p>
+        <label className="mt-4 block text-[13.5px] text-[#C9C9CE]">
+          <Trans>Name</Trans>
+          <input
+            maxLength={60}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") create();
+              if (event.key === "Escape" && !saving) onCancel();
+            }}
+            placeholder={t`Customer support`}
+            className="mt-2 w-full rounded-[11px] border border-[#343438] bg-[#101012] px-3.5 py-2.5 text-[14.5px] text-[#ECECEE] outline-none focus:border-[#66666D]"
+          />
+        </label>
+        {error ? <p className="mt-3 text-[13.5px] text-[#FF5364]">{error}</p> : null}
+        <div className="mt-5 flex justify-end gap-2.5">
+          <BuiButton disabled={saving} onClick={onCancel}>
+            <Trans>Cancel</Trans>
+          </BuiButton>
+          <BuiButton tone="accent" disabled={saving || !name.trim()} onClick={create}>
+            {saving ? <Trans>Creating…</Trans> : <Trans>Create space</Trans>}
+          </BuiButton>
+        </div>
+      </BuiCard>
+    </div>
+  );
 }
 
 function NewBotSectionDialog({

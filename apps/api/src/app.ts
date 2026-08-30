@@ -303,8 +303,9 @@ export async function createApp(
   });
   app.use("/rpc/*", async (c, next) => {
     const session = await auth.api.getSession({ headers: sessionHeaders(c.req.raw) });
+    const requestedWorkspaceId = c.req.header("x-rakazo-workspace-id");
     const actor = session?.user
-      ? await requireMembership(prisma, session.user.id).catch(() => null)
+      ? await requireMembership(prisma, session.user.id, requestedWorkspaceId).catch(() => null)
       : null;
     const { matched, response } = await rpc.handle(c.req.raw, {
       prefix: "/rpc",
@@ -316,7 +317,9 @@ export async function createApp(
   mountVoiceHttpRoutes(app, { prisma, secrets }, async (c) => {
     const session = await auth.api.getSession({ headers: sessionHeaders(c.req.raw) });
     if (!session?.user) return null;
-    return requireMembership(prisma, session.user.id).catch(() => null);
+    return requireMembership(prisma, session.user.id, c.req.header("x-rakazo-workspace-id")).catch(
+      () => null,
+    );
   });
   mountWebhookHttpRoutes(app, { prisma, secrets, events, jobs });
 

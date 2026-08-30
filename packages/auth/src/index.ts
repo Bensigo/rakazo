@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { emailAllowed, parseAllowlist, signupPolicyFromEnv } from "@rakazo/core";
-import type { PrismaClient } from "@rakazo/db";
+import { createOwnedWorkspace, createWorkspaceDefaults, type PrismaClient } from "@rakazo/db";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { APIError } from "better-auth/api";
@@ -109,22 +109,13 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
         create: {
           after: async (user) => {
             const orgId = newId();
-            await prisma.organization.create({
-              data: {
-                id: orgId,
-                name: "Personal",
-                slug: `user-${user.id.slice(0, 12)}`,
-                createdAt: new Date(),
-              },
-            });
-            await prisma.member.create({
-              data: {
-                id: newId(),
-                organizationId: orgId,
-                userId: user.id,
-                role: "owner",
-                createdAt: new Date(),
-              },
+            await createOwnedWorkspace(prisma, {
+              workspaceId: orgId,
+              membershipId: newId(),
+              userId: user.id,
+              name: "Personal",
+              slug: `user-${user.id.slice(0, 12)}`,
+              createdAt: new Date(),
             });
             const existing = await prisma.deploymentSettings.findUnique({
               where: { id: "default" },
@@ -146,20 +137,10 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
                 data: { ownerUserId: user.id },
               });
             }
-            await prisma.memoryDocument.create({
-              data: {
-                workspaceId: orgId,
-                userId: user.id,
-                scope: "user",
-                path: "MEMORY.md",
-                content: "# User memory\n\nAccount-wide preferences live here.\n",
-              },
-            });
-            await prisma.notificationPreference.create({
-              data: {
-                workspaceId: orgId,
-                userId: user.id,
-              },
+            await createWorkspaceDefaults(prisma, {
+              workspaceId: orgId,
+              userId: user.id,
+              memoryContent: "# User memory\n\nAccount-wide preferences live here.\n",
             });
           },
         },

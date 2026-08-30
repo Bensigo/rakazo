@@ -1,4 +1,9 @@
-import type { RunActivityRow, SearchHit } from "@rakazo/contracts";
+import type {
+  PrivateSpaceBot,
+  PrivateSpaceGroup,
+  RunActivityRow,
+  SearchHit,
+} from "@rakazo/contracts";
 import { groupBotsForSidebar } from "@rakazo/core";
 import { Redirect, useFocusEffect, useRouter } from "expo-router";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -30,7 +35,10 @@ import {
   type MobileBotSection,
   type MobileGroup,
   type MobileMe,
+  type MobilePrivateSpace,
+  type MobilePrivateSpaceNavigation,
   rpc,
+  selectPrivateSpace,
 } from "../lib/api";
 import { botTag, filterBots, formatThreadTime, userInitials } from "../lib/inbox";
 import { native } from "../lib/native";
@@ -42,15 +50,21 @@ import { mobileSearchDestination } from "../lib/search-destination";
 const FALLBACK_COLOR = "#9B5CF6";
 
 type InboxItem =
-  | { type: "bot"; bot: MobileBot }
-  | { type: "group"; group: MobileGroup }
+  | { type: "bot"; bot: MobileBot | PrivateSpaceBot }
+  | { type: "group"; group: MobileGroup | PrivateSpaceGroup }
   | { type: "search"; hit: SearchHit }
   | { type: "heading"; key: string; title: string };
+
+async function openMobilePrivateSpace(workspaceId: string | undefined, open: () => void) {
+  if (workspaceId) await selectPrivateSpace(workspaceId);
+  open();
+}
 
 export default function Home() {
   const [bots, setBots] = useState<MobileBot[]>([]);
   const [groups, setGroups] = useState<MobileGroup[]>([]);
   const [botSections, setBotSections] = useState<MobileBotSection[]>([]);
+  const [privateSpaces, setPrivateSpaces] = useState<MobilePrivateSpace[]>([]);
   const [me, setMe] = useState<MobileMe | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
@@ -86,14 +100,15 @@ export default function Home() {
   const loadBots = useCallback(async () => {
     setError(null);
     try {
-      const [nextBots, nextSections, nextGroups] = await Promise.all([
-        rpc<MobileBot[]>("bots/list"),
-        rpc<MobileBotSection[]>("botSections/list"),
-        rpc<MobileGroup[]>("groups/list"),
+      const [navigation, nextMe] = await Promise.all([
+        rpc<MobilePrivateSpaceNavigation>("privateSpaces/list"),
+        rpc<MobileMe>("me"),
       ]);
-      setBots(nextBots);
-      setBotSections(nextSections);
-      setGroups(nextGroups);
+      setBots(navigation.current.bots);
+      setBotSections(navigation.current.botSections);
+      setGroups(navigation.current.groups);
+      setPrivateSpaces(navigation.privateSpaces);
+      setMe(nextMe);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load bots");
     }
@@ -118,9 +133,6 @@ export default function Home() {
   useEffect(() => {
     if (!hasSession) return;
     void registerPushToken().catch(() => undefined);
-    void rpc<MobileMe>("me")
-      .then(setMe)
-      .catch(() => undefined);
   }, [hasSession]);
 
   useFocusEffect(
@@ -207,15 +219,52 @@ export default function Home() {
     if (query.trim() && searching) {
       return searchHits.map((hit) => ({ type: "search", hit }));
     }
-    const chats = [
-      ...visible.map((chat) => ({ type: "bot" as const, bot: chat, ...chat })),
-      ...visibleGroups.map((chat) => ({ type: "group" as const, group: chat, ...chat })),
-    ];
-    return groupBotsForSidebar(chats, botSections).flatMap((group) => [
-      ...(group.title ? [{ type: "heading" as const, key: group.key, title: group.title }] : []),
-      ...group.bots,
-    ]);
-  }, [botSections, query, searching, searchHits, visible, visibleGroups]);
+    const spaces =
+      privateSpaces.length > 0
+        ? privateSpaces.map((space) =>
+            space.id === me?.workspaceId
+              ? { ...space, bots: visible, groups: visibleGroups, botSections }
+              : {
+                  ...space,
+                  bots: filterBots(space.bots, query),
+                  groups: space.groups.filter((group) =>
+                    `${group.name} ${group.preview}`.toLowerCase().includes(query.toLowerCase()),
+                  ),
+                },
+          )
+        : me
+          ? [
+              {
+                id: me.workspaceId,
+                name: "Personal",
+                bots: visible,
+                groups: visibleGroups,
+                botSections,
+              },
+            ]
+          : [];
+    const showSpaceNames = spaces.length > 1;
+    return spaces.flatMap((space) => {
+      const chats = [
+        ...space.bots.map((chat) => ({ type: "bot" as const, bot: chat, ...chat })),
+        ...space.groups.map((chat) => ({ type: "group" as const, group: chat, ...chat })),
+      ];
+      return groupBotsForSidebar(chats, space.botSections).flatMap((group) => [
+        ...(group.title || showSpaceNames
+          ? [
+              {
+                type: "heading" as const,
+                key: `${space.id}:${group.key}`,
+                title: showSpaceNames
+                  ? `🔒 ${space.name}${group.title ? ` · ${group.title}` : ""}`
+                  : (group.title ?? ""),
+              },
+            ]
+          : []),
+        ...group.bots,
+      ]);
+    });
+  }, [botSections, me, privateSpaces, query, searching, searchHits, visible, visibleGroups]);
   const initials = userInitials(me?.name ?? "");
   const organizeChat = organizeTarget
     ? organizeTarget.kind === "bot"
@@ -272,6 +321,7 @@ export default function Home() {
               Alert.alert("Create", undefined, [
                 { text: "New bot", onPress: () => router.push("/new") },
                 { text: "New group", onPress: () => router.push("/new-group") },
+                { text: "New private space", onPress: () => router.push("/new-space") },
                 { text: "Cancel", style: "cancel" },
               ])
             }
@@ -360,12 +410,36 @@ export default function Home() {
           ) : item.type === "group" ? (
             <GroupRow
               group={item.group}
-              onLongPress={() => setOrganizeTarget({ kind: "group", id: item.group.id })}
+              onPress={() => {
+                void openMobilePrivateSpace(item.group.workspaceId, () =>
+                  router.push({
+                    pathname: "/group-thread",
+                    params: { groupId: item.group.id, name: item.group.name },
+                  }),
+                );
+              }}
+              onLongPress={
+                item.group.workspaceId === me?.workspaceId
+                  ? () => setOrganizeTarget({ kind: "group", id: item.group.id })
+                  : undefined
+              }
             />
           ) : (
             <BotRow
               bot={item.bot}
-              onLongPress={() => setOrganizeTarget({ kind: "bot", id: item.bot.id })}
+              onPress={() => {
+                void openMobilePrivateSpace(item.bot.workspaceId, () =>
+                  router.push({
+                    pathname: "/thread",
+                    params: { botId: item.bot.id, name: item.bot.name },
+                  }),
+                );
+              }}
+              onLongPress={
+                item.bot.workspaceId === me?.workspaceId
+                  ? () => setOrganizeTarget({ kind: "bot", id: item.bot.id })
+                  : undefined
+              }
             />
           )
         }
@@ -515,8 +589,15 @@ function SearchRow({ hit, onPress }: { hit: SearchHit; onPress: () => void }) {
   );
 }
 
-function BotRow({ bot, onLongPress }: { bot: MobileBot; onLongPress: () => void }) {
-  const router = useRouter();
+function BotRow({
+  bot,
+  onPress,
+  onLongPress,
+}: {
+  bot: MobileBot | PrivateSpaceBot;
+  onPress: () => void;
+  onLongPress?: () => void;
+}) {
   const preview = previewSnippet(bot.preview, 40) || bot.title || "No messages yet";
   const time = bot.updatedAt ? formatThreadTime(bot.updatedAt) : "";
   const tag = botTag(bot.title, bot.name);
@@ -527,10 +608,8 @@ function BotRow({ bot, onLongPress }: { bot: MobileBot; onLongPress: () => void 
   return (
     <Pressable
       accessibilityLabel={label}
-      accessibilityHint="Long press to pin or move to a section"
-      onPress={() =>
-        router.push({ pathname: "/thread", params: { botId: bot.id, name: bot.name } })
-      }
+      accessibilityHint={onLongPress ? "Long press to pin or move to a section" : undefined}
+      onPress={onPress}
       onLongPress={onLongPress}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
     >
@@ -566,8 +645,15 @@ function BotRow({ bot, onLongPress }: { bot: MobileBot; onLongPress: () => void 
   );
 }
 
-function GroupRow({ group, onLongPress }: { group: MobileGroup; onLongPress: () => void }) {
-  const router = useRouter();
+function GroupRow({
+  group,
+  onPress,
+  onLongPress,
+}: {
+  group: MobileGroup | PrivateSpaceGroup;
+  onPress: () => void;
+  onLongPress?: () => void;
+}) {
   const preview =
     previewSnippet(group.preview, 40) || group.members.map((member) => member.name).join(", ");
   const time = group.updatedAt ? formatThreadTime(group.updatedAt) : "";
@@ -576,11 +662,9 @@ function GroupRow({ group, onLongPress }: { group: MobileGroup; onLongPress: () 
       accessibilityLabel={[group.name, group.unread ? "unread" : null, time, preview]
         .filter(Boolean)
         .join(", ")}
-      onPress={() =>
-        router.push({ pathname: "/group-thread", params: { groupId: group.id, name: group.name } })
-      }
+      onPress={onPress}
       onLongPress={onLongPress}
-      accessibilityHint="Long press to pin or move to a section"
+      accessibilityHint={onLongPress ? "Long press to pin or move to a section" : undefined}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
     >
       <GroupAvatar members={group.members} size={54} />

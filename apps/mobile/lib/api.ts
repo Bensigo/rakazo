@@ -7,6 +7,10 @@ import type {
   MessageBlock,
   ModelCatalogEntry,
   ModelCredential,
+  PrivateSpace,
+  PrivateSpaceBot,
+  PrivateSpaceGroup,
+  PrivateSpaceNavigation,
 } from "@rakazo/contracts";
 import {
   isRunTerminalEvent,
@@ -27,8 +31,10 @@ import {
 } from "./session";
 
 const ENDPOINT_KEY = "rakazo.api_base";
+const PRIVATE_SPACE_KEY = "rakazo.private_space_id";
 
 let cachedApiBase: string | undefined;
+let cachedPrivateSpaceId = "";
 
 function responseErrorMessage(body: unknown, fallback: string): string {
   return typeof body === "object" && body && "message" in body
@@ -41,6 +47,11 @@ export function currentApiBase() {
 }
 
 export async function loadApiBase() {
+  try {
+    cachedPrivateSpaceId = (await SecureStore.getItemAsync(PRIVATE_SPACE_KEY)) ?? "";
+  } catch {
+    cachedPrivateSpaceId = "";
+  }
   try {
     const stored = await SecureStore.getItemAsync(ENDPOINT_KEY);
     if (stored) {
@@ -55,6 +66,20 @@ export async function loadApiBase() {
   }
   cachedApiBase = defaultApiBase();
   return cachedApiBase;
+}
+
+export async function selectPrivateSpace(id: string) {
+  cachedPrivateSpaceId = id;
+  await SecureStore.setItemAsync(PRIVATE_SPACE_KEY, id);
+}
+
+async function clearPrivateSpace() {
+  cachedPrivateSpaceId = "";
+  try {
+    await SecureStore.deleteItemAsync(PRIVATE_SPACE_KEY);
+  } catch {
+    // Keep sign-out and account deletion reliable when secure storage is unavailable.
+  }
 }
 
 export async function saveApiBase(input: string): Promise<EndpointResult> {
@@ -83,7 +108,10 @@ export async function resetApiBase(): Promise<EndpointResult> {
 
 async function authHeaders(): Promise<Record<string, string>> {
   const token = await loadSessionToken();
-  return token ? { authorization: `Bearer ${token}` } : {};
+  return {
+    ...(token ? { authorization: `Bearer ${token}` } : {}),
+    ...(cachedPrivateSpaceId ? { "x-rakazo-workspace-id": cachedPrivateSpaceId } : {}),
+  };
 }
 
 export async function signIn(email: string, password: string) {
@@ -98,6 +126,7 @@ export async function signIn(email: string, password: string) {
   }
   const token = tokenFromAuthResponse(res, body);
   if (!token) throw new Error("Sign-in did not return a session");
+  await clearPrivateSpace();
   await saveSessionToken(token);
 }
 
@@ -108,6 +137,7 @@ export async function signOut() {
     headers: { "content-type": "application/json", origin: "rakazo://", ...headers },
   }).catch(() => undefined);
   await clearSessionToken();
+  await clearPrivateSpace();
 }
 
 export async function deleteAccount(password: string) {
@@ -121,6 +151,7 @@ export async function deleteAccount(password: string) {
     throw new Error(responseErrorMessage(body, "Could not delete account"));
   }
   await clearSessionToken();
+  await clearPrivateSpace();
 }
 
 export async function rpc<T>(
@@ -158,7 +189,7 @@ export type MobileBot = Pick<
   | "updatedAt"
   | "computerMode"
 > &
-  Partial<Pick<Bot, "parentBotId">>;
+  Partial<Pick<Bot, "parentBotId" | "workspaceId">>;
 
 export type MobileBotSection = BotSection;
 
@@ -199,7 +230,13 @@ export type MobileGroup = Pick<
   | "unread"
   | "updatedAt"
   | "members"
->;
+> &
+  Partial<Pick<Group, "workspaceId">>;
+
+export type MobilePrivateSpace = PrivateSpace;
+export type MobilePrivateSpaceBot = PrivateSpaceBot;
+export type MobilePrivateSpaceGroup = PrivateSpaceGroup;
+export type MobilePrivateSpaceNavigation = PrivateSpaceNavigation;
 
 export type MobileSnapshot = {
   botId?: string;

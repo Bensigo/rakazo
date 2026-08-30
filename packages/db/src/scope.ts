@@ -8,9 +8,17 @@ export class IsolationError extends Error {
   }
 }
 
-export async function requireMembership(prisma: PrismaClient, userId: string): Promise<Actor> {
+export async function requireMembership(
+  prisma: PrismaClient,
+  userId: string,
+  requestedWorkspaceId?: string | null,
+): Promise<Actor> {
   const member = await prisma.member.findFirst({
-    where: { userId },
+    where: {
+      userId,
+      ...(requestedWorkspaceId ? { organizationId: requestedWorkspaceId } : {}),
+    },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     include: { user: true, organization: true },
   });
   if (!member) {
