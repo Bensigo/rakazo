@@ -5,6 +5,7 @@ import {
   authHeaders,
   blockText,
   currentApiBase,
+  loadApiBase,
   type MobileMessage,
   type MobileSnapshot,
   mergeMobileSnapshot,
@@ -184,6 +185,33 @@ describe("mobile API authentication", () => {
       authorization: "Bearer session-token",
       "x-rakazo-workspace-id": "space-support",
     });
+  });
+
+  it("restores a SecureStore space when the in-memory cache was never primed", async () => {
+    vi.mocked(SecureStore.getItemAsync).mockResolvedValue(null);
+    await loadApiBase(); // clear any leftover in-memory selection from earlier tests
+    vi.mocked(SecureStore.getItemAsync).mockImplementation(async (key) => {
+      if (key === "rakazo.session_token") return "session-token";
+      if (key === "rakazo.private_space_id") return "space-support";
+      return null;
+    });
+    // Leave cachedPrivateSpaceId empty: load failed / never ran, but SecureStore still has the space.
+    vi.mocked(SecureStore.setItemAsync).mockImplementation(async (key) => {
+      if (key === "rakazo.api_base") throw new Error("device locked");
+    });
+
+    await expect(saveApiBase("https://second-server.example")).resolves.toEqual({
+      ok: false,
+      error: "Could not save the server URL",
+    });
+    await expect(authHeaders()).resolves.toEqual({
+      authorization: "Bearer session-token",
+      "x-rakazo-workspace-id": "space-support",
+    });
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith(
+      "rakazo.private_space_id",
+      "space-support",
+    );
   });
 
   it("keeps the in-memory session across consecutive failed endpoint switches", async () => {

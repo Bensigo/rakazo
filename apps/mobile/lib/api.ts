@@ -52,7 +52,7 @@ export async function loadApiBase() {
   try {
     cachedPrivateSpaceId = (await SecureStore.getItemAsync(PRIVATE_SPACE_KEY)) ?? "";
   } catch {
-    cachedPrivateSpaceId = "";
+    // Keep any in-memory selection when SecureStore is temporarily unavailable.
   }
   try {
     const stored = await SecureStore.getItemAsync(ENDPOINT_KEY);
@@ -79,6 +79,16 @@ export async function selectPrivateSpace(id: string) {
   }
 }
 
+/** Active space for restore snapshots, including SecureStore when the cache was never primed. */
+async function peekStoredPrivateSpaceId() {
+  if (cachedPrivateSpaceId) return cachedPrivateSpaceId;
+  try {
+    return (await SecureStore.getItemAsync(PRIVATE_SPACE_KEY)) ?? "";
+  } catch {
+    return "";
+  }
+}
+
 async function clearPrivateSpace(): Promise<boolean> {
   cachedPrivateSpaceId = "";
   try {
@@ -99,7 +109,7 @@ async function clearCredentialsForEndpointChange(): Promise<
   { ok: true; previousToken: string; previousSpace: string } | { ok: false; result: EndpointResult }
 > {
   const previousToken = await peekStoredSessionToken();
-  const previousSpace = cachedPrivateSpaceId;
+  const previousSpace = await peekStoredPrivateSpaceId();
   const sessionCleared = await clearSessionToken();
   const spaceCleared = await clearPrivateSpace();
   if (sessionCleared && spaceCleared) {
