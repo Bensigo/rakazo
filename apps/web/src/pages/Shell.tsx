@@ -1325,12 +1325,12 @@ export function ShellPage() {
       const previousSpaceId = selectedPrivateSpaceId();
       // Persist the active workspace id (including primary) so voice/RPC headers match the chat.
       const selectionStored = selectPrivateSpace(workspaceId);
+      if (!selectionStored) return;
       const previousEffective = previousSpaceId ?? bootstrapMe?.workspaceId;
       const boundaryChanged = previousEffective !== workspaceId;
       // Soft-navigate within the same workspace; reload only when the auth boundary changes
       // so bootstrapped bots/groups match the request header.
       if (boundaryChanged) {
-        if (!selectionStored) return;
         window.location.assign(path);
         return;
       }
