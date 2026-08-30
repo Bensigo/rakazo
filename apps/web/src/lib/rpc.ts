@@ -16,11 +16,12 @@ export function selectedPrivateSpaceId(): string | null {
   }
 }
 
-export function selectPrivateSpace(id: string): void {
+export function selectPrivateSpace(id: string): boolean {
   try {
     window.localStorage.setItem(WORKSPACE_STORAGE_KEY, id);
+    return true;
   } catch {
-    // Keep navigation usable when storage is unavailable (create must not abort after success).
+    return false;
   }
 }
 

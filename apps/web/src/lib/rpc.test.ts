@@ -6,7 +6,7 @@ afterEach(() => {
 });
 
 describe("private space selection storage", () => {
-  it("swallows localStorage write failures so callers can keep navigating", () => {
+  it("reports localStorage write failures without throwing", () => {
     const localStorage = {
       getItem: () => null,
       setItem: () => {
@@ -19,8 +19,18 @@ describe("private space selection storage", () => {
     vi.stubGlobal("window", { localStorage });
     vi.stubGlobal("localStorage", localStorage);
 
-    expect(() => selectPrivateSpace("space-support")).not.toThrow();
+    expect(selectPrivateSpace("space-support")).toBe(false);
     expect(() => clearPrivateSpaceSelection()).not.toThrow();
     expect(selectedPrivateSpaceId()).toBeNull();
+  });
+
+  it("reports when a private-space selection was persisted", () => {
+    const setItem = vi.fn();
+    const localStorage = { getItem: () => null, setItem, removeItem: vi.fn() };
+    vi.stubGlobal("window", { localStorage });
+    vi.stubGlobal("localStorage", localStorage);
+
+    expect(selectPrivateSpace("space-support")).toBe(true);
+    expect(setItem).toHaveBeenCalledWith("rakazo:private-space-id", "space-support");
   });
 });

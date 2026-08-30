@@ -1324,12 +1324,13 @@ export function ShellPage() {
       setMobileSidebarOpen(false);
       const previousSpaceId = selectedPrivateSpaceId();
       // Persist the active workspace id (including primary) so voice/RPC headers match the chat.
-      selectPrivateSpace(workspaceId);
+      const selectionStored = selectPrivateSpace(workspaceId);
       const previousEffective = previousSpaceId ?? bootstrapMe?.workspaceId;
       const boundaryChanged = previousEffective !== workspaceId;
       // Soft-navigate within the same workspace; reload only when the auth boundary changes
       // so bootstrapped bots/groups match the request header.
       if (boundaryChanged) {
+        if (!selectionStored) return;
         window.location.assign(path);
         return;
       }
@@ -3355,7 +3356,11 @@ export function ShellPage() {
             onCancel={() => setNewPrivateSpaceOpen(false)}
             onConfirm={async (name) => {
               const space = await rpc.privateSpaces.create({ name });
-              selectPrivateSpace(space.id);
+              if (!selectPrivateSpace(space.id)) {
+                setNewPrivateSpaceOpen(false);
+                await refreshBots();
+                return;
+              }
               window.location.assign("/onboarding");
             }}
           />
