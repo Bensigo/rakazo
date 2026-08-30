@@ -29,13 +29,24 @@ test("private spaces keep all bots in the sidebar and switch the request boundar
   await expect(sidebar.getByRole("button", { name: /^Chief/ })).toHaveCount(2);
   await captureScreenshot(page, testInfo, "private-spaces-sidebar");
 
+  const supportSpace = sidebar
+    .locator(`[data-sidebar-group^="space:${supportSpaceId}:"]`)
+    .filter({ hasText: "Customer support" });
+  await supportSpace.getByRole("button", { name: /^Chief/ }).click();
+  await expect
+    .poll(() => page.evaluate(() => window.localStorage.getItem("rakazo:private-space-id")))
+    .toBe(supportSpaceId);
+
   const personalSpace = sidebar
     .locator('[data-sidebar-group^="space:"]')
     .filter({ hasText: "Personal" });
+  const personalSpaceGroup = await personalSpace.getAttribute("data-sidebar-group");
+  const personalSpaceId = personalSpaceGroup?.split(":")[1];
+  expect(personalSpaceId).toBeTruthy();
   await personalSpace.getByRole("button", { name: /^Chief/ }).click();
   await page.waitForURL(/\/app\/[^/]+$/);
   await expect
     .poll(() => page.evaluate(() => window.localStorage.getItem("rakazo:private-space-id")))
-    .not.toBe(supportSpaceId);
+    .toBe(personalSpaceId);
   await expect(sidebar.getByText("Customer support", { exact: true })).toBeVisible();
 });
