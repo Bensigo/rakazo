@@ -163,6 +163,9 @@ async function restoreCredentials(previousToken: string, previousSpace: string) 
       // The endpoint-bound rollback record restores this selection after restart.
     }
   }
+  if (previousToken) {
+    await resumeLiveNotifications(currentApiBase(), previousToken).catch(() => undefined);
+  }
 }
 
 async function saveSpaceRollback(spaceId: string): Promise<boolean> {

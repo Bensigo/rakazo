@@ -21,6 +21,7 @@ import {
   signOut,
   subscribeThread,
 } from "./api.js";
+import { resumeLiveNotifications } from "./live-notifications.js";
 import {
   clearSessionToken,
   restoreSessionToken,
@@ -49,6 +50,7 @@ describe("mobile API authentication", () => {
     vi.mocked(SecureStore.getItemAsync).mockReset();
     vi.mocked(SecureStore.setItemAsync).mockReset();
     vi.mocked(SecureStore.deleteItemAsync).mockReset();
+    vi.mocked(resumeLiveNotifications).mockClear();
     await restoreSessionToken("");
   });
 
@@ -268,6 +270,7 @@ describe("mobile API authentication", () => {
   });
 
   it("restores the active session when only one credential clear succeeds", async () => {
+    const previousApiBase = currentApiBase();
     vi.mocked(SecureStore.getItemAsync).mockImplementation(async (key) => {
       if (key === "rakazo.session_token") return "session-token";
       return null;
@@ -294,6 +297,7 @@ describe("mobile API authentication", () => {
       "rakazo.api_base",
       "https://second-server.example",
     );
+    expect(resumeLiveNotifications).toHaveBeenCalledWith(previousApiBase, "session-token");
   });
 
   it("restores credentials when the new endpoint cannot be persisted", async () => {
