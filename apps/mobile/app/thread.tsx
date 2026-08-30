@@ -1734,7 +1734,12 @@ function MentionChipIcon({ mention }: { mention: ComposerMention }) {
 
 function previewMessageText(message: MobileMessage): string {
   const text = message.blocks
-    .flatMap((block) => (block.kind === "text" && block.text ? [block.text] : []))
+    .flatMap((block) => {
+      if (block.kind === "phone_channel_message" && block.text) {
+        return [`iMessage · ${block.fromLabel}: ${block.text}`];
+      }
+      return block.kind === "text" && block.text ? [block.text] : [];
+    })
     .join(" ")
     .trim();
   if (text) return text;
@@ -1844,6 +1849,19 @@ const MessageBubble = memo(function MessageBubble({
         expanded={peerExpanded}
         onToggle={() => setPeerExpanded((expanded) => !expanded)}
       />
+    );
+  }
+  const phoneChannel = message.blocks.find(
+    (block): block is Extract<MessageBlock, { kind: "phone_channel_message" }> =>
+      block.kind === "phone_channel_message",
+  );
+  if (phoneChannel) {
+    return (
+      <View style={{ width: "100%", paddingVertical: 4, alignItems: "center" }}>
+        <Text style={{ color: "#85858A", fontSize: 13.5, textAlign: "center" }}>
+          iMessage · {phoneChannel.fromLabel}: {phoneChannel.text}
+        </Text>
+      </View>
     );
   }
   const special = message.blocks.find(
@@ -2022,7 +2040,12 @@ const MessageBubble = memo(function MessageBubble({
     (block) => block.kind === "image" || block.kind === "file",
   );
   const caption = message.blocks
-    .flatMap((block) => (block.kind === "text" && block.text ? [block.text] : []))
+    .flatMap((block) => {
+      if (block.kind === "phone_channel_message" && block.text) {
+        return [`iMessage · ${block.fromLabel}: ${block.text}`];
+      }
+      return block.kind === "text" && block.text ? [block.text] : [];
+    })
     .join("\n");
   if (attachments.length > 0) {
     const speaker =

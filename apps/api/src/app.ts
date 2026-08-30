@@ -1,18 +1,22 @@
+import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { ORPCError, onError } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/fetch";
 import type {
   JobPublisher,
   ManagedConnectorProvider,
+  MessagingProvider,
   RealtimeFanout,
   SandboxProvider,
 } from "@rakazo/adapter-kit";
 import {
+  applyPhoneOutboundStatus,
   type ComposioProvider,
   type ConnectorRegistry,
   createBackgroundJobHandlers,
   createConnectorStack,
   createJobReconciler,
+  createPhoneContextLoader,
   createRunExecutor,
   createRunSandbox,
   createRunSecretWriter,
@@ -25,6 +29,7 @@ import {
   InMemoryRealtimeFanout,
   InstalledConnectorProvider,
   isComposioEnabled,
+  isPhoneSurfaceEnabled,
   isPipedreamEnabled,
   LocalAgentHomeStore,
   LocalArtifactStore,
@@ -34,19 +39,30 @@ import {
   PiOAuthLogins,
   PipedreamConnector,
   PostgresRealtimeFanout,
+  parseSendBlueInbound,
   pipedreamConfigFromEnv,
   pushTokenPath,
   type RemoteConnectorDependencies,
   ScriptedAgentRuntime,
+  SendBlueMessagingProvider,
+  sendBlueConfigFromEnv,
   WorkspaceMemoryProviderResolver,
 } from "@rakazo/adapters";
 import { blockedAuthPaths, createAuth } from "@rakazo/auth";
 import { signupPolicyFromEnv } from "@rakazo/core";
-import { createDb, createThreadEvents, type PrismaClient, requireMembership } from "@rakazo/db";
+import {
+  createDb,
+  createThreadEvents,
+  type PrismaClient,
+  provisionPhoneIdentity,
+  requireMembership,
+} from "@rakazo/db";
 import { MarkdownMemoryStore } from "@rakazo/memory";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { type AppEnv, loadEnv } from "./env.js";
+import { createPhoneInboundHandler } from "./phone-inbound.js";
+import { mountPhoneWebhookRoutes } from "./phone-webhook.js";
 import { createRouter } from "./router.js";
 import { mountVoiceHttpRoutes } from "./voice.js";
 import { mountWebhookHttpRoutes } from "./webhook.js";
@@ -59,6 +75,7 @@ export interface AppHandles {
   connector: DestinationEmulator;
   composio?: ComposioProvider;
   connectors: ConnectorRegistry;
+  messaging?: MessagingProvider;
   executor: ReturnType<typeof createRunExecutor>;
   stop: () => Promise<void>;
 }
@@ -69,6 +86,7 @@ export async function createApp(
     realtime?: RealtimeFanout;
     composio?: ComposioProvider;
     pipedream?: ManagedConnectorProvider;
+    messaging?: MessagingProvider;
     remoteConnectors?: RemoteConnectorDependencies;
   } = {},
 ): Promise<AppHandles> {
@@ -77,6 +95,7 @@ export async function createApp(
     realtime: realtimeOverride,
     composio: composioOverride,
     pipedream: pipedreamOverride,
+    messaging: messagingOverride,
     remoteConnectors,
     ...envOverrides
   } = overrides;
@@ -158,6 +177,12 @@ export async function createApp(
   const pipedream =
     pipedreamOverride ??
     (isPipedreamEnabled(pipedreamConfig) ? new PipedreamConnector(pipedreamConfig) : undefined);
+  const sendBlueConfig = sendBlueConfigFromEnv(env);
+  const messaging =
+    messagingOverride ??
+    (isPhoneSurfaceEnabled(sendBlueConfig, env.deploymentModelKey)
+      ? new SendBlueMessagingProvider(sendBlueConfig)
+      : undefined);
   const installed = new InstalledConnectorProvider(prisma, secrets, remoteConnectors);
   const stack = createConnectorStack(isComposioEnabled(env.composioApiKey), composioOverride, [
     installed,
@@ -229,6 +254,7 @@ export async function createApp(
     notifications,
     jobs,
     events,
+    phone: messaging ? createPhoneContextLoader(prisma) : undefined,
   });
 
   const jobHandlers = createBackgroundJobHandlers({
@@ -243,6 +269,7 @@ export async function createApp(
     secretStore: secrets,
     memoryProviders,
     deploymentModelKey: env.deploymentModelKey,
+    messaging,
   });
   if (inMemoryJobs) {
     await inMemoryJobs.start(jobHandlers);
@@ -267,6 +294,7 @@ export async function createApp(
     remoteConnectors,
     artifacts,
     dataDir: env.dataDir,
+    phone: { enabled: Boolean(messaging) },
     env: {
       defaultProvider: env.defaultProvider,
       defaultModel: env.defaultModel,
@@ -322,6 +350,45 @@ export async function createApp(
     );
   });
   mountWebhookHttpRoutes(app, { prisma, secrets, events, jobs });
+  // The phone webhook only exists when the messaging surface is enabled.
+  if (messaging && env.sendblueSigningSecret) {
+    mountPhoneWebhookRoutes(app, {
+      signingSecret: env.sendblueSigningSecret,
+      signingHeader: "sb-signing-secret",
+      parseInbound: parseSendBlueInbound,
+      handleStatus: (event) => applyPhoneOutboundStatus(prisma, event),
+      handle: createPhoneInboundHandler({
+        prisma,
+        events,
+        jobs,
+        provision: (phoneE164, policyEnv) => provisionPhoneIdentity(prisma, phoneE164, policyEnv),
+        signupPolicy: {
+          signupsEnabled: env.signupsEnabled,
+          signupAllowlist: env.signupAllowlist,
+        },
+        lineNumber: env.sendbluePhoneNumber ?? "",
+        typing: (toNumber) => {
+          // Keep the raw phone number out of trace ids — those reach logs
+          // and telemetry, a different trust boundary than the database.
+          const operationId = `phone.typing:${randomUUID()}`;
+          return (
+            messaging.sendTypingIndicator?.(
+              { to: toNumber },
+              {
+                operationId,
+                traceId: operationId,
+                workspaceId: "",
+                userId: "",
+                // Cosmetic side call: bound it so a stalled vendor response
+                // can never pin the webhook handler's event loop slot.
+                signal: AbortSignal.timeout(2000),
+              },
+            ) ?? Promise.resolve()
+          );
+        },
+      }),
+    });
+  }
 
   app.get("/health", (c) =>
     c.json({
@@ -330,6 +397,7 @@ export async function createApp(
       sandbox: env.sandboxProvider,
       composio: Boolean(stack.composio),
       pipedream: Boolean(pipedream),
+      phone: Boolean(messaging),
       jobs: jobKind,
       realtime: realtime.describe().id,
       revision: env.gitSha ?? null,
@@ -344,6 +412,7 @@ export async function createApp(
     connector,
     composio: stack.composio,
     connectors: stack.connector,
+    messaging,
     executor,
     stop: async () => {
       oauthLogins.abortAll();
