@@ -94,37 +94,6 @@ export function createRepos(prisma: PrismaClient) {
     }));
   }
 
-  async function listBotsForWorkspaces(
-    actor: Actor,
-    workspaceIds: string[],
-    options: { archived?: boolean } = {},
-  ): Promise<Bot[]> {
-    if (workspaceIds.length === 0) return [];
-    const bots = await prisma.bot.findMany({
-      where: {
-        workspaceId: { in: workspaceIds },
-        userId: actor.userId,
-        archivedAt: options.archived ? { not: null } : null,
-      },
-      include: {
-        thread: {
-          include: {
-            messages: { orderBy: { seq: "desc" }, take: 1 },
-          },
-        },
-        runs: {
-          ...activeRunSelection,
-        },
-        computer: { select: { scope: true } },
-      },
-      orderBy: [{ pinned: "desc" }, { position: "asc" }, { createdAt: "asc" }],
-    });
-    return bots.map((bot) => {
-      const preview = previewFromBlocks(bot.thread?.messages[0]?.blocks);
-      return mapBot(bot, preview, bot.runs[0]?.status ?? "idle");
-    });
-  }
-
   async function listPrivateSpaceBotsForWorkspaces(
     actor: Actor,
     workspaceIds: string[],
@@ -254,7 +223,27 @@ export function createRepos(prisma: PrismaClient) {
     },
 
     async listBots(actor: Actor, options: { archived?: boolean } = {}): Promise<Bot[]> {
-      return listBotsForWorkspaces(actor, [actor.workspaceId], options);
+      const bots = await prisma.bot.findMany({
+        where: {
+          workspaceId: actor.workspaceId,
+          userId: actor.userId,
+          archivedAt: options.archived ? { not: null } : null,
+        },
+        include: {
+          thread: {
+            include: {
+              messages: { orderBy: { seq: "desc" }, take: 1 },
+            },
+          },
+          runs: activeRunSelection,
+          computer: { select: { scope: true } },
+        },
+        orderBy: [{ pinned: "desc" }, { position: "asc" }, { createdAt: "asc" }],
+      });
+      return bots.map((bot) => {
+        const preview = previewFromBlocks(bot.thread?.messages[0]?.blocks);
+        return mapBot(bot, preview, bot.runs[0]?.status ?? "idle");
+      });
     },
 
     listPrivateSpaceBotsForWorkspaces,

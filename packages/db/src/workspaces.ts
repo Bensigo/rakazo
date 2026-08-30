@@ -3,7 +3,8 @@ import { Prisma, type PrismaClient } from "./client.js";
 import { IsolationError } from "./scope.js";
 import { withTransactionRetry } from "./transaction-retry.js";
 
-export const MAX_SPACES_PER_ORGANIZATION = 32;
+/** Per member, per organization: one person cannot fan out unbounded boundaries. */
+const MAX_SPACES_PER_MEMBER = 32;
 
 export class SpaceLimitError extends Error {
   constructor() {
@@ -24,7 +25,7 @@ type WorkspaceClient = Pick<
   "workspace" | "workspaceMember" | "memoryDocument" | "notificationPreference"
 >;
 
-export interface CreateWorkspaceInput {
+interface CreateWorkspaceInput {
   workspaceId: string;
   workspaceMembershipId: string;
   organizationId: string;
@@ -33,7 +34,7 @@ export interface CreateWorkspaceInput {
   createdAt: Date;
 }
 
-export async function createWorkspace(
+async function createWorkspace(
   prisma: WorkspaceClient,
   input: CreateWorkspaceInput,
 ): Promise<void> {
@@ -56,7 +57,7 @@ export async function createWorkspace(
   });
 }
 
-export async function createWorkspaceDefaults(
+async function createWorkspaceDefaults(
   prisma: WorkspaceClient,
   input: { workspaceId: string; userId: string; memoryContent: string },
 ): Promise<void> {
@@ -111,7 +112,7 @@ export async function createSpaceForMember(
             organizationId: currentMembership.organizationId,
           },
         });
-        if (count >= MAX_SPACES_PER_ORGANIZATION) throw new SpaceLimitError();
+        if (count >= MAX_SPACES_PER_MEMBER) throw new SpaceLimitError();
         await createWorkspace(tx, {
           workspaceId,
           workspaceMembershipId,
