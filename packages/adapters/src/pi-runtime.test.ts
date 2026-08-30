@@ -23,7 +23,7 @@ describe("describeToolActivity", () => {
       "Searching the web: rakazo agents",
     );
     expect(describeToolActivity("web_fetch", { url: "https://example.com" })).toBe(
-      "Reading page: https://example.com",
+      "Reading page: https://example.com/",
     );
   });
 
@@ -52,6 +52,18 @@ describe("describeToolActivity", () => {
     expect(line).not.toContain(token);
     expect(line).not.toContain("fake-key");
     expect(line).not.toContain("fake-password");
+  });
+
+  it("strips signed-URL query and fragment from web_fetch activity", () => {
+    const line = describeToolActivity("web_fetch", {
+      url: "https://user:secret@cdn.example.test/doc.pdf?X-Amz-Signature=abc123&token=leak#frag",
+    });
+    expect(line).toBe("Reading page: https://cdn.example.test/doc.pdf");
+    expect(line).not.toContain("secret");
+    expect(line).not.toContain("X-Amz-Signature");
+    expect(line).not.toContain("token=");
+    expect(line).not.toContain("abc123");
+    expect(line).not.toContain("frag");
   });
 
   it("falls back to the tool name", () => {
