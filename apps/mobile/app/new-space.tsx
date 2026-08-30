@@ -57,9 +57,6 @@ export default function NewPrivateSpace() {
           }}
         >
           <Text style={{ color: "#F1F1F2", fontSize: 18, fontWeight: "600" }}>Private space</Text>
-          <Text style={{ color: "#9A9AA0", fontSize: 14, lineHeight: 21, marginTop: 8 }}>
-            Computers, memory, integrations, files, and chats stay inside this space.
-          </Text>
           <Text style={{ color: "#85858A", fontSize: 14, marginTop: 20 }}>Name</Text>
           <TextInput
             autoFocus

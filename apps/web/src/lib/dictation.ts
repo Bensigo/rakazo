@@ -292,9 +292,10 @@ export class Dictation {
     try {
       const audioBase64 = await blobToBase64(blob);
       if (this.token !== mine) return;
+      const { withPrivateSpaceHeaders } = await import("./rpc.js");
       const res = await fetch("/api/voice/transcribe", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: withPrivateSpaceHeaders({ "content-type": "application/json" }),
         credentials: "include",
         body: JSON.stringify({ audioBase64, mimeType: blob.type }),
         signal: abort.signal,

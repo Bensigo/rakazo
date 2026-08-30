@@ -151,9 +151,10 @@ export class Speaker {
   }
 
   private async render(text: string, opts: SpeakOptions, signal: AbortSignal): Promise<Blob> {
+    const { withPrivateSpaceHeaders } = await import("./rpc.js");
     const res = await fetch("/api/voice/speak", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: withPrivateSpaceHeaders({ "content-type": "application/json" }),
       credentials: "include",
       body: JSON.stringify({ text, voiceId: opts.voiceId, botId: opts.botId }),
       signal,

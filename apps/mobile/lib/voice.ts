@@ -1,11 +1,5 @@
 import { File, Paths } from "expo-file-system";
-import { currentApiBase } from "./api";
-import { loadSessionToken } from "./session";
-
-async function authHeaders(): Promise<Record<string, string>> {
-  const token = await loadSessionToken();
-  return token ? { authorization: `Bearer ${token}` } : {};
-}
+import { authHeaders, currentApiBase } from "./api";
 
 export async function speakUtterance(
   text: string,

@@ -11,9 +11,7 @@ test("private spaces keep all bots in the sidebar and switch the request boundar
   await page.getByTitle("Create").click();
   await page.getByRole("button", { name: "New private space" }).click();
   const dialog = page.getByRole("dialog", { name: "New private space" });
-  await expect(dialog).toContainText(
-    "Computers, memory, integrations, files, and chats stay inside this space.",
-  );
+  await expect(dialog.getByLabel("Name")).toBeVisible();
   await dialog.getByLabel("Name").fill("Customer support");
   await captureScreenshot(page, testInfo, "new-private-space-dialog");
   await dialog.getByRole("button", { name: "Create space" }).click();

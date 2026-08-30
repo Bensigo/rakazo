@@ -29,7 +29,7 @@ test("bot creation, editing, and deletion persist", async ({ page }, testInfo) =
   await captureScreenshot(page, testInfo, "26a-new-bot-error");
   await page.unroute("**/rpc/bots/create");
   let failedPostCreateRefresh = false;
-  await page.route("**/rpc/botSections/list", async (route) => {
+  await page.route("**/rpc/privateSpaces/list", async (route) => {
     if (failedPostCreateRefresh) {
       await route.fallback();
       return;
@@ -41,7 +41,7 @@ test("bot creation, editing, and deletion persist", async ({ page }, testInfo) =
 
   await expect(botList.getByRole("button", { name: /^Researcher/ })).toBeVisible();
   expect(failedPostCreateRefresh).toBe(true);
-  await page.unroute("**/rpc/botSections/list");
+  await page.unroute("**/rpc/privateSpaces/list");
   await expect(page.getByPlaceholder("Message Researcher")).toBeVisible();
   await page.waitForURL(/\/app\/[^/]+$/);
   const deletedBotPath = new URL(page.url()).pathname;

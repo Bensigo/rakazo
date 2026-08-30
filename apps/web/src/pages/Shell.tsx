@@ -5507,9 +5507,6 @@ function NewPrivateSpaceDialog({
             <Trans>New private space</Trans>
           </h2>
         </div>
-        <p className="mt-2 text-[14px] leading-6 text-[#9A9AA0]">
-          <Trans>Computers, memory, integrations, files, and chats stay inside this space.</Trans>
-        </p>
         <label className="mt-4 block text-[13.5px] text-[#C9C9CE]">
           <Trans>Name</Trans>
           <input

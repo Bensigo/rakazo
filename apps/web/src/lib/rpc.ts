@@ -22,15 +22,23 @@ export function clearPrivateSpaceSelection(): void {
   window.localStorage.removeItem(WORKSPACE_STORAGE_KEY);
 }
 
+/** Adds `x-rakazo-workspace-id` when a private space is selected. */
+export function withPrivateSpaceHeaders(init?: HeadersInit): Headers {
+  const headers = new Headers(init);
+  const workspaceId = selectedPrivateSpaceId();
+  if (workspaceId) headers.set("x-rakazo-workspace-id", workspaceId);
+  return headers;
+}
+
 const link = new RPCLink({
   url: () =>
     typeof window === "undefined" ? "http://127.0.0.1:5173/rpc" : `${window.location.origin}/rpc`,
   fetch: (input, init) => {
     const request = new Request(input, init);
-    const headers = new Headers(request.headers);
-    const workspaceId = selectedPrivateSpaceId();
-    if (workspaceId) headers.set("x-rakazo-workspace-id", workspaceId);
-    return fetch(request, { headers, credentials: "include" });
+    return fetch(request, {
+      headers: withPrivateSpaceHeaders(request.headers),
+      credentials: "include",
+    });
   },
 });
 

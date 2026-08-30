@@ -89,7 +89,10 @@ export async function saveApiBase(input: string): Promise<EndpointResult> {
   const previous = currentApiBase();
   await SecureStore.setItemAsync(ENDPOINT_KEY, parsed.url);
   cachedApiBase = parsed.url;
-  if (parsed.url !== previous) await clearSessionToken();
+  if (parsed.url !== previous) {
+    await clearSessionToken();
+    await clearPrivateSpace();
+  }
   return parsed;
 }
 
@@ -102,11 +105,14 @@ export async function resetApiBase(): Promise<EndpointResult> {
   }
   const url = defaultApiBase();
   cachedApiBase = url;
-  if (url !== previous) await clearSessionToken();
+  if (url !== previous) {
+    await clearSessionToken();
+    await clearPrivateSpace();
+  }
   return { ok: true, url };
 }
 
-async function authHeaders(): Promise<Record<string, string>> {
+export async function authHeaders(): Promise<Record<string, string>> {
   const token = await loadSessionToken();
   return {
     ...(token ? { authorization: `Bearer ${token}` } : {}),

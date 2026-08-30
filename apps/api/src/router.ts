@@ -371,13 +371,13 @@ export function createRouter(deps: RouterDeps) {
         privateSpaceNavigationDto(deps, context.actor),
       ),
       create: authed.privateSpaces.create.handler(async ({ context, input }) => {
-        const count = await deps.prisma.member.count({ where: { userId: context.actor.userId } });
-        if (count >= 32) {
-          throw new ORPCError("BAD_REQUEST", { message: "Private space limit reached" });
-        }
         const workspaceId = randomUUID();
         const createdAt = new Date();
         await deps.prisma.$transaction(async (tx) => {
+          const count = await tx.member.count({ where: { userId: context.actor.userId } });
+          if (count >= 32) {
+            throw new ORPCError("BAD_REQUEST", { message: "Private space limit reached" });
+          }
           await createOwnedWorkspace(tx, {
             workspaceId,
             membershipId: randomUUID(),
