@@ -22,6 +22,11 @@ export interface SafeWebFetchOptions {
   userAgent?: string;
   headers?: Record<string, string>;
   signal?: AbortSignal;
+  /**
+   * Test seam for dispatcher teardown. Defaults to `Agent.close()`.
+   * Always raced against the shared operation deadline.
+   */
+  cleanup?: () => Promise<void>;
 }
 
 const defaultResolveHostname: ResolveHostname = (hostname) =>
@@ -79,8 +84,15 @@ export async function fetchSafeWebText(
   const dispatcher = new Agent({
     connect: { lookup: createAddressCheckedLookup(resolve, assertPublicAddresses) },
   });
-  // One deadline for the whole redirect chain + body read, not per hop.
+  // One deadline for the whole redirect chain + body read + cleanup, not per hop.
   const signal = combineSignals(options.signal, AbortSignal.timeout(timeoutMs));
+  const cleanup =
+    options.cleanup ??
+    (() =>
+      dispatcher.close().then(
+        () => undefined,
+        () => undefined,
+      ));
 
   try {
     return await followRedirects(url, {
@@ -94,8 +106,8 @@ export async function fetchSafeWebText(
       redirectsRemaining: MAX_REDIRECTS,
     });
   } finally {
-    // destroy() tears down immediately; close() can wait on unread redirect bodies.
-    dispatcher.destroy();
+    // Cleanup must not extend the operation budget past the shared deadline.
+    await withAbort(cleanup(), signal).catch(() => undefined);
   }
 }
 
@@ -129,31 +141,32 @@ async function followRedirects(
   } as RequestInit & { dispatcher: Agent });
 
   if (response.status >= 300 && response.status < 400) {
-    try {
-      if (state.redirectsRemaining <= 0) {
-        throw new Error("Too many redirects");
-      }
-      const location = response.headers.get("location");
-      if (!location) throw new Error("Redirect missing Location header");
-      const next = new URL(location, validated.href).href;
-      // Re-validate every hop — a public host must not 302 into a private one.
-      return await followRedirects(next, {
-        ...state,
-        redirectsRemaining: state.redirectsRemaining - 1,
-      });
-    } finally {
-      await cancelResponseBody(response);
+    if (state.redirectsRemaining <= 0) {
+      await cancelResponseBody(response, state.signal);
+      throw new Error("Too many redirects");
     }
+    const location = response.headers.get("location");
+    if (!location) {
+      await cancelResponseBody(response, state.signal);
+      throw new Error("Redirect missing Location header");
+    }
+    const next = new URL(location, validated.href).href;
+    // Release this hop before following — do not leave the body open across recursion.
+    await cancelResponseBody(response, state.signal);
+    return followRedirects(next, {
+      ...state,
+      redirectsRemaining: state.redirectsRemaining - 1,
+    });
   }
 
   if (!response.ok) {
-    await cancelResponseBody(response);
+    await cancelResponseBody(response, state.signal);
     throw new Error(`Request failed: HTTP ${response.status}`);
   }
 
   const contentLength = response.headers.get("content-length");
   if (contentLength && Number(contentLength) > state.maxBytes) {
-    await cancelResponseBody(response);
+    await cancelResponseBody(response, state.signal);
     throw new Error("Response is too large");
   }
 
@@ -166,8 +179,13 @@ async function followRedirects(
   };
 }
 
-async function cancelResponseBody(response: Response): Promise<void> {
-  await response.body?.cancel().catch(() => undefined);
+async function cancelResponseBody(response: Response, signal: AbortSignal): Promise<void> {
+  const cancel = response.body?.cancel() ?? Promise.resolve();
+  // A hanging cancel must not outlive the shared deadline.
+  await withAbort(
+    cancel.catch(() => undefined),
+    signal,
+  ).catch(() => undefined);
 }
 
 /** Read the body as a stream and abort once maxBytes is exceeded (DoS guard). */
@@ -228,7 +246,7 @@ function abortError(signal: AbortSignal): Error {
   return signal.reason instanceof Error ? signal.reason : new Error("Request timed out");
 }
 
-/** Race a promise against an AbortSignal so stalled DNS cannot outlive the deadline. */
+/** Race a promise against an AbortSignal so stalled work cannot outlive the deadline. */
 export function withAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
   if (!signal) return promise;
   if (signal.aborted) return Promise.reject(abortError(signal));

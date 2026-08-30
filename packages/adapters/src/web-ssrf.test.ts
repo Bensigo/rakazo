@@ -247,6 +247,38 @@ describe("web SSRF policy", () => {
     expect(cancelled).toBe(true);
   });
 
+  it("finishes when the deadline fires despite hanging body cancel and close", async () => {
+    const hangingBody = new ReadableStream<Uint8Array>({
+      start() {
+        // never enqueues or closes
+      },
+      cancel() {
+        return new Promise(() => {
+          // never settles
+        });
+      },
+    });
+    const fetchMock: typeof fetch = async () =>
+      new Response(hangingBody, {
+        status: 302,
+        headers: { location: "https://example.test/next" },
+      });
+
+    const started = Date.now();
+    await expect(
+      fetchSafeWebText("https://example.test/start", {
+        fetch: fetchMock,
+        resolveHostname: publicResolver,
+        timeoutMs: 40,
+        cleanup: () =>
+          new Promise(() => {
+            // hanging dispatcher.close()
+          }),
+      }),
+    ).rejects.toThrow();
+    expect(Date.now() - started).toBeLessThan(500);
+  });
+
   it("aborts stalled DNS under the shared deadline", async () => {
     let resolveCalls = 0;
     const stalledResolver = () =>
