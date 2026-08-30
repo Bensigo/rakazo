@@ -46,7 +46,7 @@ describe("Speaker", () => {
 
   it("forwards the selected private space on speak requests", async () => {
     stubSelectedSpace("space-support");
-    const fetchMock = vi.fn(async () => ({
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => ({
       ok: true,
       blob: async () => new Blob(["audio"]),
       json: async () => ({}),
@@ -79,7 +79,7 @@ describe("Speaker", () => {
       "/api/voice/speak",
       expect.objectContaining({ credentials: "include" }),
     );
-    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers as HeadersInit);
+    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
     expect(headers.get("x-rakazo-workspace-id")).toBe("space-support");
     expect(headers.get("content-type")).toBe("application/json");
   });

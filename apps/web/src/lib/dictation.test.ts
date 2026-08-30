@@ -126,7 +126,7 @@ describe("Dictation recorder fallback", () => {
       },
       language: "en-US",
     });
-    const fetchMock = vi.fn(async () => ({
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => ({
       ok: true,
       json: async () => ({ text: "hello" }),
     }));
@@ -157,7 +157,7 @@ describe("Dictation recorder fallback", () => {
       "/api/voice/transcribe",
       expect.objectContaining({ credentials: "include" }),
     );
-    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers as HeadersInit);
+    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
     expect(headers.get("x-rakazo-workspace-id")).toBe("space-support");
     expect(headers.get("content-type")).toBe("application/json");
   });
