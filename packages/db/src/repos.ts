@@ -4,11 +4,36 @@ import {
   type Bot,
   type BotSection,
   type MessageBlock,
+  type PrivateSpaceBot,
 } from "@rakazo/contracts";
+import { ACTIVE_RUN_STATUSES } from "@rakazo/core";
 import type { PrismaClient } from "./client.js";
 import { type ComputerMode, ensureComputerRecord, parseComputerMode } from "./computers.js";
 import { createThreadMessageInTransaction } from "./messages.js";
 import { IsolationError } from "./scope.js";
+
+const activeRunStatuses = [...ACTIVE_RUN_STATUSES];
+const activeRunSelection = {
+  where: { status: { in: activeRunStatuses } },
+  orderBy: { createdAt: "desc" as const },
+  take: 1,
+  select: { status: true },
+} as const;
+
+function previewFromBlocks(blocks: unknown): string {
+  const rows = Array.isArray(blocks) ? blocks : [];
+  for (const block of rows) {
+    if (
+      block &&
+      typeof block === "object" &&
+      "text" in block &&
+      typeof (block as { text?: unknown }).text === "string"
+    ) {
+      return (block as { text: string }).text;
+    }
+  }
+  return "";
+}
 
 function mapBot(
   bot: {
@@ -111,23 +136,69 @@ export function createRepos(prisma: PrismaClient) {
           },
         },
         runs: {
-          where: {
-            status: { in: ["running", "queued", "leased", "waiting_input", "waiting_takeover"] },
-          },
-          orderBy: { createdAt: "desc" },
-          take: 1,
+          ...activeRunSelection,
         },
         computer: { select: { scope: true } },
       },
       orderBy: [{ pinned: "desc" }, { position: "asc" }, { createdAt: "asc" }],
     });
     return bots.map((bot) => {
-      const blocks = (bot.thread?.messages[0]?.blocks ?? []) as Array<{
-        kind?: string;
-        text?: string;
-      }>;
-      const preview = blocks.find((block) => block.text)?.text ?? "";
+      const preview = previewFromBlocks(bot.thread?.messages[0]?.blocks);
       return mapBot(bot, preview, bot.runs[0]?.status ?? "idle");
+    });
+  }
+
+  async function listPrivateSpaceBotsForWorkspaces(
+    actor: Actor,
+    workspaceIds: string[],
+  ): Promise<PrivateSpaceBot[]> {
+    if (workspaceIds.length === 0) return [];
+    const bots = await prisma.bot.findMany({
+      where: {
+        workspaceId: { in: workspaceIds },
+        userId: actor.userId,
+        archivedAt: null,
+      },
+      select: {
+        id: true,
+        workspaceId: true,
+        name: true,
+        title: true,
+        color: true,
+        notifyOnFinish: true,
+        pinned: true,
+        sectionId: true,
+        updatedAt: true,
+        thread: {
+          select: {
+            unread: true,
+            messages: {
+              orderBy: { seq: "desc" },
+              take: 1,
+              select: { blocks: true },
+            },
+          },
+        },
+        runs: activeRunSelection,
+      },
+      orderBy: [{ pinned: "desc" }, { position: "asc" }, { createdAt: "asc" }],
+    });
+    return bots.map((bot) => {
+      if (!bot.thread) throw new IsolationError("Bot is missing its thread");
+      return {
+        id: bot.id,
+        workspaceId: bot.workspaceId,
+        name: bot.name,
+        title: bot.title,
+        color: bot.color,
+        notifyOnFinish: bot.notifyOnFinish,
+        pinned: bot.pinned,
+        sectionId: bot.sectionId,
+        unread: bot.thread.unread,
+        preview: previewFromBlocks(bot.thread.messages[0]?.blocks),
+        status: bot.runs[0]?.status ?? "idle",
+        updatedAt: bot.updatedAt.toISOString(),
+      };
     });
   }
 
@@ -210,6 +281,8 @@ export function createRepos(prisma: PrismaClient) {
     },
 
     listBotsForWorkspaces,
+
+    listPrivateSpaceBotsForWorkspaces,
 
     async getBot(actor: Actor, botId: string, options: { includeArchived?: boolean } = {}) {
       const bot = await prisma.bot.findFirst({

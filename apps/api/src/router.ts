@@ -90,9 +90,9 @@ import {
 import {
   appendEventInTransaction,
   createGroupRepos,
-  createOwnedWorkspace,
   createRepos,
   createThreadMessageInTransaction,
+  createWorkspace,
   createWorkspaceDefaults,
   findDefaultModelCredential,
   findDefaultVoiceCredential,
@@ -372,7 +372,7 @@ export function createRouter(deps: RouterDeps) {
     },
     privateSpaces: {
       list: authed.privateSpaces.list.handler(async ({ context }) =>
-        privateSpaceNavigationDto(deps, context.actor),
+        privateSpaceNavigationDto(deps, context.actor, repos, groupRepos),
       ),
       create: authed.privateSpaces.create.handler(async ({ context, input }) => {
         const workspaceId = randomUUID();
@@ -380,16 +380,26 @@ export function createRouter(deps: RouterDeps) {
         await withSerializableRetry(() =>
           deps.prisma.$transaction(
             async (tx) => {
-              const count = await tx.member.count({ where: { userId: context.actor.userId } });
+              const currentWorkspace = await tx.workspace.findUnique({
+                where: { id: context.actor.workspaceId },
+                select: { organizationId: true },
+              });
+              if (!currentWorkspace) throw new IsolationError();
+              const count = await tx.workspaceMember.count({
+                where: {
+                  userId: context.actor.userId,
+                  organizationId: currentWorkspace.organizationId,
+                },
+              });
               if (count >= 32) {
                 throw new ORPCError("BAD_REQUEST", { message: "Private space limit reached" });
               }
-              await createOwnedWorkspace(tx, {
+              await createWorkspace(tx, {
                 workspaceId,
-                membershipId: randomUUID(),
+                workspaceMembershipId: randomUUID(),
+                organizationId: currentWorkspace.organizationId,
                 userId: context.actor.userId,
                 name: input.name,
-                slug: `space-${randomUUID()}`,
                 createdAt,
               });
               await createWorkspaceDefaults(tx, {
@@ -414,7 +424,7 @@ export function createRouter(deps: RouterDeps) {
       const actor = context.actor;
       const [me, navigation, archivedBots, archivedGroups] = await Promise.all([
         meDto(deps, actor),
-        privateSpaceNavigationDto(deps, actor),
+        privateSpaceNavigationDto(deps, actor, repos, groupRepos),
         repos.listBots(actor, { archived: true }),
         groupRepos.listGroups(actor, { archived: true }),
       ]);
@@ -3388,56 +3398,60 @@ function mapUpdaterError(error: unknown): never {
 async function privateSpaceNavigationDto(
   deps: RouterDeps,
   actor: Actor,
+  repos: ReturnType<typeof createRepos>,
+  groupRepos: ReturnType<typeof createGroupRepos>,
 ): Promise<PrivateSpaceNavigation> {
-  const memberships = await deps.prisma.member.findMany({
-    where: { userId: actor.userId },
+  const currentWorkspace = await deps.prisma.workspace.findUnique({
+    where: { id: actor.workspaceId },
+    select: { organizationId: true },
+  });
+  if (!currentWorkspace) throw new IsolationError();
+  const memberships = await deps.prisma.workspaceMember.findMany({
+    where: { userId: actor.userId, organizationId: currentWorkspace.organizationId },
     select: {
-      organizationId: true,
-      organization: { select: { name: true } },
+      workspaceId: true,
+      workspace: { select: { name: true } },
     },
     orderBy: { createdAt: "asc" },
   });
-  const repos = createRepos(deps.prisma);
-  const groupRepos = createGroupRepos(deps.prisma);
-  const workspaceIds = memberships.map((membership) => membership.organizationId);
-  const [bots, groups, botSections] = await Promise.all([
-    repos.listBotsForWorkspaces(actor, workspaceIds),
-    groupRepos.listGroupsForWorkspaces(actor, workspaceIds),
-    repos.listBotSectionsForWorkspaces(actor, workspaceIds),
-  ]);
+  const workspaceIds = memberships.map((membership) => membership.workspaceId);
+  const inactiveWorkspaceIds = workspaceIds.filter(
+    (workspaceId) => workspaceId !== actor.workspaceId,
+  );
+  const [currentBots, currentGroups, inactiveBots, inactiveGroups, botSections] = await Promise.all(
+    [
+      repos.listBots(actor),
+      groupRepos.listGroups(actor),
+      repos.listPrivateSpaceBotsForWorkspaces(actor, inactiveWorkspaceIds),
+      groupRepos.listPrivateSpaceGroupsForWorkspaces(actor, inactiveWorkspaceIds),
+      repos.listBotSectionsForWorkspaces(actor, workspaceIds),
+    ],
+  );
   const currentMembership = memberships.find(
-    (membership) => membership.organizationId === actor.workspaceId,
+    (membership) => membership.workspaceId === actor.workspaceId,
   );
   if (!currentMembership) throw new IsolationError();
-  const botsByWorkspace = partitionByWorkspace(bots);
-  const groupsByWorkspace = partitionByWorkspace(groups);
+  const botsByWorkspace = partitionByWorkspace([...currentBots, ...inactiveBots]);
+  const groupsByWorkspace = partitionByWorkspace([...currentGroups, ...inactiveGroups]);
   const sectionsByWorkspace = partitionByWorkspace(botSections);
   const botsFor = (workspaceId: string) => botsByWorkspace.get(workspaceId) ?? [];
   const groupsFor = (workspaceId: string) => groupsByWorkspace.get(workspaceId) ?? [];
   const sectionsFor = (workspaceId: string) => sectionsByWorkspace.get(workspaceId) ?? [];
-  const currentBots = botsFor(actor.workspaceId);
-  const currentGroups = groupsFor(actor.workspaceId);
 
   return {
     current: {
       id: actor.workspaceId,
-      name: currentMembership.organization.name,
+      name: currentMembership.workspace.name,
       bots: currentBots,
       groups: currentGroups,
       botSections: sectionsFor(actor.workspaceId),
     },
     privateSpaces: memberships.map((membership) => {
-      const workspaceBots =
-        membership.organizationId === actor.workspaceId
-          ? currentBots
-          : botsFor(membership.organizationId);
-      const workspaceGroups =
-        membership.organizationId === actor.workspaceId
-          ? currentGroups
-          : groupsFor(membership.organizationId);
+      const workspaceBots = botsFor(membership.workspaceId);
+      const workspaceGroups = groupsFor(membership.workspaceId);
       return {
-        id: membership.organizationId,
-        name: membership.organization.name,
+        id: membership.workspaceId,
+        name: membership.workspace.name,
         bots: workspaceBots.map((bot) => ({
           id: bot.id,
           workspaceId: bot.workspaceId,
@@ -3463,7 +3477,7 @@ async function privateSpaceNavigationDto(
           unread: group.unread,
           updatedAt: group.updatedAt,
         })),
-        botSections: sectionsFor(membership.organizationId),
+        botSections: sectionsFor(membership.workspaceId),
       };
     }),
   };
@@ -3740,8 +3754,8 @@ async function persistModelCredential(
 async function requireWorkspaceOwner(prisma: PrismaClient, actor: Actor): Promise<void> {
   const member = await prisma.member.findFirst({
     where: {
-      organizationId: actor.workspaceId,
       userId: actor.userId,
+      workspaceMemberships: { some: { workspaceId: actor.workspaceId } },
     },
     select: { role: true },
   });

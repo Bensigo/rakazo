@@ -2,36 +2,36 @@ import type { PrismaClient } from "./client.js";
 
 type WorkspaceClient = Pick<
   PrismaClient,
-  "organization" | "member" | "memoryDocument" | "notificationPreference"
+  "workspace" | "workspaceMember" | "memoryDocument" | "notificationPreference"
 >;
 
-export interface OwnedWorkspaceInput {
+export interface CreateWorkspaceInput {
   workspaceId: string;
-  membershipId: string;
+  workspaceMembershipId: string;
+  organizationId: string;
   userId: string;
   name: string;
-  slug: string;
   createdAt: Date;
 }
 
-export async function createOwnedWorkspace(
+export async function createWorkspace(
   prisma: WorkspaceClient,
-  input: OwnedWorkspaceInput,
+  input: CreateWorkspaceInput,
 ): Promise<void> {
-  await prisma.organization.create({
+  await prisma.workspace.create({
     data: {
       id: input.workspaceId,
+      organizationId: input.organizationId,
       name: input.name,
-      slug: input.slug,
       createdAt: input.createdAt,
     },
   });
-  await prisma.member.create({
+  await prisma.workspaceMember.create({
     data: {
-      id: input.membershipId,
-      organizationId: input.workspaceId,
+      id: input.workspaceMembershipId,
+      workspaceId: input.workspaceId,
+      organizationId: input.organizationId,
       userId: input.userId,
-      role: "owner",
       createdAt: input.createdAt,
     },
   });

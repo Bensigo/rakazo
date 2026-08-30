@@ -4,6 +4,7 @@ import {
   GROUP_MEMBER_MIN,
   type Group,
   type GroupMember,
+  type PrivateSpaceGroup,
 } from "@rakazo/contracts";
 import { ACTIVE_RUN_STATUSES } from "@rakazo/core";
 import type { Prisma, PrismaClient } from "./client.js";
@@ -42,6 +43,16 @@ type GroupRecord = {
   }>;
 };
 
+type PrivateSpaceGroupRecord = Pick<
+  GroupRecord,
+  "id" | "workspaceId" | "name" | "pinned" | "sectionId" | "updatedAt" | "members"
+> & {
+  thread: {
+    unread: boolean;
+    messages: Array<{ blocks: unknown }>;
+  } | null;
+};
+
 function previewFromBlocks(blocks: unknown): string {
   const rows = Array.isArray(blocks) ? blocks : [];
   for (const block of rows) {
@@ -57,6 +68,15 @@ function previewFromBlocks(blocks: unknown): string {
   return "";
 }
 
+function mapGroupMembers(members: GroupRecord["members"]): GroupMember[] {
+  return members.map((member) => ({
+    botId: member.bot.id,
+    name: member.bot.name,
+    color: member.bot.color,
+    status: member.bot.runs[0]?.status ?? "idle",
+  }));
+}
+
 function mapGroup(group: GroupRecord): Group {
   if (!group.thread) throw new IsolationError("Group is missing its thread");
   const preview = previewFromBlocks(group.thread.messages[0]?.blocks);
@@ -67,17 +87,27 @@ function mapGroup(group: GroupRecord): Group {
     pinned: group.pinned,
     sectionId: group.sectionId,
     archivedAt: group.archivedAt?.toISOString() ?? null,
-    members: group.members.map((member) => ({
-      botId: member.bot.id,
-      name: member.bot.name,
-      color: member.bot.color,
-      status: member.bot.runs[0]?.status ?? "idle",
-    })),
+    members: mapGroupMembers(group.members),
     threadId: group.thread.id,
     preview,
     unread: group.thread.unread,
     updatedAt: group.updatedAt.toISOString(),
     createdAt: group.createdAt.toISOString(),
+  };
+}
+
+function mapPrivateSpaceGroup(group: PrivateSpaceGroupRecord): PrivateSpaceGroup {
+  if (!group.thread) throw new IsolationError("Group is missing its thread");
+  return {
+    id: group.id,
+    workspaceId: group.workspaceId,
+    name: group.name,
+    pinned: group.pinned,
+    sectionId: group.sectionId,
+    members: mapGroupMembers(group.members),
+    preview: previewFromBlocks(group.thread.messages[0]?.blocks),
+    unread: group.thread.unread,
+    updatedAt: group.updatedAt.toISOString(),
   };
 }
 
@@ -175,12 +205,51 @@ export function createGroupRepos(prisma: PrismaClient) {
       .map((group) => mapGroup(group as GroupRecord));
   }
 
+  async function listPrivateSpaceGroupsForWorkspaces(
+    actor: Actor,
+    workspaceIds: string[],
+  ): Promise<PrivateSpaceGroup[]> {
+    if (workspaceIds.length === 0) return [];
+    const groups = await prisma.chatGroup.findMany({
+      where: {
+        workspaceId: { in: workspaceIds },
+        userId: actor.userId,
+        archivedAt: null,
+      },
+      select: {
+        id: true,
+        workspaceId: true,
+        name: true,
+        pinned: true,
+        sectionId: true,
+        updatedAt: true,
+        thread: {
+          select: {
+            unread: true,
+            messages: {
+              orderBy: { seq: "desc" },
+              take: 1,
+              select: { blocks: true },
+            },
+          },
+        },
+        members: groupInclude.members,
+      },
+      orderBy: [{ pinned: "desc" }, { updatedAt: "desc" }],
+    });
+    return groups
+      .filter((group) => hasMinimumActiveMembers(group.members))
+      .map((group) => mapPrivateSpaceGroup(group));
+  }
+
   return {
     async listGroups(actor: Actor, options: { archived?: boolean } = {}): Promise<Group[]> {
       return listGroupsForWorkspaces(actor, [actor.workspaceId], options);
     },
 
     listGroupsForWorkspaces,
+
+    listPrivateSpaceGroupsForWorkspaces,
 
     async getGroup(actor: Actor, groupId: string, options: { includeArchived?: boolean } = {}) {
       const group = await prisma.chatGroup.findFirst({

@@ -66,9 +66,9 @@ export async function provisionPhoneIdentity(
       .catch(() => prisma.user.findUniqueOrThrow({ where: { email } }));
   }
 
-  const member = await prisma.member.findFirst({ where: { userId: user.id } });
+  const membership = await prisma.workspaceMember.findFirst({ where: { userId: user.id } });
   const workspaceId =
-    member?.organizationId ??
+    membership?.workspaceId ??
     (
       await bootstrapUserWorkspace(prisma, user, env, {
         claimDeploymentOwner: false,

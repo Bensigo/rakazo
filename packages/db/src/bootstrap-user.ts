@@ -17,10 +17,11 @@ function isUniqueViolation(error: unknown): boolean {
 }
 
 /**
- * Everything a brand-new user needs around their account row: personal
- * workspace + owner membership, deployment-owner claim, user memory, and
- * notification preferences. Shared by the Better Auth `user.create.after`
- * hook and phone-identity provisioning so both paths stay in lockstep.
+ * Everything a brand-new user needs around their account row: a personal
+ * organization, its default workspace, owner memberships for both boundaries,
+ * deployment-owner claim, user memory, and notification preferences. Shared by
+ * the Better Auth `user.create.after` hook and phone-identity provisioning so
+ * both paths stay in lockstep.
  *
  * `claimDeploymentOwner: false` is for identities that did not sign up
  * through the app (phone provisioning): a first texter must never become
@@ -53,6 +54,31 @@ export async function bootstrapUserWorkspace(
         organizationId: orgId,
         userId: user.id,
         role: "owner",
+        createdAt: new Date(),
+      },
+    })
+    .catch((error: unknown) => {
+      if (!isUniqueViolation(error)) throw error;
+    });
+  await prisma.workspace
+    .create({
+      data: {
+        id: orgId,
+        organizationId: orgId,
+        name: "Personal",
+        createdAt: new Date(),
+      },
+    })
+    .catch((error: unknown) => {
+      if (!isUniqueViolation(error)) throw error;
+    });
+  await prisma.workspaceMember
+    .create({
+      data: {
+        id: newId(),
+        workspaceId: orgId,
+        organizationId: orgId,
+        userId: user.id,
         createdAt: new Date(),
       },
     })

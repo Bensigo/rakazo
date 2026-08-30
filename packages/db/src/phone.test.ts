@@ -96,7 +96,7 @@ describe("provisionPhoneIdentity create race", () => {
         }),
       },
       user: { findUnique: vi.fn(async () => ({ id: "user-1", email: "phone-x@phone.invalid" })) },
-      member: { findFirst: vi.fn(async () => ({ organizationId: "ws-1" })) },
+      workspaceMember: { findFirst: vi.fn(async () => ({ workspaceId: "ws-1" })) },
       bot: { findFirst: vi.fn(async () => ({ id: "bot-loser" })) },
       thread: {
         findFirst: vi.fn(async ({ where }: { where: { botId: string } }) =>

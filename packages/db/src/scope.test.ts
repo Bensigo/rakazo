@@ -4,14 +4,13 @@ import { IsolationError, requireMembership } from "./scope.js";
 
 function prismaForMembership(found: boolean) {
   return {
-    member: {
-      findFirst: vi.fn(async ({ where }: { where: { userId: string; organizationId?: string } }) =>
+    workspaceMember: {
+      findFirst: vi.fn(async ({ where }: { where: { userId: string; workspaceId?: string } }) =>
         found
           ? {
               userId: where.userId,
-              organizationId: where.organizationId ?? "space-default",
-              user: { email: "owner@example.test" },
-              organization: { id: where.organizationId ?? "space-default" },
+              workspaceId: where.workspaceId ?? "space-default",
+              member: { user: { email: "owner@example.test" } },
             }
           : null,
       ),
@@ -32,9 +31,9 @@ describe("requireMembership", () => {
       email: "owner@example.test",
       isDeploymentOwner: true,
     });
-    expect(prisma.member.findFirst).toHaveBeenCalledWith(
+    expect(prisma.workspaceMember.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { userId: "user-1", organizationId: "space-support" },
+        where: { userId: "user-1", workspaceId: "space-support" },
       }),
     );
   });

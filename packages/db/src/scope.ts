@@ -13,25 +13,25 @@ export async function requireMembership(
   userId: string,
   requestedWorkspaceId?: string | null,
 ): Promise<Actor> {
-  const member = await prisma.member.findFirst({
+  const membership = await prisma.workspaceMember.findFirst({
     where: {
       userId,
-      ...(requestedWorkspaceId ? { organizationId: requestedWorkspaceId } : {}),
+      ...(requestedWorkspaceId ? { workspaceId: requestedWorkspaceId } : {}),
     },
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-    include: { user: true, organization: true },
+    include: { member: { include: { user: true } } },
   });
-  if (!member) {
+  if (!membership) {
     throw new IsolationError("No personal workspace");
   }
   const settings = await prisma.deploymentSettings.findUnique({
     where: { id: "default" },
   });
   return {
-    userId: member.userId,
-    workspaceId: member.organizationId,
-    email: member.user.email,
-    isDeploymentOwner: settings?.ownerUserId === member.userId,
+    userId: membership.userId,
+    workspaceId: membership.workspaceId,
+    email: membership.member.user.email,
+    isDeploymentOwner: settings?.ownerUserId === membership.userId,
   };
 }
 

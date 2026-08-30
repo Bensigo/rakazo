@@ -57,6 +57,54 @@ describe("createRepos.listBots", () => {
   });
 });
 
+describe("createRepos.listPrivateSpaceBotsForWorkspaces", () => {
+  it("loads and maps only the compact cross-space sidebar fields", async () => {
+    const findMany = vi.fn(async (_query: { where: unknown; select: Record<string, unknown> }) => [
+      {
+        id: "bot-2",
+        workspaceId: "ws-2",
+        name: "Support",
+        title: "Customer support",
+        color: "#123456",
+        notifyOnFinish: false,
+        pinned: true,
+        sectionId: null,
+        updatedAt: new Date("2026-08-20T00:00:00.000Z"),
+        thread: {
+          unread: true,
+          messages: [{ blocks: [{ kind: "text", text: "Waiting for a reply" }] }],
+        },
+        runs: [{ status: "running" }],
+      },
+    ]);
+    const repos = createRepos({ bot: { findMany } } as unknown as PrismaClient);
+
+    await expect(repos.listPrivateSpaceBotsForWorkspaces(actor, ["ws-2"])).resolves.toEqual([
+      {
+        id: "bot-2",
+        workspaceId: "ws-2",
+        name: "Support",
+        title: "Customer support",
+        color: "#123456",
+        notifyOnFinish: false,
+        pinned: true,
+        sectionId: null,
+        unread: true,
+        preview: "Waiting for a reply",
+        status: "running",
+        updatedAt: "2026-08-20T00:00:00.000Z",
+      },
+    ]);
+    const query = findMany.mock.calls[0]![0];
+    expect(query.where).toEqual(
+      expect.objectContaining({ workspaceId: { in: ["ws-2"] }, userId: actor.userId }),
+    );
+    expect(query.select).not.toHaveProperty("description");
+    expect(query.select).not.toHaveProperty("instructions");
+    expect(query.select).not.toHaveProperty("computer");
+  });
+});
+
 describe("createRepos.reorderBots", () => {
   function reorderRepos(ids: string[]) {
     const update = vi.fn().mockResolvedValue({});

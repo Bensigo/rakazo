@@ -8,8 +8,6 @@ import type {
   ModelCatalogEntry,
   ModelCredential,
   PrivateSpace,
-  PrivateSpaceBot,
-  PrivateSpaceGroup,
   PrivateSpaceNavigation,
 } from "@rakazo/contracts";
 import {
@@ -319,8 +317,6 @@ export type MobileGroup = Pick<
   Partial<Pick<Group, "workspaceId">>;
 
 export type MobilePrivateSpace = PrivateSpace;
-export type MobilePrivateSpaceBot = PrivateSpaceBot;
-export type MobilePrivateSpaceGroup = PrivateSpaceGroup;
 export type MobilePrivateSpaceNavigation = PrivateSpaceNavigation;
 
 export type MobileSnapshot = {

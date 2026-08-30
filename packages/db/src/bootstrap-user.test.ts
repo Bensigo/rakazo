@@ -12,6 +12,8 @@ function makePrisma(settings: { id: string; ownerUserId: string | null } | null)
       }),
     },
     member: { create: create() },
+    workspace: { create: create() },
+    workspaceMember: { create: create() },
     deploymentSettings: {
       findUnique: vi.fn(async () => settings),
       create: create(),
@@ -31,7 +33,7 @@ function makePrisma(settings: { id: string; ownerUserId: string | null } | null)
 const env = { signupsEnabled: "false", signupAllowlist: "a@example.com, b@example.com" };
 
 describe("bootstrapUserWorkspace", () => {
-  it("creates a personal org, owner membership, and returns the workspace id", async () => {
+  it("creates a personal organization with a default workspace", async () => {
     const prisma = makePrisma({ id: "default", ownerUserId: "user-1" });
     const result = await bootstrapUserWorkspace(
       prisma as unknown as PrismaClient,
@@ -49,6 +51,23 @@ describe("bootstrapUserWorkspace", () => {
     expect(memberData.organizationId).toBe(orgData.id);
     expect(memberData.userId).toBe("user-1");
     expect(memberData.role).toBe("owner");
+
+    const workspaceData = prisma.workspace.create.mock.calls[0]![0].data;
+    expect(workspaceData).toEqual(
+      expect.objectContaining({
+        id: orgData.id,
+        organizationId: orgData.id,
+        name: "Personal",
+      }),
+    );
+    const workspaceMemberData = prisma.workspaceMember.create.mock.calls[0]![0].data;
+    expect(workspaceMemberData).toEqual(
+      expect.objectContaining({
+        workspaceId: orgData.id,
+        organizationId: orgData.id,
+        userId: "user-1",
+      }),
+    );
   });
 
   it("seeds deployment settings from the env policy when none exist", async () => {
@@ -140,6 +159,8 @@ describe("bootstrapUserWorkspace concurrency", () => {
         findUniqueOrThrow: vi.fn(async () => ({ id: "org-winner" })),
       },
       member: { create: vi.fn(uniqueViolation) },
+      workspace: { create: vi.fn(uniqueViolation) },
+      workspaceMember: { create: vi.fn(uniqueViolation) },
       deploymentSettings: {
         findUnique: vi.fn(async () => null),
         create: vi.fn(uniqueViolation),
