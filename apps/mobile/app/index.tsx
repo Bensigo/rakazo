@@ -10,6 +10,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   FlatList,
   Pressable,
   RefreshControl,
@@ -30,6 +31,7 @@ import {
 } from "../lib/activity";
 import { loadActivityMode, saveActivityMode } from "../lib/activity-mode";
 import {
+  currentApiBase,
   loadSessionToken,
   type MobileBot,
   type MobileBotSection,
@@ -41,6 +43,7 @@ import {
   selectPrivateSpace,
 } from "../lib/api";
 import { botTag, filterBots, formatThreadTime, userInitials } from "../lib/inbox";
+import { dismissThreadNotifications, resumeLiveNotifications } from "../lib/live-notifications";
 import { native } from "../lib/native";
 import { previewSnippet } from "../lib/preview";
 import { registerPushToken } from "../lib/push";
@@ -84,6 +87,7 @@ export default function Home() {
     recent: [],
   });
   const activityRequestId = useRef(0);
+  const inboxRequestId = useRef(0);
 
   useEffect(() => {
     void loadActivityMode().then(setActivityMode);
@@ -98,18 +102,21 @@ export default function Home() {
   }, []);
 
   const loadBots = useCallback(async () => {
+    const requestId = ++inboxRequestId.current;
     setError(null);
     try {
       const [navigation, nextMe] = await Promise.all([
         rpc<MobilePrivateSpaceNavigation>("privateSpaces/list"),
         rpc<MobileMe>("me"),
       ]);
+      if (requestId !== inboxRequestId.current) return;
       setBots(navigation.current.bots);
       setBotSections(navigation.current.botSections);
       setGroups(navigation.current.groups);
       setPrivateSpaces(navigation.privateSpaces);
       setMe(nextMe);
     } catch (err) {
+      if (requestId !== inboxRequestId.current) return;
       setError(err instanceof Error ? err.message : "Could not load bots");
     }
   }, []);
@@ -137,7 +144,18 @@ export default function Home() {
 
   useFocusEffect(
     useCallback(() => {
-      if (hasSession) void loadBots();
+      if (!hasSession) return;
+      let cancelled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const tick = async () => {
+        if (AppState.currentState === "active") await loadBots();
+        if (!cancelled) timer = setTimeout(() => void tick(), 5_000);
+      };
+      void tick();
+      return () => {
+        cancelled = true;
+        if (timer !== undefined) clearTimeout(timer);
+      };
     }, [hasSession, loadBots]),
   );
 
@@ -456,6 +474,16 @@ export default function Home() {
               [`${organizeTarget.kind}Id`]: organizeChat.id,
               ...update,
             });
+            if (organizeTarget.kind === "bot" && update.notifyOnFinish !== undefined) {
+              await resumeLiveNotifications(currentApiBase(), await loadSessionToken()).catch(
+                () => undefined,
+              );
+              if (!update.notifyOnFinish && "threadId" in organizeChat) {
+                await dismissThreadNotifications({ threadId: organizeChat.threadId }).catch(
+                  () => undefined,
+                );
+              }
+            }
             await loadBots();
           }}
           onCreateSection={async (name) => {
@@ -604,18 +632,32 @@ function BotRow({
   const time = bot.updatedAt ? formatThreadTime(bot.updatedAt) : "";
   const tag = botTag(bot.title, bot.name);
   // Spelled out because an explicit label replaces the one built from the row's children.
-  const label = [bot.name, tag, bot.unread ? "unread" : null, time, preview]
+  const label = [
+    bot.name,
+    tag,
+    bot.notifyOnFinish ? null : "notifications silenced",
+    bot.unread ? "unread" : null,
+    time,
+    preview,
+  ]
     .filter(Boolean)
     .join(", ");
   return (
     <Pressable
       accessibilityLabel={label}
-      accessibilityHint={onLongPress ? "Long press to pin or move to a section" : undefined}
+      accessibilityHint={
+        onLongPress ? "Long press to pin, move, or silence notifications" : undefined
+      }
       onPress={onPress}
       onLongPress={onLongPress}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
     >
-      <BotAvatar color={bot.color || FALLBACK_COLOR} identity={bot.id} status={bot.status} />
+      <BotAvatar
+        color={bot.color || FALLBACK_COLOR}
+        identity={bot.id}
+        status={bot.status}
+        muted={!bot.notifyOnFinish}
+      />
       <View style={styles.rowBody}>
         <View style={styles.rowTop}>
           <View style={styles.titleRow}>

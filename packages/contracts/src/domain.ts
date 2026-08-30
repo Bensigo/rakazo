@@ -53,6 +53,14 @@ export const BotSchema = z.object({
 });
 export type Bot = z.infer<typeof BotSchema>;
 
+export const ReorderBotsInput = z.object({
+  botIds: z
+    .array(Id)
+    .min(1)
+    .refine((ids) => new Set(ids).size === ids.length, { error: "botIds must be distinct" }),
+});
+export type ReorderBotsInput = z.infer<typeof ReorderBotsInput>;
+
 export const GroupMemberSchema = z.object({
   botId: Id,
   name: z.string(),
@@ -126,6 +134,7 @@ export const PrivateSpaceBotSchema = BotSchema.pick({
   name: true,
   title: true,
   color: true,
+  notifyOnFinish: true,
   pinned: true,
   sectionId: true,
   unread: true,
