@@ -198,7 +198,9 @@ describe("mobile API authentication", () => {
       }
     });
 
-    await expect(saveApiBase("https://second-server.example")).resolves.toMatchObject({ ok: false });
+    await expect(saveApiBase("https://second-server.example")).resolves.toMatchObject({
+      ok: false,
+    });
     vi.mocked(SecureStore.getItemAsync).mockResolvedValue(null);
     await expect(saveApiBase("https://third-server.example")).resolves.toMatchObject({ ok: false });
 
