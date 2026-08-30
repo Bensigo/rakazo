@@ -208,7 +208,10 @@ async function cancelReader(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   signal?: AbortSignal,
 ): Promise<void> {
-  await withAbort(reader.cancel().catch(() => undefined), signal).catch(() => undefined);
+  await withAbort(
+    reader.cancel().catch(() => undefined),
+    signal,
+  ).catch(() => undefined);
 }
 
 /** Read the body as a stream and abort once maxBytes is exceeded (DoS guard). */
