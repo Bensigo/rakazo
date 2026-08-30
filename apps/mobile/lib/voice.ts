@@ -1,16 +1,32 @@
 import { File, Paths } from "expo-file-system";
-import { authHeaders, currentApiBase } from "./api";
+import { authHeaders, currentApiBase, rpc, selectedPrivateSpaceId } from "./api";
+
+type SpeechOptions = { voiceId?: string; botId?: string };
+
+export async function speakText(text: string, opts: SpeechOptions = {}): Promise<boolean> {
+  const privateSpaceId = selectedPrivateSpaceId();
+  const prepared = await rpc<{ ready: boolean; utterances: string[] }>(
+    "voice/prepare",
+    { text, voiceId: opts.voiceId, botId: opts.botId },
+    { privateSpaceId },
+  );
+  if (!prepared.ready) return false;
+  for (const utterance of prepared.utterances) {
+    await playMpeg(await speakUtterance(utterance, { ...opts, privateSpaceId }));
+  }
+  return true;
+}
 
 export async function speakUtterance(
   text: string,
-  opts: { voiceId?: string; botId?: string } = {},
+  opts: SpeechOptions & { privateSpaceId?: string | null } = {},
 ): Promise<Uint8Array> {
   const res = await fetch(`${currentApiBase()}/api/voice/speak`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
       origin: "rakazo://",
-      ...(await authHeaders()),
+      ...(await authHeaders(opts.privateSpaceId)),
     },
     body: JSON.stringify({ text, voiceId: opts.voiceId, botId: opts.botId }),
   });

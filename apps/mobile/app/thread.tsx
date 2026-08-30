@@ -91,7 +91,7 @@ import {
   ThreadScrollBehavior,
   type ThreadScrollState,
 } from "../lib/thread-scroll";
-import { playMpeg, speakUtterance } from "../lib/voice";
+import { speakText } from "../lib/voice";
 
 type PendingAttachment = PickedAttachment & { threadKey: string };
 type AskAction = NonNullable<Extract<MessageBlock, { kind: "ask" }>["actions"]>[number];
@@ -1764,13 +1764,8 @@ function memberName(
 async function speakMessage(botId: string, message: MobileMessage) {
   const text = blockText(message);
   if (!text.trim()) return;
-  const prepared = await rpc<{ ready: boolean; utterances: string[] }>("voice/prepare", {
-    text,
-    botId,
-  });
-  if (!prepared.ready) throw new Error("Add a voice provider in Voice settings.");
-  for (const utterance of prepared.utterances) {
-    await playMpeg(await speakUtterance(utterance, { botId }));
+  if (!(await speakText(text, { botId }))) {
+    throw new Error("Add a voice provider in Voice settings.");
   }
 }
 

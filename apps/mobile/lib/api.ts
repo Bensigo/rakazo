@@ -80,6 +80,10 @@ export async function selectPrivateSpace(id: string) {
   }
 }
 
+export function selectedPrivateSpaceId(): string | null {
+  return cachedPrivateSpaceId || null;
+}
+
 async function clearPrivateSpace(): Promise<boolean> {
   cachedPrivateSpaceId = "";
   try {
@@ -173,11 +177,13 @@ export async function resetApiBase(): Promise<EndpointResult> {
   return { ok: true, url };
 }
 
-export async function authHeaders(): Promise<Record<string, string>> {
+export async function authHeaders(
+  privateSpaceId: string | null = selectedPrivateSpaceId(),
+): Promise<Record<string, string>> {
   const token = await loadSessionToken();
   return {
     ...(token ? { authorization: `Bearer ${token}` } : {}),
-    ...(cachedPrivateSpaceId ? { "x-rakazo-workspace-id": cachedPrivateSpaceId } : {}),
+    ...(privateSpaceId ? { "x-rakazo-workspace-id": privateSpaceId } : {}),
   };
 }
 
@@ -227,7 +233,11 @@ export async function deleteAccount(password: string) {
 export async function rpc<T>(
   proc: string,
   body: unknown = {},
-  options: { signal?: AbortSignal; timeoutMs?: number | null } = {},
+  options: {
+    signal?: AbortSignal;
+    timeoutMs?: number | null;
+    privateSpaceId?: string | null;
+  } = {},
 ): Promise<T> {
   const controller = new AbortController();
   const abort = () => controller.abort();
@@ -241,7 +251,7 @@ export async function rpc<T>(
       headers: {
         "content-type": "application/json",
         origin: "rakazo://",
-        ...(await authHeaders()),
+        ...(await authHeaders(options.privateSpaceId)),
       },
       body: JSON.stringify({ json: body }),
       signal: controller.signal,

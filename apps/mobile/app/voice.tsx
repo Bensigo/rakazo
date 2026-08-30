@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { rpc } from "../lib/api";
-import { playMpeg, speakUtterance } from "../lib/voice";
+import { speakText } from "../lib/voice";
 
 type VoiceCatalogEntry = {
   id: string;
@@ -116,12 +116,9 @@ export default function VoiceSettings() {
     setPending(true);
     setError(null);
     try {
-      const prepared = await rpc<{ ready: boolean; utterances: string[] }>("voice/prepare", {
-        text: "Hi, this is how I'll sound when I read replies out loud.",
-      });
-      if (!prepared.ready) throw new Error("Connect a voice provider first.");
-      for (const utterance of prepared.utterances) {
-        await playMpeg(await speakUtterance(utterance));
+      const ready = await speakText("Hi, this is how I'll sound when I read replies out loud.");
+      if (!ready) {
+        throw new Error("Connect a voice provider first.");
       }
       setNotice("If you heard that, voice is ready.");
     } catch (err) {
