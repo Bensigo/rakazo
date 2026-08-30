@@ -2,7 +2,11 @@ import * as SecureStore from "expo-secure-store";
 
 const SESSION_KEY = "rakazo.session_token";
 
+/** In-memory gate so a failed SecureStore wipe cannot keep sending the old bearer. */
+let sessionInvalidated = false;
+
 export async function loadSessionToken() {
+  if (sessionInvalidated) return "";
   try {
     return (await SecureStore.getItemAsync(SESSION_KEY)) ?? "";
   } catch {
@@ -11,17 +15,24 @@ export async function loadSessionToken() {
 }
 
 export async function saveSessionToken(token: string) {
+  sessionInvalidated = false;
   await SecureStore.setItemAsync(SESSION_KEY, token);
 }
 
-export async function clearSessionToken() {
+/** Clears the session. Returns false only when SecureStore could neither delete nor overwrite. */
+export async function clearSessionToken(): Promise<boolean> {
   try {
     await SecureStore.deleteItemAsync(SESSION_KEY);
+    sessionInvalidated = false;
+    return true;
   } catch {
     try {
       await SecureStore.setItemAsync(SESSION_KEY, "");
+      sessionInvalidated = false;
+      return true;
     } catch {
-      // Best-effort clear so endpoint switches do not keep sending the old bearer.
+      sessionInvalidated = true;
+      return false;
     }
   }
 }

@@ -77,12 +77,18 @@ export async function selectPrivateSpace(id: string) {
   }
 }
 
-async function clearPrivateSpace() {
+async function clearPrivateSpace(): Promise<boolean> {
   cachedPrivateSpaceId = "";
   try {
     await SecureStore.deleteItemAsync(PRIVATE_SPACE_KEY);
+    return true;
   } catch {
-    // Keep sign-out and account deletion reliable when secure storage is unavailable.
+    try {
+      await SecureStore.setItemAsync(PRIVATE_SPACE_KEY, "");
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 
@@ -92,10 +98,11 @@ export async function saveApiBase(input: string): Promise<EndpointResult> {
   if (parsed.url === defaultApiBase()) return resetApiBase();
   const previous = currentApiBase();
   if (parsed.url !== previous) {
-    // Clear credentials before activating the new origin so a SecureStore
-    // failure cannot leave the old bearer/workspace attached to the new host.
-    await clearSessionToken();
-    await clearPrivateSpace();
+    const sessionCleared = await clearSessionToken();
+    const spaceCleared = await clearPrivateSpace();
+    if (!sessionCleared || !spaceCleared) {
+      return { ok: false, error: "Could not clear the previous server session" };
+    }
   }
   await SecureStore.setItemAsync(ENDPOINT_KEY, parsed.url);
   cachedApiBase = parsed.url;
@@ -106,8 +113,11 @@ export async function resetApiBase(): Promise<EndpointResult> {
   const previous = currentApiBase();
   const url = defaultApiBase();
   if (url !== previous) {
-    await clearSessionToken();
-    await clearPrivateSpace();
+    const sessionCleared = await clearSessionToken();
+    const spaceCleared = await clearPrivateSpace();
+    if (!sessionCleared || !spaceCleared) {
+      return { ok: false, error: "Could not clear the previous server session" };
+    }
   }
   try {
     await SecureStore.deleteItemAsync(ENDPOINT_KEY);

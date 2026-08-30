@@ -30,8 +30,17 @@ describe("mobile session storage", () => {
 
   it("overwrites the token when SecureStore delete fails", async () => {
     vi.mocked(SecureStore.deleteItemAsync).mockRejectedValueOnce(new Error("device locked"));
-    await clearSessionToken();
+    await expect(clearSessionToken()).resolves.toBe(true);
     expect(SecureStore.setItemAsync).toHaveBeenCalledWith("rakazo.session_token", "");
+  });
+
+  it("invalidates the in-memory session when SecureStore cannot clear the token", async () => {
+    vi.mocked(SecureStore.getItemAsync).mockResolvedValue("secret-token");
+    vi.mocked(SecureStore.deleteItemAsync).mockRejectedValue(new Error("device locked"));
+    vi.mocked(SecureStore.setItemAsync).mockRejectedValue(new Error("device locked"));
+
+    await expect(clearSessionToken()).resolves.toBe(false);
+    await expect(loadSessionToken()).resolves.toBe("");
   });
 
   it("returns an empty token when secure storage is empty or unavailable", async () => {

@@ -118,6 +118,21 @@ describe("mobile API authentication", () => {
     expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith("rakazo.private_space_id");
     await resetApiBase();
   });
+
+  it("refuses to switch endpoints when SecureStore cannot clear credentials", async () => {
+    await selectPrivateSpace("space-support");
+    vi.mocked(SecureStore.deleteItemAsync).mockRejectedValue(new Error("device locked"));
+    vi.mocked(SecureStore.setItemAsync).mockRejectedValue(new Error("device locked"));
+
+    await expect(saveApiBase("https://second-server.example")).resolves.toEqual({
+      ok: false,
+      error: "Could not clear the previous server session",
+    });
+    expect(SecureStore.setItemAsync).not.toHaveBeenCalledWith(
+      "rakazo.api_base",
+      "https://second-server.example",
+    );
+  });
 });
 
 describe("mobile thread subscription", () => {
