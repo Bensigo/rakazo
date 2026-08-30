@@ -39,7 +39,7 @@ describe("remote MCP URL policy", () => {
   });
 
   it("allows Tailscale MagicDNS hosts that resolve to CGNAT addresses", async () => {
-    const magicDns = "https://api.tail12345.ts.net/openapi.json";
+    const magicDns = "https://box.tail12345.ts.net/openapi.json";
     await expect(
       assertSafeRemoteUrl(magicDns, async () => [{ address: "100.64.1.2", family: 4 as const }]),
     ).resolves.toEqual(new URL(magicDns));
@@ -62,17 +62,17 @@ describe("remote MCP URL policy", () => {
 
   it("rejects MagicDNS hosts that resolve outside Tailscale CGNAT", async () => {
     await expect(
-      assertSafeRemoteUrl("https://api.tail12345.ts.net/openapi.json", async () => [
+      assertSafeRemoteUrl("https://box.tail12345.ts.net/openapi.json", async () => [
         { address: "127.0.0.1", family: 4 as const },
       ]),
     ).rejects.toThrow("private address");
     await expect(
-      assertSafeRemoteUrl("https://api.tail12345.ts.net/openapi.json", async () => [
+      assertSafeRemoteUrl("https://box.tail12345.ts.net/openapi.json", async () => [
         { address: "10.1.2.3", family: 4 as const },
       ]),
     ).rejects.toThrow("private address");
     await expect(
-      assertSafeRemoteUrl("https://api.tail12345.ts.net/openapi.json", async () => [
+      assertSafeRemoteUrl("https://box.tail12345.ts.net/openapi.json", async () => [
         { address: "169.254.169.254", family: 4 as const },
       ]),
     ).rejects.toThrow("private address");
