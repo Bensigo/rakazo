@@ -182,6 +182,35 @@ describe("mobile API authentication", () => {
       "x-rakazo-workspace-id": "space-support",
     });
   });
+
+  it("keeps the in-memory session across consecutive failed endpoint switches", async () => {
+    vi.mocked(SecureStore.getItemAsync).mockImplementation(async (key) => {
+      if (key === "rakazo.session_token") return "session-token";
+      return null;
+    });
+    await selectPrivateSpace("space-support");
+    vi.mocked(SecureStore.deleteItemAsync).mockImplementation(async (key) => {
+      if (key === "rakazo.private_space_id") throw new Error("device locked");
+    });
+    vi.mocked(SecureStore.setItemAsync).mockImplementation(async (key, value) => {
+      if (key === "rakazo.session_token" || (key === "rakazo.private_space_id" && value === "")) {
+        throw new Error("device locked");
+      }
+    });
+
+    await expect(saveApiBase("https://second-server.example")).resolves.toMatchObject({ ok: false });
+    vi.mocked(SecureStore.getItemAsync).mockResolvedValue(null);
+    await expect(saveApiBase("https://third-server.example")).resolves.toMatchObject({ ok: false });
+
+    await expect(authHeaders()).resolves.toEqual({
+      authorization: "Bearer session-token",
+      "x-rakazo-workspace-id": "space-support",
+    });
+    expect(SecureStore.setItemAsync).not.toHaveBeenCalledWith(
+      "rakazo.api_base",
+      expect.stringMatching(/second-server|third-server/),
+    );
+  });
 });
 
 describe("mobile thread subscription", () => {
