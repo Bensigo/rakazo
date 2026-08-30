@@ -106,8 +106,14 @@ export async function fetchSafeWebText(
       redirectsRemaining: MAX_REDIRECTS,
     });
   } finally {
-    // Cleanup must not extend the operation budget past the shared deadline.
+    // Race graceful close against the deadline, then always destroy so a hung
+    // close cannot retain sockets/FDs after we stop awaiting.
     await withAbort(cleanup(), signal).catch(() => undefined);
+    try {
+      dispatcher.destroy();
+    } catch {
+      // already closed / destroyed
+    }
   }
 }
 
