@@ -145,17 +145,21 @@ async function followRedirects(
     throw abortError(state.signal);
   }
   const validated = await assertSafeWebUrl(rawUrl, state.resolve, state.signal);
-  const response = await state.baseFetch(validated.href, {
-    method: "GET",
-    redirect: "manual",
-    signal: state.signal,
-    headers: {
-      "user-agent": state.userAgent,
-      accept: "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.5",
-      ...state.headers,
-    },
-    dispatcher: state.dispatcher,
-  } as RequestInit & { dispatcher: Agent });
+  // Race fetch against the deadline — injected fetch may ignore init.signal.
+  const response = await withAbort(
+    state.baseFetch(validated.href, {
+      method: "GET",
+      redirect: "manual",
+      signal: state.signal,
+      headers: {
+        "user-agent": state.userAgent,
+        accept: "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.5",
+        ...state.headers,
+      },
+      dispatcher: state.dispatcher,
+    } as RequestInit & { dispatcher: Agent }),
+    state.signal,
+  );
 
   if (response.status >= 300 && response.status < 400) {
     if (state.redirectsRemaining <= 0) {

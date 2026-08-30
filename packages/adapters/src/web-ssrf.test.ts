@@ -275,6 +275,28 @@ describe("web SSRF policy", () => {
     expect(Date.now() - started).toBeLessThan(500);
   });
 
+  it("aborts when fetch itself ignores the abort signal", async () => {
+    const fetchMock: typeof fetch = async () =>
+      new Promise(() => {
+        // never settles — ignores init.signal
+      });
+
+    let destroyed = false;
+    const started = Date.now();
+    await expect(
+      fetchSafeWebText("https://example.test/hang-fetch", {
+        fetch: fetchMock,
+        resolveHostname: publicResolver,
+        timeoutMs: 40,
+        destroy: () => {
+          destroyed = true;
+        },
+      }),
+    ).rejects.toThrow();
+    expect(destroyed).toBe(true);
+    expect(Date.now() - started).toBeLessThan(500);
+  });
+
   it("finishes when the deadline fires despite hanging body cancel and close", async () => {
     let bodyCancelStarted = false;
     let cleanupStarted = false;
