@@ -532,12 +532,12 @@ describeWithDatabase("API authorization and resource isolation", () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: original.workspaceId,
-          bots: [expect.objectContaining({ id: originalBot.id, notifyOnFinish: true })],
+          bots: [expect.objectContaining({ id: originalBot.id, notifyOnFinish: false })],
         }),
         expect.objectContaining({
           id: support.id,
           name: "Customer support",
-          bots: [expect.objectContaining({ id: supportBot.id, notifyOnFinish: true })],
+          bots: [expect.objectContaining({ id: supportBot.id, notifyOnFinish: false })],
         }),
       ]),
     );
