@@ -65,10 +65,8 @@ describe("Speaker", () => {
         pause() {}
       },
     );
-    vi.stubGlobal("URL", {
-      createObjectURL: () => "blob:voice",
-      revokeObjectURL: () => undefined,
-    });
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:voice");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
 
     const speaker = new Speaker();
     vi.spyOn(
