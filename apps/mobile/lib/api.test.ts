@@ -20,7 +20,12 @@ import {
   signOut,
   subscribeThread,
 } from "./api.js";
-import { clearSessionToken, saveSessionToken, snapshotSessionToken } from "./session.js";
+import {
+  clearSessionToken,
+  restoreSessionToken,
+  saveSessionToken,
+  snapshotSessionToken,
+} from "./session.js";
 
 vi.mock("expo-secure-store", () => ({
   getItemAsync: vi.fn(),
@@ -38,11 +43,12 @@ afterEach(() => {
 });
 
 describe("mobile API authentication", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.restoreAllMocks();
     vi.mocked(SecureStore.getItemAsync).mockReset();
     vi.mocked(SecureStore.setItemAsync).mockReset();
     vi.mocked(SecureStore.deleteItemAsync).mockReset();
+    await restoreSessionToken("");
   });
 
   it("persists a successful sign-in token and sends the native origin", async () => {

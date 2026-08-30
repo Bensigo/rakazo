@@ -19,10 +19,11 @@ vi.mock("./live-notifications.js", () => ({
 }));
 
 describe("mobile session storage", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.mocked(SecureStore.getItemAsync).mockReset();
     vi.mocked(SecureStore.setItemAsync).mockReset();
     vi.mocked(SecureStore.deleteItemAsync).mockReset();
+    await restoreSessionToken("");
   });
 
   it("stores and clears only the session token key", async () => {
@@ -54,6 +55,10 @@ describe("mobile session storage", () => {
 
     vi.mocked(SecureStore.getItemAsync).mockRejectedValueOnce(new Error("device locked"));
     await expect(loadSessionToken()).resolves.toBe("");
+
+    expect(SecureStore.getItemAsync).toHaveBeenCalledTimes(2);
+    expect(SecureStore.getItemAsync).toHaveBeenNthCalledWith(1, "rakazo.session_token");
+    expect(SecureStore.getItemAsync).toHaveBeenNthCalledWith(2, "rakazo.session_token");
   });
 
   it("restores the active session in memory when persistence is unavailable", async () => {
@@ -69,7 +74,6 @@ describe("mobile session storage", () => {
   });
 
   it("distinguishes an unreadable token store from an empty session", async () => {
-    await saveSessionToken("secret-token");
     vi.mocked(SecureStore.getItemAsync).mockRejectedValueOnce(new Error("device locked"));
 
     await expect(snapshotSessionToken()).resolves.toEqual({ ok: false });
