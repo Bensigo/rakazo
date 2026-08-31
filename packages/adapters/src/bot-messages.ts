@@ -62,7 +62,7 @@ export async function messageBot(
   deps: Pick<ExecutorDeps, "prisma" | "events" | "jobs">,
   run: {
     id: string;
-    workspaceId: string;
+    spaceId: string;
     threadId: string;
     botId: string;
     userId: string;
@@ -92,7 +92,7 @@ export async function messageBot(
   const hop = nextBotMessageHop(sourceContext?.hop);
 
   const candidates = await deps.prisma.bot.findMany({
-    where: { workspaceId: run.workspaceId, userId: run.userId, archivedAt: null },
+    where: { spaceId: run.spaceId, userId: run.userId, archivedAt: null },
     select: { id: true, name: true, title: true, thread: { select: { id: true } } },
   });
   const target = resolveBotAddress(candidates, {
@@ -176,7 +176,7 @@ export async function messageBot(
         const senderStillRunning = await tx.run.findFirst({
           where: {
             id: run.id,
-            workspaceId: run.workspaceId,
+            spaceId: run.spaceId,
             threadId: run.threadId,
             botId: run.botId,
             userId: run.userId,
@@ -192,7 +192,7 @@ export async function messageBot(
         const stillAddressable = await tx.bot.findFirst({
           where: {
             id: target.id,
-            workspaceId: run.workspaceId,
+            spaceId: run.spaceId,
             userId: run.userId,
             archivedAt: null,
           },
@@ -233,7 +233,7 @@ export async function messageBot(
         });
         const task = await tx.task.create({
           data: {
-            workspaceId: run.workspaceId,
+            spaceId: run.spaceId,
             botId: target.id,
             threadId: targetThreadId,
             userId: run.userId,
@@ -243,7 +243,7 @@ export async function messageBot(
         });
         const nextRun = await tx.run.create({
           data: {
-            workspaceId: run.workspaceId,
+            spaceId: run.spaceId,
             botId: target.id,
             threadId: targetThreadId,
             taskId: task.id,
@@ -256,7 +256,7 @@ export async function messageBot(
         });
         await tx.message.update({ where: { id: inbound.id }, data: { runId: nextRun.id } });
         const inboundEvent = await appendEventInTransaction(tx, {
-          workspaceId: run.workspaceId,
+          spaceId: run.spaceId,
           threadId: targetThreadId,
           botId: target.id,
           type: "thread.message.created",
@@ -264,7 +264,7 @@ export async function messageBot(
           payload: { messageId: inbound.id, role: "user", blocks: [inboundBlock] },
         });
         const outboundEvent = await appendEventInTransaction(tx, {
-          workspaceId: run.workspaceId,
+          spaceId: run.spaceId,
           threadId: run.threadId,
           botId: run.botId,
           type: "thread.message.created",
@@ -318,7 +318,7 @@ export async function returnBotMessageOutcome(
   deps: Pick<ExecutorDeps, "prisma" | "events" | "jobs">,
   run: {
     id: string;
-    workspaceId: string;
+    spaceId: string;
     threadId: string;
     botId: string;
     userId: string;

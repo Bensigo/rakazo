@@ -18,13 +18,14 @@ import type {
   ProductEvent,
   Routine,
   SearchHit,
+  Space,
+  SpaceMemoryConfig,
   TaughtSkill,
   ThinkingLevel,
   ThreadMessage,
   ThreadSnapshot,
   VoiceInfo,
   VoiceStatus,
-  WorkspaceMemoryConfig,
 } from "@rakazo/contracts";
 import {
   ATTACHMENT_ALLOWED_MIME_TYPES,
@@ -73,6 +74,7 @@ import {
   Copy,
   Cpu,
   Gauge,
+  Lock,
   LogOut,
   Menu,
   Mic,
@@ -135,7 +137,7 @@ import { connectMcpOauth } from "../lib/mcp-connect";
 import { copyableMessageText } from "../lib/message-text";
 import { isFileDrag, revokePendingAttachmentPreviews } from "../lib/pending-attachments";
 import { markAfterPaint, markOnce } from "../lib/performance";
-import { rpc } from "../lib/rpc";
+import { clearSpaceSelection, rpc, selectedSpaceId, selectSpace } from "../lib/rpc";
 import {
   activeThreadRuns,
   clearActiveThreadRuns,
@@ -170,8 +172,8 @@ import {
   RoutineListRow,
   routineNeedsOneShotArm,
 } from "./RoutineEditor";
+import { SpaceSearchResults } from "./SpaceSearch";
 import { WindowChrome } from "./WindowChrome";
-import { WorkspaceSearchResults } from "./WorkspaceSearch";
 
 const BotContextMenu = lazy(() =>
   import("./BotContextMenu").then((module) => ({ default: module.BotContextMenu })),
@@ -278,6 +280,7 @@ export function ShellPage() {
   const pendingBotOrderRef = useRef<string[] | null>(null);
   const savingBotOrderRef = useRef(false);
   const [botSections, setBotSections] = useState<BotSection[]>([]);
+  const [spaces, setSpaces] = useState<Space[]>([]);
   const [archivedBots, setArchivedBots] = useState<Bot[]>([]);
   const [archivedGroups, setArchivedGroups] = useState<Group[]>([]);
   const [archivedOpen, setArchivedOpen] = useState(false);
@@ -371,7 +374,7 @@ export function ShellPage() {
   const [modelsOpen, setModelsOpen] = useState(false);
   const [memorySettingsOpen, setMemorySettingsOpen] = useState(false);
   const [memoryProviderConfig, setMemoryProviderConfig] = useState<
-    WorkspaceMemoryConfig | null | undefined
+    SpaceMemoryConfig | null | undefined
   >(undefined);
   const memoryProviderConfigRevision = useRef(0);
   const [voiceOpen, setVoiceOpen] = useState(false);
@@ -387,6 +390,7 @@ export function ShellPage() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [draggedBotId, setDraggedBotId] = useState<string | null>(null);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const [newSpaceOpen, setNewSpaceOpen] = useState(false);
   const [activityMode, setActivityMode] = useState(readActivityMode);
   const toggleActivityMode = useCallback(() => {
     setActivityMode((on) => {
@@ -608,13 +612,12 @@ export function ShellPage() {
       const archivedRequest = includeArchived ? ++archivedBotsRefreshEpoch.current : null;
       botsRefreshInFlight.current += 1;
       try {
-        const [list, sections, archived, groupList, archivedGroupList] = await Promise.all([
-          rpc.bots.list(),
-          rpc.botSections.list(),
+        const [navigation, archived, archivedGroupList] = await Promise.all([
+          rpc.spaces.list(),
           includeArchived ? rpc.bots.listArchived() : Promise.resolve(null),
-          rpc.groups.list(),
           includeArchived ? rpc.groups.listArchived() : Promise.resolve(null),
         ]);
+        const { bots: list, botSections: sections, groups: groupList } = navigation.current;
         markOnce("rk:renderer:bots-response");
         const botsFresh = request === botsRefreshEpoch.current;
         const archivedFresh =
@@ -634,6 +637,7 @@ export function ShellPage() {
         }
         setBotSections(sections);
         setGroups(groupList);
+        setSpaces(navigation.spaces);
         setInitialBotsLoaded(true);
         botsRefreshApplied.current = request;
         if (
@@ -835,9 +839,10 @@ export function ShellPage() {
         }
       });
     const appliedAtStart = botsRefreshApplied.current;
-    void Promise.all([takeInitialBootstrap(botId), rpc.groups.list()])
-      .then(([bootstrap, groupList]) => {
+    void takeInitialBootstrap(botId)
+      .then((bootstrap) => {
         if (cancelled) return;
+        const groupList = bootstrap.groups;
         setBootstrapMe(bootstrap.me);
         // Skip list/route writes only if a later refreshBots() successfully
         // committed (failed refreshes bump epoch but not botsRefreshApplied).
@@ -848,6 +853,7 @@ export function ShellPage() {
           setArchivedBots(bootstrap.archivedBots);
           setArchivedGroups(bootstrap.archivedGroups);
           setGroups(groupList);
+          setSpaces(bootstrap.spaces);
           setInitialBotsLoaded(true);
         }
         if (!groupId && bootstrap.thread) {
@@ -1293,28 +1299,84 @@ export function ShellPage() {
     };
   }, [activeGroup?.id, groupId, notifyBrowserForEvent]);
 
-  const filtered = useMemo(
-    () =>
-      bots.filter((b) =>
-        `${b.name} ${b.title ?? ""} ${b.preview ?? ""}`.toLowerCase().includes(query.toLowerCase()),
-      ),
-    [bots, query],
-  );
-  const filteredGroups = useMemo(
-    () =>
-      groups.filter((g) => `${g.name} ${g.preview}`.toLowerCase().includes(query.toLowerCase())),
-    [groups, query],
-  );
-  const sidebarGroups = useMemo(
-    () =>
-      groupBotsForSidebar(
+  const sidebarGroups = useMemo(() => {
+    const needle = query.toLowerCase();
+    const sidebarSpaces =
+      spaces.length > 0
+        ? spaces.map((space) =>
+            space.id === bootstrapMe?.spaceId ? { ...space, bots, groups, botSections } : space,
+          )
+        : bootstrapMe
+          ? [
+              {
+                id: bootstrapMe.spaceId,
+                name: "Personal",
+                isDefault: true,
+                bots,
+                groups,
+                botSections,
+              },
+            ]
+          : [];
+    const showSpaceNames = sidebarSpaces.length > 1;
+    return sidebarSpaces.flatMap((space) => {
+      const visibleBots = space.bots.filter((bot) =>
+        `${bot.name} ${bot.title ?? ""} ${bot.preview ?? ""}`.toLowerCase().includes(needle),
+      );
+      const visibleGroups = space.groups.filter((group) =>
+        `${group.name} ${group.preview}`.toLowerCase().includes(needle),
+      );
+      const sections = groupBotsForSidebar(
         [
-          ...filtered.map((chat) => ({ kind: "bot" as const, chat })),
-          ...filteredGroups.map((chat) => ({ kind: "group" as const, chat })),
+          ...visibleBots.map((chat) => ({ kind: "bot" as const, chat })),
+          ...visibleGroups.map((chat) => ({ kind: "group" as const, chat })),
         ].map((item) => ({ ...item, pinned: item.chat.pinned, sectionId: item.chat.sectionId })),
-        botSections,
-      ),
-    [botSections, filtered, filteredGroups],
+        space.botSections,
+      ).map((group) => ({
+        ...group,
+        key: showSpaceNames ? `space:${space.id}:${group.key}` : group.key,
+        title: showSpaceNames
+          ? group.title
+            ? `${space.name} · ${group.title}`
+            : space.name
+          : group.title,
+        showLock: showSpaceNames,
+        emptySpaceId: undefined as string | undefined,
+      }));
+      if (sections.length > 0) return sections;
+      // Keep empty spaces selectable; chat clicks are the only switch control.
+      if (!showSpaceNames) return [];
+      if (needle && (space.bots.length > 0 || space.groups.length > 0)) return [];
+      return [
+        {
+          key: `space:${space.id}:empty`,
+          title: space.name,
+          bots: [],
+          showLock: true,
+          emptySpaceId: space.id,
+        },
+      ];
+    });
+  }, [bootstrapMe, botSections, bots, groups, spaces, query]);
+
+  const openSpaceChat = useCallback(
+    (spaceId: string, path: string) => {
+      setMobileSidebarOpen(false);
+      const previousSpaceId = selectedSpaceId();
+      // Persist the active space (including primary) so voice/RPC headers match the chat.
+      const selectionStored = selectSpace(spaceId);
+      if (!selectionStored) return;
+      const previousEffective = previousSpaceId ?? bootstrapMe?.spaceId;
+      const boundaryChanged = previousEffective !== spaceId;
+      // Soft-navigate within the same space; reload only when the auth boundary changes
+      // so bootstrapped bots/groups match the request header.
+      if (boundaryChanged) {
+        window.location.assign(path);
+        return;
+      }
+      navigate(path);
+    },
+    [bootstrapMe?.spaceId, navigate],
   );
   const flushBotOrder = useCallback(async () => {
     if (savingBotOrderRef.current) return;
@@ -1375,11 +1437,11 @@ export function ShellPage() {
     },
     [userId],
   );
-  const workspaceQuery = query.trim();
-  const showWorkspaceSearch = workspaceQuery.length > 0;
+  const spaceQuery = query.trim();
+  const showSpaceSearch = spaceQuery.length > 0;
 
   useEffect(() => {
-    if (!showWorkspaceSearch) {
+    if (!showSpaceSearch) {
       setSearchHits([]);
       setSearchLoading(false);
       return;
@@ -1388,7 +1450,7 @@ export function ShellPage() {
     const timer = window.setTimeout(() => {
       setSearchLoading(true);
       void rpc.search
-        .query({ q: workspaceQuery })
+        .query({ q: spaceQuery })
         .then((result) => {
           if (!abort.signal.aborted) setSearchHits(result.hits);
         })
@@ -1403,7 +1465,7 @@ export function ShellPage() {
       abort.abort();
       window.clearTimeout(timer);
     };
-  }, [showWorkspaceSearch, workspaceQuery]);
+  }, [showSpaceSearch, spaceQuery]);
 
   async function jumpToSearchHit(hit: SearchHit) {
     setQuery("");
@@ -2251,6 +2313,18 @@ export function ShellPage() {
                 >
                   <Trans>New group</Trans>
                 </button>
+                <div className="my-1 border-t border-[#26262A]" />
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3.5 py-2 text-start text-[14px] text-[#ECECEE] hover:bg-[#1A1A1D]"
+                  onClick={() => {
+                    setCreateMenuOpen(false);
+                    setNewSpaceOpen(true);
+                  }}
+                >
+                  <Lock size={14} strokeWidth={1.8} aria-hidden="true" />
+                  <Trans>New space</Trans>
+                </button>
               </div>
             ) : null}
           </div>
@@ -2265,8 +2339,8 @@ export function ShellPage() {
           />
         </div>
         <div className="rk-scroll flex flex-1 flex-col gap-0.5 overflow-y-auto px-2.5 pb-2.5">
-          {showWorkspaceSearch ? (
-            <WorkspaceSearchResults
+          {showSpaceSearch ? (
+            <SpaceSearchResults
               hits={searchHits}
               loading={searchLoading}
               onSelect={(hit) => void jumpToSearchHit(hit)}
@@ -2294,21 +2368,40 @@ export function ShellPage() {
                         <button
                           type="button"
                           className="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium text-[#6C6C70] hover:bg-[#1A1A1D] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#8B5CF6]"
-                          onClick={() => toggleSidebarSection(group.key)}
-                          aria-expanded={!collapsed}
+                          onClick={() => {
+                            if (group.emptySpaceId) {
+                              openSpaceChat(group.emptySpaceId, "/onboarding");
+                              return;
+                            }
+                            toggleSidebarSection(group.key);
+                          }}
+                          aria-expanded={group.emptySpaceId ? undefined : !collapsed}
                           aria-label={
-                            collapsed ? t`Expand ${group.title}` : t`Collapse ${group.title}`
+                            group.emptySpaceId
+                              ? t`Open ${group.title}`
+                              : collapsed
+                                ? t`Expand ${group.title}`
+                                : t`Collapse ${group.title}`
                           }
                         >
-                          <span>{group.title}</span>
-                          <ChevronDown
-                            size={14}
-                            strokeWidth={1.8}
-                            className={
-                              collapsed ? "-rotate-90 transition-transform" : "transition-transform"
-                            }
-                            aria-hidden="true"
-                          />
+                          <span className="flex min-w-0 items-center gap-1.5 truncate">
+                            {group.showLock ? (
+                              <Lock size={11} strokeWidth={2} aria-hidden="true" />
+                            ) : null}
+                            <span className="truncate">{group.title}</span>
+                          </span>
+                          {group.emptySpaceId ? null : (
+                            <ChevronDown
+                              size={14}
+                              strokeWidth={1.8}
+                              className={
+                                collapsed
+                                  ? "-rotate-90 transition-transform"
+                                  : "transition-transform"
+                              }
+                              aria-hidden="true"
+                            />
+                          )}
                         </button>
                       </div>
                     ) : null}
@@ -2359,14 +2452,15 @@ export function ShellPage() {
                             reorderRosterBot(item.chat.id, target, groupBotIds);
                           }}
                           onClick={() => {
-                            setMobileSidebarOpen(false);
-                            navigate(
+                            openSpaceChat(
+                              item.chat.spaceId,
                               item.kind === "bot"
                                 ? `/app/${item.chat.id}`
                                 : `/app/g/${item.chat.id}`,
                             );
                           }}
                           onContextMenu={(event) => {
+                            if (item.chat.spaceId !== bootstrapMe?.spaceId) return;
                             event.preventDefault();
                             setBotMenu({
                               kind: item.kind,
@@ -2471,7 +2565,7 @@ export function ShellPage() {
               })}
             </>
           )}
-          {archivedBots.length + archivedGroups.length > 0 && !showWorkspaceSearch ? (
+          {archivedBots.length + archivedGroups.length > 0 && !showSpaceSearch ? (
             <div className="mt-2 border-t border-[#202023] pt-2">
               <button
                 type="button"
@@ -2644,7 +2738,12 @@ export function ShellPage() {
               ) : null}
               <button
                 type="button"
-                onClick={() => void authClient.signOut().then(() => navigate("/"))}
+                onClick={() =>
+                  void authClient.signOut().then(() => {
+                    clearSpaceSelection();
+                    navigate("/");
+                  })
+                }
                 className="flex w-full items-center gap-3 rounded-[11px] px-3 py-2.5 hover:bg-[#232327]"
               >
                 <LogOut size={16} strokeWidth={1.7} className="text-[#9A9AA0]" />
@@ -3377,6 +3476,21 @@ export function ShellPage() {
               );
               setNewSectionTarget(null);
               await refreshBots();
+            }}
+          />
+        ) : null}
+
+        {newSpaceOpen ? (
+          <NewSpaceDialog
+            onCancel={() => setNewSpaceOpen(false)}
+            onConfirm={async (name) => {
+              const space = await rpc.spaces.create({ name });
+              if (!selectSpace(space.id)) {
+                setNewSpaceOpen(false);
+                await refreshBots();
+                return;
+              }
+              window.location.assign("/onboarding");
             }}
           />
         ) : null}
@@ -5363,7 +5477,7 @@ function BotSettings({
             className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE]"
           >
             <option value="">
-              {t`Workspace default`}
+              {t`Space default`}
               {me?.defaultModel
                 ? ` (${catalogLabel(catalog, me.defaultProvider, me.defaultModel) ?? me.defaultModel})`
                 : ""}
@@ -5533,6 +5647,86 @@ function catalogLabel(
 ) {
   if (!provider) return undefined;
   return catalog.find((entry) => entry.provider === provider && entry.id === modelId)?.label;
+}
+
+function NewSpaceDialog({
+  onCancel,
+  onConfirm,
+}: {
+  onCancel: () => void;
+  onConfirm: (name: string) => Promise<void>;
+}) {
+  const { t } = useLingui();
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !saving) onCancel();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onCancel, saving]);
+
+  const create = () => {
+    const trimmed = name.trim();
+    if (!trimmed || saving) return;
+    setSaving(true);
+    setError(null);
+    void onConfirm(trimmed).catch((reason: unknown) => {
+      setError(reason instanceof Error ? reason.message : t`Could not create space`);
+      setSaving(false);
+    });
+  };
+
+  return (
+    <div
+      role="presentation"
+      className="absolute inset-0 z-50 grid place-items-center bg-[rgba(4,4,5,.76)] px-5"
+      onPointerDown={() => {
+        if (!saving) onCancel();
+      }}
+    >
+      <BuiCard
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-space-title"
+        className="w-full max-w-[420px] border border-[#343438] p-5"
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center gap-2.5">
+          <Lock size={17} strokeWidth={1.8} className="text-[#A78BFA]" aria-hidden="true" />
+          <h2 id="new-space-title" className="text-[17px] font-medium text-[#F1F1F2]">
+            <Trans>New space</Trans>
+          </h2>
+        </div>
+        <label className="mt-4 block text-[13.5px] text-[#C9C9CE]">
+          <Trans>Name</Trans>
+          <input
+            maxLength={60}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") create();
+              if (event.key === "Escape" && !saving) onCancel();
+            }}
+            placeholder={t`Customer support`}
+            className="mt-2 w-full rounded-[11px] border border-[#343438] bg-[#101012] px-3.5 py-2.5 text-[14.5px] text-[#ECECEE] outline-none focus:border-[#66666D]"
+          />
+        </label>
+        {error ? <p className="mt-3 text-[13.5px] text-[#FF5364]">{error}</p> : null}
+        <div className="mt-5 flex justify-end gap-2.5">
+          <BuiButton disabled={saving} onClick={onCancel}>
+            <Trans>Cancel</Trans>
+          </BuiButton>
+          <BuiButton tone="accent" disabled={saving || !name.trim()} onClick={create}>
+            {saving ? <Trans>Creating…</Trans> : <Trans>Create space</Trans>}
+          </BuiButton>
+        </div>
+      </BuiCard>
+    </div>
+  );
 }
 
 function NewBotSectionDialog({

@@ -33,7 +33,7 @@ describe("graphical computer spec", () => {
       name: "rakazo-bot-abc",
       image: COMPUTER_IMAGE,
       botId: "abc",
-      workspaceId: "ws",
+      spaceId: "ws",
       homePath: "/var/rakazo/homes/abc",
       networkMode: "rakazo_default",
     });
@@ -86,7 +86,7 @@ describe("graphical computer spec", () => {
       name: containerNameFor("bot_isolation"),
       image: COMPUTER_IMAGE,
       botId: "bot_isolation",
-      workspaceId: "ws",
+      spaceId: "ws",
       homePath: "/var/rakazo/homes/bot_isolation",
       networkMode,
     });
@@ -343,7 +343,7 @@ describe("graphical computer spec", () => {
       name: "rakazo-bot-ctrl",
       image: COMPUTER_IMAGE,
       botId: "ctrl",
-      workspaceId: "ws",
+      spaceId: "ws",
       homePath: "/var/rakazo/homes/ctrl",
     });
     expect(options.HostConfig.PortBindings["7070/tcp"]).toBeUndefined();

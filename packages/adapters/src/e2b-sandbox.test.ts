@@ -12,7 +12,7 @@ import {
 const context = {
   operationId: "e2b-test",
   traceId: "e2b-test",
-  workspaceId: "workspace",
+  spaceId: "workspace",
   userId: "user",
   signal: new AbortController().signal,
 };

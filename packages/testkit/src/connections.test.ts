@@ -13,7 +13,7 @@ import { sessionCookieHeader } from "./index.js";
 
 type App = { request: (input: string, init?: RequestInit) => Promise<Response> };
 type AppHandles = Awaited<ReturnType<typeof import("../../../apps/api/src/app.ts").createApp>>;
-type Actor = { workspaceId: string; userId: string };
+type Actor = { spaceId: string; userId: string };
 
 process.env.WAKEUP_DRIVER = "memory";
 process.env.SANDBOX_PROVIDER = "fake";
@@ -83,11 +83,11 @@ describeWithDatabase("Composio catalog reconciliation", () => {
     const duplicate = await createConnection(owner, "GMAIL");
     const otherProvider = await createConnection(owner, "SLACK");
     const otherUser = await createConnection(
-      { workspaceId: owner.workspaceId, userId: other.userId },
+      { spaceId: owner.spaceId, userId: other.userId },
       "GMAIL",
     );
     const otherWorkspace = await createConnection(
-      { workspaceId: other.workspaceId, userId: owner.userId },
+      { spaceId: other.spaceId, userId: owner.userId },
       "GMAIL",
     );
 
@@ -175,7 +175,7 @@ describeWithDatabase("Composio catalog reconciliation", () => {
     const context = {
       operationId: "composio-product-test",
       traceId: "composio-product-test",
-      workspaceId: actor.workspaceId,
+      spaceId: actor.spaceId,
       userId: actor.userId,
       signal: new AbortController().signal,
       connectedConnections: [
@@ -243,7 +243,7 @@ describeWithDatabase("Composio catalog reconciliation", () => {
     const context = {
       operationId: "pipedream-product-test",
       traceId: "pipedream-product-test",
-      workspaceId: actor.workspaceId,
+      spaceId: actor.spaceId,
       userId: actor.userId,
       signal: new AbortController().signal,
       connectedConnections: [
@@ -320,7 +320,7 @@ describeWithDatabase("Composio catalog reconciliation", () => {
     const context = {
       operationId: "mcp-product-test",
       traceId: "mcp-product-test",
-      workspaceId: actor.workspaceId,
+      spaceId: actor.spaceId,
       userId: actor.userId,
       signal: new AbortController().signal,
     };
@@ -388,7 +388,7 @@ describeWithDatabase("Composio catalog reconciliation", () => {
     const adapterContext = {
       operationId: "api-connector-test",
       traceId: "api-connector-test",
-      workspaceId: actor.workspaceId,
+      spaceId: actor.spaceId,
       userId: actor.userId,
       signal: new AbortController().signal,
     };
@@ -427,7 +427,7 @@ describeWithDatabase("Composio catalog reconciliation", () => {
   async function createConnection(owner: Actor, provider: string) {
     return handles.prisma.connection.create({
       data: {
-        workspaceId: owner.workspaceId,
+        spaceId: owner.spaceId,
         userId: owner.userId,
         provider,
         displayName: provider,
@@ -452,7 +452,7 @@ async function connectRemote(composio: ComposioEmulator, actor: Actor, provider:
     {
       operationId: "connections-test",
       traceId: "connections-test",
-      workspaceId: actor.workspaceId,
+      spaceId: actor.spaceId,
       userId: actor.userId,
       signal: new AbortController().signal,
     },

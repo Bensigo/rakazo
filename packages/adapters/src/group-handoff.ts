@@ -15,7 +15,7 @@ export async function handoffToGroupBot(
   deps: Pick<ExecutorDeps, "prisma" | "events" | "jobs">,
   run: {
     id: string;
-    workspaceId: string;
+    spaceId: string;
     threadId: string;
     botId: string;
     userId: string;
@@ -46,7 +46,7 @@ export async function handoffToGroupBot(
       tx.run.findFirst({
         where: {
           id: run.id,
-          workspaceId: run.workspaceId,
+          spaceId: run.spaceId,
           threadId: run.threadId,
           botId: run.botId,
           userId: run.userId,
@@ -134,7 +134,7 @@ export async function handoffToGroupBot(
     });
     const task = await tx.task.create({
       data: {
-        workspaceId: run.workspaceId,
+        spaceId: run.spaceId,
         botId: targetId,
         threadId: run.threadId,
         userId: run.userId,
@@ -144,7 +144,7 @@ export async function handoffToGroupBot(
     });
     const nextRun = await tx.run.create({
       data: {
-        workspaceId: run.workspaceId,
+        spaceId: run.spaceId,
         botId: targetId,
         threadId: run.threadId,
         taskId: task.id,
@@ -155,7 +155,7 @@ export async function handoffToGroupBot(
       },
     });
     const event = await appendEventInTransaction(tx, {
-      workspaceId: run.workspaceId,
+      spaceId: run.spaceId,
       threadId: run.threadId,
       botId: run.botId,
       type: "group.handoff",

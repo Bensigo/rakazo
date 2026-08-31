@@ -7,6 +7,8 @@ import type {
   MessageBlock,
   ModelCatalogEntry,
   ModelCredential,
+  Space,
+  SpaceNavigation,
 } from "@rakazo/contracts";
 import {
   isRunTerminalEvent,
@@ -24,14 +26,19 @@ import { resumeLiveNotifications } from "./live-notifications";
 import {
   clearSessionToken,
   loadSessionToken,
+  restoreSessionToken,
   saveSessionToken,
+  snapshotSessionToken,
   tokenFromAuthResponse,
 } from "./session";
 
 const ENDPOINT_KEY = "rakazo.api_base";
+const SPACE_KEY = "rakazo.space_id";
+const SPACE_ROLLBACK_KEY = "rakazo.space_rollback";
 const RPC_TIMEOUT_MS = 8_000;
 
 let cachedApiBase: string | undefined;
+let cachedSpaceId = "";
 
 function responseErrorMessage(body: unknown, fallback: string): string {
   return typeof body === "object" && body && "message" in body
@@ -44,20 +51,171 @@ export function currentApiBase() {
 }
 
 export async function loadApiBase() {
+  let apiBase = defaultApiBase();
   try {
     const stored = await SecureStore.getItemAsync(ENDPOINT_KEY);
     if (stored) {
       const parsed = normalizeApiBase(stored);
       if (parsed.ok) {
-        cachedApiBase = parsed.url;
-        return cachedApiBase;
+        apiBase = parsed.url;
       }
     }
   } catch {
     // SecureStore is unavailable in some test / web hosts.
   }
-  cachedApiBase = defaultApiBase();
+  cachedApiBase = apiBase;
+  try {
+    const storedSpace = (await SecureStore.getItemAsync(SPACE_KEY)) ?? "";
+    cachedSpaceId = storedSpace;
+    if (!storedSpace) await recoverSpaceRollback(cachedApiBase);
+  } catch {
+    // Keep any in-memory selection when SecureStore is temporarily unavailable.
+  }
   return cachedApiBase;
+}
+
+export async function selectSpace(id: string) {
+  if (!(await clearStoredValue(SPACE_ROLLBACK_KEY))) return false;
+  try {
+    await SecureStore.setItemAsync(SPACE_KEY, id);
+    cachedSpaceId = id;
+    await resumeLiveNotifications(currentApiBase(), await loadSessionToken(), id).catch(
+      () => undefined,
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function selectedSpaceId(): string | null {
+  return cachedSpaceId || null;
+}
+
+export async function selectInitialSpace(id: string) {
+  if (selectedSpaceId()) return true;
+  return selectSpace(id);
+}
+
+async function clearSpace(): Promise<boolean> {
+  const spaceCleared = await clearStoredValue(SPACE_KEY);
+  const rollbackCleared = await clearStoredValue(SPACE_ROLLBACK_KEY);
+  if (!spaceCleared || !rollbackCleared) return false;
+  cachedSpaceId = "";
+  return true;
+}
+
+async function clearStoredValue(key: string): Promise<boolean> {
+  try {
+    await SecureStore.deleteItemAsync(key);
+    return true;
+  } catch {
+    try {
+      await SecureStore.setItemAsync(key, "");
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+async function snapshotSpace(): Promise<{ ok: true; value: string } | { ok: false }> {
+  if (cachedSpaceId) return { ok: true, value: cachedSpaceId };
+  try {
+    return { ok: true, value: (await SecureStore.getItemAsync(SPACE_KEY)) ?? "" };
+  } catch {
+    return { ok: false };
+  }
+}
+
+/** Clears session + space for an endpoint change. Restores both if either wipe fails. */
+async function clearCredentialsForEndpointChange(): Promise<
+  { ok: true; previousToken: string; previousSpace: string } | { ok: false; result: EndpointResult }
+> {
+  const previousToken = await snapshotSessionToken();
+  const previousSpace = await snapshotSpace();
+  if (!previousToken.ok || !previousSpace.ok) {
+    return {
+      ok: false,
+      result: { ok: false, error: "Could not clear the previous server session" },
+    };
+  }
+  const rollbackReady = previousSpace.value
+    ? await saveSpaceRollback(previousSpace.value)
+    : await clearStoredValue(SPACE_ROLLBACK_KEY);
+  if (!rollbackReady) {
+    return {
+      ok: false,
+      result: { ok: false, error: "Could not clear the previous server session" },
+    };
+  }
+  const sessionCleared = await clearSessionToken();
+  cachedSpaceId = "";
+  const spaceCleared = await clearStoredValue(SPACE_KEY);
+  if (sessionCleared && spaceCleared) {
+    return { ok: true, previousToken: previousToken.value, previousSpace: previousSpace.value };
+  }
+
+  await restoreCredentials(previousToken.value, previousSpace.value);
+  return { ok: false, result: { ok: false, error: "Could not clear the previous server session" } };
+}
+
+async function restoreCredentials(previousToken: string, previousSpace: string) {
+  if (previousToken) await restoreSessionToken(previousToken);
+  if (previousSpace) {
+    cachedSpaceId = previousSpace;
+    try {
+      await SecureStore.setItemAsync(SPACE_KEY, previousSpace);
+      await clearStoredValue(SPACE_ROLLBACK_KEY);
+    } catch {
+      // The endpoint-bound rollback record restores this selection after restart.
+    }
+  }
+  if (previousToken) {
+    await resumeLiveNotifications(currentApiBase(), previousToken, previousSpace).catch(
+      () => undefined,
+    );
+  }
+}
+
+async function saveSpaceRollback(spaceId: string): Promise<boolean> {
+  try {
+    await SecureStore.setItemAsync(
+      SPACE_ROLLBACK_KEY,
+      JSON.stringify({ apiBase: currentApiBase(), spaceId }),
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function recoverSpaceRollback(apiBase: string) {
+  const stored = await SecureStore.getItemAsync(SPACE_ROLLBACK_KEY);
+  if (!stored) return;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stored);
+  } catch {
+    await clearStoredValue(SPACE_ROLLBACK_KEY);
+    return;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    await clearStoredValue(SPACE_ROLLBACK_KEY);
+    return;
+  }
+  const rollback = parsed as { apiBase?: unknown; spaceId?: unknown };
+  if (rollback.apiBase !== apiBase || typeof rollback.spaceId !== "string" || !rollback.spaceId) {
+    await clearStoredValue(SPACE_ROLLBACK_KEY);
+    return;
+  }
+  try {
+    cachedSpaceId = rollback.spaceId;
+    await SecureStore.setItemAsync(SPACE_KEY, rollback.spaceId);
+    await clearStoredValue(SPACE_ROLLBACK_KEY);
+  } catch {
+    // Keep a valid recovery record for the next launch when storage is writable.
+  }
 }
 
 export async function saveApiBase(input: string): Promise<EndpointResult> {
@@ -65,28 +223,67 @@ export async function saveApiBase(input: string): Promise<EndpointResult> {
   if (!parsed.ok) return parsed;
   if (parsed.url === defaultApiBase()) return resetApiBase();
   const previous = currentApiBase();
-  await SecureStore.setItemAsync(ENDPOINT_KEY, parsed.url);
+  let cleared: { previousToken: string; previousSpace: string } | undefined;
+  if (parsed.url !== previous) {
+    const result = await clearCredentialsForEndpointChange();
+    if (!result.ok) return result.result;
+    cleared = result;
+  }
+  try {
+    await SecureStore.setItemAsync(ENDPOINT_KEY, parsed.url);
+  } catch {
+    if (cleared) await restoreCredentials(cleared.previousToken, cleared.previousSpace);
+    return { ok: false, error: "Could not save the server URL" };
+  }
   cachedApiBase = parsed.url;
-  if (parsed.url !== previous) await clearSessionToken();
+  await clearStoredValue(SPACE_ROLLBACK_KEY);
   return parsed;
 }
 
 export async function resetApiBase(): Promise<EndpointResult> {
   const previous = currentApiBase();
+  const url = defaultApiBase();
+  let cleared: { previousToken: string; previousSpace: string } | undefined;
+  if (url !== previous) {
+    const result = await clearCredentialsForEndpointChange();
+    if (!result.ok) return result.result;
+    cleared = result;
+  }
   try {
     await SecureStore.deleteItemAsync(ENDPOINT_KEY);
   } catch {
-    // ignore missing keys
+    if (cleared) {
+      await restoreCredentials(cleared.previousToken, cleared.previousSpace);
+      return { ok: false, error: "Could not clear the custom server URL" };
+    }
   }
-  const url = defaultApiBase();
   cachedApiBase = url;
-  if (url !== previous) await clearSessionToken();
+  await clearStoredValue(SPACE_ROLLBACK_KEY);
   return { ok: true, url };
 }
 
-async function authHeaders(): Promise<Record<string, string>> {
+export async function authHeaders(
+  spaceId: string | null = selectedSpaceId(),
+): Promise<Record<string, string>> {
   const token = await loadSessionToken();
-  return token ? { authorization: `Bearer ${token}` } : {};
+  return {
+    ...(token ? { authorization: `Bearer ${token}` } : {}),
+    ...(spaceId ? { "x-rakazo-space-id": spaceId } : {}),
+  };
+}
+
+export type ApiRequestContext = {
+  apiBase: string;
+  headers: Record<string, string>;
+};
+
+export async function captureApiRequestContext(): Promise<ApiRequestContext> {
+  const apiBase = currentApiBase();
+  const headers = await authHeaders(selectedSpaceId());
+  if (apiBase !== currentApiBase()) {
+    throw new Error("The server changed while starting the request");
+  }
+  return { apiBase, headers };
 }
 
 export async function signIn(email: string, password: string) {
@@ -101,8 +298,8 @@ export async function signIn(email: string, password: string) {
   }
   const token = tokenFromAuthResponse(res, body);
   if (!token) throw new Error("Sign-in did not return a session");
+  if (!(await clearSpace())) throw new Error("Could not clear the previous space");
   await saveSessionToken(token);
-  await resumeLiveNotifications(currentApiBase(), token).catch(() => undefined);
 }
 
 export async function signOut() {
@@ -112,7 +309,9 @@ export async function signOut() {
     method: "POST",
     headers: { "content-type": "application/json", origin: "rakazo://", ...headers },
   }).catch(() => undefined);
-  await clearSessionToken();
+  const sessionCleared = await clearSessionToken();
+  const spaceCleared = await clearSpace();
+  if (!sessionCleared || !spaceCleared) throw new Error("Could not clear the local session");
 }
 
 export async function deleteAccount(password: string) {
@@ -127,12 +326,17 @@ export async function deleteAccount(password: string) {
     throw new Error(responseErrorMessage(body, "Could not delete account"));
   }
   await clearSessionToken();
+  await clearSpace();
 }
 
 export async function rpc<T>(
   proc: string,
   body: unknown = {},
-  options: { signal?: AbortSignal; timeoutMs?: number | null } = {},
+  options: {
+    signal?: AbortSignal;
+    timeoutMs?: number | null;
+    requestContext?: ApiRequestContext;
+  } = {},
 ): Promise<T> {
   const controller = new AbortController();
   const abort = () => controller.abort();
@@ -141,12 +345,12 @@ export async function rpc<T>(
   const timer =
     options.timeoutMs === null ? undefined : setTimeout(abort, options.timeoutMs ?? RPC_TIMEOUT_MS);
   try {
-    const res = await fetch(`${currentApiBase()}/rpc/${proc}`, {
+    const res = await fetch(`${options.requestContext?.apiBase ?? currentApiBase()}/rpc/${proc}`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
         origin: "rakazo://",
-        ...(await authHeaders()),
+        ...(options.requestContext?.headers ?? (await authHeaders())),
       },
       body: JSON.stringify({ json: body }),
       signal: controller.signal,
@@ -177,19 +381,13 @@ export type MobileBot = Pick<
   | "updatedAt"
   | "computerMode"
 > &
-  Partial<Pick<Bot, "parentBotId">>;
+  Partial<Pick<Bot, "parentBotId" | "spaceId">>;
 
 export type MobileBotSection = BotSection;
 
 export type MobileMe = Pick<
   Me,
-  | "name"
-  | "email"
-  | "workspaceId"
-  | "defaultProvider"
-  | "defaultModel"
-  | "needsModel"
-  | "avatarStyle"
+  "name" | "email" | "spaceId" | "defaultProvider" | "defaultModel" | "needsModel" | "avatarStyle"
 >;
 
 export type MobileModel = ModelCatalogEntry;
@@ -218,7 +416,11 @@ export type MobileGroup = Pick<
   | "unread"
   | "updatedAt"
   | "members"
->;
+> &
+  Partial<Pick<Group, "spaceId">>;
+
+export type MobileSpace = Space;
+export type MobileSpaceNavigation = SpaceNavigation;
 
 export type MobileSnapshot = {
   botId?: string;

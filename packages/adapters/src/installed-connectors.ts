@@ -122,7 +122,7 @@ export class InstalledConnectorProvider implements ConnectorProvider {
   async discoverTools(context: AdapterContext): Promise<ConnectorTool[]> {
     const installs = await this.prisma.capabilityInstall.findMany({
       where: {
-        workspaceId: context.workspaceId,
+        spaceId: context.spaceId,
         userId: context.userId,
         kind: { in: ["mcp", "api"] },
       },
@@ -191,7 +191,7 @@ export class InstalledConnectorProvider implements ConnectorProvider {
     const install = await this.prisma.capabilityInstall.findFirst({
       where: {
         id: installId,
-        workspaceId: context.workspaceId,
+        spaceId: context.spaceId,
         userId: context.userId,
         kind: { in: ["mcp", "api"] },
       },
@@ -256,7 +256,7 @@ export class InstalledConnectorProvider implements ConnectorProvider {
     const row = await this.prisma.secret.findFirst({
       where: {
         id: install.secretId,
-        workspaceId: context.workspaceId,
+        spaceId: context.spaceId,
         userId: context.userId,
       },
     });

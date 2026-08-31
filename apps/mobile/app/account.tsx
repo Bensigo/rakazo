@@ -23,6 +23,7 @@ import {
   loadSessionToken,
   type MobileMe,
   rpc,
+  selectedSpaceId,
   signOut,
 } from "../lib/api";
 import { confirmDeleteBot } from "../lib/bot-lifecycle";
@@ -118,9 +119,15 @@ export default function Account() {
 
   async function handleSignOut() {
     setPending(true);
-    await signOut();
-    router.dismissAll();
-    router.replace("/sign-in");
+    setError(null);
+    try {
+      await signOut();
+      router.dismissAll();
+      router.replace("/sign-in");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not sign out");
+      setPending(false);
+    }
   }
 
   async function updateNotifications(next: LiveNotificationSettings) {
@@ -129,7 +136,12 @@ export default function Account() {
     setNotificationPending(true);
     setNotificationError(null);
     try {
-      await setLiveNotificationSettings(next, currentApiBase(), await loadSessionToken());
+      await setLiveNotificationSettings(
+        next,
+        currentApiBase(),
+        await loadSessionToken(),
+        selectedSpaceId() ?? "",
+      );
       if (next.liveConnection && !(await canPostPromotedNotifications())) {
         await openPromotedNotificationSettings();
       }

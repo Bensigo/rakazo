@@ -60,7 +60,7 @@ export async function sleepComputerIfIdle(
   const ctx = {
     operationId: "computer.sleep",
     traceId: "computer.sleep",
-    workspaceId: computer.workspaceId,
+    spaceId: computer.spaceId,
     userId: computer.userId,
     botId: computer.controlBotId ?? undefined,
     signal: new AbortController().signal,
@@ -145,7 +145,7 @@ export async function sleepComputerIfIdle(
   for (const bot of bots) {
     if (!bot.thread) continue;
     await deps.events.append({
-      workspaceId: computer.workspaceId,
+      spaceId: computer.spaceId,
       threadId: bot.thread.id,
       botId: bot.id,
       type: "computer.status",
@@ -163,7 +163,7 @@ function loadComputer(prisma: PrismaClient, computerId: string) {
       providerRef: true,
       kind: true,
       state: true,
-      workspaceId: true,
+      spaceId: true,
       userId: true,
       controlHolder: true,
       controlLeaseId: true,

@@ -96,7 +96,7 @@ describeIntegration("run executor lifecycle", () => {
     const executionId = approvalEffectKey(seeded.run.id, "destination.write", args);
     await handles.prisma.externalEffect.create({
       data: {
-        workspaceId: seeded.me.workspaceId,
+        spaceId: seeded.me.spaceId,
         runId: seeded.run.id,
         kind: "destination.write",
         idempotencyKey: executionId,
@@ -134,7 +134,7 @@ describeIntegration("run executor lifecycle", () => {
     const executionId = approvalEffectKey(seeded.run.id, "destination.write", args);
     const effect = await handles.prisma.externalEffect.create({
       data: {
-        workspaceId: seeded.me.workspaceId,
+        spaceId: seeded.me.spaceId,
         runId: seeded.run.id,
         kind: "destination.write",
         idempotencyKey: executionId,
@@ -144,7 +144,7 @@ describeIntegration("run executor lifecycle", () => {
     });
     await handles.prisma.actionApprovalRule.create({
       data: {
-        workspaceId: seeded.me.workspaceId,
+        spaceId: seeded.me.spaceId,
         createdByUserId: seeded.me.userId,
         effect: "require_approval",
         matchKind: "tool",
@@ -186,7 +186,7 @@ describeIntegration("run executor lifecycle", () => {
     });
     const events = createThreadEvents(handles.prisma);
     const input = {
-      workspaceId: seeded.me.workspaceId,
+      spaceId: seeded.me.spaceId,
       threadId: seeded.thread.id,
       botId: seeded.bot.id,
       runId: seeded.run.id,
@@ -239,7 +239,7 @@ describeIntegration("run executor lifecycle", () => {
 
     await expect(
       events.finalizeRun({
-        workspaceId: seeded.me.workspaceId,
+        spaceId: seeded.me.spaceId,
         threadId: seeded.thread.id,
         botId: seeded.bot.id,
         runId: seeded.run.id,
@@ -278,7 +278,7 @@ describeIntegration("run executor lifecycle", () => {
     } = {},
   ) {
     const cookie = await signup(`executor-${label}-${stamp}@rakazo.test`, `Executor ${label}`);
-    const me = await rpc<{ userId: string; workspaceId: string }>(cookie, "me");
+    const me = await rpc<{ userId: string; spaceId: string }>(cookie, "me");
     const bot = await rpc<{ id: string }>(cookie, "bots/create", {
       name: `Executor ${label}`,
       title: "",
@@ -289,7 +289,7 @@ describeIntegration("run executor lifecycle", () => {
     const thread = await handles.prisma.thread.findUniqueOrThrow({ where: { botId: bot.id } });
     const task = await handles.prisma.task.create({
       data: {
-        workspaceId: me.workspaceId,
+        spaceId: me.spaceId,
         botId: bot.id,
         threadId: thread.id,
         userId: me.userId,
@@ -299,7 +299,7 @@ describeIntegration("run executor lifecycle", () => {
     });
     const run = await handles.prisma.run.create({
       data: {
-        workspaceId: me.workspaceId,
+        spaceId: me.spaceId,
         botId: bot.id,
         threadId: thread.id,
         taskId: task.id,

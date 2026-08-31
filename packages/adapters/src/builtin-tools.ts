@@ -197,7 +197,7 @@ export const builtinAgentTools: ConnectorTool[] = [
   {
     name: "add_mcp_server",
     description:
-      "Connect an MCP tool server to this workspace when the user asks you to add one and provides the details (URL or command, optional token/headers/env). The server is created immediately and assigned to you. If it needs browser OAuth authorization, an approval card appears in the chat for the user to complete — tell them to click Authorize. Do not invent endpoints; only use details the user provided.",
+      "Connect an MCP tool server to this Space when the user asks you to add one and provides the details (URL or command, optional token/headers/env). The server is created immediately and assigned to you. If it needs browser OAuth authorization, an approval card appears in the chat for the user to complete — tell them to click Authorize. Do not invent endpoints; only use details the user provided.",
     inputSchema: {
       type: "object",
       properties: {
@@ -291,7 +291,7 @@ export const builtinAgentTools: ConnectorTool[] = [
     readOnly: true,
   },
   // Semantic-memory tools: exposed by selectMemoryTools() only when a
-  // workspace memory provider is configured (which hides `remember`).
+  // A Space memory provider is configured (which hides `remember`).
   {
     name: "save_memory",
     description:
@@ -517,6 +517,23 @@ export const builtinAgentTools: ConnectorTool[] = [
         },
       },
       required: ["name", "task"],
+    },
+  },
+  {
+    name: "create_space",
+    description:
+      "Propose a new space in the current organization when the user asks for a separate data boundary. A space can contain many bots and groups, but its chats, files, memory, tools, and integrations stay isolated from other spaces. This always shows the user a confirmation card before creation. Creating the space is the whole action; do not create bots in it unless the user asks later.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          minLength: 1,
+          maxLength: 60,
+          description: 'Short display name, e.g. "Customer support".',
+        },
+      },
+      required: ["name"],
     },
   },
   {

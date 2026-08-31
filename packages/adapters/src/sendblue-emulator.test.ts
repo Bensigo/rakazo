@@ -5,7 +5,7 @@ import { SendBlueEmulator } from "./sendblue-emulator.js";
 const context = {
   operationId: "op-1",
   traceId: "trace-1",
-  workspaceId: "ws-1",
+  spaceId: "ws-1",
   userId: "user-1",
   signal: new AbortController().signal,
 };

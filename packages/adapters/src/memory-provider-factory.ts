@@ -26,7 +26,7 @@ export interface ConfiguredMemoryProvider {
 }
 
 export interface MemoryProviderResolver {
-  resolve(workspaceId: string): Promise<ConfiguredMemoryProvider | null>;
+  resolve(spaceId: string): Promise<ConfiguredMemoryProvider | null>;
 }
 
 interface MemoryProviderAdapter {
@@ -97,15 +97,15 @@ function decodeCredentials(provider: string, plaintext: string): Record<string, 
   throw new Error(`Stored credentials for memory provider "${provider}" are invalid.`);
 }
 
-export class WorkspaceMemoryProviderResolver implements MemoryProviderResolver {
+export class SpaceMemoryProviderResolver implements MemoryProviderResolver {
   constructor(
-    private readonly prisma: Pick<PrismaClient, "workspaceMemoryConfig">,
+    private readonly prisma: Pick<PrismaClient, "spaceMemoryConfig">,
     private readonly secrets: EncryptedSecretStore,
   ) {}
 
-  async resolve(workspaceId: string): Promise<ConfiguredMemoryProvider | null> {
-    const config = await this.prisma.workspaceMemoryConfig.findUnique({
-      where: { workspaceId },
+  async resolve(spaceId: string): Promise<ConfiguredMemoryProvider | null> {
+    const config = await this.prisma.spaceMemoryConfig.findUnique({
+      where: { spaceId },
       include: { secret: true },
     });
     if (!config) return null;

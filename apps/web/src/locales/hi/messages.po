@@ -1617,7 +1617,7 @@ msgid "Low"
 msgstr "निम्न"
 
 #: src/pages/MemorySettingsOverlay.tsx:138
-msgid "Manage the workspace semantic memory provider."
+msgid "Manage the Space semantic memory provider."
 msgstr "वर्कस्पेस के सिमेंटिक मेमोरी प्रोवाइडर को प्रबंधित करें।"
 
 #: src/pages/BotContextMenu.tsx:96
@@ -1864,7 +1864,7 @@ msgstr "कोई मॉडल कैटलॉग उपलब्ध नही�
 msgid "No providers found."
 msgstr "कोई प्रोवाइडर नहीं मिला।"
 
-#: src/pages/WorkspaceSearch.tsx:23
+#: src/pages/SpaceSearch.tsx:23
 msgid "No results"
 msgstr "कोई परिणाम नहीं"
 
@@ -1965,7 +1965,7 @@ msgid "Opened its thread."
 msgstr "इसका थ्रेड खोला।"
 
 #: src/App.tsx:166
-msgid "Opening your workspace…"
+msgid "Opening your Space…"
 msgstr "आपका वर्कस्पेस खुल रहा है…"
 
 #: src/pages/ModelSettingsOverlay.tsx:636
@@ -2336,7 +2336,7 @@ msgstr "प्रोवाइडर्स खोजें"
 msgid "Search providers and models"
 msgstr "प्रोवाइडर्स और मॉडल खोजें"
 
-#: src/pages/WorkspaceSearch.tsx:16
+#: src/pages/SpaceSearch.tsx:16
 msgid "Searching…"
 msgstr "खोजा जा रहा है…"
 
@@ -2852,8 +2852,8 @@ msgid "Working…"
 msgstr "काम चल रहा है…"
 
 #: src/pages/Shell.tsx:4905
-msgid "Workspace default"
-msgstr "वर्कस्पेस डिफ़ॉल्ट"
+msgid "Space default"
+msgstr "स्पेस डिफ़ॉल्ट"
 
 #: src/pages/Shell.tsx:1257
 #: src/pages/Shell.tsx:1851

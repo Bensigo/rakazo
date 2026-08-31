@@ -1367,7 +1367,7 @@ function message(id: string, blocks: ThreadMessage["blocks"], seq = 3): ThreadMe
 function event(overrides: Partial<ProductEvent>): ProductEvent {
   return {
     id: "event-1",
-    workspaceId: "workspace-1",
+    spaceId: "workspace-1",
     threadId: "thread-1",
     botId: "bot-1",
     seq: 4,

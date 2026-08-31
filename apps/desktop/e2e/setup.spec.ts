@@ -209,7 +209,7 @@ test("an HTTP error document is not accepted after a healthy probe", async () =>
 
 test("a session-pending shell skeleton is not accepted as a ready app", async () => {
   const skeletonHtml = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Rakazo</title></head>
-<body><div id="root"><div data-rakazo-app-state="session-pending"><aside></aside><main><div>Opening your workspace…</div></main></div></div></body></html>`;
+<body><div id="root"><div data-rakazo-app-state="session-pending"><aside></aside><main><div>Opening your Space…</div></main></div></div></body></html>`;
   const skeleton = createServer((request, response) => {
     if (request.url === "/rpc/health" && request.method === "POST") {
       response.writeHead(200, { "content-type": "application/json; charset=utf-8" });

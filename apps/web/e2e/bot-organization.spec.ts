@@ -94,7 +94,7 @@ test("bots can be reordered by drag or keyboard and keep that order", async ({ p
     releaseStaleList = resolve;
   });
   let interceptedList = false;
-  await page.route("**/rpc/bots/list", async (route) => {
+  await page.route("**/rpc/spaces/list", async (route) => {
     if (interceptedList) {
       await route.continue();
       return;

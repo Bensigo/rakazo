@@ -79,7 +79,7 @@ const APP_NAMES: Record<string, string> = {
 
 async function requireBotThread(deps: OnboardingDeps, actor: Actor, botId: string) {
   const bot = await deps.prisma.bot.findFirst({
-    where: { id: botId, workspaceId: actor.workspaceId, userId: actor.userId },
+    where: { id: botId, spaceId: actor.spaceId, userId: actor.userId },
     include: { thread: true },
   });
   if (!bot?.thread) throw new IsolationError();
@@ -88,7 +88,7 @@ async function requireBotThread(deps: OnboardingDeps, actor: Actor, botId: strin
 
 async function post(
   deps: OnboardingDeps,
-  target: { workspaceId: string; botId: string; threadId: string },
+  target: { spaceId: string; botId: string; threadId: string },
   blocks: MessageBlock[],
 ): Promise<string> {
   const message = await createThreadMessage(deps.prisma, {
@@ -97,7 +97,7 @@ async function post(
     blocks,
   });
   await deps.events.append({
-    workspaceId: target.workspaceId,
+    spaceId: target.spaceId,
     threadId: target.threadId,
     botId: target.botId,
     type: "thread.message.created",
@@ -108,13 +108,13 @@ async function post(
 
 async function updateBlocks(
   deps: OnboardingDeps,
-  target: { workspaceId: string; botId: string; threadId: string },
+  target: { spaceId: string; botId: string; threadId: string },
   messageId: string,
   blocks: MessageBlock[],
 ): Promise<void> {
   await deps.prisma.message.update({ where: { id: messageId }, data: { blocks } });
   await deps.events.append({
-    workspaceId: target.workspaceId,
+    spaceId: target.spaceId,
     threadId: target.threadId,
     botId: target.botId,
     type: "thread.message.updated",
@@ -135,7 +135,7 @@ export async function startOnboarding(
     select: { name: true },
   });
   const firstName = (user?.name ?? "there").split(/\s+/)[0];
-  const target = { workspaceId: actor.workspaceId, botId: bot.id, threadId: thread.id };
+  const target = { spaceId: actor.spaceId, botId: bot.id, threadId: thread.id };
   await post(deps, target, [
     { kind: "text", text: `Hey ${firstName}. Fresh start on my side, so I’ll keep this short.` },
   ]);
@@ -157,7 +157,7 @@ export async function chooseFocus(
   const option = FOCUS_OPTIONS.find((entry) => entry.id === optionId);
   if (!option) throw new IsolationError();
   const { bot, thread } = await requireBotThread(deps, actor, botId);
-  const target = { workspaceId: actor.workspaceId, botId: bot.id, threadId: thread.id };
+  const target = { spaceId: actor.spaceId, botId: bot.id, threadId: thread.id };
 
   const recent = await deps.prisma.message.findMany({
     where: { threadId: thread.id },
@@ -186,7 +186,7 @@ export async function chooseFocus(
         .catalog({
           operationId: "onboarding.choose",
           traceId: "onboarding.choose",
-          workspaceId: actor.workspaceId,
+          spaceId: actor.spaceId,
           userId: actor.userId,
           botId: bot.id,
           signal: new AbortController().signal,
@@ -231,7 +231,7 @@ export async function markAppConnected(
   provider: string,
 ): Promise<void> {
   const { bot, thread } = await requireBotThread(deps, actor, botId);
-  const target = { workspaceId: actor.workspaceId, botId: bot.id, threadId: thread.id };
+  const target = { spaceId: actor.spaceId, botId: bot.id, threadId: thread.id };
   const messages = await deps.prisma.message.findMany({
     where: { threadId: thread.id },
     select: { id: true, blocks: true },

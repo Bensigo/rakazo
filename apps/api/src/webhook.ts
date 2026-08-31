@@ -11,7 +11,7 @@ export const WEBHOOK_SECRET_KIND = "webhook";
 
 export type WebhookEvents = {
   sendUserMessage(input: {
-    workspaceId: string;
+    spaceId: string;
     threadId: string;
     botId: string;
     userId: string;
@@ -105,7 +105,7 @@ export function mountWebhookHttpRoutes(app: Hono, deps: WebhookDeps) {
       where: { id: botId, archivedAt: null },
       select: {
         id: true,
-        workspaceId: true,
+        spaceId: true,
         userId: true,
         webhookSecretId: true,
         thread: { select: { id: true } },
@@ -119,12 +119,12 @@ export function mountWebhookHttpRoutes(app: Hono, deps: WebhookDeps) {
 
     const secret = await deps.prisma.secret.findUnique({
       where: { id: bot.webhookSecretId },
-      select: { id: true, ciphertext: true, kind: true, userId: true, workspaceId: true },
+      select: { id: true, ciphertext: true, kind: true, userId: true, spaceId: true },
     });
     if (!secret || secret.kind !== WEBHOOK_SECRET_KIND) {
       return unauthorized();
     }
-    if (secret.userId !== bot.userId || secret.workspaceId !== bot.workspaceId) {
+    if (secret.userId !== bot.userId || secret.spaceId !== bot.spaceId) {
       return unauthorized();
     }
 
@@ -149,7 +149,7 @@ export function mountWebhookHttpRoutes(app: Hono, deps: WebhookDeps) {
     const webhookRoutines = await deps.prisma.routine.findMany({
       where: {
         botId: bot.id,
-        workspaceId: bot.workspaceId,
+        spaceId: bot.spaceId,
         active: true,
         webhookEnabled: true,
       },
@@ -181,7 +181,7 @@ export function mountWebhookHttpRoutes(app: Hono, deps: WebhookDeps) {
       : undefined;
 
     const sent = await deps.events.sendUserMessage({
-      workspaceId: bot.workspaceId,
+      spaceId: bot.spaceId,
       threadId: bot.thread.id,
       botId: bot.id,
       userId: bot.userId,

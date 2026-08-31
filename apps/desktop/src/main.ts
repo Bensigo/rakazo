@@ -424,7 +424,7 @@ async function waitForMountedAppDocument(contents: Electron.WebContents) {
       // Desktop e2e fixtures mount a plain page without Rakazo app-state markers.
       if (appState === null) {
         const bodyText = (document.body?.innerText || "").trim();
-        if (bodyText.includes("Opening your workspace")) return false;
+        if (bodyText.includes("Opening your Space")) return false;
         if (bodyText === "Loading…" || bodyText === "Loading...") return false;
         const mainText = (document.querySelector("main")?.textContent || "").trim();
         const rootChildren = document.getElementById("root")?.childElementCount ?? 0;

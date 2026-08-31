@@ -36,6 +36,34 @@ describe("run tool selection", () => {
   });
 });
 
+function modelPreference({
+  provider,
+  secretId,
+  modelId,
+  isDefault,
+}: {
+  provider: string;
+  secretId: string;
+  modelId: string;
+  isDefault: boolean;
+}) {
+  const now = new Date("2026-08-30T00:00:00.000Z");
+  return {
+    id: `preference-${provider}`,
+    isDefault,
+    modelId,
+    credential: {
+      id: `credential-${provider}`,
+      userId: "user-1",
+      provider,
+      label: provider,
+      secretId,
+      createdAt: now,
+      updatedAt: now,
+    },
+  };
+}
+
 describe("run notification preference", () => {
   it("silences direct messages but leaves group notifications enabled", async () => {
     let source: { bot: { notifyOnFinish: boolean }; thread: { groupId: string | null } } | null = {
@@ -49,7 +77,7 @@ describe("run notification preference", () => {
       runNotificationsEnabled(prisma, {
         botId: "bot-1",
         threadId: "thread-1",
-        workspaceId: "workspace-1",
+        spaceId: "workspace-1",
         userId: "user-1",
       }),
     ).resolves.toBe(false);
@@ -57,7 +85,7 @@ describe("run notification preference", () => {
       where: {
         botId: "bot-1",
         threadId: "thread-1",
-        workspaceId: "workspace-1",
+        spaceId: "workspace-1",
         userId: "user-1",
       },
       select: {
@@ -71,7 +99,7 @@ describe("run notification preference", () => {
       runNotificationsEnabled(prisma, {
         botId: "bot-1",
         threadId: "thread-1",
-        workspaceId: "workspace-1",
+        spaceId: "workspace-1",
         userId: "user-1",
       }),
     ).resolves.toBe(true);
@@ -110,7 +138,7 @@ describe("createRunExecutor", () => {
       routine: {
         findUnique: vi.fn(async () => ({
           id: "routine-1",
-          workspaceId: "ws-1",
+          spaceId: "ws-1",
           botId: "bot-1",
           userId: "user-1",
           prompt: "say hi",
@@ -182,7 +210,7 @@ describe("createRunExecutor", () => {
       routine: {
         findUnique: vi.fn(async () => ({
           id: "routine-1",
-          workspaceId: "ws-1",
+          spaceId: "ws-1",
           botId: "bot-1",
           userId: "user-1",
           prompt: "remind the group",
@@ -223,7 +251,7 @@ describe("createRunExecutor", () => {
 
     expect(findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ id: "group-thread-1", workspaceId: "ws-1" }),
+        where: expect.objectContaining({ id: "group-thread-1", spaceId: "ws-1" }),
       }),
     );
     expect(taskCreate).toHaveBeenCalledWith(
@@ -247,7 +275,7 @@ describe("createRunExecutor", () => {
       routine: {
         findUnique: vi.fn(async () => ({
           id: "routine-1",
-          workspaceId: "ws-1",
+          spaceId: "ws-1",
           botId: "bot-1",
           userId: "user-1",
           prompt: "remind me",
@@ -288,7 +316,7 @@ describe("createRunExecutor", () => {
 
     expect(findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ id: "dm-thread-1", workspaceId: "ws-1" }),
+        where: expect.objectContaining({ id: "dm-thread-1", spaceId: "ws-1" }),
       }),
     );
     expect(taskCreate).toHaveBeenCalledWith(
@@ -321,7 +349,7 @@ description: Prepare standup notes
       routine: {
         findUnique: vi.fn(async () => ({
           id: "routine-1",
-          workspaceId: "ws-1",
+          spaceId: "ws-1",
           botId: "bot-1",
           userId: "user-1",
           prompt: "Run @Daily standup, then email me",
@@ -381,7 +409,7 @@ description: Prepare standup notes
       routine: {
         findUnique: vi.fn(async () => ({
           id: "routine-1",
-          workspaceId: "ws-1",
+          spaceId: "ws-1",
           botId: "bot-1",
           userId: "user-1",
           prompt: "say hi",
@@ -437,7 +465,7 @@ description: Prepare standup notes
       routine: {
         findUnique: vi.fn(async () => ({
           id: "routine-1",
-          workspaceId: "ws-1",
+          spaceId: "ws-1",
           botId: "bot-1",
           userId: "user-1",
           prompt: "say hi",
@@ -561,27 +589,27 @@ description: Prepare standup notes
   });
 
   it("resolves a per-bot model override with that provider’s credential", async () => {
-    const findFirst = vi.fn(async (args: { where: { provider?: string; isDefault?: boolean } }) => {
-      if (args.where.provider === "xai") {
-        return {
-          id: "cred-xai",
-          provider: "xai",
-          secretId: "secret-xai",
-          defaultModel: "grok-4.6",
-          isDefault: false,
-        };
-      }
-      if (args.where.isDefault) {
-        return {
-          id: "cred-default",
-          provider: "openrouter",
-          secretId: "secret-or",
-          defaultModel: "deepseek/deepseek-v4-flash-0731",
-          isDefault: true,
-        };
-      }
-      return null;
-    });
+    const findFirst = vi.fn(
+      async (args: { where: { credential?: { provider?: string }; isDefault?: boolean } }) => {
+        if (args.where.credential?.provider === "xai") {
+          return modelPreference({
+            provider: "xai",
+            secretId: "secret-xai",
+            modelId: "grok-4.6",
+            isDefault: false,
+          });
+        }
+        if (args.where.isDefault) {
+          return modelPreference({
+            provider: "openrouter",
+            secretId: "secret-or",
+            modelId: "deepseek/deepseek-v4-flash-0731",
+            isDefault: true,
+          });
+        }
+        return null;
+      },
+    );
     const prisma = {
       bot: {
         findFirst: vi.fn(async () => ({
@@ -590,9 +618,10 @@ description: Prepare standup notes
           thinkingLevel: "high",
         })),
       },
-      userModelCredential: { findFirst },
+      spaceModelPreference: { findFirst },
+      userModelCredential: { findFirst: vi.fn(async () => null) },
       deploymentSettings: { findUnique: vi.fn(async () => null) },
-      secret: { findUnique: vi.fn(async () => null) },
+      secret: { findFirst: vi.fn(async () => null), findUnique: vi.fn(async () => null) },
     } as unknown as PrismaClient;
     const executor = createRunExecutor({
       prisma,
@@ -601,7 +630,7 @@ description: Prepare standup notes
 
     const model = await executor.resolveModel({
       userId: "user-1",
-      workspaceId: "ws-1",
+      spaceId: "ws-1",
       botId: "bot-1",
     });
 
@@ -612,25 +641,26 @@ description: Prepare standup notes
     });
     expect(findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ provider: "xai" }),
+        where: expect.objectContaining({ credential: { provider: "xai" } }),
       }),
     );
   });
 
-  it("falls back to the workspace default when the override provider has no credential", async () => {
-    const findFirst = vi.fn(async (args: { where: { provider?: string; isDefault?: boolean } }) => {
-      if (args.where.provider === "xai") return null;
-      if (args.where.isDefault) {
-        return {
-          id: "cred-default",
-          provider: "openrouter",
-          secretId: "secret-or",
-          defaultModel: "deepseek/deepseek-v4-flash-0731",
-          isDefault: true,
-        };
-      }
-      return null;
-    });
+  it("falls back to the Space default when the override provider has no credential", async () => {
+    const findFirst = vi.fn(
+      async (args: { where: { credential?: { provider?: string }; isDefault?: boolean } }) => {
+        if (args.where.credential?.provider === "xai") return null;
+        if (args.where.isDefault) {
+          return modelPreference({
+            provider: "openrouter",
+            secretId: "secret-or",
+            modelId: "deepseek/deepseek-v4-flash-0731",
+            isDefault: true,
+          });
+        }
+        return null;
+      },
+    );
     const prisma = {
       bot: {
         findFirst: vi.fn(async () => ({
@@ -639,9 +669,10 @@ description: Prepare standup notes
           thinkingLevel: "high",
         })),
       },
-      userModelCredential: { findFirst },
+      spaceModelPreference: { findFirst },
+      userModelCredential: { findFirst: vi.fn(async () => null) },
       deploymentSettings: { findUnique: vi.fn(async () => null) },
-      secret: { findUnique: vi.fn(async () => null) },
+      secret: { findFirst: vi.fn(async () => null), findUnique: vi.fn(async () => null) },
     } as unknown as PrismaClient;
     const executor = createRunExecutor({
       prisma,
@@ -651,7 +682,7 @@ description: Prepare standup notes
 
     const model = await executor.resolveModel({
       userId: "user-1",
-      workspaceId: "ws-1",
+      spaceId: "ws-1",
       botId: "bot-1",
     });
 
@@ -663,7 +694,7 @@ description: Prepare standup notes
     });
     expect(findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ provider: "xai" }),
+        where: expect.objectContaining({ credential: { provider: "xai" } }),
       }),
     );
     expect(findFirst).toHaveBeenCalledWith(
@@ -676,6 +707,7 @@ description: Prepare standup notes
   it("withholds the deployment key when settings name a different provider", async () => {
     const prisma = {
       bot: { findFirst: vi.fn(async () => null) },
+      spaceModelPreference: { findFirst: vi.fn(async () => null) },
       userModelCredential: { findFirst: vi.fn(async () => null) },
       deploymentSettings: {
         findUnique: vi.fn(async () => ({
@@ -683,7 +715,7 @@ description: Prepare standup notes
           defaultModelId: "claude-sonnet-5",
         })),
       },
-      secret: { findUnique: vi.fn(async () => null) },
+      secret: { findFirst: vi.fn(async () => null), findUnique: vi.fn(async () => null) },
     } as unknown as PrismaClient;
     const executor = createRunExecutor({
       prisma,
@@ -692,24 +724,21 @@ description: Prepare standup notes
       deploymentModelKey: "deployment-openrouter-key",
     } as unknown as Parameters<typeof createRunExecutor>[0]);
 
-    const model = await executor.resolveModel({ userId: "user-1", workspaceId: "ws-1" });
+    const model = await executor.resolveModel({ userId: "user-1", spaceId: "ws-1" });
 
     expect(model.provider).toBe("anthropic");
     expect(model.apiKey).toBeUndefined();
   });
 
-  it("keeps per-bot thinking when using the workspace default model", async () => {
-    const findFirst = vi.fn(async (args: { where: { provider?: string; isDefault?: boolean } }) => {
-      if (args.where.isDefault) {
-        return {
-          id: "cred-default",
-          provider: "openrouter",
-          secretId: "secret-or",
-          defaultModel: "deepseek/deepseek-v4-flash-0731",
-          isDefault: true,
-        };
-      }
-      return null;
+  it("keeps per-bot thinking when using the Space default model", async () => {
+    const findFirst = vi.fn(async (args: { where: { isDefault?: boolean } }) => {
+      if (!args.where.isDefault) return null;
+      return modelPreference({
+        provider: "openrouter",
+        secretId: "secret-or",
+        modelId: "deepseek/deepseek-v4-flash-0731",
+        isDefault: true,
+      });
     });
     const prisma = {
       bot: {
@@ -719,9 +748,10 @@ description: Prepare standup notes
           thinkingLevel: "high",
         })),
       },
-      userModelCredential: { findFirst },
+      spaceModelPreference: { findFirst },
+      userModelCredential: { findFirst: vi.fn(async () => null) },
       deploymentSettings: { findUnique: vi.fn(async () => null) },
-      secret: { findUnique: vi.fn(async () => null) },
+      secret: { findFirst: vi.fn(async () => null), findUnique: vi.fn(async () => null) },
     } as unknown as PrismaClient;
     const executor = createRunExecutor({
       prisma,
@@ -730,7 +760,7 @@ description: Prepare standup notes
 
     const model = await executor.resolveModel({
       userId: "user-1",
-      workspaceId: "ws-1",
+      spaceId: "ws-1",
       botId: "bot-1",
     });
 

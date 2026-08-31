@@ -34,8 +34,8 @@ import {
   resolveSandboxProvider,
   ScriptedAgentRuntime,
   SendBlueMessagingProvider,
+  SpaceMemoryProviderResolver,
   sendBlueConfigFromEnv,
-  WorkspaceMemoryProviderResolver,
 } from "@rakazo/adapters";
 import { resolveEncryptionKey, resolveSupervisorToken } from "@rakazo/core";
 import { createDb, createThreadEvents } from "@rakazo/db";
@@ -110,7 +110,7 @@ async function main() {
   ]);
   const connector = stack.destination;
   await connector.start();
-  const memoryProviders = new WorkspaceMemoryProviderResolver(prisma, secrets);
+  const memoryProviders = new SpaceMemoryProviderResolver(prisma, secrets);
   const home = new LocalAgentHomeStore(dataDir);
   const artifacts = new LocalArtifactStore(dataDir);
   const inMemoryJobs = process.env.WAKEUP_DRIVER === "memory" ? new InMemoryJobQueue() : undefined;

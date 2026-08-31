@@ -49,6 +49,9 @@ import {
   ServerUpdateRunSchema,
   ServerUpdateStatusSchema,
   SkillPlaybookSchema,
+  SpaceMemoryConfigSchema,
+  SpaceNavigationSchema,
+  SpaceSchema,
   TaughtSkillSchema,
   TeachRecordingEventSchema,
   ThreadMessagePageSchema,
@@ -61,7 +64,6 @@ import {
   VoiceCredentialSchema,
   VoiceInfoSchema,
   VoiceStatusSchema,
-  WorkspaceMemoryConfigSchema,
 } from "./domain.js";
 import { ProductEventSchema } from "./events.js";
 import { Id, IsoDate } from "./ids.js";
@@ -124,6 +126,10 @@ export const appContract = {
   me: oc.output(MeSchema),
   preferences: {
     update: oc.input(z.object({ avatarStyle: AvatarStyleSchema })).output(MeSchema),
+  },
+  spaces: {
+    list: oc.output(SpaceNavigationSchema),
+    create: oc.input(z.object({ name: z.string().trim().min(1).max(60) })).output(SpaceSchema),
   },
   bootstrap: oc.input(z.object({ botId: Id.optional() })).output(AppBootstrapSchema),
   deployment: {
@@ -321,7 +327,7 @@ export const appContract = {
       .input(z.object({ documentId: Id, content: z.string() }))
       .output(MemoryDocumentSchema),
     exportMarkdown: oc.input(z.object({ botId: Id.optional() })).output(z.string()),
-    providerConfig: oc.output(WorkspaceMemoryConfigSchema.nullable()),
+    providerConfig: oc.output(SpaceMemoryConfigSchema.nullable()),
     connectProvider: oc
       .input(
         z.object({
@@ -331,10 +337,10 @@ export const appContract = {
           defaultMemoryScope: MemoryScopeSchema.default("isolated"),
         }),
       )
-      .output(WorkspaceMemoryConfigSchema),
+      .output(SpaceMemoryConfigSchema),
     setDefaultScope: oc
       .input(z.object({ defaultMemoryScope: MemoryScopeSchema }))
-      .output(WorkspaceMemoryConfigSchema),
+      .output(SpaceMemoryConfigSchema),
     disconnectProvider: oc.output(z.object({ ok: z.literal(true) })),
   },
   routines: {

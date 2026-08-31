@@ -72,14 +72,14 @@ export function resolveMissingRunSecretAction(
 export async function reconcileManagedConnection(
   prisma: PrismaClient,
   connectors: { managed(id: string): ManagedConnectorProvider | undefined } | undefined,
-  run: { workspaceId: string; userId: string },
+  run: { spaceId: string; userId: string },
   context: AdapterContext,
   connectionId: string,
 ): Promise<"connected" | "pending" | "missing"> {
   const row = await prisma.connection.findFirst({
     where: {
       id: connectionId,
-      workspaceId: run.workspaceId,
+      spaceId: run.spaceId,
       userId: run.userId,
     },
   });
@@ -107,7 +107,7 @@ export interface RunSecretWriter {
   store(input: {
     runId: string;
     userId: string;
-    workspaceId: string;
+    spaceId: string;
     plaintext: string;
     tx: Prisma.TransactionClient;
   }): Promise<void>;
@@ -115,11 +115,11 @@ export interface RunSecretWriter {
 
 export function createRunSecretWriter(secretStore: EncryptedSecretStore): RunSecretWriter {
   return {
-    async store({ runId, userId, workspaceId, plaintext, tx }) {
+    async store({ runId, userId, spaceId, plaintext, tx }) {
       const stored = await secretStore.put(plaintext, {
         operationId: runId,
         traceId: runId,
-        workspaceId,
+        spaceId,
         userId,
         signal: new AbortController().signal,
       });
@@ -127,7 +127,7 @@ export function createRunSecretWriter(secretStore: EncryptedSecretStore): RunSec
         data: {
           id: stored.id,
           userId,
-          workspaceId,
+          spaceId,
           kind: runSecretKind(runId),
           ciphertext: stored.ciphertext,
         },
@@ -139,7 +139,7 @@ export function createRunSecretWriter(secretStore: EncryptedSecretStore): RunSec
 export async function tryCompleteConnectionWithCode(
   prisma: PrismaClient,
   connectors: { managed(id: string): ManagedConnectorProvider | undefined } | undefined,
-  run: { workspaceId: string; userId: string },
+  run: { spaceId: string; userId: string },
   context: AdapterContext,
   connectionId: string,
   code: string,
@@ -147,7 +147,7 @@ export async function tryCompleteConnectionWithCode(
   const row = await prisma.connection.findFirst({
     where: {
       id: connectionId,
-      workspaceId: run.workspaceId,
+      spaceId: run.spaceId,
       userId: run.userId,
       status: { in: ["pending", "connected"] },
     },

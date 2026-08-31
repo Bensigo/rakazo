@@ -16,6 +16,7 @@ import {
   DOCKER_BROWSER_ALIASES,
   demuxDockerStream,
   ensureScreenCommand,
+  hasComputerIdentity,
   hasValidBearerToken,
   interactiveScreenCommand,
   isComputerControlUnavailable,
@@ -162,11 +163,11 @@ describe("sandbox supervisor HTTP boundary", () => {
         authorization: `Bearer ${token}`,
         "content-type": "application/json",
         "x-rakazo-bot-id": "other-bot",
-        "x-rakazo-workspace-id": "workspace",
+        "x-rakazo-space-id": "workspace",
       },
       body: JSON.stringify({
         botId: "bot",
-        workspaceId: "workspace",
+        spaceId: "workspace",
         homePath: "/tmp/never-used",
       }),
     });
@@ -187,14 +188,38 @@ describe("sandbox supervisor input containment", () => {
 
   it("requires both bot and workspace identities to match", () => {
     expect(() =>
-      assertRequestIdentity("bot", "workspace", { botId: "bot", workspaceId: "workspace" }),
+      assertRequestIdentity("bot", "workspace", { botId: "bot", spaceId: "workspace" }),
     ).not.toThrow();
     expect(() =>
-      assertRequestIdentity(undefined, "workspace", { botId: "bot", workspaceId: "workspace" }),
+      assertRequestIdentity(undefined, "workspace", { botId: "bot", spaceId: "workspace" }),
     ).toThrow(/identity mismatch/);
     expect(() =>
-      assertRequestIdentity("bot", "other", { botId: "bot", workspaceId: "workspace" }),
+      assertRequestIdentity("bot", "other", { botId: "bot", spaceId: "workspace" }),
     ).toThrow(/identity mismatch/);
+  });
+
+  it("accepts the legacy workspace label without weakening container identity", () => {
+    expect(
+      hasComputerIdentity({ "rakazo.botId": "bot", "rakazo.workspaceId": "space" }, "bot", "space"),
+    ).toBe(true);
+    expect(
+      hasComputerIdentity(
+        { "rakazo.botId": "bot", "rakazo.workspaceId": "other-space" },
+        "bot",
+        "space",
+      ),
+    ).toBe(false);
+    expect(
+      hasComputerIdentity(
+        {
+          "rakazo.botId": "bot",
+          "rakazo.spaceId": "space",
+          "rakazo.workspaceId": "other-space",
+        },
+        "bot",
+        "space",
+      ),
+    ).toBe(true);
   });
 
   it("bounds scroll and wait actions before sending them to the computer", () => {

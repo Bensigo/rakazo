@@ -3,9 +3,67 @@ import type { PrismaClient } from "./client.js";
 import { createGroupRepos } from "./groups.js";
 import { IsolationError } from "./scope.js";
 
+describe("listSpaceGroupsForSpaces", () => {
+  it("loads and maps compact cross-space group fields", async () => {
+    const findMany = vi.fn(async (_query: { where: unknown; select: Record<string, unknown> }) => [
+      {
+        id: "group-1",
+        spaceId: "workspace-2",
+        name: "Support crew",
+        pinned: true,
+        sectionId: null,
+        updatedAt: new Date("2026-08-20T00:00:00.000Z"),
+        thread: {
+          unread: true,
+          messages: [{ blocks: [{ kind: "text", text: "Escalation pending" }] }],
+        },
+        members: [
+          { bot: { id: "bot-1", name: "Triage", color: "#111", runs: [] } },
+          {
+            bot: {
+              id: "bot-2",
+              name: "Responder",
+              color: "#222",
+              runs: [{ status: "running" }],
+            },
+          },
+        ],
+      },
+    ]);
+    const repos = createGroupRepos({ chatGroup: { findMany } } as unknown as PrismaClient);
+    const actor = {
+      spaceId: "workspace-1",
+      userId: "user-1",
+      email: "user@example.test",
+      isDeploymentOwner: false,
+    };
+
+    await expect(repos.listSpaceGroupsForSpaces(actor, ["workspace-2"])).resolves.toEqual([
+      {
+        id: "group-1",
+        spaceId: "workspace-2",
+        name: "Support crew",
+        pinned: true,
+        sectionId: null,
+        members: [
+          { botId: "bot-1", name: "Triage", color: "#111", status: "idle" },
+          { botId: "bot-2", name: "Responder", color: "#222", status: "running" },
+        ],
+        preview: "Escalation pending",
+        unread: true,
+        updatedAt: "2026-08-20T00:00:00.000Z",
+      },
+    ]);
+    const query = findMany.mock.calls[0]![0];
+    expect(query.select).not.toHaveProperty("userId");
+    expect(query.select).not.toHaveProperty("archivedAt");
+    expect(query.select).not.toHaveProperty("createdAt");
+  });
+});
+
 describe("archiveGroup", () => {
   const actor = {
-    workspaceId: "workspace-1",
+    spaceId: "workspace-1",
     userId: "user-1",
     email: "user@example.com",
     isDeploymentOwner: true,

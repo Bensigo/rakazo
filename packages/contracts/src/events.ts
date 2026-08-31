@@ -94,7 +94,15 @@ export const MessageBlock = z.discriminatedUnion("kind", [
     input: z.enum(["text", "secret"]).optional(),
     status: z.enum(["pending", "answered"]).optional(),
     answer: z.string().optional(),
-    actions: z.array(z.object({ id: z.string(), label: z.string() })).optional(),
+    actions: z
+      .array(
+        z.object({
+          id: z.string(),
+          label: z.string(),
+          outcome: z.enum(["created", "cancelled"]).optional(),
+        }),
+      )
+      .optional(),
   }),
   z.object({
     kind: z.literal("choice"),
@@ -234,7 +242,7 @@ export type MessageBlock = z.infer<typeof MessageBlock>;
 
 export const ProductEventSchema = z.object({
   id: Id,
-  workspaceId: Id,
+  spaceId: Id,
   threadId: Id,
   botId: Id,
   seq: z.number().int().nonnegative(),

@@ -17,7 +17,7 @@ const PUSH_CATCH_UP_MS = 30_000;
 const POLL_ONLY_CATCH_UP_MS = 400;
 
 export interface AppendEventInput {
-  workspaceId: string;
+  spaceId: string;
   threadId: string;
   botId: string;
   type: ProductEvent["type"];
@@ -41,7 +41,7 @@ export interface ThreadEvents {
 }
 
 export interface ClearThreadInput {
-  workspaceId: string;
+  spaceId: string;
   threadId: string;
   /** Event author and the bot-scoped target for one-to-one chats. */
   botId: string;
@@ -55,7 +55,7 @@ export interface ClearThreadResult {
 }
 
 export interface FinalizeComputerControlReleaseInput {
-  workspaceId: string;
+  spaceId: string;
   computerId: string;
   botId: string;
   runId: string | null;
@@ -69,7 +69,7 @@ export interface FinalizeComputerControlReleaseResult {
 }
 
 interface FinalizeRunBase {
-  workspaceId: string;
+  spaceId: string;
   threadId: string;
   botId: string;
   runId: string;
@@ -83,7 +83,7 @@ export type FinalizeRunInput = FinalizeRunBase &
   ({ outcome: "completed"; blocks: MessageBlock[] } | { outcome: "failed"; error: string });
 
 export interface PauseRunForInput {
-  workspaceId: string;
+  spaceId: string;
   threadId: string;
   botId: string;
   runId: string;
@@ -94,7 +94,7 @@ export interface PauseRunForInput {
 }
 
 export interface PauseRunForTakeover {
-  workspaceId: string;
+  spaceId: string;
   threadId: string;
   botId: string;
   runId: string;
@@ -105,7 +105,7 @@ export interface PauseRunForTakeover {
 }
 
 export interface AnswerRunInput {
-  workspaceId: string;
+  spaceId: string;
   threadId: string;
   runId: string;
   messageId: string;
@@ -114,7 +114,7 @@ export interface AnswerRunInput {
 }
 
 export interface SendUserMessageInput {
-  workspaceId: string;
+  spaceId: string;
   threadId: string;
   botId: string;
   userId: string;
@@ -138,7 +138,7 @@ export interface RunSecretWriter {
   store(input: {
     runId: string;
     userId: string;
-    workspaceId: string;
+    spaceId: string;
     plaintext: string;
     tx: Prisma.TransactionClient;
   }): Promise<void>;
@@ -174,7 +174,7 @@ export async function clearThread(
     const thread = await tx.thread.update({
       where: {
         id: input.threadId,
-        workspaceId: input.workspaceId,
+        spaceId: input.spaceId,
         ...(input.groupId ? { groupId: input.groupId } : { botId: input.botId }),
       },
       data: { unread: false },
@@ -182,7 +182,7 @@ export async function clearThread(
     });
     const activeRuns = await tx.run.findMany({
       where: {
-        workspaceId: input.workspaceId,
+        spaceId: input.spaceId,
         threadId: input.threadId,
         ...(input.groupId ? {} : { botId: input.botId }),
         status: { in: ["queued", "leased", "running", "waiting_input", "waiting_takeover"] },
@@ -249,7 +249,7 @@ export async function clearThread(
       await tx.chatGroup.update({ where: { id: input.groupId }, data: { updatedAt: now } });
     } else {
       await tx.bot.update({
-        where: { id: input.botId, workspaceId: input.workspaceId },
+        where: { id: input.botId, spaceId: input.spaceId },
         data: { updatedAt: now },
       });
     }
@@ -324,7 +324,7 @@ export async function sendUserMessage(
       if (!busy) {
         task = await tx.task.create({
           data: {
-            workspaceId: input.workspaceId,
+            spaceId: input.spaceId,
             botId: input.botId,
             threadId: input.threadId,
             userId: input.userId,
@@ -334,7 +334,7 @@ export async function sendUserMessage(
         });
         run = await tx.run.create({
           data: {
-            workspaceId: input.workspaceId,
+            spaceId: input.spaceId,
             botId: input.botId,
             threadId: input.threadId,
             taskId: task.id,
@@ -350,7 +350,7 @@ export async function sendUserMessage(
         }
       }
       const event = await appendEventInTransaction(tx, {
-        workspaceId: input.workspaceId,
+        spaceId: input.spaceId,
         threadId: input.threadId,
         botId: input.botId,
         type: "thread.message.created",
@@ -390,7 +390,7 @@ export async function answerRunInput(
     const run = await tx.run.findFirst({
       where: {
         id: input.runId,
-        workspaceId: input.workspaceId,
+        spaceId: input.spaceId,
         threadId: input.threadId,
         status: "waiting_input",
       },
@@ -422,7 +422,7 @@ export async function answerRunInput(
       approvalEffect = await tx.externalEffect.findFirst({
         where: {
           id: pendingAsk.approvalEffectId,
-          workspaceId: input.workspaceId,
+          spaceId: input.spaceId,
           runId: input.runId,
           status: "intended",
         },
@@ -437,7 +437,7 @@ export async function answerRunInput(
     const queued = await tx.run.updateMany({
       where: {
         id: input.runId,
-        workspaceId: input.workspaceId,
+        spaceId: input.spaceId,
         threadId: input.threadId,
         status: "waiting_input",
       },
@@ -454,8 +454,8 @@ export async function answerRunInput(
       if (input.answer === "always") {
         await tx.actionApprovalRule.upsert({
           where: {
-            workspaceId_createdByUserId_effect_matchKind_matchValue: {
-              workspaceId: input.workspaceId,
+            spaceId_createdByUserId_effect_matchKind_matchValue: {
+              spaceId: input.spaceId,
               createdByUserId: approvalUserId!,
               effect: "always_allow",
               matchKind: "tool",
@@ -463,7 +463,7 @@ export async function answerRunInput(
             },
           },
           create: {
-            workspaceId: input.workspaceId,
+            spaceId: input.spaceId,
             createdByUserId: approvalUserId!,
             effect: "always_allow",
             matchKind: "tool",
@@ -476,14 +476,14 @@ export async function answerRunInput(
       await runSecretWriter!.store({
         runId: input.runId,
         userId: run.userId,
-        workspaceId: input.workspaceId,
+        spaceId: input.spaceId,
         plaintext: input.answer,
         tx,
       });
       await tx.externalEffect.updateMany({
         where: {
           runId: input.runId,
-          workspaceId: input.workspaceId,
+          spaceId: input.spaceId,
           kind: "request_secret",
           status: "intended",
         },
@@ -508,7 +508,7 @@ export async function answerRunInput(
     );
     await tx.message.update({ where: { id: message.id }, data: { blocks } });
     const updated = await appendEventInTransaction(tx, {
-      workspaceId: input.workspaceId,
+      spaceId: input.spaceId,
       threadId: input.threadId,
       botId: run.botId,
       type: "thread.message.updated",
@@ -535,7 +535,7 @@ export async function pauseRunForInput(
     const paused = await tx.run.updateMany({
       where: {
         id: input.runId,
-        workspaceId: input.workspaceId,
+        spaceId: input.spaceId,
         threadId: input.threadId,
         botId: input.botId,
         status: "running",
@@ -565,7 +565,7 @@ export async function pauseRunForInput(
       runId: input.runId,
     });
     await appendEventInTransaction(tx, {
-      workspaceId: input.workspaceId,
+      spaceId: input.spaceId,
       threadId: input.threadId,
       botId: input.botId,
       type: "thread.message.created",
@@ -573,7 +573,7 @@ export async function pauseRunForInput(
       payload: { messageId: message.id, role: "bot", blocks: input.blocks },
     });
     const waitingEvent = await appendEventInTransaction(tx, {
-      workspaceId: input.workspaceId,
+      spaceId: input.spaceId,
       threadId: input.threadId,
       botId: input.botId,
       type: "run.waiting_input",
@@ -599,7 +599,7 @@ export async function pauseRunForTakeover(
     const paused = await tx.run.updateMany({
       where: {
         id: input.runId,
-        workspaceId: input.workspaceId,
+        spaceId: input.spaceId,
         threadId: input.threadId,
         botId: input.botId,
         status: "running",
@@ -627,7 +627,7 @@ export async function pauseRunForTakeover(
     if (attempt.count !== 1) throw new Error("Active run attempt was not available to pause");
 
     const waitingEvent = await appendEventInTransaction(tx, {
-      workspaceId: input.workspaceId,
+      spaceId: input.spaceId,
       threadId: input.threadId,
       botId: input.botId,
       type: "computer.takeover.requested",
@@ -652,7 +652,7 @@ export async function finalizeComputerControlRelease(
     const cleared = await tx.computer.updateMany({
       where: {
         id: input.computerId,
-        workspaceId: input.workspaceId,
+        spaceId: input.spaceId,
         controlBotId: input.botId,
         controlLeaseId: input.leaseId,
         controlRunId: input.runId,
@@ -671,7 +671,7 @@ export async function finalizeComputerControlRelease(
       ? await tx.run.updateMany({
           where: {
             id: input.runId,
-            workspaceId: input.workspaceId,
+            spaceId: input.spaceId,
             botId: input.botId,
             status: "waiting_takeover",
           },
@@ -687,12 +687,12 @@ export async function finalizeComputerControlRelease(
     const runId = resumed.count === 1 ? input.runId : null;
 
     const bot = await tx.bot.findFirst({
-      where: { id: input.botId, workspaceId: input.workspaceId },
+      where: { id: input.botId, spaceId: input.spaceId },
       select: { thread: { select: { id: true } } },
     });
     if (!bot?.thread) return { threadId: null, seq: null, runId };
     const event = await appendEventInTransaction(tx, {
-      workspaceId: input.workspaceId,
+      spaceId: input.spaceId,
       threadId: bot.thread.id,
       botId: input.botId,
       runId: runId ?? undefined,
@@ -743,7 +743,7 @@ export async function finalizeRun(
     const terminal = await tx.run.updateMany({
       where: {
         id: input.runId,
-        workspaceId: input.workspaceId,
+        spaceId: input.spaceId,
         threadId: input.threadId,
         botId: input.botId,
         taskId: input.taskId,
@@ -779,7 +779,7 @@ export async function finalizeRun(
     const task = await tx.task.updateMany({
       where: {
         id: input.taskId,
-        workspaceId: input.workspaceId,
+        spaceId: input.spaceId,
         threadId: input.threadId,
         botId: input.botId,
       },
@@ -796,7 +796,7 @@ export async function finalizeRun(
         runId: input.runId,
       });
       await appendEventInTransaction(tx, {
-        workspaceId: input.workspaceId,
+        spaceId: input.spaceId,
         threadId: input.threadId,
         botId: input.botId,
         type: "thread.message.created",
@@ -805,7 +805,7 @@ export async function finalizeRun(
       });
     }
     const lastEvent = await appendEventInTransaction(tx, {
-      workspaceId: input.workspaceId,
+      spaceId: input.spaceId,
       threadId: input.threadId,
       botId: input.botId,
       type: input.outcome === "completed" ? "run.completed" : "run.failed",
@@ -836,7 +836,7 @@ export async function appendEventInTransaction(
   const payload = sanitizeJsonValue(input.payload);
   return tx.event.create({
     data: {
-      workspaceId: input.workspaceId,
+      spaceId: input.spaceId,
       threadId: input.threadId,
       botId: input.botId,
       seq: thread.nextEventSeq - 1,
@@ -909,7 +909,7 @@ function threadTopic(threadId: string): string {
 
 function mapProductEvent(event: {
   id: string;
-  workspaceId: string;
+  spaceId: string;
   threadId: string;
   botId: string;
   seq: number;
@@ -920,7 +920,7 @@ function mapProductEvent(event: {
 }): ProductEvent {
   return {
     id: event.id,
-    workspaceId: event.workspaceId,
+    spaceId: event.spaceId,
     threadId: event.threadId,
     botId: event.botId,
     seq: event.seq,

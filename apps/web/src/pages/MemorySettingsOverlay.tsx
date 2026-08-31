@@ -1,5 +1,5 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { WorkspaceMemoryConfig } from "@rakazo/contracts";
+import type { SpaceMemoryConfig } from "@rakazo/contracts";
 import { Button } from "@rakazo/ui-web";
 import { useEffect, useState } from "react";
 import { rpc } from "../lib/rpc";
@@ -50,8 +50,8 @@ export function MemorySettingsOverlay({
   onConfigChange,
 }: {
   onClose: () => void;
-  config: WorkspaceMemoryConfig | null | undefined;
-  onConfigChange: (config: WorkspaceMemoryConfig | null) => void;
+  config: SpaceMemoryConfig | null | undefined;
+  onConfigChange: (config: SpaceMemoryConfig | null) => void;
 }) {
   const { t } = useLingui();
   const defaultRegistration = defaultMemoryProviderSettings();
@@ -135,7 +135,7 @@ export function MemorySettingsOverlay({
             </div>
             <p className="mt-1 text-[13.5px] text-[#7A7A80]">
               {registration?.description ?? (
-                <Trans>Manage the workspace semantic memory provider.</Trans>
+                <Trans>Manage the Space semantic memory provider.</Trans>
               )}
             </p>
           </div>

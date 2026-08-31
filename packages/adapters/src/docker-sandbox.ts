@@ -74,7 +74,7 @@ export class DockerSandboxProvider implements SandboxProvider {
   private headers(context: AdapterContext, botId?: string) {
     return {
       authorization: `Bearer ${this.supervisorToken}`,
-      "x-rakazo-workspace-id": context.workspaceId,
+      "x-rakazo-space-id": context.spaceId,
       ...(botId ? { "x-rakazo-bot-id": botId } : {}),
       ...(context.screenLeaseId ? { "x-rakazo-screen-lease-id": context.screenLeaseId } : {}),
     };
@@ -90,7 +90,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       body: JSON.stringify({
         botId: request.botId,
         homePath: request.homePath,
-        workspaceId: context.workspaceId,
+        spaceId: context.spaceId,
       }),
       signal: context.signal,
     });

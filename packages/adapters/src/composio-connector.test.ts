@@ -251,7 +251,7 @@ describe("composio tool mapping", () => {
     const context: AdapterContext = {
       operationId: "composio-canonical-slug",
       traceId: "composio-canonical-slug",
-      workspaceId: "workspace",
+      spaceId: "workspace",
       userId: "user-1",
       signal: new AbortController().signal,
       connectedConnections: [
@@ -308,7 +308,7 @@ describe("composio tool mapping", () => {
       const context = {
         operationId: "composio-directory-fallback",
         traceId: "composio-directory-fallback",
-        workspaceId: "workspace",
+        spaceId: "workspace",
         userId: "user-1",
         signal: new AbortController().signal,
         connectedConnections: [

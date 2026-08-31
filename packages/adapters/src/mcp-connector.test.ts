@@ -16,7 +16,7 @@ const SERVER = {
 const ASSIGNMENT = {
   botId: "bot-1",
   serverId: "server-1",
-  workspaceId: "w1",
+  spaceId: "w1",
   userId: "u1",
   allowAllTools: true,
   allowedTools: [],
@@ -79,7 +79,7 @@ describe("MCP connector session cache", () => {
     const connector = new McpConnector(prisma as never, {} as never);
 
     const tools = await connector.discoverTools({
-      workspaceId: "w1",
+      spaceId: "w1",
       userId: "u1",
       botId: "bot-1",
       signal: new AbortController().signal,
@@ -112,7 +112,7 @@ describe("MCP connector session cache", () => {
     );
 
     await connector.discoverTools({
-      workspaceId: "w1",
+      spaceId: "w1",
       userId: "u1",
       botId: "bot-1",
       signal: new AbortController().signal,
@@ -138,7 +138,7 @@ describe("MCP connector session cache", () => {
       },
     });
     const context = {
-      workspaceId: "w1",
+      spaceId: "w1",
       userId: "u1",
       botId: "bot-1",
       signal: new AbortController().signal,
@@ -179,8 +179,8 @@ describe("MCP connector session cache", () => {
     const connector = new McpConnector(prisma as never, {} as never, {
       network: { resolveHostname: async () => [{ address: "203.0.113.10", family: 4 }] },
     });
-    const contextFor = (workspaceId: string, userId: string) =>
-      ({ workspaceId, userId, botId: "bot-1", signal: new AbortController().signal }) as never;
+    const contextFor = (spaceId: string, userId: string) =>
+      ({ spaceId, userId, botId: "bot-1", signal: new AbortController().signal }) as never;
 
     await connector.discoverTools(contextFor("w1", "u1"));
     expect(state.initializations).toBe(1);

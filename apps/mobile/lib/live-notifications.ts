@@ -19,8 +19,13 @@ export const DEFAULT_LIVE_NOTIFICATION_SETTINGS: LiveNotificationSettings = {
 
 type NativeNotifications = {
   getSettings(): Promise<LiveNotificationSettings>;
-  setSettings(settings: LiveNotificationSettings, endpoint: string, token: string): Promise<void>;
-  resume(endpoint: string, token: string): Promise<void>;
+  setSettings(
+    settings: LiveNotificationSettings,
+    endpoint: string,
+    token: string,
+    spaceId: string,
+  ): Promise<void>;
+  resume(endpoint: string, token: string, spaceId: string): Promise<void>;
   stop(clearSession: boolean): Promise<void>;
   setOpenThread(botId: string | null, threadId: string | null): Promise<void>;
   openSettings(): Promise<void>;
@@ -74,6 +79,7 @@ export async function setLiveNotificationSettings(
   settings: LiveNotificationSettings,
   endpoint: string,
   token: string,
+  spaceId: string,
 ): Promise<void> {
   if (!nativeNotifications) return;
   const parsed = normalizeApiBase(endpoint);
@@ -85,14 +91,18 @@ export async function setLiveNotificationSettings(
     const granted = existing.granted || (await Notifications.requestPermissionsAsync()).granted;
     if (!granted) throw new Error("Android blocked notifications.");
   }
-  await nativeNotifications.setSettings(settings, parsed.url, token);
+  await nativeNotifications.setSettings(settings, parsed.url, token, spaceId);
 }
 
-export async function resumeLiveNotifications(endpoint: string, token: string): Promise<void> {
+export async function resumeLiveNotifications(
+  endpoint: string,
+  token: string,
+  spaceId: string,
+): Promise<void> {
   if (!nativeNotifications || !token) return;
   const parsed = normalizeApiBase(endpoint);
   if (!parsed.ok || apiBaseWarning(parsed.url)) return;
-  await nativeNotifications.resume(parsed.url, token);
+  await nativeNotifications.resume(parsed.url, token, spaceId);
 }
 
 export async function stopLiveNotifications(clearSession = false): Promise<void> {

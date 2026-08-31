@@ -25,7 +25,7 @@ export type ThinkingLevel = z.infer<typeof ThinkingLevelSchema>;
 
 export const BotSchema = z.object({
   id: Id,
-  workspaceId: Id,
+  spaceId: Id,
   name: z.string(),
   title: z.string(),
   description: z.string(),
@@ -74,7 +74,7 @@ export const GROUP_MEMBER_MAX = 6;
 
 export const GroupSchema = z.object({
   id: Id,
-  workspaceId: Id,
+  spaceId: Id,
   name: z.string(),
   pinned: z.boolean(),
   sectionId: Id.nullable(),
@@ -122,6 +122,62 @@ export const BotSectionSchema = z.object({
   updatedAt: z.string(),
 });
 export type BotSection = z.infer<typeof BotSectionSchema>;
+
+/**
+ * A space is a real privacy boundary, not just sidebar organization.
+ * Bots are included so clients can keep every space visible without granting
+ * those bots access to the currently active space.
+ */
+export const SpaceBotSchema = BotSchema.pick({
+  id: true,
+  spaceId: true,
+  name: true,
+  title: true,
+  color: true,
+  notifyOnFinish: true,
+  pinned: true,
+  sectionId: true,
+  unread: true,
+  preview: true,
+  status: true,
+  updatedAt: true,
+});
+export type SpaceBot = z.infer<typeof SpaceBotSchema>;
+
+export const SpaceGroupSchema = GroupSchema.pick({
+  id: true,
+  spaceId: true,
+  name: true,
+  pinned: true,
+  sectionId: true,
+  members: true,
+  preview: true,
+  unread: true,
+  updatedAt: true,
+});
+export type SpaceGroup = z.infer<typeof SpaceGroupSchema>;
+
+export const SpaceSchema = z.object({
+  id: Id,
+  name: z.string(),
+  isDefault: z.boolean(),
+  bots: z.array(SpaceBotSchema),
+  groups: z.array(SpaceGroupSchema),
+  botSections: z.array(BotSectionSchema),
+});
+export type Space = z.infer<typeof SpaceSchema>;
+
+export const SpaceNavigationSchema = z.object({
+  current: z.object({
+    id: Id,
+    name: z.string(),
+    bots: z.array(BotSchema),
+    groups: z.array(GroupSchema),
+    botSections: z.array(BotSectionSchema),
+  }),
+  spaces: z.array(SpaceSchema),
+});
+export type SpaceNavigation = z.infer<typeof SpaceNavigationSchema>;
 
 export const BOT_NAME_MAX_LENGTH = 80;
 export const BOT_TITLE_MAX_LENGTH = 500;
@@ -477,7 +533,7 @@ export type McpServerConfigInput = z.infer<typeof McpServerConfigInput>;
 
 export const McpServerSchema = z.object({
   id: Id,
-  workspaceId: Id,
+  spaceId: Id,
   slug: z.string(),
   name: z.string(),
   description: z.string(),
@@ -700,13 +756,13 @@ export const ModelOAuthBeginSchema = z.discriminatedUnion("mode", [
 ]);
 export type ModelOAuthBegin = z.infer<typeof ModelOAuthBeginSchema>;
 
-export const WorkspaceMemoryConfigSchema = z.object({
+export const SpaceMemoryConfigSchema = z.object({
   provider: z.string(),
   settings: z.record(z.string(), z.string()),
   defaultMemoryScope: MemoryScopeSchema,
   updatedAt: z.string(),
 });
-export type WorkspaceMemoryConfig = z.infer<typeof WorkspaceMemoryConfigSchema>;
+export type SpaceMemoryConfig = z.infer<typeof SpaceMemoryConfigSchema>;
 
 export const ModelCatalogEntrySchema = z.object({
   provider: z.string(),
@@ -876,7 +932,7 @@ export const MeSchema = z.object({
   userId: Id,
   email: z.string().email(),
   name: z.string(),
-  workspaceId: Id,
+  spaceId: Id,
   isDeploymentOwner: z.boolean(),
   needsModel: z.boolean(),
   defaultProvider: z.string().nullable(),
@@ -891,11 +947,13 @@ export type Me = z.infer<typeof MeSchema>;
 export const AppBootstrapSchema = z.object({
   me: MeSchema,
   bots: z.array(BotSchema),
+  groups: z.array(GroupSchema),
   botSections: z.array(BotSectionSchema),
   archivedBots: z.array(BotSchema),
   archivedGroups: z.array(GroupSchema),
   thread: ThreadSnapshotSchema.nullable(),
   routines: z.array(RoutineSchema),
+  spaces: z.array(SpaceSchema),
 });
 export type AppBootstrap = z.infer<typeof AppBootstrapSchema>;
 

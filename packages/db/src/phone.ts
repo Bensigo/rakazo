@@ -1,12 +1,12 @@
 import { randomBytes } from "node:crypto";
-import { bootstrapUserWorkspace, type SignupPolicyEnv } from "./bootstrap-user.js";
+import { bootstrapUserSpace, type SignupPolicyEnv } from "./bootstrap-user.js";
 import type { PrismaClient } from "./client.js";
 import { createRepos } from "./repos.js";
 
 export interface ProvisionedPhoneIdentity {
   phoneE164: string;
   userId: string;
-  workspaceId: string;
+  spaceId: string;
   botId: string;
   threadId: string;
   created: boolean;
@@ -19,7 +19,7 @@ function phoneEmail(phoneE164: string): string {
 }
 
 /**
- * One phone number = one user + workspace + one bot ("their agent").
+ * One phone number = one user + Space + one bot ("their agent").
  * The synthetic `phone-…@phone.invalid` user has no Account row, so it
  * cannot log in until account linking lands; text is its only surface.
  *
@@ -43,7 +43,7 @@ export async function provisionPhoneIdentity(
     return {
       phoneE164,
       userId: existing.userId,
-      workspaceId: existing.workspaceId,
+      spaceId: existing.spaceId,
       botId: existing.botId,
       threadId: thread.id,
       created: false,
@@ -66,20 +66,20 @@ export async function provisionPhoneIdentity(
       .catch(() => prisma.user.findUniqueOrThrow({ where: { email } }));
   }
 
-  const member = await prisma.member.findFirst({ where: { userId: user.id } });
-  const workspaceId =
-    member?.organizationId ??
+  const membership = await prisma.spaceMember.findFirst({ where: { userId: user.id } });
+  const spaceId =
+    membership?.spaceId ??
     (
-      await bootstrapUserWorkspace(prisma, user, env, {
+      await bootstrapUserSpace(prisma, user, env, {
         claimDeploymentOwner: false,
       })
-    ).workspaceId;
+    ).spaceId;
 
   // A previous attempt may have died between createBot and the identity row;
   // phone users only ever get bots here, so an existing bot is the phone bot.
   let botId = (
     await prisma.bot.findFirst({
-      where: { workspaceId, userId: user.id, archivedAt: null },
+      where: { spaceId, userId: user.id, archivedAt: null },
       select: { id: true },
     })
   )?.id;
@@ -88,7 +88,7 @@ export async function provisionPhoneIdentity(
     const bot = await repos.createBot(
       {
         userId: user.id,
-        workspaceId,
+        spaceId,
         email: user.email,
         isDeploymentOwner: false,
       },
@@ -111,7 +111,7 @@ export async function provisionPhoneIdentity(
 
   try {
     await prisma.phoneIdentity.create({
-      data: { phoneE164, userId: user.id, workspaceId, botId },
+      data: { phoneE164, userId: user.id, spaceId, botId },
     });
   } catch {
     // A concurrent first-inbound won the phoneE164 race; report its result.
@@ -127,11 +127,11 @@ export async function provisionPhoneIdentity(
     return {
       phoneE164,
       userId: winner.userId,
-      workspaceId: winner.workspaceId,
+      spaceId: winner.spaceId,
       botId: winner.botId,
       threadId: winnerThread.id,
       created: false,
     };
   }
-  return { phoneE164, userId: user.id, workspaceId, botId, threadId: thread.id, created: true };
+  return { phoneE164, userId: user.id, spaceId, botId, threadId: thread.id, created: true };
 }

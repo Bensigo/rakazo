@@ -551,7 +551,7 @@ describe("stopThreadRuns", () => {
       event: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
     } as unknown as PrismaClient;
     const actor = {
-      workspaceId: "workspace-1",
+      spaceId: "workspace-1",
       userId: "user-1",
     } as Actor;
     const target = {
@@ -572,11 +572,11 @@ describe("stopThreadRuns", () => {
     expect(releaseScreen).toHaveBeenCalledTimes(2);
     expect(releaseScreen).toHaveBeenCalledWith(
       expect.objectContaining({ providerRef: "computer-a" }),
-      expect.objectContaining({ workspaceId: "workspace-1", userId: "user-1", botId: "bot-a" }),
+      expect.objectContaining({ spaceId: "workspace-1", userId: "user-1", botId: "bot-a" }),
     );
     expect(releaseScreen).toHaveBeenCalledWith(
       expect.objectContaining({ providerRef: "computer-b" }),
-      expect.objectContaining({ workspaceId: "workspace-1", userId: "user-1", botId: "bot-b" }),
+      expect.objectContaining({ spaceId: "workspace-1", userId: "user-1", botId: "bot-b" }),
     );
     expect(prisma.computerExecutionLease.deleteMany).toHaveBeenCalledWith({
       where: { runId: { in: ["run-a", "run-b"] } },

@@ -5,7 +5,7 @@ import { createSandboxProvider } from "./sandbox-factory.js";
 const ctx = {
   operationId: "op",
   traceId: "tr",
-  workspaceId: "ws",
+  spaceId: "ws",
   userId: "user",
   signal: new AbortController().signal,
 };

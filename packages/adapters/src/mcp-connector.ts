@@ -38,7 +38,7 @@ export function allowlistDrift(
 function reportAllowlistDrift(
   assignment: { allowAllTools: boolean; allowedTools: unknown; server: { slug: string } },
   offered: Array<{ name: string }>,
-  context: { workspaceId: string; botId?: string },
+  context: { spaceId: string; botId?: string },
 ): void {
   if (assignment.allowAllTools) return;
   const drift = allowlistDrift(assignment.allowedTools, offered);
@@ -46,7 +46,7 @@ function reportAllowlistDrift(
   console.warn(
     `mcp allowlist drift on ${assignment.server.slug}: ${drift.missing.length}/${drift.stringAllowedCount} allowed tools are not offered (server offers ${drift.offered})`,
     {
-      workspaceId: context.workspaceId,
+      spaceId: context.spaceId,
       botId: context.botId,
       // Cap the list: the point is to name the drift, not to print an allowlist.
       missing: drift.missing.slice(0, 10),
@@ -82,7 +82,7 @@ export class McpConnector implements ConnectorProvider {
     const assignments = await this.prisma.botMcpServer.findMany({
       where: {
         botId: context.botId,
-        workspaceId: context.workspaceId,
+        spaceId: context.spaceId,
         userId: context.userId,
         server: { enabled: true },
       },
@@ -137,7 +137,7 @@ export class McpConnector implements ConnectorProvider {
       where: {
         botId: context.botId,
         serverId: call.route.resourceId,
-        workspaceId: context.workspaceId,
+        spaceId: context.spaceId,
         userId: context.userId,
         server: { enabled: true },
       },
@@ -175,7 +175,7 @@ export class McpConnector implements ConnectorProvider {
   private sessionKey(server: McpServer, context: AdapterContext): string {
     // Identity headers are applied once, at connect time, so a session is only
     // valid for the identity it connected as. The key has to carry that identity.
-    return `${server.id} ${context.workspaceId} ${context.userId}`;
+    return `${server.id} ${context.spaceId} ${context.userId}`;
   }
 
   private async evict(sessionKey: string): Promise<void> {
@@ -217,7 +217,7 @@ export class McpConnector implements ConnectorProvider {
         ? await this.prisma.secret.findFirst({
             where: {
               id: server.secretId,
-              workspaceId: context.workspaceId,
+              spaceId: context.spaceId,
               userId: context.userId,
             },
           })

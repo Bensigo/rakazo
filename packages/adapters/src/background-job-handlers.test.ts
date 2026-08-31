@@ -52,6 +52,7 @@ describe("createBackgroundJobHandlers", () => {
 
   it("resolves the deployment model when no user credential is configured", async () => {
     const prisma = {
+      spaceModelPreference: { findFirst: vi.fn(async () => null) },
       userModelCredential: { findFirst: vi.fn(async () => null) },
       deploymentSettings: { findUnique: vi.fn(async () => null) },
     } as unknown as PrismaClient;
@@ -61,7 +62,7 @@ describe("createBackgroundJobHandlers", () => {
     } as Parameters<typeof createRunExecutor>[0]);
 
     await expect(
-      executor.resolveModel({ userId: "user-1", workspaceId: "workspace-1" }),
+      executor.resolveModel({ userId: "user-1", spaceId: "workspace-1" }),
     ).resolves.toEqual({
       provider: "openrouter",
       id: "deepseek/deepseek-v4-flash-0731",
@@ -74,6 +75,7 @@ describe("createBackgroundJobHandlers", () => {
 
   it("preserves a configured local model when resolving background compaction", async () => {
     const prisma = {
+      spaceModelPreference: { findFirst: vi.fn(async () => null) },
       userModelCredential: { findFirst: vi.fn(async () => null) },
       deploymentSettings: {
         findUnique: vi.fn(async () => ({
@@ -87,7 +89,7 @@ describe("createBackgroundJobHandlers", () => {
     } as Parameters<typeof createRunExecutor>[0]);
 
     await expect(
-      executor.resolveModel({ userId: "user-1", workspaceId: "workspace-1" }),
+      executor.resolveModel({ userId: "user-1", spaceId: "workspace-1" }),
     ).resolves.toEqual({
       provider: "local",
       id: "qwen3:4b",

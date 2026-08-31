@@ -20,7 +20,7 @@ export interface AgentConnectionDeps {
 
 type ConnectionRun = {
   id: string;
-  workspaceId: string;
+  spaceId: string;
   threadId: string;
   botId: string;
   userId: string;
@@ -32,7 +32,7 @@ type Result =
   | { ok: false; error: string };
 
 /**
- * Bot-to-bot 1:1 connections across workspaces. A request is pending until
+ * Bot-to-bot 1:1 connections across Spaces. A request is pending until
  * the target's owner approves (text command or respond_agent_connection);
  * messages ride the existing internal bot-message machinery and never
  * transit iMessage.
@@ -195,8 +195,8 @@ export async function respondAgentConnection(
 }
 
 /**
- * Mirror of messageBot across workspaces: the target is resolved through an
- * approved connection instead of the sender's workspace roster.
+ * Mirror of messageBot across Spaces: the target is resolved through an
+ * approved connection instead of the sender's Space roster.
  */
 export async function messageConnectedAgent(
   deps: AgentConnectionDeps,
@@ -307,7 +307,7 @@ export async function messageConnectedAgent(
       });
       const task = await tx.task.create({
         data: {
-          workspaceId: targetIdentity.workspaceId,
+          spaceId: targetIdentity.spaceId,
           botId: target.id,
           threadId: targetThreadId,
           userId: targetIdentity.userId,
@@ -317,7 +317,7 @@ export async function messageConnectedAgent(
       });
       const nextRun = await tx.run.create({
         data: {
-          workspaceId: targetIdentity.workspaceId,
+          spaceId: targetIdentity.spaceId,
           botId: target.id,
           threadId: targetThreadId,
           taskId: task.id,
@@ -330,7 +330,7 @@ export async function messageConnectedAgent(
       });
       await tx.message.update({ where: { id: inbound.id }, data: { runId: nextRun.id } });
       const inboundEvent = await appendEventInTransaction(tx, {
-        workspaceId: targetIdentity.workspaceId,
+        spaceId: targetIdentity.spaceId,
         threadId: targetThreadId,
         botId: target.id,
         type: "thread.message.created",
@@ -338,7 +338,7 @@ export async function messageConnectedAgent(
         payload: { messageId: inbound.id, role: "user", blocks: [inboundBlock] },
       });
       const outboundEvent = await appendEventInTransaction(tx, {
-        workspaceId: run.workspaceId,
+        spaceId: run.spaceId,
         threadId: run.threadId,
         botId: run.botId,
         type: "thread.message.created",

@@ -89,7 +89,7 @@ async function resolveOwnedConnectorDisplayNames(
   const rows = await tx.connection.findMany({
     where: {
       id: { in: connectionIds },
-      workspaceId: actor.workspaceId,
+      spaceId: actor.spaceId,
       userId: actor.userId,
       status: "connected",
     },
@@ -202,7 +202,7 @@ async function lockAndLoadGroupMembers(
   const group = await tx.chatGroup.findFirst({
     where: {
       id: target.groupId,
-      workspaceId: actor.workspaceId,
+      spaceId: actor.spaceId,
       userId: actor.userId,
       archivedAt: null,
       thread: { id: target.threadId },
@@ -516,7 +516,7 @@ export async function sendThreadMessage(
         });
         const task = await tx.task.create({
           data: {
-            workspaceId: actor.workspaceId,
+            spaceId: actor.spaceId,
             botId: target.botId,
             threadId: target.threadId,
             userId: actor.userId,
@@ -526,7 +526,7 @@ export async function sendThreadMessage(
         });
         const run = await tx.run.create({
           data: {
-            workspaceId: actor.workspaceId,
+            spaceId: actor.spaceId,
             botId: target.botId,
             threadId: target.threadId,
             taskId: task.id,
@@ -544,7 +544,7 @@ export async function sendThreadMessage(
           keepRunIds: [run.id],
         });
         const event = await appendEventInTransaction(tx, {
-          workspaceId: actor.workspaceId,
+          spaceId: actor.spaceId,
           threadId: target.threadId,
           botId: target.botId,
           type: "thread.message.created",
@@ -591,7 +591,7 @@ export async function sendThreadMessage(
       for (const botId of targetBotIds) {
         const task = await tx.task.create({
           data: {
-            workspaceId: actor.workspaceId,
+            spaceId: actor.spaceId,
             botId,
             threadId: target.threadId,
             userId: actor.userId,
@@ -601,7 +601,7 @@ export async function sendThreadMessage(
         });
         const run = await tx.run.create({
           data: {
-            workspaceId: actor.workspaceId,
+            spaceId: actor.spaceId,
             botId,
             threadId: target.threadId,
             taskId: task.id,
@@ -624,7 +624,7 @@ export async function sendThreadMessage(
       });
       await touchGroupUpdatedAt(tx, target.groupId);
       const event = await appendEventInTransaction(tx, {
-        workspaceId: actor.workspaceId,
+        spaceId: actor.spaceId,
         threadId: target.threadId,
         botId: firstRun.botId,
         type: "thread.message.created",
@@ -701,7 +701,7 @@ export async function stopThreadRuns(
         .releaseScreen?.(toComputerRef(computer), {
           operationId: "stop",
           traceId: "stop",
-          workspaceId: actor.workspaceId,
+          spaceId: actor.spaceId,
           userId: actor.userId,
           botId: computer.executionBotId,
           signal: new AbortController().signal,
@@ -726,7 +726,7 @@ export async function setThreadUnreadState(
   const result = await prisma.thread.updateMany({
     where: {
       id: target.threadId,
-      workspaceId: actor.workspaceId,
+      spaceId: actor.spaceId,
       userId: actor.userId,
       unread: { not: unread },
     },
