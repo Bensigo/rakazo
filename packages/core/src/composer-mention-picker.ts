@@ -24,13 +24,17 @@ export function clampMentionHighlightIndex(index: number, count: number): number
 /**
  * Resolve composer key handling while (or after) the mention picker is open.
  * When `optionCount` is 0 the picker is closed or empty: Enter sends (unless Shift).
+ * While IME composition is active, returns `none` so Enter confirms text instead.
  */
 export function resolveMentionPickerKey(input: {
   key: string;
   shiftKey?: boolean;
+  isComposing?: boolean;
   optionCount: number;
   highlightedIndex: number;
 }): MentionPickerKeyAction {
+  if (input.isComposing) return { type: "none" };
+
   const { key, shiftKey = false, optionCount } = input;
   const highlightedIndex = clampMentionHighlightIndex(input.highlightedIndex, optionCount);
 

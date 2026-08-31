@@ -90,4 +90,23 @@ describe("resolveMentionPickerKey", () => {
       }),
     ).toEqual({ type: "none" });
   });
+
+  it("ignores keys while IME composition is active", () => {
+    expect(
+      resolveMentionPickerKey({
+        key: "Enter",
+        isComposing: true,
+        optionCount: 2,
+        highlightedIndex: 0,
+      }),
+    ).toEqual({ type: "none" });
+    expect(
+      resolveMentionPickerKey({
+        key: "Enter",
+        isComposing: true,
+        optionCount: 0,
+        highlightedIndex: 0,
+      }),
+    ).toEqual({ type: "none" });
+  });
 });

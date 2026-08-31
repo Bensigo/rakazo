@@ -4608,6 +4608,7 @@ const Composer = memo(function Composer({
               const action = resolveMentionPickerKey({
                 key: event.key,
                 shiftKey: event.shiftKey,
+                isComposing: event.nativeEvent.isComposing || event.keyCode === 229,
                 optionCount: mentionOptions.length,
                 highlightedIndex: activeMentionIndex,
               });
