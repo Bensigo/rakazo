@@ -8,7 +8,7 @@ import {
   computerControlExpireJobKey,
   type JobPublisher,
   type MemoryStore,
-  phoneDeliverJob,
+  messagingDeliverJob,
   routineJobKey,
   routineWakeupJob,
   runContinueJob,
@@ -329,8 +329,8 @@ export interface RouterDeps {
   remoteConnectors?: RemoteConnectorDependencies;
   artifacts: ArtifactStore;
   dataDir: string;
-  /** Present when the phone messaging surface is enabled. */
-  phone?: { enabled: boolean };
+  /** Present when the external messaging surface is enabled. */
+  messaging?: { enabled: boolean; providers: string[] };
   env: {
     defaultProvider: string;
     defaultModel: string;
@@ -2899,33 +2899,35 @@ export function createRouter(deps: RouterDeps) {
         return { ok: true as const };
       }),
     },
-    phone: {
-      status: authed.phone.status.handler(async ({ context }) => {
-        const identity = await deps.prisma.phoneIdentity.findFirst({
+    messaging: {
+      status: authed.messaging.status.handler(async ({ context }) => {
+        const identity = await deps.prisma.messagingIdentity.findFirst({
           where: { userId: context.actor.userId },
         });
         return {
-          enabled: deps.phone?.enabled ?? false,
+          enabled: deps.messaging?.enabled ?? false,
+          providers: deps.messaging?.providers ?? [],
           linked: Boolean(identity),
-          phoneE164: identity?.phoneE164 ?? null,
+          provider: identity?.provider ?? null,
+          address: identity?.address ?? null,
           botId: identity?.botId ?? null,
         };
       }),
       channels: {
-        list: authed.phone.channels.list.handler(async ({ context }) => {
-          const identity = await phoneIdentityFor(deps.prisma, context.actor.userId);
+        list: authed.messaging.channels.list.handler(async ({ context }) => {
+          const identity = await messagingIdentityFor(deps.prisma, context.actor.userId);
           if (!identity) return [];
-          const memberships = await deps.prisma.phoneChannelMember.findMany({
+          const memberships = await deps.prisma.messagingChannelMember.findMany({
             where: { identityId: identity.id },
             include: { channel: { include: { members: ACTIVE_CHANNEL_MEMBERS } } },
             orderBy: { updatedAt: "desc" },
           });
-          return memberships.map((membership) => phoneChannelDto(membership));
+          return memberships.map((membership) => messagingChannelDto(membership));
         }),
-        respond: authed.phone.channels.respond.handler(async ({ context, input }) => {
-          const identity = await phoneIdentityFor(deps.prisma, context.actor.userId);
+        respond: authed.messaging.channels.respond.handler(async ({ context, input }) => {
+          const identity = await messagingIdentityFor(deps.prisma, context.actor.userId);
           const membership = identity
-            ? await deps.prisma.phoneChannelMember.findFirst({
+            ? await deps.prisma.messagingChannelMember.findFirst({
                 where: { channelId: input.channelId, identityId: identity.id },
                 include: { channel: { include: { members: ACTIVE_CHANNEL_MEMBERS } } },
               })
@@ -2933,7 +2935,7 @@ export function createRouter(deps: RouterDeps) {
           if (membership?.status !== "invited") {
             throw new ORPCError("NOT_FOUND");
           }
-          const { count } = await deps.prisma.phoneChannelMember.updateMany({
+          const { count } = await deps.prisma.messagingChannelMember.updateMany({
             where: { id: membership.id, status: "invited" },
             data: { status: input.accept ? "approved" : "declined" },
           });
@@ -2942,21 +2944,21 @@ export function createRouter(deps: RouterDeps) {
             // departed member.
             throw new ORPCError("NOT_FOUND");
           }
-          const updated = await deps.prisma.phoneChannelMember.findUniqueOrThrow({
+          const updated = await deps.prisma.messagingChannelMember.findUniqueOrThrow({
             where: { id: membership.id },
             include: { channel: { include: { members: ACTIVE_CHANNEL_MEMBERS } } },
           });
-          return phoneChannelDto(updated);
+          return messagingChannelDto(updated);
         }),
-        leave: authed.phone.channels.leave.handler(async ({ context, input }) => {
-          const identity = await phoneIdentityFor(deps.prisma, context.actor.userId);
+        leave: authed.messaging.channels.leave.handler(async ({ context, input }) => {
+          const identity = await messagingIdentityFor(deps.prisma, context.actor.userId);
           const membership = identity
-            ? await deps.prisma.phoneChannelMember.findFirst({
+            ? await deps.prisma.messagingChannelMember.findFirst({
                 where: { channelId: input.channelId, identityId: identity.id },
               })
             : null;
           if (!membership) throw new ORPCError("NOT_FOUND");
-          await deps.prisma.phoneChannelMember.update({
+          await deps.prisma.messagingChannelMember.update({
             where: { id: membership.id },
             data: { status: "left" },
           });
@@ -2964,8 +2966,8 @@ export function createRouter(deps: RouterDeps) {
         }),
       },
       connections: {
-        list: authed.phone.connections.list.handler(async ({ context }) => {
-          const identity = await phoneIdentityFor(deps.prisma, context.actor.userId);
+        list: authed.messaging.connections.list.handler(async ({ context }) => {
+          const identity = await messagingIdentityFor(deps.prisma, context.actor.userId);
           if (!identity) return [];
           const connections = await deps.prisma.agentConnection.findMany({
             where: {
@@ -2974,11 +2976,13 @@ export function createRouter(deps: RouterDeps) {
             orderBy: { updatedAt: "desc" },
           });
           return Promise.all(
-            connections.map((connection) => phoneConnectionDto(deps.prisma, identity, connection)),
+            connections.map((connection) =>
+              messagingConnectionDto(deps.prisma, identity, connection),
+            ),
           );
         }),
-        respond: authed.phone.connections.respond.handler(async ({ context, input }) => {
-          const identity = await phoneIdentityFor(deps.prisma, context.actor.userId);
+        respond: authed.messaging.connections.respond.handler(async ({ context, input }) => {
+          const identity = await messagingIdentityFor(deps.prisma, context.actor.userId);
           const connection = identity
             ? await deps.prisma.agentConnection.findFirst({
                 where: { id: input.connectionId, targetBotId: identity.botId, status: "pending" },
@@ -3002,20 +3006,20 @@ export function createRouter(deps: RouterDeps) {
             });
             if (!input.accept) return { updated: row, notifyRequester: false };
             // Parity with the text-command path: the requester hears about it.
-            const requesterIdentity = await tx.phoneIdentity.findUnique({
+            const requesterIdentity = await tx.messagingIdentity.findUnique({
               where: { botId: connection.requesterBotId },
             });
             if (!requesterIdentity) return { updated: row, notifyRequester: false };
             const key = `command:connected:${connection.id}`;
             // A re-approved pair starts a fresh cycle; clear the stale row or
             // skipDuplicates would swallow the new confirmation.
-            await tx.phoneOutbound.deleteMany({ where: { idempotencyKey: key } });
-            await tx.phoneOutbound.createMany({
+            await tx.messagingOutbound.deleteMany({ where: { idempotencyKey: key } });
+            await tx.messagingOutbound.createMany({
               data: [
                 {
                   idempotencyKey: key,
                   kind: "dm",
-                  toNumber: requesterIdentity.phoneE164,
+                  identityId: requesterIdentity.id,
                   body: "Your connection request was accepted — your agents can now message each other.",
                 },
               ],
@@ -3024,14 +3028,14 @@ export function createRouter(deps: RouterDeps) {
             return { updated: row, notifyRequester: true };
           });
           if (notifyRequester) {
-            await deps.jobs.enqueue(phoneDeliverJob()).catch((error) => {
-              console.error("phone connection confirmation enqueue error", error);
+            await deps.jobs.enqueue(messagingDeliverJob()).catch((error) => {
+              console.error("messaging connection confirmation enqueue error", error);
             });
           }
-          return phoneConnectionDto(deps.prisma, identity, updated);
+          return messagingConnectionDto(deps.prisma, identity, updated);
         }),
-        revoke: authed.phone.connections.revoke.handler(async ({ context, input }) => {
-          const identity = await phoneIdentityFor(deps.prisma, context.actor.userId);
+        revoke: authed.messaging.connections.revoke.handler(async ({ context, input }) => {
+          const identity = await messagingIdentityFor(deps.prisma, context.actor.userId);
           const connection = identity
             ? await deps.prisma.agentConnection.findFirst({
                 where: {
@@ -3058,7 +3062,7 @@ export function createRouter(deps: RouterDeps) {
             // delivery holds this connection row FOR UPDATE through
             // sendDirect, so revoke either waits until the DM is sent or
             // deletes the claim before send starts.
-            await tx.phoneOutbound.deleteMany({
+            await tx.messagingOutbound.deleteMany({
               where: {
                 idempotencyKey: `connect:${connection.requesterBotId}:${connection.targetBotId}`,
                 OR: [{ status: "pending" }, { status: "sent", providerHandle: null }],
@@ -3935,38 +3939,39 @@ const ACTIVE_CHANNEL_MEMBERS = {
   select: { id: true },
 };
 
-type PhoneIdentityRecord = {
+type MessagingIdentityRecord = {
   id: string;
   botId: string;
 };
 
-async function phoneIdentityFor(
+async function messagingIdentityFor(
   prisma: PrismaClient,
   userId: string,
-): Promise<PhoneIdentityRecord | null> {
-  return prisma.phoneIdentity.findFirst({
+): Promise<MessagingIdentityRecord | null> {
+  return prisma.messagingIdentity.findFirst({
     where: { userId },
     orderBy: { createdAt: "asc" },
     select: { id: true, botId: true },
   });
 }
 
-function phoneChannelDto(membership: {
+function messagingChannelDto(membership: {
   channelId: string;
   status: string;
-  channel: { name: string | null; members: Array<{ id: string }> };
+  channel: { provider: string; name: string | null; members: Array<{ id: string }> };
 }) {
   return {
     channelId: membership.channelId,
+    provider: membership.channel.provider,
     name: membership.channel.name,
     status: membership.status as "invited" | "approved" | "declined" | "left",
     memberCount: membership.channel.members.length,
   };
 }
 
-async function phoneConnectionDto(
+async function messagingConnectionDto(
   prisma: PrismaClient,
-  identity: PhoneIdentityRecord,
+  identity: MessagingIdentityRecord,
   connection: {
     id: string;
     requesterBotId: string;
@@ -3990,7 +3995,7 @@ async function phoneConnectionDto(
     where: { id: peerBotId },
     select: { name: true },
   });
-  const peerIdentity = await prisma.phoneIdentity.findUnique({
+  const peerIdentity = await prisma.messagingIdentity.findUnique({
     where: { botId: peerBotId },
     select: { userId: true },
   });

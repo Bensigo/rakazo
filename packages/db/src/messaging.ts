@@ -1,0 +1,169 @@
+import { randomBytes } from "node:crypto";
+import { bootstrapUserSpace, type SignupPolicyEnv } from "./bootstrap-user.js";
+import type { PrismaClient } from "./client.js";
+import { createRepos } from "./repos.js";
+
+export interface MessagingIdentityRequest {
+  /** Messaging platform hosting the conversation (sendblue, slack, …). */
+  provider: string;
+  /** Sender address within the provider: E.164 number, Slack user id, …. */
+  address: string;
+  /** Provider thread id of the 1:1 conversation, when already known. */
+  dmThreadId?: string | null;
+  /** Platform display name; seeds the synthetic user's name when present. */
+  displayName?: string | null;
+}
+
+export interface ProvisionedMessagingIdentity {
+  provider: string;
+  address: string;
+  userId: string;
+  spaceId: string;
+  botId: string;
+  threadId: string;
+  created: boolean;
+}
+
+/** Addresses come from verified platform webhooks; this guards the DB shape. */
+const ADDRESS_PATTERN = /^[^\s]{1,128}$/;
+
+function messagingEmail(provider: string, address: string): string {
+  const local = `${provider}-${address}`.replace(/[^a-zA-Z0-9]/g, "").slice(0, 60);
+  return `msg-${local}@messaging.invalid`;
+}
+
+/**
+ * One (provider, address) = one user + Space + one bot ("their agent").
+ * The synthetic `msg-…@messaging.invalid` user has no Account row, so it
+ * cannot log in until account linking lands; chat is its only surface.
+ *
+ * Every step is resumable: a crash (or a lost race) at any point leaves
+ * state the next inbound from the same address completes instead of
+ * wedging on a unique constraint.
+ */
+export async function provisionMessagingIdentity(
+  prisma: PrismaClient,
+  request: MessagingIdentityRequest,
+  env: SignupPolicyEnv,
+): Promise<ProvisionedMessagingIdentity> {
+  const { provider, address } = request;
+  if (!ADDRESS_PATTERN.test(address)) {
+    throw new Error(`Invalid messaging address for ${provider}: ${address}`);
+  }
+
+  const where = { provider_address: { provider, address } } as const;
+  const existing = await prisma.messagingIdentity.findUnique({ where });
+  if (existing) {
+    const thread = await prisma.thread.findFirst({ where: { botId: existing.botId } });
+    if (!thread) throw new Error(`messaging identity ${existing.id} has no thread`);
+    return {
+      provider,
+      address,
+      userId: existing.userId,
+      spaceId: existing.spaceId,
+      botId: existing.botId,
+      threadId: thread.id,
+      created: false,
+    };
+  }
+
+  const email = messagingEmail(provider, address);
+  let user = await prisma.user.findUnique({ where: { email } });
+  if (!user) {
+    user = await prisma.user
+      .create({
+        data: {
+          id: randomBytes(16).toString("hex"),
+          name: request.displayName?.trim() || `${titleCase(provider)} ${address.slice(-4)}`,
+          email,
+          emailVerified: false,
+        },
+      })
+      // A concurrent first-inbound from the same address won the email race.
+      .catch(() => prisma.user.findUniqueOrThrow({ where: { email } }));
+  }
+
+  const membership = await prisma.spaceMember.findFirst({ where: { userId: user.id } });
+  const spaceId =
+    membership?.spaceId ??
+    (
+      await bootstrapUserSpace(prisma, user, env, {
+        claimDeploymentOwner: false,
+      })
+    ).spaceId;
+
+  // A previous attempt may have died between createBot and the identity row;
+  // messaging users only ever get bots here, so an existing bot is theirs.
+  let botId = (
+    await prisma.bot.findFirst({
+      where: { spaceId, userId: user.id, archivedAt: null },
+      select: { id: true },
+    })
+  )?.id;
+  if (!botId) {
+    const repos = createRepos(prisma);
+    const bot = await repos.createBot(
+      {
+        userId: user.id,
+        spaceId,
+        email: user.email,
+        isDeploymentOwner: false,
+      },
+      {
+        name: "Assistant",
+        title: "",
+        description: `Personal agent for ${address} (${provider}), auto-created on first message.`,
+        instructions:
+          "You are the owner's personal agent. The owner reaches you over chat; " +
+          "keep replies concise and conversational. Your first reply doubles as onboarding: " +
+          "briefly introduce yourself and what you can help with.",
+        notifyOnFinish: true,
+      },
+    );
+    botId = bot.id;
+  }
+
+  const thread = await prisma.thread.findFirst({ where: { botId } });
+  if (!thread) throw new Error(`bot ${botId} has no thread after createBot`);
+
+  try {
+    await prisma.messagingIdentity.create({
+      data: {
+        provider,
+        address,
+        dmThreadId: request.dmThreadId ?? null,
+        userId: user.id,
+        spaceId,
+        botId,
+      },
+    });
+  } catch {
+    // A concurrent first-inbound won the (provider, address) race; report its
+    // result.
+    const winner = await prisma.messagingIdentity.findUnique({ where });
+    if (!winner) {
+      throw new Error(`messaging identity for ${provider}:${address} vanished after create failed`);
+    }
+    // The winner's bot can differ from the bot this attempt found or
+    // created; pair the result with the winning bot's own thread.
+    const winnerThread =
+      winner.botId === botId
+        ? thread
+        : await prisma.thread.findFirst({ where: { botId: winner.botId } });
+    if (!winnerThread) throw new Error(`bot ${winner.botId} has no thread`);
+    return {
+      provider,
+      address,
+      userId: winner.userId,
+      spaceId: winner.spaceId,
+      botId: winner.botId,
+      threadId: winnerThread.id,
+      created: false,
+    };
+  }
+  return { provider, address, userId: user.id, spaceId, botId, threadId: thread.id, created: true };
+}
+
+function titleCase(value: string): string {
+  return value ? value[0]!.toUpperCase() + value.slice(1) : value;
+}

@@ -63,6 +63,7 @@ import {
   type MobileMessagePage,
   type MobileSnapshot,
   mergeMobileSnapshot,
+  messagingProviderLabel,
   prependMobileMessagePage,
   rpc,
   selectedSpaceId,
@@ -1838,8 +1839,8 @@ function MentionChipIcon({ mention }: { mention: ComposerMention }) {
 function previewMessageText(message: MobileMessage): string {
   const text = message.blocks
     .flatMap((block) => {
-      if (block.kind === "phone_channel_message" && block.text) {
-        return [`iMessage · ${block.fromLabel}: ${block.text}`];
+      if (block.kind === "channel_message" && block.text) {
+        return [`${messagingProviderLabel(block.provider)} · ${block.fromLabel}: ${block.text}`];
       }
       return block.kind === "text" && block.text ? [block.text] : [];
     })
@@ -1950,15 +1951,16 @@ const MessageBubble = memo(function MessageBubble({
       </View>
     );
   }
-  const phoneChannel = message.blocks.find(
-    (block): block is Extract<MessageBlock, { kind: "phone_channel_message" }> =>
-      block.kind === "phone_channel_message",
+  const channelMessage = message.blocks.find(
+    (block): block is Extract<MessageBlock, { kind: "channel_message" }> =>
+      block.kind === "channel_message",
   );
-  if (phoneChannel) {
+  if (channelMessage) {
     return (
       <View style={{ width: "100%", paddingVertical: 4, alignItems: "center" }}>
         <Text style={{ color: "#85858A", fontSize: 13.5, textAlign: "center" }}>
-          iMessage · {phoneChannel.fromLabel}: {phoneChannel.text}
+          {messagingProviderLabel(channelMessage.provider)} · {channelMessage.fromLabel}:{" "}
+          {channelMessage.text}
         </Text>
       </View>
     );
@@ -2140,8 +2142,8 @@ const MessageBubble = memo(function MessageBubble({
   );
   const caption = message.blocks
     .flatMap((block) => {
-      if (block.kind === "phone_channel_message" && block.text) {
-        return [`iMessage · ${block.fromLabel}: ${block.text}`];
+      if (block.kind === "channel_message" && block.text) {
+        return [`${messagingProviderLabel(block.provider)} · ${block.fromLabel}: ${block.text}`];
       }
       return block.kind === "text" && block.text ? [block.text] : [];
     })

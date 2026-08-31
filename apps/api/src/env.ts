@@ -41,6 +41,14 @@ export interface AppEnv {
   sendblueApiSecret: string | undefined;
   sendblueSigningSecret: string | undefined;
   sendbluePhoneNumber: string | undefined;
+  slackBotToken: string | undefined;
+  slackSigningSecret: string | undefined;
+  whatsappAccessToken: string | undefined;
+  whatsappPhoneNumberId: string | undefined;
+  whatsappAppSecret: string | undefined;
+  whatsappVerifyToken: string | undefined;
+  telegramBotToken: string | undefined;
+  telegramWebhookSecret: string | undefined;
   defaultProvider: string;
   defaultModel: string;
   wakeupDriver: string;
@@ -98,6 +106,14 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     sendblueApiSecret: optional(source.SENDBLUE_API_SECRET),
     sendblueSigningSecret: optional(source.SENDBLUE_SIGNING_SECRET),
     sendbluePhoneNumber: optional(source.SENDBLUE_PHONE_NUMBER),
+    slackBotToken: optional(source.SLACK_BOT_TOKEN),
+    slackSigningSecret: optional(source.SLACK_SIGNING_SECRET),
+    whatsappAccessToken: optional(source.WHATSAPP_ACCESS_TOKEN),
+    whatsappPhoneNumberId: optional(source.WHATSAPP_PHONE_NUMBER_ID),
+    whatsappAppSecret: optional(source.WHATSAPP_APP_SECRET),
+    whatsappVerifyToken: optional(source.WHATSAPP_VERIFY_TOKEN),
+    telegramBotToken: optional(source.TELEGRAM_BOT_TOKEN),
+    telegramWebhookSecret: optional(source.TELEGRAM_WEBHOOK_SECRET_TOKEN),
     defaultProvider: deploymentModel.provider,
     defaultModel: deploymentModel.model,
     wakeupDriver: source.WAKEUP_DRIVER ?? "graphile",

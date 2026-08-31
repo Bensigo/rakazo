@@ -1,0 +1,174 @@
+import { createSlackAdapter } from "@chat-adapter/slack";
+import { createTelegramAdapter } from "@chat-adapter/telegram";
+import { createWhatsAppAdapter } from "@chat-adapter/whatsapp";
+import type { MessagingOutboundStatus } from "@rakazo/adapter-kit";
+import type { Adapter } from "chat";
+import { createSendblueAdapter } from "chat-adapter-sendblue";
+import type { MessagingPlatform } from "./chat-sdk-surface.js";
+
+/**
+ * Parsed platform credentials, filled from process.env at the composition
+ * roots. A platform mounts when its full credential set is present.
+ */
+export interface MessagingEnvironmentValues {
+  sendblueApiKeyId?: string | undefined;
+  sendblueApiSecret?: string | undefined;
+  sendblueSigningSecret?: string | undefined;
+  sendbluePhoneNumber?: string | undefined;
+  slackBotToken?: string | undefined;
+  slackSigningSecret?: string | undefined;
+  whatsappAccessToken?: string | undefined;
+  whatsappPhoneNumberId?: string | undefined;
+  whatsappAppSecret?: string | undefined;
+  whatsappVerifyToken?: string | undefined;
+  telegramBotToken?: string | undefined;
+  telegramWebhookSecret?: string | undefined;
+}
+
+export function messagingEnvFromProcess(
+  env: Record<string, string | undefined>,
+): MessagingEnvironmentValues {
+  return {
+    sendblueApiKeyId: env.SENDBLUE_API_KEY_ID,
+    sendblueApiSecret: env.SENDBLUE_API_SECRET,
+    sendblueSigningSecret: env.SENDBLUE_SIGNING_SECRET,
+    sendbluePhoneNumber: env.SENDBLUE_PHONE_NUMBER,
+    slackBotToken: env.SLACK_BOT_TOKEN,
+    slackSigningSecret: env.SLACK_SIGNING_SECRET,
+    whatsappAccessToken: env.WHATSAPP_ACCESS_TOKEN,
+    whatsappPhoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID,
+    whatsappAppSecret: env.WHATSAPP_APP_SECRET,
+    whatsappVerifyToken: env.WHATSAPP_VERIFY_TOKEN,
+    telegramBotToken: env.TELEGRAM_BOT_TOKEN,
+    telegramWebhookSecret: env.TELEGRAM_WEBHOOK_SECRET_TOKEN,
+  };
+}
+
+/**
+ * Build the platform list for every fully configured provider. Group
+ * conversations stay sendblue-only until channel semantics are mapped for
+ * the other platforms, so their capabilities say so instead of half-working.
+ */
+export function messagingPlatformsFromEnv(env: MessagingEnvironmentValues): MessagingPlatform[] {
+  const platforms: MessagingPlatform[] = [];
+
+  if (
+    env.sendblueApiKeyId &&
+    env.sendblueApiSecret &&
+    env.sendblueSigningSecret &&
+    env.sendbluePhoneNumber
+  ) {
+    const lineNumber = env.sendbluePhoneNumber;
+    const adapter = createSendblueAdapter({
+      apiKey: env.sendblueApiKeyId,
+      apiSecret: env.sendblueApiSecret,
+      defaultFromNumber: lineNumber,
+      webhookSecret: env.sendblueSigningSecret,
+      allowedServices: ["iMessage", "SMS", "RCS"],
+    });
+    // chat@4.39 derives thread.isDM solely from the optional Adapter.isDM
+    // hook, and chat-adapter-sendblue@0.2.0 omits it — without this every
+    // 1:1 message would route as a group. Derive it from the thread id.
+    Object.assign(adapter, {
+      isDM: (threadId: string) => !adapter.decodeThreadId(threadId).groupId,
+    } satisfies Pick<Adapter, "isDM">);
+    platforms.push({
+      provider: "sendblue",
+      capabilities: { direct: true, groups: true, typing: true },
+      adapter,
+      directThreadId: (address) =>
+        adapter.encodeThreadId({ fromNumber: lineNumber, contactNumber: address }),
+      peekStatus: (payload) => parseSendblueStatus(payload),
+      participants: (raw) => sendblueParticipants(raw, lineNumber),
+      channelName: (raw) => sendblueGroupName(raw),
+    });
+  }
+
+  if (env.slackBotToken && env.slackSigningSecret) {
+    platforms.push({
+      provider: "slack",
+      capabilities: { direct: true, groups: false, typing: false },
+      adapter: createSlackAdapter({
+        botToken: env.slackBotToken,
+        signingSecret: env.slackSigningSecret,
+      }),
+    });
+  }
+
+  if (
+    env.whatsappAccessToken &&
+    env.whatsappPhoneNumberId &&
+    env.whatsappAppSecret &&
+    env.whatsappVerifyToken
+  ) {
+    platforms.push({
+      provider: "whatsapp",
+      capabilities: { direct: true, groups: false, typing: false },
+      adapter: createWhatsAppAdapter({
+        accessToken: env.whatsappAccessToken,
+        phoneNumberId: env.whatsappPhoneNumberId,
+        appSecret: env.whatsappAppSecret,
+        verifyToken: env.whatsappVerifyToken,
+      }),
+    });
+  }
+
+  if (env.telegramBotToken) {
+    platforms.push({
+      provider: "telegram",
+      capabilities: { direct: true, groups: false, typing: false },
+      adapter: createTelegramAdapter({
+        botToken: env.telegramBotToken,
+        secretToken: env.telegramWebhookSecret,
+      }),
+    });
+  }
+
+  return platforms;
+}
+
+/** Never live under the test runner; tests build surfaces explicitly. */
+export function isMessagingEnabled(platforms: MessagingPlatform[]): boolean {
+  return platforms.length > 0 && !process.env.VITEST;
+}
+
+/**
+ * Messaging-created users have no per-user model credential, so the surface
+ * also requires the deployment model key — without it their runs cannot
+ * execute.
+ */
+export function isMessagingSurfaceEnabled(
+  platforms: MessagingPlatform[],
+  deploymentModelKey: string | undefined,
+): boolean {
+  return isMessagingEnabled(platforms) && Boolean(deploymentModelKey);
+}
+
+/** Sendblue reports outbound delivery as webhooks the Chat SDK ignores. */
+export function parseSendblueStatus(payload: unknown): MessagingOutboundStatus | null {
+  if (typeof payload !== "object" || payload === null) return null;
+  const body = payload as Record<string, unknown>;
+  if (body.is_outbound !== true) return null;
+  if (typeof body.message_handle !== "string" || !body.message_handle) return null;
+  return {
+    type: "status",
+    provider: "sendblue",
+    handle: body.message_handle,
+    status: typeof body.status === "string" ? body.status : "",
+  };
+}
+
+function sendblueParticipants(raw: unknown, lineNumber: string): string[] {
+  if (typeof raw !== "object" || raw === null) return [];
+  const participants = (raw as { participants?: unknown }).participants;
+  if (!Array.isArray(participants)) return [];
+  return participants.filter(
+    (entry): entry is string => typeof entry === "string" && entry !== lineNumber,
+  );
+}
+
+function sendblueGroupName(raw: unknown): string | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const name = (raw as { group_display_name?: unknown }).group_display_name;
+  return typeof name === "string" && name ? name : null;
+}

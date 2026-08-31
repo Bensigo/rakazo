@@ -2,42 +2,50 @@ import type {
   AdapterContext,
   JobPublisher,
   MessagingOutboundStatus,
-  MessagingProvider,
+  MessagingSurface,
 } from "@rakazo/adapter-kit";
-import { phoneDeliverJob, runContinueJob } from "@rakazo/adapter-kit";
+import { messagingDeliverJob, runContinueJob } from "@rakazo/adapter-kit";
 import type { MessageBlock } from "@rakazo/contracts";
 import { botMessageHopExhausted, nextBotMessageHop } from "@rakazo/core";
 import type { PrismaClient, ThreadEvents } from "@rakazo/db";
 import { appendEventInTransaction, createThreadMessageInTransaction } from "@rakazo/db";
 
 /**
- * Margin under the vendor's hard consecutive-outbound cap: past this many
- * DMs without a reply from the owner, mirror rows stay pending until the
- * next inbound resets the counter.
+ * Margin under vendor consecutive-outbound caps (sendblue enforces one hard):
+ * past this many DMs without a reply from the owner, mirror rows stay pending
+ * until the next inbound resets the counter.
  */
-export const PHONE_DM_OUTBOUND_CAP = 140;
+export const MESSAGING_DM_OUTBOUND_CAP = 140;
 
 /** Provider-send attempts before a mirrored row is declared lost. */
-export const PHONE_OUTBOUND_MAX_ATTEMPTS = 5;
+export const MESSAGING_OUTBOUND_MAX_ATTEMPTS = 5;
 
-export interface PhoneDeliveryDeps {
+export interface MessagingDeliveryDeps {
   prisma: PrismaClient;
-  messaging: MessagingProvider;
+  messaging: MessagingSurface;
   events: Pick<ThreadEvents, "sendUserMessage" | "notify">;
   jobs: Pick<JobPublisher, "enqueue">;
 }
 
+type IdentityRow = {
+  id: string;
+  provider: string;
+  address: string;
+  dmThreadId: string | null;
+  outboundSinceInbound: number;
+};
+
 /**
  * Automatic mirror, not a send tool: every text-bearing bot message of a
- * phone run is copied into the uniform outbox and sent, so delivery does
- * not depend on prompt compliance. DM runs go to the owner's number;
+ * messaging run is copied into the uniform outbox and sent, so delivery does
+ * not depend on prompt compliance. DM runs go to the owner's conversation;
  * channel runs go to the group with an attribution prefix and are fanned
  * out internally to peer approved bots (agent-to-agent traffic never
- * transits the messaging provider). Also drains pending outbox rows (invites and intros
- * are enqueued by the channels slice).
+ * transits the messaging provider). Also drains pending outbox rows (invites
+ * and intros are enqueued by the channels slice).
  */
-export async function deliverPhoneOutbound(
-  deps: PhoneDeliveryDeps,
+export async function deliverMessagingOutbound(
+  deps: MessagingDeliveryDeps,
   input: { runId?: string },
   context: AdapterContext,
 ): Promise<void> {
@@ -47,23 +55,23 @@ export async function deliverPhoneOutbound(
   await drain(deps, context);
 }
 
-async function mirrorRun(deps: PhoneDeliveryDeps, runId: string): Promise<void> {
+async function mirrorRun(deps: MessagingDeliveryDeps, runId: string): Promise<void> {
   const run = await deps.prisma.run.findUnique({
     where: { id: runId },
     include: { sourceMessage: true },
   });
-  if (run?.trigger !== "phone") return;
+  if (run?.trigger !== "messaging") return;
   const sourceBlocks = (run.sourceMessage?.blocks ?? []) as MessageBlock[];
   const channelBlock = sourceBlocks.find(
-    (block): block is Extract<MessageBlock, { kind: "phone_channel_message" }> =>
-      block.kind === "phone_channel_message",
+    (block): block is Extract<MessageBlock, { kind: "channel_message" }> =>
+      block.kind === "channel_message",
   );
   if (channelBlock) {
     await mirrorChannelRun(deps, run, channelBlock);
     return;
   }
 
-  const identity = await deps.prisma.phoneIdentity.findUnique({
+  const identity = await deps.prisma.messagingIdentity.findUnique({
     where: { botId: run.botId },
   });
   if (!identity) return;
@@ -76,15 +84,15 @@ async function mirrorRun(deps: PhoneDeliveryDeps, runId: string): Promise<void> 
     .map((message) => ({
       idempotencyKey: `msg:${message.id}`,
       kind: "dm",
-      toNumber: identity.phoneE164,
+      identityId: identity.id,
       body: extractText(message.blocks),
       sourceMessageId: message.id,
     }))
     .filter((row) => row.body);
   if (rows.length === 0) return;
-  // Atomic dedupe: a concurrent phone.deliver for the same run loses on the
-  // idempotencyKey unique key instead of throwing P2002.
-  await deps.prisma.phoneOutbound.createMany({ data: rows, skipDuplicates: true });
+  // Atomic dedupe: a concurrent messaging.deliver for the same run loses on
+  // the idempotencyKey unique key instead of throwing P2002.
+  await deps.prisma.messagingOutbound.createMany({ data: rows, skipDuplicates: true });
 }
 
 /**
@@ -93,15 +101,15 @@ async function mirrorRun(deps: PhoneDeliveryDeps, runId: string): Promise<void> 
  * waking run on @-mention, bounded by the shared bot-message hop budget.
  */
 async function mirrorChannelRun(
-  deps: PhoneDeliveryDeps,
+  deps: MessagingDeliveryDeps,
   run: { id: string; botId: string },
-  channelBlock: Extract<MessageBlock, { kind: "phone_channel_message" }>,
+  channelBlock: Extract<MessageBlock, { kind: "channel_message" }>,
 ): Promise<void> {
-  const identity = await deps.prisma.phoneIdentity.findUnique({
+  const identity = await deps.prisma.messagingIdentity.findUnique({
     where: { botId: run.botId },
   });
   if (!identity) return;
-  const channel = await deps.prisma.phoneChannel.findUnique({
+  const channel = await deps.prisma.messagingChannel.findUnique({
     where: { id: channelBlock.channelId },
   });
   if (!channel) return;
@@ -122,11 +130,11 @@ async function mirrorChannelRun(
     .filter((entry) => entry.text);
   if (messages.length === 0) return;
 
-  await deps.prisma.phoneOutbound.createMany({
+  await deps.prisma.messagingOutbound.createMany({
     data: messages.map(({ message, text }) => ({
       idempotencyKey: `msg:${message.id}`,
       kind: "group",
-      providerGroupId: channel.providerGroupId,
+      threadId: channel.threadId,
       body: `${fromLabel}: ${text}`,
       sourceMessageId: message.id,
     })),
@@ -134,7 +142,7 @@ async function mirrorChannelRun(
   });
 
   const hop = nextBotMessageHop(channelBlock.hop);
-  const peers = await deps.prisma.phoneChannelMember.findMany({
+  const peers = await deps.prisma.messagingChannelMember.findMany({
     where: {
       channelId: channel.id,
       status: "approved",
@@ -144,7 +152,7 @@ async function mirrorChannelRun(
   });
   for (const { message, text } of messages) {
     for (const peer of peers) {
-      const peerIdentity = await deps.prisma.phoneIdentity.findUnique({
+      const peerIdentity = await deps.prisma.messagingIdentity.findUnique({
         where: { id: peer.identityId! },
       });
       if (!peerIdentity) continue;
@@ -157,14 +165,15 @@ async function mirrorChannelRun(
         select: { name: true },
       });
       const block: MessageBlock = {
-        kind: "phone_channel_message",
+        kind: "channel_message",
+        provider: identity.provider,
         channelId: channel.id,
-        fromNumber: identity.phoneE164,
+        fromAddress: identity.address,
         fromLabel,
         text,
         hop,
       };
-      const clientNonce = `phone-peer:${message.id}:${peerIdentity.botId}`;
+      const clientNonce = `messaging-peer:${message.id}:${peerIdentity.botId}`;
       const mentioned = peerBot?.name
         ? new RegExp(`@${escapeRegExp(peerBot.name)}\\b`, "i").test(text)
         : false;
@@ -175,13 +184,13 @@ async function mirrorChannelRun(
           botId: peerIdentity.botId,
           userId: peerIdentity.userId,
           blocks: [block],
-          prompt: `[iMessage group "${channel.name ?? "group"}" — ${fromLabel}]: ${text}`,
-          trigger: "phone",
+          prompt: `[Group "${channel.name ?? "group"}" — ${fromLabel}]: ${text}`,
+          trigger: "messaging",
           clientNonce,
         });
         if (sent.runId) {
           await deps.jobs.enqueue(runContinueJob(sent.runId)).catch((error) => {
-            console.error("phone peer wake enqueue error", error);
+            console.error("messaging peer wake enqueue error", error);
           });
         }
         continue;
@@ -227,7 +236,7 @@ function connectInvitePair(
 /**
  * Deliver a connect invite while holding the connection row lock.
  * Revoke's status update blocks behind this lock, so it cannot commit
- * (and delete the claim) between the pending check and sendDirect.
+ * (and delete the claim) between the pending check and the send.
  * Only used for rare approval DMs, not for ordinary mirrored traffic.
  *
  * At-most-once: any failure after the provider call (or an ambiguous
@@ -236,8 +245,9 @@ function connectInvitePair(
  * reconnect starts a fresh cycle.
  */
 async function sendConnectInvite(
-  deps: PhoneDeliveryDeps,
-  row: { id: string; toNumber: string; body: string },
+  deps: MessagingDeliveryDeps,
+  row: { id: string; body: string },
+  threadId: string,
   pair: { requesterBotId: string; targetBotId: string },
   context: AdapterContext,
 ): Promise<"delivered" | "skipped" | "held"> {
@@ -251,23 +261,20 @@ async function sendConnectInvite(
           FOR UPDATE
         `;
         if (locked[0]?.status !== "pending") {
-          await tx.phoneOutbound.updateMany({
+          await tx.messagingOutbound.updateMany({
             where: { id: row.id },
             data: { status: "failed" },
           });
           return "skipped";
         }
-        const outbound = await tx.phoneOutbound.findUnique({
+        const outbound = await tx.messagingOutbound.findUnique({
           where: { id: row.id },
           select: { id: true },
         });
         if (!outbound) return "skipped";
         try {
-          const sent = await deps.messaging.sendDirect(
-            { to: row.toNumber, body: row.body },
-            context,
-          );
-          await tx.phoneOutbound.updateMany({
+          const sent = await deps.messaging.sendToThread({ threadId, body: row.body }, context);
+          await tx.messagingOutbound.updateMany({
             where: { id: row.id },
             data: { providerHandle: sent.handle },
           });
@@ -286,9 +293,9 @@ async function sendConnectInvite(
   }
 }
 
-async function drain(deps: PhoneDeliveryDeps, context: AdapterContext): Promise<void> {
+async function drain(deps: MessagingDeliveryDeps, context: AdapterContext): Promise<void> {
   const now = new Date();
-  const pending = await deps.prisma.phoneOutbound.findMany({
+  const pending = await deps.prisma.messagingOutbound.findMany({
     where: {
       status: "pending",
       OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }],
@@ -297,83 +304,85 @@ async function drain(deps: PhoneDeliveryDeps, context: AdapterContext): Promise<
   });
   for (const row of pending) {
     // Claim before sending: concurrent drains (job keys are per runId) and
-    // crash retries must never deliver the same iMessage twice.
-    const claim = await deps.prisma.phoneOutbound.updateMany({
+    // crash retries must never deliver the same message twice.
+    const claim = await deps.prisma.messagingOutbound.updateMany({
       where: { id: row.id, status: "pending" },
       data: { status: "sent", nextAttemptAt: null },
     });
     if (claim.count === 0) continue;
     try {
       if (row.kind === "group" || row.kind === "intro") {
-        if (!row.providerGroupId) {
-          await deps.prisma.phoneOutbound.update({
+        if (!row.threadId) {
+          await deps.prisma.messagingOutbound.update({
             where: { id: row.id },
             data: { status: "failed" },
           });
           continue;
         }
-        const sent = await deps.messaging.sendGroup(
-          { groupId: row.providerGroupId, body: row.body },
+        const sent = await deps.messaging.sendToThread(
+          { threadId: row.threadId, body: row.body },
           context,
         );
-        await deps.prisma.phoneOutbound.update({
+        await deps.prisma.messagingOutbound.update({
           where: { id: row.id },
           data: { providerHandle: sent.handle },
         });
         continue;
       }
-      if (!row.toNumber) {
-        await deps.prisma.phoneOutbound.update({
+      const identity = row.identityId
+        ? await deps.prisma.messagingIdentity.findUnique({ where: { id: row.identityId } })
+        : null;
+      if (!identity) {
+        await deps.prisma.messagingOutbound.update({
           where: { id: row.id },
           data: { status: "failed" },
         });
         continue;
       }
-      const identity = await deps.prisma.phoneIdentity.findUnique({
-        where: { phoneE164: row.toNumber },
-      });
-      if (identity && identity.outboundSinceInbound >= PHONE_DM_OUTBOUND_CAP) {
+      if (identity.outboundSinceInbound >= MESSAGING_DM_OUTBOUND_CAP) {
         // Cap holds are not failures: release the claim back to pending.
-        await deps.prisma.phoneOutbound.update({
+        await deps.prisma.messagingOutbound.update({
           where: { id: row.id },
           data: { status: "pending" },
         });
         continue;
       }
+      const threadId = await resolveDirectThread(deps, identity, context);
       const invitePair = connectInvitePair(row.idempotencyKey);
       if (invitePair) {
         const result = await sendConnectInvite(
           deps,
-          { id: row.id, toNumber: row.toNumber, body: row.body },
+          { id: row.id, body: row.body },
+          threadId,
           invitePair,
           context,
         );
-        if (result === "delivered" && identity) {
-          await deps.prisma.phoneIdentity.update({
+        if (result === "delivered") {
+          await deps.prisma.messagingIdentity.update({
             where: { id: identity.id },
             data: { outboundSinceInbound: { increment: 1 } },
           });
         }
         continue;
       }
-      const sent = await deps.messaging.sendDirect({ to: row.toNumber, body: row.body }, context);
-      await deps.prisma.phoneOutbound.updateMany({
+      const sent = await deps.messaging.sendToThread({ threadId, body: row.body }, context);
+      await deps.prisma.messagingOutbound.updateMany({
         where: { id: row.id },
         data: { providerHandle: sent.handle },
       });
-      if (identity) {
-        await deps.prisma.phoneIdentity.update({
-          where: { id: identity.id },
-          data: { outboundSinceInbound: { increment: 1 } },
-        });
-      }
+      await deps.prisma.messagingIdentity.update({
+        where: { id: identity.id },
+        data: { outboundSinceInbound: { increment: 1 } },
+      });
     } catch {
       // Transient provider errors go back to pending with a backed-off
       // retry; only an exhausted budget is terminal.
       const attempts = (row.attempts ?? 0) + 1;
-      const exhausted = attempts >= PHONE_OUTBOUND_MAX_ATTEMPTS;
-      const retryAt = exhausted ? null : new Date(Date.now() + phoneOutboundRetryDelayMs(attempts));
-      await deps.prisma.phoneOutbound.updateMany({
+      const exhausted = attempts >= MESSAGING_OUTBOUND_MAX_ATTEMPTS;
+      const retryAt = exhausted
+        ? null
+        : new Date(Date.now() + messagingOutboundRetryDelayMs(attempts));
+      await deps.prisma.messagingOutbound.updateMany({
         where: { id: row.id },
         data: {
           attempts,
@@ -382,24 +391,47 @@ async function drain(deps: PhoneDeliveryDeps, context: AdapterContext): Promise<
         },
       });
       if (!exhausted && retryAt) {
-        // Propagate an enqueue failure: the phone.deliver job then fails and
-        // the queue's own retry re-runs the drain. Swallowing it would strand
-        // the row in pending — no reconciler reclaims phone_outbound rows.
+        // Propagate an enqueue failure: the messaging.deliver job then fails
+        // and the queue's own retry re-runs the drain. Swallowing it would
+        // strand the row in pending — no reconciler reclaims outbox rows.
         // Re-entry is safe: the row is pending again and nextAttemptAt keeps
         // other drains from racing the backoff window.
-        await deps.jobs.enqueue(phoneDeliverJob(undefined, retryAt));
+        await deps.jobs.enqueue(messagingDeliverJob(undefined, retryAt));
       }
     }
   }
 }
 
+/**
+ * DM rows address the identity, not a thread: the conversation id is learned
+ * from inbound webhooks and cached, with a provider lookup as fallback for
+ * identities that predate the cache (or the multi-platform migration).
+ */
+async function resolveDirectThread(
+  deps: MessagingDeliveryDeps,
+  identity: IdentityRow,
+  context: AdapterContext,
+): Promise<string> {
+  if (identity.dmThreadId) return identity.dmThreadId;
+  const threadId = await deps.messaging.openDirectThread(
+    identity.provider,
+    identity.address,
+    context,
+  );
+  await deps.prisma.messagingIdentity.update({
+    where: { id: identity.id },
+    data: { dmThreadId: threadId },
+  });
+  return threadId;
+}
+
 /** Exponential backoff per attempt, capped at one minute. */
-function phoneOutboundRetryDelayMs(attempts: number): number {
+function messagingOutboundRetryDelayMs(attempts: number): number {
   return Math.min(2 ** attempts * 1000, 60_000);
 }
 
 /** Outbound status webhooks update outbox rows by provider handle. */
-export async function applyPhoneOutboundStatus(
+export async function applyMessagingOutboundStatus(
   prisma: PrismaClient,
   event: MessagingOutboundStatus,
 ): Promise<void> {
@@ -410,7 +442,7 @@ export async function applyPhoneOutboundStatus(
         ? "sent"
         : null;
   if (!status) return;
-  await prisma.phoneOutbound.updateMany({
+  await prisma.messagingOutbound.updateMany({
     where: { providerHandle: event.handle },
     data: { status },
   });

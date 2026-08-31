@@ -1,49 +1,52 @@
 import type { JobPublisher, MessagingInboundMessage } from "@rakazo/adapter-kit";
-import { phoneDeliverJob, runContinueJob } from "@rakazo/adapter-kit";
+import { messagingDeliverJob, runContinueJob } from "@rakazo/adapter-kit";
 import type { MessageBlock } from "@rakazo/contracts";
-import { parsePhoneCommand, sanitizePhoneLabel } from "@rakazo/core";
+import { parseMessagingCommand, sanitizeMessagingLabel } from "@rakazo/core";
 import type {
+  MessagingIdentityRequest,
   Prisma,
   PrismaClient,
-  ProvisionedPhoneIdentity,
+  ProvisionedMessagingIdentity,
   SignupPolicyEnv,
   ThreadEvents,
 } from "@rakazo/db";
 import { createThreadMessage } from "@rakazo/db";
 
-export interface PhoneInboundDeps {
+export interface MessagingInboundDeps {
   prisma: PrismaClient;
   events: Pick<ThreadEvents, "sendUserMessage" | "notify">;
   jobs: Pick<JobPublisher, "enqueue">;
-  provision: (phoneE164: string, env: SignupPolicyEnv) => Promise<ProvisionedPhoneIdentity>;
+  provision: (
+    request: MessagingIdentityRequest,
+    env: SignupPolicyEnv,
+  ) => Promise<ProvisionedMessagingIdentity>;
   signupPolicy: SignupPolicyEnv;
-  /** The deployment's own line, so it is never treated as a participant. */
-  lineNumber: string;
   /**
-   * Best-effort "…" bubbles shown to a 1:1 texter while their run executes.
+   * Best-effort "…" bubbles shown to a 1:1 sender while their run executes.
    * Cosmetic only — callers must catch failures; groups never get it.
    */
-  typing?: (toNumber: string) => Promise<void>;
+  typing?: (threadId: string) => Promise<void>;
 }
 
-type PhoneIdentityRow = {
+type IdentityRow = {
   id: string;
-  phoneE164: string;
+  provider: string;
+  address: string;
   userId: string;
   spaceId: string;
   botId: string;
 };
 
 /**
- * Inbound routing. 1:1 texts are messages to the sender's own bot (with
+ * Inbound routing. 1:1 messages are messages to the sender's own bot (with
  * provisioning on first contact and the YES/NO/LEAVE owner commands).
- * Group texts drive channel discovery — upsert channel + members, DM
+ * Group messages drive channel discovery — upsert channel + members, DM
  * invites to linked owners, one intro when strangers are present — and
  * fan out to every approved member bot's own thread.
  */
-export function createPhoneInboundHandler(deps: PhoneInboundDeps) {
+export function createMessagingInboundHandler(deps: MessagingInboundDeps) {
   return async (event: MessagingInboundMessage): Promise<void> => {
-    if (event.groupId) {
+    if (!event.isDirect) {
       await handleChannelEvent(deps, event);
       return;
     }
@@ -52,38 +55,39 @@ export function createPhoneInboundHandler(deps: PhoneInboundDeps) {
 }
 
 async function handleDirectEvent(
-  deps: PhoneInboundDeps,
+  deps: MessagingInboundDeps,
   event: MessagingInboundMessage,
 ): Promise<void> {
-  // Inbound media arrives as a CDN URL (expires after 30 days); no
-  // artifact ingestion in v1, so it rides along as text.
+  // Inbound media arrives as a CDN URL (often expiring); no artifact
+  // ingestion in v1, so it rides along as text.
   const text = [event.content, event.mediaUrl].filter(Boolean).join("\n");
 
-  const existing = await deps.prisma.phoneIdentity.findUnique({
-    where: { phoneE164: event.fromNumber },
-  });
+  const where = { provider_address: { provider: event.provider, address: event.from } } as const;
+  const existing = await deps.prisma.messagingIdentity.findUnique({ where });
   if (existing) {
-    // Any reply — even a content-free tapback — ends the consecutive-
-    // outbound streak, but only real text wakes the bot.
-    await deps.prisma.phoneIdentity.update({
+    // Any reply — even a content-free reaction — ends the consecutive-
+    // outbound streak, but only real text wakes the bot. The conversation
+    // id is refreshed from the webhook so outbound always has a thread.
+    await deps.prisma.messagingIdentity.update({
       where: { id: existing.id },
-      data: { outboundSinceInbound: 0, lastInboundAt: new Date() },
+      data: { outboundSinceInbound: 0, lastInboundAt: new Date(), dmThreadId: event.threadId },
     });
     if (!text) return;
     // Owner commands are only parsed in the verified 1:1 conversation.
-    const command = parsePhoneCommand(event.content);
-    if (command && (await applyPhoneCommand(deps, existing, command))) return;
+    const command = parseMessagingCommand(event.content);
+    if (command && (await applyOwnerCommand(deps, existing, command))) return;
   } else if (!text) {
-    // Never provision a full account for a tapback or empty payload.
+    // Never provision a full account for a reaction or empty payload.
     return;
   }
 
-  let ids: ProvisionedPhoneIdentity;
+  let ids: ProvisionedMessagingIdentity;
   if (existing) {
     const thread = await deps.prisma.thread.findFirst({ where: { botId: existing.botId } });
-    if (!thread) throw new Error(`phone identity ${existing.id} has no thread`);
+    if (!thread) throw new Error(`messaging identity ${existing.id} has no thread`);
     ids = {
-      phoneE164: existing.phoneE164,
+      provider: existing.provider,
+      address: existing.address,
       userId: existing.userId,
       spaceId: existing.spaceId,
       botId: existing.botId,
@@ -91,7 +95,15 @@ async function handleDirectEvent(
       created: false,
     };
   } else {
-    ids = await deps.provision(event.fromNumber, deps.signupPolicy);
+    ids = await deps.provision(
+      {
+        provider: event.provider,
+        address: event.from,
+        dmThreadId: event.threadId,
+        displayName: event.fromLabel ? sanitizeMessagingLabel(event.fromLabel) : null,
+      },
+      deps.signupPolicy,
+    );
   }
 
   const sent = await deps.events.sendUserMessage({
@@ -101,8 +113,8 @@ async function handleDirectEvent(
     userId: ids.userId,
     blocks: [{ kind: "text", text }],
     prompt: text,
-    trigger: "phone",
-    clientNonce: `phone:${event.handle}`,
+    trigger: "messaging",
+    clientNonce: `messaging:${event.provider}:${event.handle}`,
   });
   if (sent.runId) {
     // Typing bubbles only make sense once a reply is actually coming. Fire
@@ -110,28 +122,28 @@ async function handleDirectEvent(
     // a stalled vendor typing call must not hold the webhook open. The bubbles
     // clear on their own after a short display window or when the reply
     // arrives, so long runs simply outlive them.
-    void deps.typing?.(event.fromNumber).catch((error) => {
-      console.error("phone typing indicator error", error);
+    void deps.typing?.(event.threadId).catch((error) => {
+      console.error("messaging typing indicator error", error);
     });
     await deps.jobs.enqueue(runContinueJob(sent.runId)).catch((error) => {
-      console.error("phone inbound run enqueue error", error);
+      console.error("messaging inbound run enqueue error", error);
     });
   }
 }
 
 /** Returns true when the command matched a pending item and was handled. */
-async function applyPhoneCommand(
-  deps: PhoneInboundDeps,
-  identity: PhoneIdentityRow,
+async function applyOwnerCommand(
+  deps: MessagingInboundDeps,
+  identity: IdentityRow,
   command: "approve" | "decline" | "leave",
 ): Promise<boolean> {
   if (command === "leave") {
-    const membership = await deps.prisma.phoneChannelMember.findFirst({
+    const membership = await deps.prisma.messagingChannelMember.findFirst({
       where: { identityId: identity.id, status: "approved" },
       orderBy: { updatedAt: "desc" },
     });
     if (!membership) return false;
-    const { count } = await deps.prisma.phoneChannelMember.updateMany({
+    const { count } = await deps.prisma.messagingChannelMember.updateMany({
       where: { id: membership.id, status: "approved" },
       data: { status: "left" },
     });
@@ -140,14 +152,14 @@ async function applyPhoneCommand(
     if (count === 0) return false;
     await enqueueConfirmation(
       deps,
-      identity.phoneE164,
+      identity,
       `command:leave:${membership.id}`,
-      "You've left the channel; your agent will no longer post there. The iMessage group itself is unchanged. This deployment cannot remove the line from the group, so leaving only stops your agent's participation.",
+      "You've left the channel; your agent will no longer post there. The group chat itself is unchanged — leaving only stops your agent's participation.",
     );
     return true;
   }
 
-  const membership = await deps.prisma.phoneChannelMember.findFirst({
+  const membership = await deps.prisma.messagingChannelMember.findFirst({
     where: { identityId: identity.id, status: "invited" },
     orderBy: { updatedAt: "desc" },
   });
@@ -171,7 +183,7 @@ async function applyPhoneCommand(
     const claimed = await deps.prisma.$transaction(async (tx) => {
       // The claim holds the membership row lock through commit, so the
       // participant sweep can never interleave with the confirmation write.
-      const { count } = await tx.phoneChannelMember.updateMany({
+      const { count } = await tx.messagingChannelMember.updateMany({
         where: { id: target.membership.id, status: "invited" },
         data: { status: approved ? "approved" : "declined" },
       });
@@ -179,7 +191,7 @@ async function applyPhoneCommand(
       if (count === 0) return false;
       await writeConfirmation(
         tx,
-        identity.phoneE164,
+        identity,
         key,
         approved
           ? "You're in — your agent will now see and reply to that group."
@@ -194,7 +206,7 @@ async function applyPhoneCommand(
 
   const connectedKey = `command:connected:${target.connection.id}`;
   const requesterIdentity = approved
-    ? await deps.prisma.phoneIdentity.findUnique({
+    ? await deps.prisma.messagingIdentity.findUnique({
         where: { botId: target.connection.requesterBotId },
       })
     : null;
@@ -210,7 +222,7 @@ async function applyPhoneCommand(
     if (count === 0) return false;
     await writeConfirmation(
       tx,
-      identity.phoneE164,
+      identity,
       key,
       approved
         ? "Connection approved — your agents can now message each other."
@@ -219,7 +231,7 @@ async function applyPhoneCommand(
     if (requesterIdentity) {
       await writeConfirmation(
         tx,
-        requesterIdentity.phoneE164,
+        requesterIdentity,
         connectedKey,
         "Your connection request was accepted — your agents can now message each other.",
       );
@@ -234,67 +246,67 @@ async function applyPhoneCommand(
 /** Delete-then-insert inside the caller's claim transaction: the prior
  * cycle's row must not suppress the new confirmation. */
 async function writeConfirmation(
-  tx: Pick<Prisma.TransactionClient, "phoneOutbound">,
-  toNumber: string,
+  tx: Pick<Prisma.TransactionClient, "messagingOutbound">,
+  identity: { id: string },
   key: string,
   body: string,
 ): Promise<void> {
-  await tx.phoneOutbound.deleteMany({ where: { idempotencyKey: key } });
-  await tx.phoneOutbound.createMany({
-    data: [{ idempotencyKey: key, kind: "dm", toNumber, body }],
+  await tx.messagingOutbound.deleteMany({ where: { idempotencyKey: key } });
+  await tx.messagingOutbound.createMany({
+    data: [{ idempotencyKey: key, kind: "dm", identityId: identity.id, body }],
     skipDuplicates: true,
   });
 }
 
-async function enqueueDeliverJob(deps: PhoneInboundDeps): Promise<void> {
-  await deps.jobs.enqueue(phoneDeliverJob()).catch((error) => {
-    console.error("phone confirmation enqueue error", error);
+async function enqueueDeliverJob(deps: MessagingInboundDeps): Promise<void> {
+  await deps.jobs.enqueue(messagingDeliverJob()).catch((error) => {
+    console.error("messaging confirmation enqueue error", error);
   });
 }
 
 async function enqueueConfirmation(
-  deps: PhoneInboundDeps,
-  toNumber: string,
+  deps: MessagingInboundDeps,
+  identity: { id: string },
   key: string,
   body: string,
 ): Promise<void> {
   // Keys are stable per membership/connection across approval cycles; clear
   // the prior cycle's row or skipDuplicates would swallow the new text.
-  await deps.prisma.phoneOutbound.deleteMany({ where: { idempotencyKey: key } });
-  await deps.prisma.phoneOutbound.createMany({
-    data: [{ idempotencyKey: key, kind: "dm", toNumber, body }],
+  await deps.prisma.messagingOutbound.deleteMany({ where: { idempotencyKey: key } });
+  await deps.prisma.messagingOutbound.createMany({
+    data: [{ idempotencyKey: key, kind: "dm", identityId: identity.id, body }],
     skipDuplicates: true,
   });
-  await deps.jobs.enqueue(phoneDeliverJob()).catch((error) => {
-    console.error("phone confirmation enqueue error", error);
+  await deps.jobs.enqueue(messagingDeliverJob()).catch((error) => {
+    console.error("messaging confirmation enqueue error", error);
   });
 }
 
 async function handleChannelEvent(
-  deps: PhoneInboundDeps,
+  deps: MessagingInboundDeps,
   event: MessagingInboundMessage,
 ): Promise<void> {
-  const groupName = event.groupName ? sanitizePhoneLabel(event.groupName) : null;
-  const channel = await deps.prisma.phoneChannel.upsert({
-    where: { providerGroupId: event.groupId! },
-    create: { providerGroupId: event.groupId!, name: groupName },
-    update: groupName ? { name: groupName } : {},
+  const channelName = event.channelName ? sanitizeMessagingLabel(event.channelName) : null;
+  const channel = await deps.prisma.messagingChannel.upsert({
+    where: { threadId: event.threadId },
+    create: { provider: event.provider, threadId: event.threadId, name: channelName },
+    update: channelName ? { name: channelName } : {},
   });
 
-  const participants = event.participants.filter((phone) => phone !== deps.lineNumber);
-  if (!participants.includes(event.fromNumber)) participants.push(event.fromNumber);
+  const participants = [...event.participants];
+  if (!participants.includes(event.from)) participants.push(event.from);
 
   let hasUnlinked = false;
-  for (const phone of participants) {
-    const identity = await deps.prisma.phoneIdentity.findUnique({
-      where: { phoneE164: phone },
+  for (const address of participants) {
+    const identity = await deps.prisma.messagingIdentity.findUnique({
+      where: { provider_address: { provider: event.provider, address } },
     });
-    const member = await deps.prisma.phoneChannelMember.findUnique({
-      where: { channelId_phoneE164: { channelId: channel.id, phoneE164: phone } },
+    const member = await deps.prisma.messagingChannelMember.findUnique({
+      where: { channelId_address: { channelId: channel.id, address } },
     });
     if (member) {
       if (identity && !member.identityId) {
-        await deps.prisma.phoneChannelMember.update({
+        await deps.prisma.messagingChannelMember.update({
           where: { id: member.id },
           data: { identityId: identity.id },
         });
@@ -302,7 +314,7 @@ async function handleChannelEvent(
       }
       if (member.status === "left") {
         // Back in the group: restart the approval cycle.
-        await deps.prisma.phoneChannelMember.update({
+        await deps.prisma.messagingChannelMember.update({
           where: { id: member.id },
           data: { status: "invited" },
         });
@@ -312,11 +324,11 @@ async function handleChannelEvent(
       continue;
     }
     // Upsert, not create: concurrent group webhooks race on the unique key.
-    await deps.prisma.phoneChannelMember.upsert({
-      where: { channelId_phoneE164: { channelId: channel.id, phoneE164: phone } },
+    await deps.prisma.messagingChannelMember.upsert({
+      where: { channelId_address: { channelId: channel.id, address } },
       create: {
         channelId: channel.id,
-        phoneE164: phone,
+        address,
         identityId: identity?.id ?? null,
         status: "invited",
       },
@@ -326,14 +338,14 @@ async function handleChannelEvent(
     else hasUnlinked = true;
   }
 
-  // Someone removed from the iMessage group must stop receiving its content.
-  // A webhook without a participants array says nothing about membership —
+  // Someone removed from the group must stop receiving its content.
+  // A webhook without a participants roster says nothing about membership —
   // never sweep on partial data.
   if (event.participants.length > 0) {
-    await deps.prisma.phoneChannelMember.updateMany({
+    await deps.prisma.messagingChannelMember.updateMany({
       where: {
         channelId: channel.id,
-        phoneE164: { notIn: participants },
+        address: { notIn: participants },
         status: { in: ["invited", "approved"] },
       },
       data: { status: "left" },
@@ -341,55 +353,54 @@ async function handleChannelEvent(
   }
 
   if (hasUnlinked && !channel.introPostedAt) {
-    await deps.prisma.phoneOutbound.createMany({
+    await deps.prisma.messagingOutbound.createMany({
       data: [
         {
           idempotencyKey: `intro:${channel.id}`,
           kind: "intro",
-          providerGroupId: channel.providerGroupId,
-          body: "Hi — this number hosts Rakazo personal agents. Some people in this group haven't texted this line yet; send any message to this number first if you want your own agent here.",
+          threadId: channel.threadId,
+          body: "Hi — this line hosts Rakazo personal agents. Some people in this group haven't messaged it yet; send any message to this line first if you want your own agent here.",
         },
       ],
       skipDuplicates: true,
     });
-    await deps.prisma.phoneChannel.update({
+    await deps.prisma.messagingChannel.update({
       where: { id: channel.id },
       data: { introPostedAt: new Date() },
     });
-    await deps.jobs.enqueue(phoneDeliverJob()).catch((error) => {
-      console.error("phone intro enqueue error", error);
+    await deps.jobs.enqueue(messagingDeliverJob()).catch((error) => {
+      console.error("messaging intro enqueue error", error);
     });
   }
 
   // Only approved owners' bots participate.
-  const senderMember = await deps.prisma.phoneChannelMember.findUnique({
-    where: {
-      channelId_phoneE164: { channelId: channel.id, phoneE164: event.fromNumber },
-    },
+  const senderMember = await deps.prisma.messagingChannelMember.findUnique({
+    where: { channelId_address: { channelId: channel.id, address: event.from } },
   });
   if (senderMember?.status !== "approved") return;
 
   const senderIdentity = senderMember.identityId
-    ? await deps.prisma.phoneIdentity.findUnique({ where: { id: senderMember.identityId } })
+    ? await deps.prisma.messagingIdentity.findUnique({ where: { id: senderMember.identityId } })
     : null;
   const fromLabel = senderIdentity
-    ? await ownerFirstName(deps.prisma, senderIdentity.userId, event.fromNumber)
-    : event.fromNumber;
+    ? await ownerFirstName(deps.prisma, senderIdentity.userId, event.from)
+    : event.from;
 
-  const approved = await deps.prisma.phoneChannelMember.findMany({
+  const approved = await deps.prisma.messagingChannelMember.findMany({
     where: { channelId: channel.id, status: "approved", identityId: { not: null } },
   });
   const block: MessageBlock = {
-    kind: "phone_channel_message",
+    kind: "channel_message",
+    provider: event.provider,
     channelId: channel.id,
-    fromNumber: event.fromNumber,
+    fromAddress: event.from,
     fromLabel,
     text: event.content,
     hop: 0,
   };
-  const prompt = `[iMessage group "${channel.name ?? "group"}" — ${fromLabel}]: ${event.content}`;
+  const prompt = `[Group "${channel.name ?? "group"}" — ${fromLabel}]: ${event.content}`;
   for (const member of approved) {
-    const identity = await deps.prisma.phoneIdentity.findUnique({
+    const identity = await deps.prisma.messagingIdentity.findUnique({
       where: { id: member.identityId! },
     });
     if (!identity) continue;
@@ -402,35 +413,35 @@ async function handleChannelEvent(
       userId: identity.userId,
       blocks: [block],
       prompt,
-      trigger: "phone",
-      clientNonce: `phone:${event.handle}`,
+      trigger: "messaging",
+      clientNonce: `messaging:${event.provider}:${event.handle}`,
     });
     if (sent.runId) {
       await deps.jobs.enqueue(runContinueJob(sent.runId)).catch((error) => {
-        console.error("phone channel fan-out enqueue error", error);
+        console.error("messaging channel fan-out enqueue error", error);
       });
     }
   }
 }
 
 async function inviteMember(
-  deps: PhoneInboundDeps,
+  deps: MessagingInboundDeps,
   channel: { id: string; name: string | null },
-  identity: PhoneIdentityRow,
+  identity: IdentityRow,
 ): Promise<void> {
-  const name = channel.name ?? "an iMessage group";
+  const name = channel.name ?? "a group chat";
   // A returning member restarts the approval cycle; clear the prior invite
   // row or skipDuplicates would leave them with no prompt to answer.
-  await deps.prisma.phoneOutbound.deleteMany({
-    where: { idempotencyKey: `invite:${channel.id}:${identity.phoneE164}` },
+  await deps.prisma.messagingOutbound.deleteMany({
+    where: { idempotencyKey: `invite:${channel.id}:${identity.id}` },
   });
-  await deps.prisma.phoneOutbound.createMany({
+  await deps.prisma.messagingOutbound.createMany({
     data: [
       {
-        idempotencyKey: `invite:${channel.id}:${identity.phoneE164}`,
+        idempotencyKey: `invite:${channel.id}:${identity.id}`,
         kind: "dm",
-        toNumber: identity.phoneE164,
-        body: `"${name}" was linked to your Rakazo line. Reply YES to let your agent join the conversation there, or NO to stay out.`,
+        identityId: identity.id,
+        body: `"${name}" was linked to your Rakazo agent. Reply YES to let your agent join the conversation there, or NO to stay out.`,
       },
     ],
     skipDuplicates: true,
@@ -443,14 +454,14 @@ async function inviteMember(
       blocks: [
         {
           kind: "meta",
-          text: `You were added to iMessage group "${name}". Reply YES in this conversation to join it with your agent.`,
+          text: `You were added to the group chat "${name}". Reply YES in this conversation to join it with your agent.`,
         },
       ],
     });
     await deps.events.notify(thread.id, note.seq).catch(() => undefined);
   }
-  await deps.jobs.enqueue(phoneDeliverJob()).catch((error) => {
-    console.error("phone invite enqueue error", error);
+  await deps.jobs.enqueue(messagingDeliverJob()).catch((error) => {
+    console.error("messaging invite enqueue error", error);
   });
 }
 
@@ -461,5 +472,5 @@ async function ownerFirstName(
 ): Promise<string> {
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
   const first = user?.name.trim().split(/\s+/)[0];
-  return first ? sanitizePhoneLabel(first) : fallback;
+  return first ? sanitizeMessagingLabel(first) : fallback;
 }

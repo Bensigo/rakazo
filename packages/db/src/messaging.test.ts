@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PrismaClient } from "./client.js";
-import { provisionPhoneIdentity } from "./phone.js";
+import { provisionMessagingIdentity } from "./messaging.js";
 
-describe("provisionPhoneIdentity", () => {
+describe("provisionMessagingIdentity", () => {
   it("returns the existing identity without creating anything when already provisioned", async () => {
     const existing = {
-      id: "pi-1",
-      phoneE164: "+15551234567",
+      id: "mi-1",
+      provider: "sendblue",
+      address: "+15551234567",
+      dmThreadId: null,
       userId: "user-1",
       spaceId: "ws-1",
       botId: "bot-1",
@@ -17,43 +19,51 @@ describe("provisionPhoneIdentity", () => {
       updatedAt: new Date("2026-08-28T00:00:00.000Z"),
     };
     const prisma = {
-      phoneIdentity: { findUnique: vi.fn(async () => existing) },
+      messagingIdentity: { findUnique: vi.fn(async () => existing) },
       thread: { findFirst: vi.fn(async () => ({ id: "thread-1" })) },
       user: { create: vi.fn() },
     };
-    const result = await provisionPhoneIdentity(prisma as unknown as PrismaClient, "+15551234567", {
-      signupsEnabled: undefined,
-      signupAllowlist: undefined,
-    });
+    const result = await provisionMessagingIdentity(
+      prisma as unknown as PrismaClient,
+      { provider: "sendblue", address: "+15551234567" },
+      { signupsEnabled: undefined, signupAllowlist: undefined },
+    );
 
     expect(result).toEqual({
-      phoneE164: "+15551234567",
+      provider: "sendblue",
+      address: "+15551234567",
       userId: "user-1",
       spaceId: "ws-1",
       botId: "bot-1",
       threadId: "thread-1",
       created: false,
     });
+    expect(prisma.messagingIdentity.findUnique).toHaveBeenCalledWith({
+      where: { provider_address: { provider: "sendblue", address: "+15551234567" } },
+    });
     expect(prisma.user.create).not.toHaveBeenCalled();
   });
 
-  it("rejects numbers that are not valid E.164", async () => {
-    const prisma = { phoneIdentity: { findUnique: vi.fn() } };
-    for (const bad of ["15551234567", "+1 (555) 123-4567", "hello", "+0123"]) {
+  it("rejects malformed addresses", async () => {
+    const prisma = { messagingIdentity: { findUnique: vi.fn() } };
+    for (const bad of ["", "+1 (555) 123-4567", "has space", "a".repeat(129)]) {
       await expect(
-        provisionPhoneIdentity(prisma as unknown as PrismaClient, bad, {
-          signupsEnabled: undefined,
-          signupAllowlist: undefined,
-        }),
-      ).rejects.toThrow(/E\.164/);
+        provisionMessagingIdentity(
+          prisma as unknown as PrismaClient,
+          { provider: "sendblue", address: bad },
+          { signupsEnabled: undefined, signupAllowlist: undefined },
+        ),
+      ).rejects.toThrow(/Invalid messaging address/);
     }
-    expect(prisma.phoneIdentity.findUnique).not.toHaveBeenCalled();
+    expect(prisma.messagingIdentity.findUnique).not.toHaveBeenCalled();
   });
 
   it("throws instead of returning an empty thread id when the thread is missing", async () => {
     const existing = {
-      id: "pi-1",
-      phoneE164: "+15551234567",
+      id: "mi-1",
+      provider: "sendblue",
+      address: "+15551234567",
+      dmThreadId: null,
       userId: "user-1",
       spaceId: "ws-1",
       botId: "bot-1",
@@ -64,38 +74,45 @@ describe("provisionPhoneIdentity", () => {
       updatedAt: new Date("2026-08-28T00:00:00.000Z"),
     };
     const prisma = {
-      phoneIdentity: { findUnique: vi.fn(async () => existing) },
+      messagingIdentity: { findUnique: vi.fn(async () => existing) },
       thread: { findFirst: vi.fn(async () => null) },
     };
     await expect(
-      provisionPhoneIdentity(prisma as unknown as PrismaClient, "+15551234567", {
-        signupsEnabled: undefined,
-        signupAllowlist: undefined,
-      }),
+      provisionMessagingIdentity(
+        prisma as unknown as PrismaClient,
+        { provider: "sendblue", address: "+15551234567" },
+        { signupsEnabled: undefined, signupAllowlist: undefined },
+      ),
     ).rejects.toThrow(/thread/i);
   });
 });
 
-describe("provisionPhoneIdentity create race", () => {
+describe("provisionMessagingIdentity create race", () => {
   it("resolves the thread for the winning identity's bot, not the loser's", async () => {
     const winner = {
-      id: "pi-winner",
-      phoneE164: "+15551234567",
+      id: "mi-winner",
+      provider: "sendblue",
+      address: "+15551234567",
       userId: "user-1",
       spaceId: "ws-1",
       botId: "bot-winner",
     };
     const prisma = {
-      phoneIdentity: {
+      messagingIdentity: {
         findUnique: vi
           .fn()
           .mockImplementationOnce(async () => null)
           .mockImplementationOnce(async () => winner),
         create: vi.fn(async () => {
-          throw new Error("Unique constraint failed on the fields: (`phoneE164`)");
+          throw new Error("Unique constraint failed on the fields: (`provider`,`address`)");
         }),
       },
-      user: { findUnique: vi.fn(async () => ({ id: "user-1", email: "phone-x@phone.invalid" })) },
+      user: {
+        findUnique: vi.fn(async () => ({
+          id: "user-1",
+          email: "msg-sendbluex@messaging.invalid",
+        })),
+      },
       spaceMember: { findFirst: vi.fn(async () => ({ spaceId: "ws-1" })) },
       bot: { findFirst: vi.fn(async () => ({ id: "bot-loser" })) },
       thread: {
@@ -104,13 +121,15 @@ describe("provisionPhoneIdentity create race", () => {
         ),
       },
     };
-    const result = await provisionPhoneIdentity(prisma as unknown as PrismaClient, "+15551234567", {
-      signupsEnabled: undefined,
-      signupAllowlist: undefined,
-    });
+    const result = await provisionMessagingIdentity(
+      prisma as unknown as PrismaClient,
+      { provider: "sendblue", address: "+15551234567" },
+      { signupsEnabled: undefined, signupAllowlist: undefined },
+    );
 
     expect(result).toEqual({
-      phoneE164: "+15551234567",
+      provider: "sendblue",
+      address: "+15551234567",
       userId: "user-1",
       spaceId: "ws-1",
       botId: "bot-winner",

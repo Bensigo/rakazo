@@ -610,23 +610,28 @@ export type ComputerStatus = z.infer<typeof ComputerStatusSchema>;
 export const ComputerReleaseReasonSchema = z.enum(["done", "skipped"]);
 export type ComputerReleaseReason = z.infer<typeof ComputerReleaseReasonSchema>;
 
-export const PhoneStatusSchema = z.object({
+export const MessagingStatusSchema = z.object({
   enabled: z.boolean(),
+  /** Messaging platforms mounted on this deployment (sendblue, slack, …). */
+  providers: z.array(z.string()),
   linked: z.boolean(),
-  phoneE164: z.string().nullable(),
+  /** Provider and address of the caller's linked identity, when linked. */
+  provider: z.string().nullable(),
+  address: z.string().nullable(),
   botId: Id.nullable(),
 });
-export type PhoneStatus = z.infer<typeof PhoneStatusSchema>;
+export type MessagingStatus = z.infer<typeof MessagingStatusSchema>;
 
-export const PhoneChannelMembershipSchema = z.object({
+export const MessagingChannelMembershipSchema = z.object({
   channelId: Id,
+  provider: z.string(),
   name: z.string().nullable(),
   status: z.enum(["invited", "approved", "declined", "left"]),
   memberCount: z.number().int().nonnegative(),
 });
-export type PhoneChannelMembership = z.infer<typeof PhoneChannelMembershipSchema>;
+export type MessagingChannelMembership = z.infer<typeof MessagingChannelMembershipSchema>;
 
-export const PhoneAgentConnectionSchema = z.object({
+export const MessagingAgentConnectionSchema = z.object({
   id: Id,
   peerBotName: z.string(),
   peerOwnerLabel: z.string(),
@@ -634,7 +639,7 @@ export const PhoneAgentConnectionSchema = z.object({
   /** true when the caller's bot is the target (only the target can respond). */
   incoming: z.boolean(),
 });
-export type PhoneAgentConnection = z.infer<typeof PhoneAgentConnectionSchema>;
+export type MessagingAgentConnection = z.infer<typeof MessagingAgentConnectionSchema>;
 
 export const RunSchema = z.object({
   id: Id,
@@ -652,7 +657,7 @@ export const RunSchema = z.object({
     "skill",
     "bot_message",
     "webhook",
-    "phone",
+    "messaging",
   ]),
   routineId: Id.nullable(),
   modelProvider: z.string().nullable(),

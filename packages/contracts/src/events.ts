@@ -210,10 +210,11 @@ export const MessageBlock = z.discriminatedUnion("kind", [
     hop: z.number().int().positive().optional(),
   }),
   z.object({
-    /** An iMessage group message delivered into a member bot's own thread. */
-    kind: z.literal("phone_channel_message"),
+    /** A group-chat message delivered into a member bot's own thread. */
+    kind: z.literal("channel_message"),
+    provider: z.string(),
     channelId: Id,
-    fromNumber: z.string(),
+    fromAddress: z.string(),
     fromLabel: z.string(),
     text: z.string(),
     hop: z.number().int().nonnegative().optional(),
@@ -272,6 +273,6 @@ export function canReactToThreadMessage(message: Pick<ThreadMessage, "id" | "blo
   return (
     !message.id.startsWith("progress:") &&
     !message.id.startsWith("subagent:") &&
-    !message.blocks.some((block) => block.kind === "phone_channel_message")
+    !message.blocks.some((block) => block.kind === "channel_message")
   );
 }

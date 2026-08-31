@@ -177,7 +177,7 @@ model Space {
   mcpServers                  McpServer[]
   mcpOAuthSessions            McpOAuthSession[]
   botMcpServers               BotMcpServer[]
-  phoneIdentities             PhoneIdentity[]
+  messagingIdentities         MessagingIdentity[]
   actionApprovalRules         ActionApprovalRule[]
   actionAutoReviewPreferences ActionAutoReviewPreference[]
   memoryConfig                SpaceMemoryConfig?
@@ -987,9 +987,13 @@ model BotMcpServer {
   @@map("bot_mcp_servers")
 }
 
-model PhoneIdentity {
+model MessagingIdentity {
   id                   String    @id @default(cuid())
-  phoneE164            String    @unique
+  provider             String    @default("sendblue")
+  /// Sender address within the provider: E.164 number, Slack user id, ….
+  address              String
+  /// Opaque provider thread id for the 1:1 conversation; learned on inbound.
+  dmThreadId           String?
   userId               String
   spaceId              String
   space                Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
@@ -1000,43 +1004,48 @@ model PhoneIdentity {
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
+  @@unique([provider, address])
   @@index([userId])
-  @@map("phone_identities")
+  @@map("messaging_identities")
 }
 
-model PhoneChannel {
-  id              String               @id @default(cuid())
-  providerGroupId String               @unique
-  name            String?
-  introPostedAt   DateTime?
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @updatedAt
-  members         PhoneChannelMember[]
+model MessagingChannel {
+  id            String              @id @default(cuid())
+  provider      String              @default("sendblue")
+  /// Opaque provider thread id of the group conversation.
+  threadId      String              @unique
+  name          String?
+  introPostedAt DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  members       MessagingChannelMember[]
 
-  @@map("phone_channels")
+  @@map("messaging_channels")
 }
 
-model PhoneChannelMember {
-  id         String       @id @default(cuid())
+model MessagingChannelMember {
+  id         String      @id @default(cuid())
   channelId  String
-  channel    PhoneChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  phoneE164  String
+  channel    MessagingChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  address    String
   identityId String?
   status     String
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
 
-  @@unique([channelId, phoneE164])
+  @@unique([channelId, address])
   @@index([identityId])
-  @@map("phone_channel_members")
+  @@map("messaging_channel_members")
 }
 
-model PhoneOutbound {
+model MessagingOutbound {
   id              String    @id @default(cuid())
   idempotencyKey  String    @unique
   kind            String
-  toNumber        String?
-  providerGroupId String?
+  /// DM rows resolve their thread through the identity at drain time.
+  identityId      String?
+  /// Group/intro rows post straight to this provider thread id.
+  threadId        String?
   body            String
   status          String    @default("pending")
   attempts        Int       @default(0)
@@ -1047,7 +1056,7 @@ model PhoneOutbound {
   updatedAt       DateTime  @updatedAt
 
   @@index([status, nextAttemptAt])
-  @@map("phone_outbound")
+  @@map("messaging_outbound")
 }
 
 model AgentConnection {

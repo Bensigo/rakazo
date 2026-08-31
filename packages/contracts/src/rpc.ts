@@ -33,13 +33,13 @@ import {
   MemoryDocumentSchema,
   MemoryScopeSchema,
   MeSchema,
+  MessagingAgentConnectionSchema,
+  MessagingChannelMembershipSchema,
+  MessagingStatusSchema,
   ModelCatalogEntrySchema,
   ModelConnectInputSchema,
   ModelCredentialSchema,
   ModelOAuthBeginSchema,
-  PhoneAgentConnectionSchema,
-  PhoneChannelMembershipSchema,
-  PhoneStatusSchema,
   ReorderBotsInput,
   RoutineSchema,
   ScratchpadItemSchema,
@@ -556,21 +556,21 @@ export const appContract = {
       .output(ConnectionSchema),
     revoke: oc.input(z.object({ connectionId: Id })).output(z.object({ ok: z.literal(true) })),
   },
-  /** Phone messaging surface: link state, iMessage channels, agent connections. */
-  phone: {
-    status: oc.output(PhoneStatusSchema),
+  /** External messaging surface: link state, group channels, agent connections. */
+  messaging: {
+    status: oc.output(MessagingStatusSchema),
     channels: {
-      list: oc.output(z.array(PhoneChannelMembershipSchema)),
+      list: oc.output(z.array(MessagingChannelMembershipSchema)),
       respond: oc
         .input(z.object({ channelId: Id, accept: z.boolean() }))
-        .output(PhoneChannelMembershipSchema),
+        .output(MessagingChannelMembershipSchema),
       leave: oc.input(z.object({ channelId: Id })).output(z.object({ ok: z.literal(true) })),
     },
     connections: {
-      list: oc.output(z.array(PhoneAgentConnectionSchema)),
+      list: oc.output(z.array(MessagingAgentConnectionSchema)),
       respond: oc
         .input(z.object({ connectionId: Id, accept: z.boolean() }))
-        .output(PhoneAgentConnectionSchema),
+        .output(MessagingAgentConnectionSchema),
       revoke: oc.input(z.object({ connectionId: Id })).output(z.object({ ok: z.literal(true) })),
     },
   },

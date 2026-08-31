@@ -1,17 +1,22 @@
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { PhoneAgentConnection, PhoneChannelMembership, PhoneStatus } from "@rakazo/contracts";
+import type {
+  MessagingAgentConnection,
+  MessagingChannelMembership,
+  MessagingStatus,
+} from "@rakazo/contracts";
 import { useEffect, useRef, useState } from "react";
 import { BuiButton } from "../components/beautiful-ui/primitives";
+import { providerLabel } from "../lib/messaging";
 import { rpc } from "../lib/rpc";
 
-export function PhoneSettingsOverlay({ onClose }: { onClose: () => void }) {
+export function MessagingSettingsOverlay({ onClose }: { onClose: () => void }) {
   const { t } = useLingui();
   const panelRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
-  const [status, setStatus] = useState<PhoneStatus | null>(null);
-  const [channels, setChannels] = useState<PhoneChannelMembership[]>([]);
-  const [connections, setConnections] = useState<PhoneAgentConnection[]>([]);
+  const [status, setStatus] = useState<MessagingStatus | null>(null);
+  const [channels, setChannels] = useState<MessagingChannelMembership[]>([]);
+  const [connections, setConnections] = useState<MessagingAgentConnection[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -25,9 +30,9 @@ export function PhoneSettingsOverlay({ onClose }: { onClose: () => void }) {
 
   async function refresh() {
     const [nextStatus, nextChannels, nextConnections] = await Promise.all([
-      rpc.phone.status(),
-      rpc.phone.channels.list(),
-      rpc.phone.connections.list(),
+      rpc.messaging.status(),
+      rpc.messaging.channels.list(),
+      rpc.messaging.connections.list(),
     ]);
     setStatus(nextStatus);
     setChannels(nextChannels);
@@ -35,7 +40,7 @@ export function PhoneSettingsOverlay({ onClose }: { onClose: () => void }) {
   }
 
   useEffect(() => {
-    void refresh().catch(() => setError(t`Couldn't load phone settings`));
+    void refresh().catch(() => setError(t`Couldn't load messaging settings`));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -45,7 +50,7 @@ export function PhoneSettingsOverlay({ onClose }: { onClose: () => void }) {
       await action();
       await refresh();
     } catch {
-      setError(t`Couldn't update phone settings`);
+      setError(t`Couldn't update messaging settings`);
     }
   }
 
@@ -53,20 +58,20 @@ export function PhoneSettingsOverlay({ onClose }: { onClose: () => void }) {
     <div className="absolute inset-0 z-30 flex items-center justify-center bg-[rgba(4,4,5,.62)] p-4 sm:p-10">
       <div
         ref={panelRef}
-        data-testid="phone-settings"
+        data-testid="messaging-settings"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="phone-settings-title"
+        aria-labelledby="messaging-settings-title"
         tabIndex={-1}
         className="rk-scroll max-h-full w-[640px] max-w-full overflow-y-auto rounded-[26px] border border-[#232326] bg-[#141416] p-6 shadow-[0_40px_90px_rgba(0,0,0,.55)] sm:p-8"
       >
         <div className="flex items-start justify-between gap-6">
-          <h2 id="phone-settings-title" className="text-2xl font-medium text-[#F1F1F2]">
-            <Trans>Phone</Trans>
+          <h2 id="messaging-settings-title" className="text-2xl font-medium text-[#F1F1F2]">
+            <Trans>Messaging</Trans>
           </h2>
           <button
             type="button"
-            aria-label={t`Close phone settings`}
+            aria-label={t`Close messaging settings`}
             onClick={onClose}
             className="text-[#85858A]"
           >
@@ -78,14 +83,22 @@ export function PhoneSettingsOverlay({ onClose }: { onClose: () => void }) {
 
         <section className="mt-8 rounded-[14px] border border-[#26262A] bg-[#101012] px-4 py-4">
           <h3 className="text-[15px] font-medium text-[#ECECEE]">
-            <Trans>iMessage line</Trans>
+            <Trans>Chat apps</Trans>
           </h3>
+          {status ? (
+            <p className="mt-3 text-[13px] text-[#7A7A80]">
+              {status.providers.map(providerLabel).join(" · ")}
+            </p>
+          ) : null}
           <p className="mt-3 text-[14px] text-[#C9C9CE]">
             {status?.linked ? (
-              <Trans>Linked as {status.phoneE164}</Trans>
+              <Trans>
+                Linked via {providerLabel(status.provider ?? "")} as {status.address}
+              </Trans>
             ) : (
               <Trans>
-                Not linked — text the deployment's number once to link your phone to your agent.
+                Not linked — message the deployment's line once from any connected chat app to link
+                it to your agent.
               </Trans>
             )}
           </p>
@@ -97,7 +110,7 @@ export function PhoneSettingsOverlay({ onClose }: { onClose: () => void }) {
           </h3>
           {channels.length === 0 ? (
             <p className="mt-3 text-[13px] text-[#7A7A80]">
-              <Trans>No iMessage groups yet.</Trans>
+              <Trans>No group chats yet.</Trans>
             </p>
           ) : (
             <ul className="mt-3 space-y-3">
@@ -109,7 +122,7 @@ export function PhoneSettingsOverlay({ onClose }: { onClose: () => void }) {
                   <span>
                     {channel.name ?? t`Group`}{" "}
                     <span className="text-[12px] text-[#7A7A80]">
-                      {channel.status} · {channel.memberCount}
+                      {providerLabel(channel.provider)} · {channel.status} · {channel.memberCount}
                     </span>
                   </span>
                   <span className="flex gap-2">
@@ -119,7 +132,7 @@ export function PhoneSettingsOverlay({ onClose }: { onClose: () => void }) {
                           tone="accent"
                           onClick={() =>
                             void act(() =>
-                              rpc.phone.channels.respond({
+                              rpc.messaging.channels.respond({
                                 channelId: channel.channelId,
                                 accept: true,
                               }),
@@ -131,7 +144,7 @@ export function PhoneSettingsOverlay({ onClose }: { onClose: () => void }) {
                         <BuiButton
                           onClick={() =>
                             void act(() =>
-                              rpc.phone.channels.respond({
+                              rpc.messaging.channels.respond({
                                 channelId: channel.channelId,
                                 accept: false,
                               }),
@@ -145,7 +158,9 @@ export function PhoneSettingsOverlay({ onClose }: { onClose: () => void }) {
                     {channel.status === "approved" ? (
                       <BuiButton
                         onClick={() =>
-                          void act(() => rpc.phone.channels.leave({ channelId: channel.channelId }))
+                          void act(() =>
+                            rpc.messaging.channels.leave({ channelId: channel.channelId }),
+                          )
                         }
                       >
                         <Trans>Leave</Trans>
@@ -186,7 +201,7 @@ export function PhoneSettingsOverlay({ onClose }: { onClose: () => void }) {
                           tone="accent"
                           onClick={() =>
                             void act(() =>
-                              rpc.phone.connections.respond({
+                              rpc.messaging.connections.respond({
                                 connectionId: connection.id,
                                 accept: true,
                               }),
@@ -198,7 +213,7 @@ export function PhoneSettingsOverlay({ onClose }: { onClose: () => void }) {
                         <BuiButton
                           onClick={() =>
                             void act(() =>
-                              rpc.phone.connections.respond({
+                              rpc.messaging.connections.respond({
                                 connectionId: connection.id,
                                 accept: false,
                               }),
@@ -213,7 +228,7 @@ export function PhoneSettingsOverlay({ onClose }: { onClose: () => void }) {
                       <BuiButton
                         onClick={() =>
                           void act(() =>
-                            rpc.phone.connections.revoke({ connectionId: connection.id }),
+                            rpc.messaging.connections.revoke({ connectionId: connection.id }),
                           )
                         }
                       >
