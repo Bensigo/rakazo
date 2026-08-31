@@ -113,7 +113,7 @@ import {
   type PluginConnectionRow,
   planLiveConnectionSync,
 } from "./composio-connector.js";
-import { scheduleComputerSleep } from "./computer-idle.js";
+import { BACKGROUND_WORK_LAUNCH, scheduleComputerSleep } from "./computer-idle.js";
 import {
   acquireComputerExecutionLease,
   ComputerBusyError,
@@ -1690,7 +1690,16 @@ export function createRunExecutor(deps: ExecutorDeps) {
             const result = await runSandboxCommand(
               deps.sandbox,
               computer,
-              ["bash", "-lc", command],
+              [
+                "bash",
+                "-c",
+                BACKGROUND_WORK_LAUNCH,
+                "rakazo-background-launch",
+                // Marker id must match sleepComputerIfIdle's probe (DB id), not ComputerRef.id
+                // (providerRef via toComputerRef).
+                storedComputer.id,
+                command,
+              ],
               cwd,
               context,
             );
