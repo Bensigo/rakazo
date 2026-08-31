@@ -138,8 +138,8 @@ export class ChatSdkMessagingSurface implements MessagingSurface {
       return new Response("Payload too large", { status: 413 });
     }
     const hasBody = request.method !== "GET" && request.method !== "HEAD";
-    const body = hasBody ? await request.text() : "";
-    if (body.length > MESSAGING_WEBHOOK_MAX_BODY_BYTES) {
+    const body = hasBody ? await readBoundedText(request, MESSAGING_WEBHOOK_MAX_BODY_BYTES) : "";
+    if (body === null) {
       return new Response("Payload too large", { status: 413 });
     }
     const forwarded = hasBody
@@ -181,6 +181,29 @@ export class ChatSdkMessagingSurface implements MessagingSurface {
 
 export function providerOfThreadId(threadId: string): string {
   return threadId.split(":", 1)[0] ?? "";
+}
+
+/**
+ * Read the body incrementally so an unauthenticated chunked request (no
+ * trustworthy Content-Length) is cut off at the cap instead of being
+ * buffered whole. Returns null once the cap is exceeded.
+ */
+async function readBoundedText(request: Request, maxBytes: number): Promise<string | null> {
+  const reader = request.body?.getReader();
+  if (!reader) return "";
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 function parseStatus(platform: MessagingPlatform, body: string): MessagingOutboundStatus | null {
