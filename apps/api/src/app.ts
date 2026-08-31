@@ -8,6 +8,7 @@ import type {
   MessagingProvider,
   RealtimeFanout,
   SandboxProvider,
+  TransactionalEmailProvider,
 } from "@rakazo/adapter-kit";
 import {
   applyPhoneOutboundStatus,
@@ -23,6 +24,7 @@ import {
   createWebProvider,
   type DestinationEmulator,
   destroyBot,
+  EmailEmulator,
   EncryptedSecretStore,
   ExpoPushProvider,
   GraphileJobPublisher,
@@ -46,6 +48,7 @@ import {
   type RemoteConnectorDependencies,
   ScriptedAgentRuntime,
   SendBlueMessagingProvider,
+  SmtpEmailProvider,
   SpaceMemoryProviderResolver,
   sendBlueConfigFromEnv,
 } from "@rakazo/adapters";
@@ -77,6 +80,7 @@ export interface AppHandles {
   composio?: ComposioProvider;
   connectors: ConnectorRegistry;
   messaging?: MessagingProvider;
+  email?: TransactionalEmailProvider;
   executor: ReturnType<typeof createRunExecutor>;
   stop: () => Promise<void>;
 }
@@ -88,6 +92,7 @@ export async function createApp(
     composio?: ComposioProvider;
     pipedream?: ManagedConnectorProvider;
     messaging?: MessagingProvider;
+    email?: TransactionalEmailProvider;
     remoteConnectors?: RemoteConnectorDependencies;
   } = {},
 ): Promise<AppHandles> {
@@ -97,6 +102,7 @@ export async function createApp(
     composio: composioOverride,
     pipedream: pipedreamOverride,
     messaging: messagingOverride,
+    email: emailOverride,
     remoteConnectors,
     ...envOverrides
   } = overrides;
@@ -184,6 +190,18 @@ export async function createApp(
     (isPhoneSurfaceEnabled(sendBlueConfig, env.deploymentModelKey)
       ? new SendBlueMessagingProvider(sendBlueConfig)
       : undefined);
+  const email =
+    emailOverride ??
+    (env.smtpUrl
+      ? new SmtpEmailProvider({ url: env.smtpUrl, from: env.emailFrom ?? "" })
+      : env.emailEmulator
+        ? new EmailEmulator((message) => {
+            const resetUrl = message.text.match(/https?:\/\/\S+/)?.[0];
+            console.info(
+              `[email-emulator] ${message.subject} to ${message.to}${resetUrl ? `: ${resetUrl}` : ""}`,
+            );
+          })
+        : undefined);
   const installed = new InstalledConnectorProvider(prisma, secrets, remoteConnectors);
   const stack = createConnectorStack(isComposioEnabled(env.composioApiKey), composioOverride, [
     installed,
@@ -203,6 +221,8 @@ export async function createApp(
     webOrigin: env.webOrigin,
     signupsEnabled: env.signupsEnabled,
     signupAllowlist: env.signupAllowlist,
+    email,
+    onEmailError: (error) => console.error("transactional email delivery failed", error),
     extraOrigins: [
       "rakazo://",
       "exp://",
@@ -324,6 +344,12 @@ export async function createApp(
       credentials: true,
     }),
   );
+  app.get("/api/auth/capabilities", (c) =>
+    c.json({
+      passwordReset: Boolean(email),
+      resetUrl: email ? new URL("/reset-password", env.webOrigin).href : null,
+    }),
+  );
   app.on(["GET", "POST"], "/api/auth/*", async (c) => {
     const path = new URL(c.req.url).pathname.replace("/api/auth", "");
     if (blockedAuthPaths.some((blocked) => path.startsWith(blocked))) {
@@ -400,6 +426,7 @@ export async function createApp(
       composio: Boolean(stack.composio),
       pipedream: Boolean(pipedream),
       phone: Boolean(messaging),
+      email: email?.describe().id ?? null,
       jobs: jobKind,
       realtime: realtime.describe().id,
       revision: env.gitSha ?? null,
@@ -415,6 +442,7 @@ export async function createApp(
     composio: stack.composio,
     connectors: stack.connector,
     messaging,
+    email,
     executor,
     stop: async () => {
       oauthLogins.abortAll();

@@ -459,6 +459,14 @@ export interface NotificationMessage {
   threadId: string;
 }
 
+/** A product-authored transactional email, independent of its delivery vendor. */
+export interface TransactionalEmail {
+  to: string;
+  subject: string;
+  text: string;
+  html?: string;
+}
+
 export interface MessagingCapabilities {
   direct: boolean;
   groups: boolean;

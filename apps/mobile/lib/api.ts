@@ -314,6 +314,36 @@ export function signUp(email: string, password: string, name: string) {
   return authenticateWithEmail("sign-up", { email, password, name });
 }
 
+export type PasswordResetCapabilities = { passwordReset: boolean; resetUrl: string | null };
+
+export async function passwordResetCapabilities(): Promise<PasswordResetCapabilities> {
+  const response = await fetch(`${currentApiBase()}/api/auth/capabilities`, {
+    headers: { origin: "rakazo://" },
+  });
+  if (!response.ok) throw new Error("Could not load password recovery settings");
+  return (await response.json()) as PasswordResetCapabilities;
+}
+
+export async function requestPasswordReset(email: string, redirectTo: string): Promise<void> {
+  const response = await fetch(`${currentApiBase()}/api/auth/request-password-reset`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: "rakazo://" },
+    body: JSON.stringify({ email, redirectTo }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(responseErrorMessage(body, "Could not send reset email"));
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  const response = await fetch(`${currentApiBase()}/api/auth/change-password`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin: "rakazo://", ...(await authHeaders()) },
+    body: JSON.stringify({ currentPassword, newPassword, revokeOtherSessions: true }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(responseErrorMessage(body, "Could not change password"));
+}
+
 export async function signOut() {
   await rpc("notifications/unregisterPush").catch(() => undefined);
   const headers = await authHeaders();

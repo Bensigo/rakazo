@@ -49,6 +49,7 @@ import type {
   SemanticMemorySaveRequest,
   SnapshotRef,
   SpeechClip,
+  TransactionalEmail,
   VoiceCapabilities,
   VoiceInfo,
   VoiceSynthesizeRequest,
@@ -271,6 +272,12 @@ export interface RealtimeFanout {
 export interface NotificationProvider {
   describe(): AdapterDescriptor<{ push: boolean; email: boolean }>;
   send(message: NotificationMessage, context: AdapterContext): Promise<void>;
+}
+
+/** Outbound account and security email. Product code owns content; adapters own delivery. */
+export interface TransactionalEmailProvider {
+  describe(): AdapterDescriptor<{ transactional: boolean }>;
+  send(message: TransactionalEmail): Promise<void>;
 }
 
 export interface ExecutionRunner {

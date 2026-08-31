@@ -522,6 +522,9 @@ importers:
       koffi:
         specifier: ^2.9.0
         version: 2.16.3
+      nodemailer:
+        specifier: ^7.0.10
+        version: 7.0.13
       pg:
         specifier: ^8.16.3
         version: 8.23.0
@@ -544,6 +547,9 @@ importers:
       '@types/jsdom':
         specifier: ^30.0.0
         version: 30.0.0
+      '@types/nodemailer':
+        specifier: ^7.0.11
+        version: 7.0.12
       '@types/pg':
         specifier: ^8.15.5
         version: 8.21.0
@@ -556,6 +562,9 @@ importers:
 
   packages/auth:
     dependencies:
+      '@rakazo/adapter-kit':
+        specifier: workspace:*
+        version: link:../adapter-kit
       '@rakazo/core':
         specifier: workspace:*
         version: link:../core
@@ -4117,6 +4126,9 @@ packages:
   '@types/node@24.13.3':
     resolution: {integrity: sha512-Dh8vAsV36ig5wa9OX4pXvMc9D3Veibfw2wix0CUwYODLD8nkj9UsLjASr49nPg+2eKzxhBV+v7L8pXvT4e639Q==}
 
+  '@types/nodemailer@7.0.12':
+    resolution: {integrity: sha512-80vKwiIsVSyFA1rRovH59jNPLBOuc6dRZIHEu40gXTkBkZnQv8vog1xSGEb9j5q/tdMAs5ivvDR2pLTU0hGHXA==}
+
   '@types/pg@8.21.0':
     resolution: {integrity: sha512-AYdtudzabjLZgVgRZmAnU8bAnVUXzuJX2IYHeSIiIHm68olD+LgQYCGWdtcNYnP0uq9c4S4NibVG3Ni7VbKW7Q==}
 
@@ -7424,6 +7436,10 @@ packages:
   node-releases@2.0.53:
     resolution: {integrity: sha512-D9UOmYG3UH1V+ENW56t5QXBwJw1YEY18ruVeus89Rw+SyIgjPkCO84bRzO3uNIYosJbNwiabWVn48o3uJLjxFQ==}
     engines: {node: '>=18'}
+
+  nodemailer@7.0.13:
+    resolution: {integrity: sha512-PNDFSJdP+KFgdsG3ZzMXCgquO7I6McjY2vlqILjtJd0hy8wEvtugS9xKRF2NWlPNGxvLCXlTNIae4serI7dinw==}
+    engines: {node: '>=6.0.0'}
 
   nopt@9.0.0:
     resolution: {integrity: sha512-Zhq3a+yFKrYwSBluL4H9XP3m3y5uvQkB/09CwDruCiRmR/UJYnn9W4R48ry0uGC70aeTPKLynBtscP9efFFcPw==}
@@ -13658,6 +13674,10 @@ snapshots:
     dependencies:
       undici-types: 7.18.2
 
+  '@types/nodemailer@7.0.12':
+    dependencies:
+      '@types/node': 24.13.3
+
   '@types/pg@8.21.0':
     dependencies:
       '@types/node': 24.13.3
@@ -17803,6 +17823,8 @@ snapshots:
   node-mock-http@1.0.5: {}
 
   node-releases@2.0.53: {}
+
+  nodemailer@7.0.13: {}
 
   nopt@9.0.0:
     dependencies:

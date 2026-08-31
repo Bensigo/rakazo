@@ -161,4 +161,30 @@ describe("loadEnv", () => {
     expect(env.updaterUrl).toBe("http://updater:7092");
     expect(env.updaterToken).toBe("fake-review-updater-token-000000000000");
   });
+
+  it("loads SMTP configuration and keeps the email emulator out of production", () => {
+    expect(
+      loadEnv({
+        ...base,
+        SMTP_URL: " smtps://user:secret@smtp.example.test:465 ",
+        EMAIL_FROM: " Rakazo <no-reply@example.test> ",
+        EMAIL_EMULATOR: "true",
+      }),
+    ).toMatchObject({
+      smtpUrl: "smtps://user:secret@smtp.example.test:465",
+      emailFrom: "Rakazo <no-reply@example.test>",
+      emailEmulator: true,
+    });
+    expect(
+      loadEnv({
+        ...base,
+        NODE_ENV: "production",
+        BETTER_AUTH_SECRET: "prod-auth-secret-with-enough-length",
+        ENCRYPTION_KEY: "prod-encryption-key-with-enough-length",
+        SCREEN_PROXY_SECRET: "prod-screen-proxy-secret-with-enough-length",
+        SANDBOX_PROVIDER: "none",
+        EMAIL_EMULATOR: "true",
+      }).emailEmulator,
+    ).toBe(false);
+  });
 });

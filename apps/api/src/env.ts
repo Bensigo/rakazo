@@ -41,6 +41,9 @@ export interface AppEnv {
   sendblueApiSecret: string | undefined;
   sendblueSigningSecret: string | undefined;
   sendbluePhoneNumber: string | undefined;
+  smtpUrl: string | undefined;
+  emailFrom: string | undefined;
+  emailEmulator: boolean;
   defaultProvider: string;
   defaultModel: string;
   wakeupDriver: string;
@@ -98,6 +101,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     sendblueApiSecret: optional(source.SENDBLUE_API_SECRET),
     sendblueSigningSecret: optional(source.SENDBLUE_SIGNING_SECRET),
     sendbluePhoneNumber: optional(source.SENDBLUE_PHONE_NUMBER),
+    smtpUrl: optional(source.SMTP_URL),
+    emailFrom: optional(source.EMAIL_FROM),
+    emailEmulator: source.EMAIL_EMULATOR === "true" && source.NODE_ENV !== "production",
     defaultProvider: deploymentModel.provider,
     defaultModel: deploymentModel.model,
     wakeupDriver: source.WAKEUP_DRIVER ?? "graphile",
