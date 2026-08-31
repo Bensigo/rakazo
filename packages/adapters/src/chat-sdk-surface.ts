@@ -134,11 +134,13 @@ export class ChatSdkMessagingSurface implements MessagingSurface {
     return platform.adapter.openDM(address);
   }
 
-  async sendTyping(threadId: string, _context: AdapterContext): Promise<void> {
+  async sendTyping(threadId: string, context: AdapterContext): Promise<void> {
     const platform = this.byProvider.get(providerOfThreadId(threadId));
     if (!platform?.capabilities.typing) return;
     await this.ensureInitialized();
-    await platform.adapter.startTyping(threadId);
+    // The Chat SDK adapter API takes no abort signal, so the underlying
+    // request cannot be cancelled — but the caller's wait is still bounded.
+    await raceWithSignal(platform.adapter.startTyping(threadId), context.signal);
   }
 
   private ensureInitialized(): Promise<void> {
@@ -213,6 +215,22 @@ export class ChatSdkMessagingSurface implements MessagingSurface {
 
 export function providerOfThreadId(threadId: string): string {
   return threadId.split(":", 1)[0] ?? "";
+}
+
+function raceWithSignal<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) {
+    promise.catch(() => undefined);
+    return Promise.reject(signal.reason ?? new Error("Aborted"));
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      // The abandoned branch must not surface as an unhandled rejection.
+      promise.catch(() => undefined);
+      reject(signal.reason ?? new Error("Aborted"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
 }
 
 /**

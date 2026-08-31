@@ -241,7 +241,9 @@ export async function redeemMessagingLinkCode(
         if (existing.userId !== row.userId) return null;
         await tx.messagingIdentity.update({
           where: { id: existing.id },
-          data: { botId: row.botId, dmThreadId: request.dmThreadId },
+          // The identity must follow the bot's space: runs resolve
+          // credentials, memory, and approval rules from run.spaceId.
+          data: { botId: row.botId, spaceId: row.spaceId, dmThreadId: request.dmThreadId },
         });
         return {
           identityId: existing.id,

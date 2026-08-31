@@ -113,20 +113,26 @@ function messagingDeps(
         }: {
           where?: {
             id?: string;
-            targetBotId?: string;
+            targetBotId?: string | { in: string[] };
             status?: string;
-            OR?: Array<Record<string, string>>;
+            OR?: Array<Record<string, string | { in: string[] }>>;
           };
         }) => {
+          // Handlers scope by every linked identity, so bot filters arrive
+          // as { in: [...] } lists.
+          const matches = (filter: string | { in: string[] } | undefined, value: string) =>
+            filter === undefined ||
+            (typeof filter === "string" ? filter === value : filter.in.includes(value));
           if (!connection) return null;
           if (where?.id && connection.id !== where.id) return null;
-          if (where?.targetBotId && connection.targetBotId !== where.targetBotId) return null;
+          if (!matches(where?.targetBotId, connection.targetBotId)) return null;
           if (where?.status && connection.status !== where.status) return null;
           if (where?.OR) {
             const involved = where.OR.some(
               (cond) =>
-                connection.requesterBotId === cond.requesterBotId ||
-                connection.targetBotId === cond.targetBotId,
+                matches(cond.requesterBotId, connection.requesterBotId) &&
+                matches(cond.targetBotId, connection.targetBotId) &&
+                (cond.requesterBotId !== undefined || cond.targetBotId !== undefined),
             );
             if (!involved) return null;
           }

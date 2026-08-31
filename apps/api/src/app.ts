@@ -379,8 +379,9 @@ export async function createApp(
           traceId: operationId,
           spaceId: "",
           userId: "",
-          // Cosmetic side call: bound it so a stalled vendor response
-          // can never pin the webhook handler's event loop slot.
+          // Cosmetic side call: the wait is bounded so a stalled vendor
+          // response never holds our callback chain (the Chat SDK adapter
+          // API cannot cancel the underlying request itself).
           signal: AbortSignal.timeout(2000),
         });
       },

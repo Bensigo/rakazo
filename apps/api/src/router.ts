@@ -2969,7 +2969,9 @@ export function createRouter(deps: RouterDeps) {
           try {
             const updated = await deps.prisma.messagingIdentity.update({
               where: { id: identity.id },
-              data: { botId: bot.id },
+              // The identity must live in the bot's space: runs resolve
+              // credentials, memory, and approval rules from run.spaceId.
+              data: { botId: bot.id, spaceId: context.actor.spaceId },
             });
             return messagingIdentityDto(deps.prisma, updated);
           } catch (error) {
@@ -2992,20 +2994,23 @@ export function createRouter(deps: RouterDeps) {
       },
       channels: {
         list: authed.messaging.channels.list.handler(async ({ context }) => {
-          const identity = await messagingIdentityFor(deps.prisma, context.actor.userId);
-          if (!identity) return [];
+          const identities = await messagingIdentitiesFor(deps.prisma, context.actor.userId);
+          if (identities.length === 0) return [];
           const memberships = await deps.prisma.messagingChannelMember.findMany({
-            where: { identityId: identity.id },
+            where: { identityId: { in: identities.map((identity) => identity.id) } },
             include: { channel: { include: { members: ACTIVE_CHANNEL_MEMBERS } } },
             orderBy: { updatedAt: "desc" },
           });
           return memberships.map((membership) => messagingChannelDto(membership));
         }),
         respond: authed.messaging.channels.respond.handler(async ({ context, input }) => {
-          const identity = await messagingIdentityFor(deps.prisma, context.actor.userId);
-          const membership = identity
+          const identities = await messagingIdentitiesFor(deps.prisma, context.actor.userId);
+          const membership = identities.length
             ? await deps.prisma.messagingChannelMember.findFirst({
-                where: { channelId: input.channelId, identityId: identity.id },
+                where: {
+                  channelId: input.channelId,
+                  identityId: { in: identities.map((identity) => identity.id) },
+                },
                 include: { channel: { include: { members: ACTIVE_CHANNEL_MEMBERS } } },
               })
             : null;
@@ -3028,10 +3033,13 @@ export function createRouter(deps: RouterDeps) {
           return messagingChannelDto(updated);
         }),
         leave: authed.messaging.channels.leave.handler(async ({ context, input }) => {
-          const identity = await messagingIdentityFor(deps.prisma, context.actor.userId);
-          const membership = identity
+          const identities = await messagingIdentitiesFor(deps.prisma, context.actor.userId);
+          const membership = identities.length
             ? await deps.prisma.messagingChannelMember.findFirst({
-                where: { channelId: input.channelId, identityId: identity.id },
+                where: {
+                  channelId: input.channelId,
+                  identityId: { in: identities.map((identity) => identity.id) },
+                },
               })
             : null;
           if (!membership) throw new ORPCError("NOT_FOUND");
@@ -3044,28 +3052,35 @@ export function createRouter(deps: RouterDeps) {
       },
       connections: {
         list: authed.messaging.connections.list.handler(async ({ context }) => {
-          const identity = await messagingIdentityFor(deps.prisma, context.actor.userId);
-          if (!identity) return [];
+          const identities = await messagingIdentitiesFor(deps.prisma, context.actor.userId);
+          if (identities.length === 0) return [];
+          const botIds = identities.map((identity) => identity.botId);
           const connections = await deps.prisma.agentConnection.findMany({
             where: {
-              OR: [{ requesterBotId: identity.botId }, { targetBotId: identity.botId }],
+              OR: [{ requesterBotId: { in: botIds } }, { targetBotId: { in: botIds } }],
             },
             orderBy: { updatedAt: "desc" },
           });
+          const myBotIds = new Set(botIds);
           return Promise.all(
             connections.map((connection) =>
-              messagingConnectionDto(deps.prisma, identity, connection),
+              messagingConnectionDto(deps.prisma, myBotIds, connection),
             ),
           );
         }),
         respond: authed.messaging.connections.respond.handler(async ({ context, input }) => {
-          const identity = await messagingIdentityFor(deps.prisma, context.actor.userId);
-          const connection = identity
+          const identities = await messagingIdentitiesFor(deps.prisma, context.actor.userId);
+          const myBotIds = new Set(identities.map((identity) => identity.botId));
+          const connection = identities.length
             ? await deps.prisma.agentConnection.findFirst({
-                where: { id: input.connectionId, targetBotId: identity.botId, status: "pending" },
+                where: {
+                  id: input.connectionId,
+                  targetBotId: { in: [...myBotIds] },
+                  status: "pending",
+                },
               })
             : null;
-          if (!identity || !connection) throw new ORPCError("NOT_FOUND");
+          if (!connection) throw new ORPCError("NOT_FOUND");
           const { updated, notifyRequester } = await deps.prisma.$transaction(async (tx) => {
             // The claim holds the connection row lock through commit, so a
             // revoke either beats it or waits — it can never interleave with
@@ -3109,15 +3124,16 @@ export function createRouter(deps: RouterDeps) {
               console.error("messaging connection confirmation enqueue error", error);
             });
           }
-          return messagingConnectionDto(deps.prisma, identity, updated);
+          return messagingConnectionDto(deps.prisma, myBotIds, updated);
         }),
         revoke: authed.messaging.connections.revoke.handler(async ({ context, input }) => {
-          const identity = await messagingIdentityFor(deps.prisma, context.actor.userId);
-          const connection = identity
+          const identities = await messagingIdentitiesFor(deps.prisma, context.actor.userId);
+          const botIds = identities.map((identity) => identity.botId);
+          const connection = identities.length
             ? await deps.prisma.agentConnection.findFirst({
                 where: {
                   id: input.connectionId,
-                  OR: [{ requesterBotId: identity.botId }, { targetBotId: identity.botId }],
+                  OR: [{ requesterBotId: { in: botIds } }, { targetBotId: { in: botIds } }],
                 },
               })
             : null;
@@ -4021,11 +4037,12 @@ type MessagingIdentityRecord = {
   botId: string;
 };
 
-async function messagingIdentityFor(
+/** Every linked chat app counts: channels and connections span identities. */
+async function messagingIdentitiesFor(
   prisma: PrismaClient,
   userId: string,
-): Promise<MessagingIdentityRecord | null> {
-  return prisma.messagingIdentity.findFirst({
+): Promise<MessagingIdentityRecord[]> {
+  return prisma.messagingIdentity.findMany({
     where: { userId },
     orderBy: { createdAt: "asc" },
     select: { id: true, botId: true },
@@ -4069,7 +4086,7 @@ function messagingChannelDto(membership: {
 
 async function messagingConnectionDto(
   prisma: PrismaClient,
-  identity: MessagingIdentityRecord,
+  myBotIds: ReadonlySet<string>,
   connection: {
     id: string;
     requesterBotId: string;
@@ -4077,7 +4094,7 @@ async function messagingConnectionDto(
     status: string;
   },
 ) {
-  const incoming = connection.targetBotId === identity.botId;
+  const incoming = myBotIds.has(connection.targetBotId);
   // The target's identity stays opaque until they approve (mirrors connect_agent).
   if (!incoming && connection.status !== "approved") {
     return {
