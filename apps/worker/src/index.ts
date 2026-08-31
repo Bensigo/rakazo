@@ -96,7 +96,10 @@ async function main() {
     ? new PipedreamConnector(pipedreamConfig)
     : undefined;
   const messagingPlatforms = messagingPlatformsFromEnv(messagingEnvFromProcess(process.env));
-  const messaging = isMessagingSurfaceEnabled(messagingPlatforms, deploymentModelKey)
+  const messaging = isMessagingSurfaceEnabled(messagingPlatforms, {
+    deploymentModelKey,
+    openSignup: process.env.MESSAGING_OPEN_SIGNUP === "true",
+  })
     ? new ChatSdkMessagingSurface(messagingPlatforms)
     : undefined;
   const stack = createConnectorStack(isComposioEnabled(process.env.COMPOSIO_API_KEY), undefined, [

@@ -7,6 +7,7 @@ import {
   createEmulatedSendbluePlatform,
   SendBlueEmulator,
 } from "@rakazo/adapters";
+import { formatMessagingLinkCode, issueMessagingLinkCode } from "@rakazo/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 process.env.WAKEUP_DRIVER = "memory";
@@ -50,6 +51,9 @@ describeMessaging("messaging surface journeys", () => {
       dataDir,
       sandboxProvider: "fake",
       agentRuntime: "scripted",
+      // These journeys exercise the Poke-style open line; the linking journey
+      // below covers the default (linking-only) posture explicitly.
+      messagingOpenSignup: true,
       messaging: new ChatSdkMessagingSurface([platform]),
     });
     app = handles.app;
@@ -90,8 +94,12 @@ describeMessaging("messaging surface journeys", () => {
     );
     expect(emulator.sent.some((send) => send.kind === "dm" && send.to === sender)).toBe(true);
 
-    const refreshed = await findIdentity(sender);
-    expect(refreshed.outboundSinceInbound).toBe(1);
+    // The counter increments one statement after providerHandle lands, so
+    // poll rather than racing the drain's last write.
+    const refreshed = await waitForDatabase(async () => {
+      const row = await findIdentity(sender);
+      return row?.outboundSinceInbound === 1 ? row : null;
+    });
     // The 1:1 conversation id is learned from the inbound webhook; outbound
     // DMs resolve through it instead of a provider lookup.
     expect(refreshed.dmThreadId).toBe(dmThreadId(sender));
@@ -464,6 +472,50 @@ describeMessaging("messaging surface journeys", () => {
     expect(res.status).toBe(200);
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(await findIdentity(stranger)).toBeNull();
+  });
+
+  // Runs last: it unlinks the first journey's identity to free its bot.
+  it("links a new address to an existing account via a web-issued code", async () => {
+    const owner = await findIdentity(sender);
+    expect(owner).toBeTruthy();
+    // Unlink (as the web UI would) so the bot is free to link again.
+    await prisma.messagingIdentity.delete({ where: { id: owner.id } });
+    const issued = await issueMessagingLinkCode(prisma, {
+      userId: owner.userId,
+      spaceId: owner.spaceId,
+      botId: owner.botId,
+    });
+    const newAddress = uniqueNumber();
+    const response = await app.request(
+      emulator.buildInboundRequest({
+        fromNumber: newAddress,
+        content: formatMessagingLinkCode(issued.code),
+      }),
+    );
+    expect(response.status).toBe(200);
+    const linked = await waitForDatabase(() => findIdentity(newAddress));
+    expect(linked.userId).toBe(owner.userId);
+    expect(linked.botId).toBe(owner.botId);
+    // The confirmation DM drains through the vendor to the new address.
+    await waitForDatabase(async () =>
+      emulator.sent.find(
+        (message) => message.to === newAddress && message.body.startsWith("Linked"),
+      ),
+    );
+    // The code is single-use: a replay never binds another address to the
+    // issuer's account. (This suite runs the open line, so the replayer
+    // auto-provisions a fresh account of their own instead.)
+    const replayAddress = uniqueNumber();
+    const replay = await app.request(
+      emulator.buildInboundRequest({
+        fromNumber: replayAddress,
+        content: formatMessagingLinkCode(issued.code),
+      }),
+    );
+    expect(replay.status).toBe(200);
+    const replayIdentity = await waitForDatabase(() => findIdentity(replayAddress));
+    expect(replayIdentity.userId).not.toBe(owner.userId);
+    expect(replayIdentity.botId).not.toBe(owner.botId);
   });
 });
 

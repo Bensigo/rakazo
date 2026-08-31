@@ -989,7 +989,7 @@ model BotMcpServer {
 
 model MessagingIdentity {
   id                   String    @id @default(cuid())
-  provider             String    @default("sendblue")
+  provider             String
   /// Sender address within the provider: E.164 number, Slack user id, ….
   address              String
   /// Opaque provider thread id for the 1:1 conversation; learned on inbound.
@@ -1011,7 +1011,7 @@ model MessagingIdentity {
 
 model MessagingChannel {
   id            String              @id @default(cuid())
-  provider      String              @default("sendblue")
+  provider      String
   /// Opaque provider thread id of the group conversation.
   threadId      String              @unique
   name          String?
@@ -1036,6 +1036,20 @@ model MessagingChannelMember {
   @@unique([channelId, address])
   @@index([identityId])
   @@map("messaging_channel_members")
+}
+
+/// Short-lived web-issued code binding a chat address to an existing user+bot.
+model MessagingLinkCode {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  userId    String
+  spaceId   String
+  botId     String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("messaging_link_codes")
 }
 
 model MessagingOutbound {

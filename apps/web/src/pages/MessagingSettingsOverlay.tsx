@@ -1,5 +1,6 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import type {
+  Bot,
   MessagingAgentConnection,
   MessagingChannelMembership,
   MessagingStatus,
@@ -17,6 +18,9 @@ export function MessagingSettingsOverlay({ onClose }: { onClose: () => void }) {
   const [status, setStatus] = useState<MessagingStatus | null>(null);
   const [channels, setChannels] = useState<MessagingChannelMembership[]>([]);
   const [connections, setConnections] = useState<MessagingAgentConnection[]>([]);
+  const [bots, setBots] = useState<Bot[]>([]);
+  const [linkBotId, setLinkBotId] = useState("");
+  const [linkCode, setLinkCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -29,14 +33,16 @@ export function MessagingSettingsOverlay({ onClose }: { onClose: () => void }) {
   }, []);
 
   async function refresh() {
-    const [nextStatus, nextChannels, nextConnections] = await Promise.all([
+    const [nextStatus, nextChannels, nextConnections, nextBots] = await Promise.all([
       rpc.messaging.status(),
       rpc.messaging.channels.list(),
       rpc.messaging.connections.list(),
+      rpc.bots.list(),
     ]);
     setStatus(nextStatus);
     setChannels(nextChannels);
     setConnections(nextConnections);
+    setBots(nextBots);
   }
 
   useEffect(() => {
@@ -90,18 +96,67 @@ export function MessagingSettingsOverlay({ onClose }: { onClose: () => void }) {
               {status.providers.map(providerLabel).join(" · ")}
             </p>
           ) : null}
-          <p className="mt-3 text-[14px] text-[#C9C9CE]">
-            {status?.linked ? (
+          {status?.identities.length ? (
+            <ul className="mt-3 space-y-3">
+              {status.identities.map((identity) => (
+                <li
+                  key={identity.id}
+                  className="flex items-center justify-between gap-3 text-[14px] text-[#C9C9CE]"
+                >
+                  <span>
+                    {providerLabel(identity.provider)} · {identity.address}{" "}
+                    <span className="text-[12px] text-[#7A7A80]">→ {identity.botName}</span>
+                  </span>
+                  <BuiButton
+                    onClick={() =>
+                      void act(() => rpc.messaging.identities.unlink({ identityId: identity.id }))
+                    }
+                  >
+                    <Trans>Unlink</Trans>
+                  </BuiButton>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-3 text-[14px] text-[#C9C9CE]">
+              <Trans>No chat apps linked yet.</Trans>
+            </p>
+          )}
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <select
+              aria-label={t`Bot to link`}
+              value={linkBotId}
+              onChange={(event) => setLinkBotId(event.target.value)}
+              className="rounded-[10px] border border-[#2A2A2F] bg-[#141416] px-3 py-2 text-[13.5px] text-[#ECECEE]"
+            >
+              <option value="">{t`Choose a bot…`}</option>
+              {bots.map((bot) => (
+                <option key={bot.id} value={bot.id}>
+                  {bot.name}
+                </option>
+              ))}
+            </select>
+            <BuiButton
+              tone="accent"
+              disabled={!linkBotId}
+              onClick={() =>
+                void act(async () => {
+                  const issued = await rpc.messaging.link.start({ botId: linkBotId });
+                  setLinkCode(issued.code);
+                })
+              }
+            >
+              <Trans>Link a chat app</Trans>
+            </BuiButton>
+          </div>
+          {linkCode ? (
+            <p className="mt-3 text-[14px] text-[#C9C9CE]" data-testid="messaging-link-code">
               <Trans>
-                Linked via {providerLabel(status.provider ?? "")} as {status.address}
+                Send <span className="font-mono text-[#F1F1F2]">{linkCode}</span> to the line from
+                your chat app within 10 minutes. You'll get a confirmation reply once linked.
               </Trans>
-            ) : (
-              <Trans>
-                Not linked. First contact creates a separate chat-only agent. Account linking is not
-                available yet.
-              </Trans>
-            )}
-          </p>
+            </p>
+          ) : null}
         </section>
 
         <section className="mt-5 rounded-[14px] border border-[#26262A] bg-[#101012] px-4 py-4">

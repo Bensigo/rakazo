@@ -10,7 +10,11 @@ import type {
   SignupPolicyEnv,
   ThreadEvents,
 } from "@rakazo/db";
-import { createThreadMessage } from "@rakazo/db";
+import {
+  createThreadMessage,
+  normalizeMessagingLinkCode,
+  redeemMessagingLinkCode,
+} from "@rakazo/db";
 
 export interface MessagingInboundDeps {
   prisma: PrismaClient;
@@ -20,6 +24,11 @@ export interface MessagingInboundDeps {
     request: MessagingIdentityRequest,
     env: SignupPolicyEnv,
   ) => Promise<ProvisionedMessagingIdentity>;
+  /**
+   * Poke-style open line: unknown senders auto-provision their own account.
+   * Off by default — strangers' runs would bill the deployment model key.
+   */
+  openSignup: boolean;
   signupPolicy: SignupPolicyEnv;
   /**
    * Best-effort "…" bubbles shown to a 1:1 sender while their run executes.
@@ -76,9 +85,17 @@ async function handleDirectEvent(
     // Owner commands are only parsed in the verified 1:1 conversation.
     const command = parseMessagingCommand(event.content);
     if (command && (await applyOwnerCommand(deps, existing, command))) return;
-  } else if (!text) {
+    // A linked sender pasting a fresh code re-points this address at another
+    // of their bots (only their own codes apply).
+    if (await tryRedeemLinkCode(deps, event)) return;
+  } else {
+    // Unlinked senders: a valid link code binds this address to its issuer's
+    // account and bot; otherwise the line is silent unless the deployment
+    // explicitly runs as an open Poke-style signup line.
+    if (await tryRedeemLinkCode(deps, event)) return;
+    if (!deps.openSignup) return;
     // Never provision a full account for a reaction or empty payload.
-    return;
+    if (!text) return;
   }
 
   let ids: ProvisionedMessagingIdentity;
@@ -129,6 +146,39 @@ async function handleDirectEvent(
       console.error("messaging inbound run enqueue error", error);
     });
   }
+}
+
+/**
+ * Returns true when the message was exactly a link code that redeemed:
+ * the address is now bound to the issuer's chosen bot and a confirmation
+ * DM is on its way. An invalid or expired code falls through silently —
+ * for linked senders it reads as a normal message, for strangers nothing
+ * happens (no oracle, no reply spam).
+ */
+async function tryRedeemLinkCode(
+  deps: MessagingInboundDeps,
+  event: MessagingInboundMessage,
+): Promise<boolean> {
+  const code = normalizeMessagingLinkCode(event.content);
+  if (!code) return false;
+  const redeemed = await redeemMessagingLinkCode(deps.prisma, {
+    code,
+    provider: event.provider,
+    address: event.from,
+    dmThreadId: event.threadId,
+  });
+  if (!redeemed) return false;
+  const bot = await deps.prisma.bot.findUnique({
+    where: { id: redeemed.botId },
+    select: { name: true },
+  });
+  await enqueueConfirmation(
+    deps,
+    { id: redeemed.identityId },
+    redeemed.confirmationKey,
+    `Linked — messages here now reach "${bot?.name ?? "your agent"}".`,
+  );
+  return true;
 }
 
 /** Returns true when the command matched a pending item and was handled. */

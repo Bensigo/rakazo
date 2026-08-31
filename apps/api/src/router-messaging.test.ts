@@ -55,6 +55,14 @@ function messagingDeps(
   const prisma = {
     messagingIdentity: {
       findFirst: vi.fn(async () => resolvedIdentity),
+      findMany: vi.fn(async () => (resolvedIdentity ? [resolvedIdentity] : [])),
+      update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
+        ...(resolvedIdentity as Record<string, unknown>),
+        ...data,
+      })),
+      deleteMany: vi.fn(async ({ where }: { where: { id: string } }) => ({
+        count: resolvedIdentity && where.id === "mi-1" ? 1 : 0,
+      })),
       findUnique: vi.fn(async ({ where }: { where: { botId?: string } }) =>
         where.botId === "bot-9"
           ? {
@@ -151,6 +159,13 @@ function messagingDeps(
         id: where.id,
         name: where.id === "bot-9" ? "Helper" : "Assistant",
       })),
+      findFirst: vi.fn(async ({ where }: { where: { id: string } }) =>
+        where.id.startsWith("bot-") ? { id: where.id } : null,
+      ),
+    },
+    messagingLinkCode: {
+      deleteMany: vi.fn(async () => ({ count: 0 })),
+      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => data),
     },
     user: {
       findUnique: vi.fn(async () => ({ id: "user-9", name: "Bob Owner" })),
@@ -217,7 +232,11 @@ function messagingDeps(
       screenProxySecret: "fake-test-secret",
       sandboxProvider: "fake",
     },
-    messaging: { enabled: overrides.enabled ?? true, providers: ["sendblue"] },
+    messaging: {
+      enabled: overrides.enabled ?? true,
+      providers: ["sendblue"],
+      openSignup: false,
+    },
     dataDir: "/tmp/rakazo-router-test",
   } as unknown as RouterDeps;
   const actor = {
@@ -249,7 +268,7 @@ async function call(handler: RPCHandler<never>, actor: Actor, path: string, body
 }
 
 describe("messaging.status", () => {
-  it("reports enablement, providers, and the caller's link state", async () => {
+  it("reports enablement, providers, and the caller's linked identities", async () => {
     const { handler, actor } = messagingDeps({ enabled: true });
     const response = await call(handler, actor, "messaging/status");
     expect(response.status).toBe(200);
@@ -257,27 +276,85 @@ describe("messaging.status", () => {
       json: {
         enabled: true,
         providers: ["sendblue"],
-        linked: true,
-        provider: "sendblue",
-        address: "+15551111111",
-        botId: "bot-1",
+        openSignup: false,
+        identities: [
+          {
+            id: "mi-1",
+            provider: "sendblue",
+            address: "+15551111111",
+            botId: "bot-1",
+            botName: "Assistant",
+          },
+        ],
       },
     });
   });
 
-  it("reports unlinked when the caller has no messaging identity", async () => {
+  it("reports no identities when the caller has not linked a chat app", async () => {
     const { handler, actor } = messagingDeps({ identity: null });
     const response = await call(handler, actor, "messaging/status");
     await expect(response.json()).resolves.toEqual({
+      json: { enabled: true, providers: ["sendblue"], openSignup: false, identities: [] },
+    });
+  });
+});
+
+describe("messaging.link", () => {
+  it("issues a formatted single-use code for an owned unlinked bot", async () => {
+    const { handler, actor, prisma } = messagingDeps({ identity: null });
+    (prisma.messagingIdentity.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    const response = await call(handler, actor, "messaging/link/start", { botId: "bot-2" });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { json: { code: string; expiresAt: string } };
+    expect(body.json.code).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{4}$/);
+    expect(Date.parse(body.json.expiresAt)).toBeGreaterThan(Date.now());
+    expect(prisma.messagingLinkCode.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ userId: "user-1", botId: "bot-2" }),
+      }),
+    );
+  });
+
+  it("refuses to issue a code for an already-linked bot", async () => {
+    const { handler, actor } = messagingDeps();
+    // messagingIdentity.findUnique resolves an identity for bot-1 by default.
+    const response = await call(handler, actor, "messaging/link/start", { botId: "bot-1" });
+    expect(response.status).toBe(400);
+  });
+});
+
+describe("messaging.identities", () => {
+  it("re-points an identity at another owned bot", async () => {
+    const { handler, actor } = messagingDeps();
+    const response = await call(handler, actor, "messaging/identities/setBot", {
+      identityId: "mi-1",
+      botId: "bot-2",
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
       json: {
-        enabled: true,
-        providers: ["sendblue"],
-        linked: false,
-        provider: null,
-        address: null,
-        botId: null,
+        id: "mi-1",
+        provider: "sendblue",
+        address: "+15551111111",
+        botId: "bot-2",
+        botName: "Assistant",
       },
     });
+  });
+
+  it("unlinks only the caller's own identity", async () => {
+    const { handler, actor, prisma } = messagingDeps();
+    const response = await call(handler, actor, "messaging/identities/unlink", {
+      identityId: "mi-1",
+    });
+    expect(response.status).toBe(200);
+    expect(prisma.messagingIdentity.deleteMany).toHaveBeenCalledWith({
+      where: { id: "mi-1", userId: "user-1" },
+    });
+    const missing = await call(handler, actor, "messaging/identities/unlink", {
+      identityId: "mi-other",
+    });
+    expect(missing.status).toBe(404);
   });
 });
 

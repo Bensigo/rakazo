@@ -610,15 +610,23 @@ export type ComputerStatus = z.infer<typeof ComputerStatusSchema>;
 export const ComputerReleaseReasonSchema = z.enum(["done", "skipped"]);
 export type ComputerReleaseReason = z.infer<typeof ComputerReleaseReasonSchema>;
 
+export const MessagingLinkedIdentitySchema = z.object({
+  id: Id,
+  provider: z.string(),
+  address: z.string(),
+  botId: Id,
+  botName: z.string(),
+});
+export type MessagingLinkedIdentity = z.infer<typeof MessagingLinkedIdentitySchema>;
+
 export const MessagingStatusSchema = z.object({
   enabled: z.boolean(),
   /** Messaging platforms mounted on this deployment (sendblue, slack, …). */
   providers: z.array(z.string()),
-  linked: z.boolean(),
-  /** Provider and address of the caller's linked identity, when linked. */
-  provider: z.string().nullable(),
-  address: z.string().nullable(),
-  botId: Id.nullable(),
+  /** True when unknown senders auto-provision their own accounts. */
+  openSignup: z.boolean(),
+  /** The caller's linked chat apps, one entry per (provider, address). */
+  identities: z.array(MessagingLinkedIdentitySchema),
 });
 export type MessagingStatus = z.infer<typeof MessagingStatusSchema>;
 

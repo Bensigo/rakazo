@@ -180,7 +180,10 @@ export async function createApp(
   const messagingPlatforms = messagingPlatformsFromEnv(env);
   const messaging =
     messagingOverride ??
-    (isMessagingSurfaceEnabled(messagingPlatforms, env.deploymentModelKey)
+    (isMessagingSurfaceEnabled(messagingPlatforms, {
+      deploymentModelKey: env.deploymentModelKey,
+      openSignup: env.messagingOpenSignup,
+    })
       ? new ChatSdkMessagingSurface(messagingPlatforms)
       : undefined);
   const installed = new InstalledConnectorProvider(prisma, secrets, remoteConnectors);
@@ -298,6 +301,7 @@ export async function createApp(
     messaging: {
       enabled: Boolean(messaging),
       providers: messaging?.platforms().map((platform) => platform.provider) ?? [],
+      openSignup: env.messagingOpenSignup,
     },
     env: {
       defaultProvider: env.defaultProvider,
@@ -361,6 +365,7 @@ export async function createApp(
       events,
       jobs,
       provision: (request, policyEnv) => provisionMessagingIdentity(prisma, request, policyEnv),
+      openSignup: env.messagingOpenSignup,
       signupPolicy: {
         signupsEnabled: env.signupsEnabled,
         signupAllowlist: env.signupAllowlist,

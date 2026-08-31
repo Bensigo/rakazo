@@ -6,6 +6,7 @@ const signupPolicy = { signupsEnabled: undefined, signupAllowlist: undefined };
 function createDeps(
   overrides: {
     identity?: unknown;
+    linkCode?: Record<string, unknown>;
     members?: Array<Record<string, unknown>>;
     invitedMember?: unknown;
     approvedMember?: unknown;
@@ -64,6 +65,24 @@ function createDeps(
     run: { findUnique: vi.fn(async () => null) },
   };
   const members = overrides.members ?? [];
+  const linkCodes: Array<Record<string, unknown>> = overrides.linkCode ? [overrides.linkCode] : [];
+  const createdIdentities: Array<Record<string, unknown>> = [];
+  const messagingLinkCode = {
+    findUnique: vi.fn(
+      async ({ where }: { where: { code: string } }) =>
+        linkCodes.find((row) => row.code === where.code) ?? null,
+    ),
+    deleteMany: vi.fn(async ({ where }: { where: { id?: string; userId?: string } }) => {
+      const before = linkCodes.length;
+      for (let i = linkCodes.length - 1; i >= 0; i -= 1) {
+        const row = linkCodes[i]!;
+        if ((where.id && row.id === where.id) || (where.userId && row.userId === where.userId)) {
+          linkCodes.splice(i, 1);
+        }
+      }
+      return { count: before - linkCodes.length };
+    }),
+  };
   const prisma = {
     messagingIdentity: {
       findUnique: vi.fn(
@@ -84,7 +103,14 @@ function createDeps(
         },
       ),
       update: vi.fn(async () => identity),
+      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        const created = { id: "mi-linked", ...data };
+        createdIdentities.push(created);
+        return created;
+      }),
     },
+    messagingLinkCode,
+    bot: { findUnique: vi.fn(async () => ({ name: "Chief" })) },
     thread: { findFirst: vi.fn(async () => ({ id: "thread-1" })) },
     messagingChannel: {
       upsert: vi.fn(async () => channel),
@@ -199,6 +225,8 @@ function createDeps(
         agentConnection: prisma.agentConnection,
         messagingChannelMember: prisma.messagingChannelMember,
         messagingOutbound: prisma.messagingOutbound,
+        messagingIdentity: prisma.messagingIdentity,
+        messagingLinkCode,
       }),
     ),
   };
@@ -207,6 +235,7 @@ function createDeps(
     events: { sendUserMessage, notify },
     jobs: { enqueue },
     provision,
+    openSignup: true,
     signupPolicy,
     typing,
     sendUserMessage,
@@ -215,6 +244,7 @@ function createDeps(
     outboundRows,
     members,
     txMock,
+    createdIdentities,
   } as unknown as MessagingInboundDeps & {
     sendUserMessage: ReturnType<typeof vi.fn>;
     notify: ReturnType<typeof vi.fn>;
@@ -223,6 +253,7 @@ function createDeps(
     provision: ReturnType<typeof vi.fn>;
     outboundRows: Array<Record<string, unknown>>;
     members: Array<Record<string, unknown>>;
+    createdIdentities: Array<Record<string, unknown>>;
     txMock: typeof txMock;
   };
 }
@@ -1003,5 +1034,75 @@ describe("createMessagingInboundHandler confirmation atomicity", () => {
       }),
     );
     expect(deps.sendUserMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe("createMessagingInboundHandler linking", () => {
+  const liveCode = {
+    id: "code-1",
+    code: "ABCD2345",
+    userId: "user-web",
+    spaceId: "ws-web",
+    botId: "bot-web",
+    expiresAt: new Date(Date.now() + 60_000),
+  };
+
+  it("stays silent for unknown senders when open signup is off", async () => {
+    const deps = createDeps({ identity: null });
+    (deps as unknown as { openSignup: boolean }).openSignup = false;
+    const handle = createMessagingInboundHandler(deps);
+    await handle(dmEvent);
+    expect(deps.provision).not.toHaveBeenCalled();
+    expect(deps.sendUserMessage).not.toHaveBeenCalled();
+    expect(deps.outboundRows).toHaveLength(0);
+  });
+
+  it("links an unknown sender via a valid code and confirms", async () => {
+    const deps = createDeps({ identity: null, linkCode: { ...liveCode } });
+    (deps as unknown as { openSignup: boolean }).openSignup = false;
+    const handle = createMessagingInboundHandler(deps);
+    await handle({ ...dmEvent, content: "abcd-2345" });
+
+    expect(deps.createdIdentities).toEqual([
+      expect.objectContaining({
+        provider: "sendblue",
+        address: "+15551111111",
+        dmThreadId: "sendblue:dm-1",
+        userId: "user-web",
+        spaceId: "ws-web",
+        botId: "bot-web",
+      }),
+    ]);
+    expect(deps.provision).not.toHaveBeenCalled();
+    expect(deps.sendUserMessage).not.toHaveBeenCalled();
+    expect(deps.outboundRows).toEqual([
+      expect.objectContaining({
+        idempotencyKey: "link:code-1",
+        kind: "dm",
+        identityId: "mi-linked",
+        body: 'Linked — messages here now reach "Chief".',
+      }),
+    ]);
+  });
+
+  it("ignores expired codes without an oracle reply", async () => {
+    const deps = createDeps({
+      identity: null,
+      linkCode: { ...liveCode, expiresAt: new Date(Date.now() - 1_000) },
+    });
+    (deps as unknown as { openSignup: boolean }).openSignup = false;
+    const handle = createMessagingInboundHandler(deps);
+    await handle({ ...dmEvent, content: "ABCD-2345" });
+    expect(deps.createdIdentities).toHaveLength(0);
+    expect(deps.outboundRows).toHaveLength(0);
+    expect(deps.sendUserMessage).not.toHaveBeenCalled();
+  });
+
+  it("still auto-provisions unknown senders when open signup is on", async () => {
+    const deps = createDeps({ identity: null });
+    const handle = createMessagingInboundHandler(deps);
+    await handle(dmEvent);
+    expect(deps.provision).toHaveBeenCalled();
+    expect(deps.sendUserMessage).toHaveBeenCalled();
   });
 });

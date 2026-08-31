@@ -99,8 +99,10 @@ import {
   findDefaultVoiceCredential,
   findModelCredential,
   findSpaceMemoryConfig,
+  formatMessagingLinkCode,
   InvalidSpaceNameError,
   IsolationError,
+  issueMessagingLinkCode,
   lockOwnedGroup,
   newestModelCredentialOrder,
   newestVoiceCredentialOrder,
@@ -330,7 +332,7 @@ export interface RouterDeps {
   artifacts: ArtifactStore;
   dataDir: string;
   /** Present when the external messaging surface is enabled. */
-  messaging?: { enabled: boolean; providers: string[] };
+  messaging?: { enabled: boolean; providers: string[]; openSignup: boolean };
   env: {
     defaultProvider: string;
     defaultModel: string;
@@ -2901,21 +2903,93 @@ export function createRouter(deps: RouterDeps) {
     },
     messaging: {
       status: authed.messaging.status.handler(async ({ context }) => {
-        // Same earliest-created identity the channels/connections handlers
-        // resolve, so the overlay never shows mismatched link state.
-        const identity = await deps.prisma.messagingIdentity.findFirst({
+        const identities = await deps.prisma.messagingIdentity.findMany({
           where: { userId: context.actor.userId },
           orderBy: { createdAt: "asc" },
         });
         return {
           enabled: deps.messaging?.enabled ?? false,
           providers: deps.messaging?.providers ?? [],
-          linked: Boolean(identity),
-          provider: identity?.provider ?? null,
-          address: identity?.address ?? null,
-          botId: identity?.botId ?? null,
+          openSignup: deps.messaging?.openSignup ?? false,
+          identities: await Promise.all(
+            identities.map((identity) => messagingIdentityDto(deps.prisma, identity)),
+          ),
         };
       }),
+      link: {
+        start: authed.messaging.link.start.handler(async ({ context, input }) => {
+          const bot = await deps.prisma.bot.findFirst({
+            where: {
+              id: input.botId,
+              spaceId: context.actor.spaceId,
+              userId: context.actor.userId,
+              archivedAt: null,
+            },
+            select: { id: true },
+          });
+          if (!bot) throw new ORPCError("NOT_FOUND");
+          // One chat identity per bot: delivery mirrors a bot's replies to
+          // exactly one conversation.
+          const linked = await deps.prisma.messagingIdentity.findUnique({
+            where: { botId: bot.id },
+            select: { id: true },
+          });
+          if (linked) {
+            throw new ORPCError("BAD_REQUEST", {
+              message: "That bot is already linked to a chat app; unlink it first.",
+            });
+          }
+          const issued = await issueMessagingLinkCode(deps.prisma, {
+            userId: context.actor.userId,
+            spaceId: context.actor.spaceId,
+            botId: bot.id,
+          });
+          return {
+            code: formatMessagingLinkCode(issued.code),
+            expiresAt: issued.expiresAt.toISOString(),
+          };
+        }),
+      },
+      identities: {
+        setBot: authed.messaging.identities.setBot.handler(async ({ context, input }) => {
+          const identity = await deps.prisma.messagingIdentity.findFirst({
+            where: { id: input.identityId, userId: context.actor.userId },
+          });
+          if (!identity) throw new ORPCError("NOT_FOUND");
+          const bot = await deps.prisma.bot.findFirst({
+            where: {
+              id: input.botId,
+              spaceId: context.actor.spaceId,
+              userId: context.actor.userId,
+              archivedAt: null,
+            },
+            select: { id: true },
+          });
+          if (!bot) throw new ORPCError("NOT_FOUND");
+          try {
+            const updated = await deps.prisma.messagingIdentity.update({
+              where: { id: identity.id },
+              data: { botId: bot.id },
+            });
+            return messagingIdentityDto(deps.prisma, updated);
+          } catch (error) {
+            // botId is unique: the target bot is already linked elsewhere.
+            if (isUniqueViolation(error)) {
+              throw new ORPCError("BAD_REQUEST", {
+                message: "That bot is already linked to a chat app.",
+              });
+            }
+            throw error;
+          }
+        }),
+        unlink: authed.messaging.identities.unlink.handler(async ({ context, input }) => {
+          const { count } = await deps.prisma.messagingIdentity.deleteMany({
+            where: { id: input.identityId, userId: context.actor.userId },
+          });
+          if (count === 0) throw new ORPCError("NOT_FOUND");
+          return { ok: true as const };
+        }),
+      },
       channels: {
         list: authed.messaging.channels.list.handler(async ({ context }) => {
           const identity = await messagingIdentityFor(deps.prisma, context.actor.userId);
@@ -3956,6 +4030,27 @@ async function messagingIdentityFor(
     orderBy: { createdAt: "asc" },
     select: { id: true, botId: true },
   });
+}
+
+async function messagingIdentityDto(
+  prisma: PrismaClient,
+  identity: { id: string; provider: string; address: string; botId: string },
+) {
+  const bot = await prisma.bot.findUnique({
+    where: { id: identity.botId },
+    select: { name: true },
+  });
+  return {
+    id: identity.id,
+    provider: identity.provider,
+    address: identity.address,
+    botId: identity.botId,
+    botName: bot?.name ?? "Assistant",
+  };
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return Boolean(error && typeof error === "object" && "code" in error && error.code === "P2002");
 }
 
 function messagingChannelDto(membership: {

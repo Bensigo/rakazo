@@ -158,12 +158,19 @@ describe("isMessagingEnabled", () => {
 });
 
 describe("isMessagingSurfaceEnabled", () => {
-  it("requires platforms and a deployment model key", () => {
+  it("requires the deployment model key only for open signup", () => {
     vi.stubEnv("VITEST", "");
     const platforms = messagingPlatformsFromEnv(fullEnv);
-    expect(isMessagingSurfaceEnabled(platforms, "model-key")).toBe(true);
-    expect(isMessagingSurfaceEnabled(platforms, undefined)).toBe(false);
-    expect(isMessagingSurfaceEnabled([], "model-key")).toBe(false);
+    const key = (deploymentModelKey: string | undefined, openSignup: boolean) => ({
+      deploymentModelKey,
+      openSignup,
+    });
+    // Open signup provisions users with no credentials of their own.
+    expect(isMessagingSurfaceEnabled(platforms, key("model-key", true))).toBe(true);
+    expect(isMessagingSurfaceEnabled(platforms, key(undefined, true))).toBe(false);
+    // Linking-only deployments run linked users on their own credentials.
+    expect(isMessagingSurfaceEnabled(platforms, key(undefined, false))).toBe(true);
+    expect(isMessagingSurfaceEnabled([], key("model-key", true))).toBe(false);
     vi.unstubAllEnvs();
   });
 });

@@ -6,6 +6,9 @@
 ALTER TABLE "phone_identities" RENAME TO "messaging_identities";
 ALTER TABLE "messaging_identities" RENAME COLUMN "phoneE164" TO "address";
 ALTER TABLE "messaging_identities" ADD COLUMN "provider" TEXT NOT NULL DEFAULT 'sendblue';
+-- The default only backfills the pre-existing sendblue rows; application code
+-- always writes provider explicitly.
+ALTER TABLE "messaging_identities" ALTER COLUMN "provider" DROP DEFAULT;
 ALTER TABLE "messaging_identities" ADD COLUMN "dmThreadId" TEXT;
 ALTER INDEX "phone_identities_pkey" RENAME TO "messaging_identities_pkey";
 ALTER INDEX "phone_identities_botId_key" RENAME TO "messaging_identities_botId_key";
@@ -22,6 +25,7 @@ ALTER TABLE "messaging_identities"
 ALTER TABLE "phone_channels" RENAME TO "messaging_channels";
 ALTER TABLE "messaging_channels" RENAME COLUMN "providerGroupId" TO "threadId";
 ALTER TABLE "messaging_channels" ADD COLUMN "provider" TEXT NOT NULL DEFAULT 'sendblue';
+ALTER TABLE "messaging_channels" ALTER COLUMN "provider" DROP DEFAULT;
 UPDATE "messaging_channels" SET "threadId" = 'legacy:' || "threadId";
 ALTER INDEX "phone_channels_pkey" RENAME TO "messaging_channels_pkey";
 ALTER INDEX "phone_channels_providerGroupId_key" RENAME TO "messaging_channels_threadId_key";
@@ -87,3 +91,18 @@ UPDATE "messages"
         FROM jsonb_array_elements("blocks") WITH ORDINALITY AS entry(block, position)
     )
     WHERE "blocks"::text LIKE '%phone_channel_message%';
+
+-- Web-issued linking codes: bind a chat address to an existing user + bot.
+CREATE TABLE "messaging_link_codes" (
+    "id" TEXT NOT NULL,
+    "code" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "spaceId" TEXT NOT NULL,
+    "botId" TEXT NOT NULL,
+    "expiresAt" TIMESTAMP(3) NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "messaging_link_codes_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX "messaging_link_codes_code_key" ON "messaging_link_codes"("code");
+CREATE INDEX "messaging_link_codes_userId_idx" ON "messaging_link_codes"("userId");

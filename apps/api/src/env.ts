@@ -49,6 +49,8 @@ export interface AppEnv {
   whatsappVerifyToken: string | undefined;
   telegramBotToken: string | undefined;
   telegramWebhookSecret: string | undefined;
+  /** Unknown chat senders auto-provision their own accounts when true. */
+  messagingOpenSignup: boolean;
   defaultProvider: string;
   defaultModel: string;
   wakeupDriver: string;
@@ -114,6 +116,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     whatsappVerifyToken: optional(source.WHATSAPP_VERIFY_TOKEN),
     telegramBotToken: optional(source.TELEGRAM_BOT_TOKEN),
     telegramWebhookSecret: optional(source.TELEGRAM_WEBHOOK_SECRET_TOKEN),
+    messagingOpenSignup: source.MESSAGING_OPEN_SIGNUP === "true",
     defaultProvider: deploymentModel.provider,
     defaultModel: deploymentModel.model,
     wakeupDriver: source.WAKEUP_DRIVER ?? "graphile",
