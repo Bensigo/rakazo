@@ -124,6 +124,7 @@ import {
   computersAreUnavailable,
 } from "../components/ComputersUnavailableHint";
 import { MessageHoverMetadata } from "../components/MessageHoverMetadata";
+import { ToolActivityDisclosure, ToolSteps } from "../components/ToolActivityDisclosure";
 import { SkillDraftCard } from "../components/teach/SkillDraftCard";
 import { TeachCaptureOverlay } from "../components/teach/TeachCaptureOverlay";
 import { TeachComputerSection } from "../components/teach/TeachComputerSection";
@@ -4858,42 +4859,6 @@ function ComputerReleaseActions({
   );
 }
 
-function ToolSteps({
-  steps,
-  currentIndex,
-}: {
-  steps: Extract<ThreadMessage["blocks"][number], { kind: "steps" }>["steps"];
-  currentIndex?: number;
-}) {
-  return (
-    <div className="space-y-1.5">
-      {steps.map((step, index) => {
-        const isCurrent = index === currentIndex;
-        return (
-          <div key={index} className="flex items-center gap-2">
-            <span
-              className="text-[13px]"
-              style={{
-                color: isCurrent ? "#F5A03C" : "#4ECB71",
-                animation: isCurrent ? "rkPulse 1.2s ease-in-out infinite" : undefined,
-              }}
-            >
-              {isCurrent ? "◷" : "✓"}
-            </span>
-            <span
-              className="truncate text-[14px]"
-              style={{ color: isCurrent ? "#DFDFE2" : "#85858A" }}
-            >
-              {step.label}
-              {step.count > 1 ? ` ×${step.count}` : ""}
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 const MessageView = memo(function MessageView({
   artifactTarget,
   canAnswer,
@@ -4976,12 +4941,16 @@ const MessageView = memo(function MessageView({
               if (block.kind === "steps") {
                 const isCurrentBlock = isLive && i === message.blocks.length - 1;
                 return (
-                  <div key={i} dir="ltr">
+                  <ToolActivityDisclosure
+                    key={i}
+                    live={isLive}
+                    label={isLive ? t`Working…` : t`Actions`}
+                  >
                     <ToolSteps
                       steps={block.steps}
                       currentIndex={isCurrentBlock ? block.steps.length - 1 : undefined}
                     />
-                  </div>
+                  </ToolActivityDisclosure>
                 );
               }
               if (block.kind === "text" || block.kind === "progress") {
@@ -5085,10 +5054,12 @@ const MessageView = memo(function MessageView({
                 className="max-w-[74%] space-y-1.5 rounded-[20px] bg-[#1A1A1D] px-[18px] py-3"
                 dir="ltr"
               >
-                <ToolSteps
-                  steps={block.steps}
-                  currentIndex={isLive ? block.steps.length - 1 : undefined}
-                />
+                <ToolActivityDisclosure live={isLive} label={isLive ? t`Working…` : t`Actions`}>
+                  <ToolSteps
+                    steps={block.steps}
+                    currentIndex={isLive ? block.steps.length - 1 : undefined}
+                  />
+                </ToolActivityDisclosure>
               </div>
             </div>
           );
