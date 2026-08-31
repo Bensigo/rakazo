@@ -9,7 +9,9 @@ import {
 } from "./helpers";
 
 function sidebarBotButton(page: Page, name: RegExp | string) {
-  return page.locator("[data-sidebar-group]").getByRole("button", { name });
+  return page.locator("[data-sidebar-group] [data-roster-bot-id]").filter({
+    has: page.locator("[data-roster-bot-name]").filter({ hasText: name }),
+  });
 }
 
 test.describe.configure({ mode: "serial" });

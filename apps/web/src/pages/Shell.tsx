@@ -2408,6 +2408,7 @@ export function ShellPage() {
                             <div className="flex items-baseline justify-between gap-2">
                               <span
                                 dir="auto"
+                                data-roster-bot-name={item.kind === "bot" ? "" : undefined}
                                 className={`truncate text-[15px] text-[#ECECEE] ${
                                   item.chat.unread ? "font-semibold" : "font-medium"
                                 }`}
