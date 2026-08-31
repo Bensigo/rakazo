@@ -86,16 +86,29 @@ function createDeps(
   const connection = overrides.connection === undefined ? null : overrides.connection;
   const prisma = {
     messagingIdentity: {
-      findUnique: vi.fn(async ({ where }: { where: { botId?: string; id?: string } }) => {
-        if (where.botId === "bot-2" || where.id === "mi-2") return targetIdentity;
-        if (where.botId === "bot-1" || where.id === "mi-1") return requesterIdentity;
-        return null;
-      }),
-      findFirst: vi.fn(async ({ where }: { where: { address?: string } }) => {
-        if (where.address === "+15552222222") return targetIdentity;
-        if (where.address === "+15551111111") return requesterIdentity;
-        return null;
-      }),
+      findUnique: vi.fn(
+        async ({
+          where,
+        }: {
+          where: {
+            botId?: string;
+            id?: string;
+            provider_address?: { provider: string; address: string };
+          };
+        }) => {
+          // Target lookups are provider-scoped: addresses are only unique
+          // within a platform.
+          if (where.provider_address) {
+            if (where.provider_address.provider !== "sendblue") return null;
+            if (where.provider_address.address === "+15552222222") return targetIdentity;
+            if (where.provider_address.address === "+15551111111") return requesterIdentity;
+            return null;
+          }
+          if (where.botId === "bot-2" || where.id === "mi-2") return targetIdentity;
+          if (where.botId === "bot-1" || where.id === "mi-1") return requesterIdentity;
+          return null;
+        },
+      ),
     },
     bot: {
       findUnique: vi.fn(async ({ where }: { where: { id: string } }) =>

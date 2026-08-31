@@ -28,19 +28,22 @@ export interface MessagingEnvironmentValues {
 export function messagingEnvFromProcess(
   env: Record<string, string | undefined>,
 ): MessagingEnvironmentValues {
+  // Same trim/empty-to-undefined normalization the API's env loader applies,
+  // so a credential with stray whitespace behaves identically in both roles.
+  const clean = (value: string | undefined) => value?.trim() || undefined;
   return {
-    sendblueApiKeyId: env.SENDBLUE_API_KEY_ID,
-    sendblueApiSecret: env.SENDBLUE_API_SECRET,
-    sendblueSigningSecret: env.SENDBLUE_SIGNING_SECRET,
-    sendbluePhoneNumber: env.SENDBLUE_PHONE_NUMBER,
-    slackBotToken: env.SLACK_BOT_TOKEN,
-    slackSigningSecret: env.SLACK_SIGNING_SECRET,
-    whatsappAccessToken: env.WHATSAPP_ACCESS_TOKEN,
-    whatsappPhoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID,
-    whatsappAppSecret: env.WHATSAPP_APP_SECRET,
-    whatsappVerifyToken: env.WHATSAPP_VERIFY_TOKEN,
-    telegramBotToken: env.TELEGRAM_BOT_TOKEN,
-    telegramWebhookSecret: env.TELEGRAM_WEBHOOK_SECRET_TOKEN,
+    sendblueApiKeyId: clean(env.SENDBLUE_API_KEY_ID),
+    sendblueApiSecret: clean(env.SENDBLUE_API_SECRET),
+    sendblueSigningSecret: clean(env.SENDBLUE_SIGNING_SECRET),
+    sendbluePhoneNumber: clean(env.SENDBLUE_PHONE_NUMBER),
+    slackBotToken: clean(env.SLACK_BOT_TOKEN),
+    slackSigningSecret: clean(env.SLACK_SIGNING_SECRET),
+    whatsappAccessToken: clean(env.WHATSAPP_ACCESS_TOKEN),
+    whatsappPhoneNumberId: clean(env.WHATSAPP_PHONE_NUMBER_ID),
+    whatsappAppSecret: clean(env.WHATSAPP_APP_SECRET),
+    whatsappVerifyToken: clean(env.WHATSAPP_VERIFY_TOKEN),
+    telegramBotToken: clean(env.TELEGRAM_BOT_TOKEN),
+    telegramWebhookSecret: clean(env.TELEGRAM_WEBHOOK_SECRET_TOKEN),
   };
 }
 
@@ -113,6 +116,8 @@ export function messagingPlatformsFromEnv(env: MessagingEnvironmentValues): Mess
     });
   }
 
+  // Both required: without the secret token the adapter accepts unsigned
+  // webhook posts, so a forged update could reach inbound processing.
   if (env.telegramBotToken && env.telegramWebhookSecret) {
     platforms.push({
       provider: "telegram",

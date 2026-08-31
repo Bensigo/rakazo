@@ -56,7 +56,13 @@ describe("messagingPlatformsFromEnv", () => {
       expect(providers({ ...fullEnv, [key]: undefined })).not.toContain("whatsapp");
     }
     expect(providers({ ...fullEnv, telegramBotToken: undefined })).not.toContain("telegram");
+    // Without the secret token the adapter would accept unsigned webhook
+    // posts, so the secret is a mount gate, not optional hardening.
     expect(providers({ ...fullEnv, telegramWebhookSecret: undefined })).not.toContain("telegram");
+    expect(providers({ telegramBotToken: "tg-token" })).toEqual([]);
+    expect(
+      providers({ telegramBotToken: "tg-token", telegramWebhookSecret: "tg-webhook-secret" }),
+    ).toEqual(["telegram"]);
   });
 
   it("declares group and typing support only for sendblue", () => {

@@ -2901,8 +2901,11 @@ export function createRouter(deps: RouterDeps) {
     },
     messaging: {
       status: authed.messaging.status.handler(async ({ context }) => {
+        // Same earliest-created identity the channels/connections handlers
+        // resolve, so the overlay never shows mismatched link state.
         const identity = await deps.prisma.messagingIdentity.findFirst({
           where: { userId: context.actor.userId },
+          orderBy: { createdAt: "asc" },
         });
         return {
           enabled: deps.messaging?.enabled ?? false,

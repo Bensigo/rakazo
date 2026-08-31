@@ -55,8 +55,12 @@ ALTER INDEX "phone_outbound_idempotencyKey_key" RENAME TO "messaging_outbound_id
 ALTER INDEX "phone_outbound_status_nextAttemptAt_idx"
     RENAME TO "messaging_outbound_status_nextAttemptAt_idx";
 
--- Runs and stored message blocks move to the neutral vocabulary.
+-- Runs and stored message blocks move to the neutral vocabulary. Replayed
+-- run.started event payloads carry the trigger too, so they migrate as well.
 UPDATE "runs" SET "trigger" = 'messaging' WHERE "trigger" = 'phone';
+UPDATE "events"
+    SET "payload" = jsonb_set("payload", '{trigger}', '"messaging"')
+    WHERE "payload" ->> 'trigger' = 'phone';
 UPDATE "messages"
     SET "blocks" = (
         SELECT jsonb_agg(
@@ -70,7 +74,8 @@ UPDATE "messages"
                         )
                 ELSE block
             END
+            ORDER BY position
         )
-        FROM jsonb_array_elements("blocks") AS block
+        FROM jsonb_array_elements("blocks") WITH ORDINALITY AS entry(block, position)
     )
     WHERE "blocks"::text LIKE '%phone_channel_message%';

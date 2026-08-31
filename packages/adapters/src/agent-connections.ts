@@ -53,8 +53,11 @@ export async function connectAgent(
   if (!requesterIdentity) {
     return { ok: false, error: "only chat-linked agents can use agent connections" };
   }
-  const targetIdentity = await deps.prisma.messagingIdentity.findFirst({
-    where: { address },
+  // Scoped to the requester's own platform: addresses are only unique per
+  // provider, and a cross-provider match could route the invite to a
+  // different person who happens to share the address string.
+  const targetIdentity = await deps.prisma.messagingIdentity.findUnique({
+    where: { provider_address: { provider: requesterIdentity.provider, address } },
   });
   // One generic answer for unknown and unavailable addresses: the tool is
   // reachable by every bot on the deployment, so it must not enumerate
@@ -216,8 +219,10 @@ export async function messageConnectedAgent(
     return { ok: false, error: "only chat-linked agents can use agent connections" };
   }
 
-  const targetIdentity = await deps.prisma.messagingIdentity.findFirst({
-    where: { address },
+  // Provider-scoped for the same reason as connect_agent: an address match
+  // on another platform could belong to someone else entirely.
+  const targetIdentity = await deps.prisma.messagingIdentity.findUnique({
+    where: { provider_address: { provider: senderIdentity.provider, address } },
   });
   // One generic answer for unknown and unconnected addresses, mirroring
   // connect_agent: the tool must not enumerate registered addresses.
