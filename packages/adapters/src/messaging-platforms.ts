@@ -122,9 +122,12 @@ export function messagingPlatformsFromEnv(env: MessagingEnvironmentValues): Mess
     platforms.push({
       provider: "telegram",
       capabilities: { direct: true, groups: false, typing: false },
+      // Webhook-only: auto mode can long-poll getUpdates from the worker on
+      // initialize() and consume updates so the HTTP webhook never sees them.
       adapter: createTelegramAdapter({
         botToken: env.telegramBotToken,
         secretToken: env.telegramWebhookSecret,
+        mode: "webhook",
       }),
     });
   }

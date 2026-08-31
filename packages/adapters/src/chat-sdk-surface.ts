@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createMemoryState } from "@chat-adapter/state-memory";
 import type {
   AdapterContext,
@@ -13,6 +14,12 @@ import type {
 } from "@rakazo/adapter-kit";
 import type { Adapter, Message, Thread } from "chat";
 import { Chat } from "chat";
+
+/** Per-webhook drain of Chat SDK waitUntil work + inbound sink failures. */
+const webhookDrain = new AsyncLocalStorage<{
+  pending: Promise<unknown>[];
+  failed: boolean;
+}>();
 
 /** Inbound webhook bodies larger than this are rejected before parsing. */
 export const MESSAGING_WEBHOOK_MAX_BODY_BYTES = 256 * 1024;
@@ -58,7 +65,16 @@ export class ChatSdkMessagingSurface implements MessagingSurface {
     });
     const deliver = async (thread: Thread, message: Message) => {
       const event = this.toInbound(thread, message);
-      if (event) await this.sink?.(event);
+      if (!event) return;
+      try {
+        await this.sink?.(event);
+      } catch (error) {
+        // processMessage hands waitUntil a swallowed promise, so track sink
+        // failures here and turn them into HTTP 5xx after the drain.
+        const drain = webhookDrain.getStore();
+        if (drain) drain.failed = true;
+        throw error;
+      }
     };
     // Priority routing makes these disjoint: DMs, then @-mentions in
     // unsubscribed threads, then the catch-all pattern for everything else.
@@ -145,7 +161,23 @@ export class ChatSdkMessagingSurface implements MessagingSurface {
     const forwarded = hasBody
       ? new Request(request.url, { method: request.method, headers: request.headers, body })
       : request;
-    const response = await this.chat.webhooks[platform.provider]!(forwarded);
+    // Real Chat SDK adapters fire processMessage without awaiting it; they
+    // only register the work via waitUntil. Drain that work before ACKing so
+    // a vendor 200 cannot race ahead of provision/enqueue, and surface sink
+    // failures as 5xx so the vendor retries.
+    const drain = { pending: [] as Promise<unknown>[], failed: false };
+    const response = await webhookDrain.run(drain, async () => {
+      const adapterResponse = await this.chat.webhooks[platform.provider]!(forwarded, {
+        waitUntil: (task) => {
+          drain.pending.push(task);
+        },
+      });
+      await Promise.all(drain.pending);
+      return adapterResponse;
+    });
+    if (drain.failed) {
+      return new Response("Inbound processing failed", { status: 500 });
+    }
     // Status peeking runs only after the adapter verified and accepted the
     // request — a forged webhook must not be able to flip outbox rows.
     if (platform.peekStatus && response.status < 300 && body) {

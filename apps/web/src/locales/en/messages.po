@@ -1996,8 +1996,8 @@ msgid "Not in the plugin catalog"
 msgstr "Not in the plugin catalog"
 
 #: src/pages/PhoneSettingsOverlay.tsx:87
-msgid "Not linked. Message the deployment's line once from any connected chat app to link it to your agent."
-msgstr "Not linked. Message the deployment's line once from any connected chat app to link it to your agent."
+msgid "Not linked. First contact creates a separate chat-only agent. Account linking is not available yet."
+msgstr "Not linked. First contact creates a separate chat-only agent. Account linking is not available yet."
 
 #: src/pages/Shell.tsx:6289
 msgid "Not now"

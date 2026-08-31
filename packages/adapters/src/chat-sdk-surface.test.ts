@@ -18,9 +18,9 @@ const context: AdapterContext = {
 };
 
 /**
- * A mock Chat SDK adapter whose webhook drives the real Chat instance: the
- * webhook body names the thread and message, and handleWebhook awaits
- * chat.processMessage so the sink has fired by the time the response lands.
+ * A mock Chat SDK adapter whose webhook drives the real Chat instance. Like
+ * the real Sendblue/Telegram/WhatsApp adapters, handleWebhook fires
+ * processMessage without awaiting it and registers the work via waitUntil.
  * Mock thread ids are DMs when the channel segment starts with "D".
  */
 function createPlatform(
@@ -32,30 +32,35 @@ function createPlatform(
     initialize: vi.fn(async (instance: ChatInstance) => {
       chat = instance;
     }),
-    handleWebhook: vi.fn(async (request: Request) => {
-      const payload = (await request.json()) as {
-        threadId: string;
-        id: string;
-        text: string;
-        isMe?: boolean;
-      };
-      await chat!.processMessage(
-        adapter,
-        payload.threadId,
-        createTestMessage(payload.id, payload.text, {
-          threadId: payload.threadId,
-          raw: { roster: ["+15551111111", "+15552222222"] },
-          author: {
-            userId: "U123",
-            userName: "testuser",
-            fullName: "Test User",
-            isBot: false,
-            isMe: payload.isMe ?? false,
-          },
-        }),
-      );
-      return new Response("ok");
-    }),
+    handleWebhook: vi.fn(
+      async (request: Request, options?: { waitUntil?: (task: Promise<unknown>) => void }) => {
+        const payload = (await request.json()) as {
+          threadId: string;
+          id: string;
+          text: string;
+          isMe?: boolean;
+        };
+        // Fire-and-forget: matches Chat SDK adapters that return 200 before
+        // processMessage settles, relying on waitUntil for background work.
+        chat!.processMessage(
+          adapter,
+          payload.threadId,
+          createTestMessage(payload.id, payload.text, {
+            threadId: payload.threadId,
+            raw: { roster: ["+15551111111", "+15552222222"] },
+            author: {
+              userId: "U123",
+              userName: "testuser",
+              fullName: "Test User",
+              isBot: false,
+              isMe: payload.isMe ?? false,
+            },
+          }),
+          options,
+        );
+        return new Response("ok");
+      },
+    ),
     // Force thread.post through postMessage, the surface's send path.
     postChannelMessage: undefined,
     ...adapterOverrides,
@@ -159,6 +164,47 @@ describe("ChatSdkMessagingSurface inbound", () => {
 
     expect(response?.status).toBe(200);
     expect(events).toHaveLength(0);
+  });
+});
+
+describe("ChatSdkMessagingSurface webhook waitUntil drain", () => {
+  it("does not return 2xx until the inbound sink finishes", async () => {
+    const { adapter, platform } = createPlatform();
+    const surface = new ChatSdkMessagingSurface([platform]);
+    let sinkDone = false;
+    let sawSinkPendingAtResponse = false;
+    surface.onInbound(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      sinkDone = true;
+    });
+
+    const responsePromise = surface.handleWebhook(
+      "mock",
+      webhookRequest({ threadId: "mock:Duser:1", id: "m-slow", text: "hello" }),
+    );
+    // If the surface returned before draining waitUntil, sinkDone would still be false
+    // when the promise settles... we assert after await that sink completed first.
+    const response = await responsePromise;
+    sawSinkPendingAtResponse = !sinkDone;
+    expect(sawSinkPendingAtResponse).toBe(false);
+    expect(sinkDone).toBe(true);
+    expect(response?.status).toBe(200);
+    expect(adapter.handleWebhook).toHaveBeenCalled();
+  });
+
+  it("returns 5xx when the inbound sink throws so the vendor can retry", async () => {
+    const { platform } = createPlatform();
+    const surface = new ChatSdkMessagingSurface([platform]);
+    surface.onInbound(async () => {
+      throw new Error("provision failed");
+    });
+
+    const response = await surface.handleWebhook(
+      "mock",
+      webhookRequest({ threadId: "mock:Duser:1", id: "m-fail", text: "hello" }),
+    );
+
+    expect(response?.status).toBe(500);
   });
 });
 

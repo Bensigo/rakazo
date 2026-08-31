@@ -65,6 +65,15 @@ describe("messagingPlatformsFromEnv", () => {
     ).toEqual(["telegram"]);
   });
 
+  it("forces Telegram into webhook mode so worker initialize cannot long-poll", () => {
+    const telegram = messagingPlatformsFromEnv({
+      telegramBotToken: "tg-token",
+      telegramWebhookSecret: "tg-webhook-secret",
+    })[0]!;
+    // mode is protected on the adapter class but readable at runtime.
+    expect((telegram.adapter as unknown as { mode: string }).mode).toBe("webhook");
+  });
+
   it("declares group and typing support only for sendblue", () => {
     const platforms = messagingPlatformsFromEnv(fullEnv);
     const capabilities = Object.fromEntries(

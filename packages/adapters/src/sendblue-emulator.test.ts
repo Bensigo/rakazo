@@ -1,5 +1,5 @@
 import type { AdapterContext, MessagingInboundEvent } from "@rakazo/adapter-kit";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { ChatSdkMessagingSurface } from "./chat-sdk-surface.js";
 import { createEmulatedSendbluePlatform, SendBlueEmulator } from "./sendblue-emulator.js";
 
@@ -35,8 +35,8 @@ describe("emulated sendblue platform inbound", () => {
     );
 
     expect(response?.status).toBe(200);
-    // The chat adapter processes inbound messages without awaiting them.
-    await vi.waitFor(() => expect(events).toHaveLength(1));
+    // handleWebhook drains waitUntil, so the sink has finished by ACK.
+    expect(events).toHaveLength(1);
     expect(events[0]).toEqual({
       type: "message",
       provider: "sendblue",
@@ -69,7 +69,7 @@ describe("emulated sendblue platform inbound", () => {
     );
 
     expect(response?.status).toBe(200);
-    await vi.waitFor(() => expect(events).toHaveLength(1));
+    expect(events).toHaveLength(1);
     expect(events[0]).toEqual(
       expect.objectContaining({
         type: "message",
@@ -109,7 +109,7 @@ describe("emulated sendblue platform outbound", () => {
         participants: ["+15551111111", emulator.phoneNumber],
       }),
     );
-    await vi.waitFor(() => expect(events).toHaveLength(1));
+    expect(events).toHaveLength(1);
     const threadId = (events[0] as { threadId: string }).threadId;
 
     const sent = await surface.sendToThread({ threadId, body: "hi all" }, context);

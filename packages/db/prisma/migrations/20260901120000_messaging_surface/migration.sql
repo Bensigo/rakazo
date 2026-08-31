@@ -38,8 +38,10 @@ ALTER TABLE "messaging_channel_members"
     TO "messaging_channel_members_channelId_fkey";
 
 -- Outbox: DM rows resolve threads through the identity; group rows carry the
--- provider thread id. Pre-migration pending rows hold vendor-shaped addresses
--- that no longer resolve, so they are closed out rather than left to retry.
+-- provider thread id. Map pending DMs onto identities, then fail only rows
+-- that still cannot be addressed (no identityId and no remappable group
+-- threadId). Identity-backed DMs stay pending so in-flight YES/NO replies
+-- and invites drain after deploy.
 ALTER TABLE "phone_outbound" RENAME TO "messaging_outbound";
 ALTER TABLE "messaging_outbound" ADD COLUMN "identityId" TEXT;
 ALTER TABLE "messaging_outbound" ADD COLUMN "threadId" TEXT;
@@ -47,7 +49,13 @@ UPDATE "messaging_outbound" o
     SET "identityId" = i."id"
     FROM "messaging_identities" i
     WHERE o."toNumber" IS NOT NULL AND i."provider" = 'sendblue' AND i."address" = o."toNumber";
-UPDATE "messaging_outbound" SET "status" = 'failed' WHERE "status" = 'pending';
+-- Legacy sendblue group ids cannot be re-encoded into Chat SDK thread ids in
+-- SQL, so providerGroupId never becomes a remappable threadId here.
+UPDATE "messaging_outbound"
+    SET "status" = 'failed'
+    WHERE "status" = 'pending'
+      AND "identityId" IS NULL
+      AND "threadId" IS NULL;
 ALTER TABLE "messaging_outbound" DROP COLUMN "toNumber";
 ALTER TABLE "messaging_outbound" DROP COLUMN "providerGroupId";
 ALTER INDEX "phone_outbound_pkey" RENAME TO "messaging_outbound_pkey";
