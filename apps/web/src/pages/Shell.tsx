@@ -43,6 +43,7 @@ import {
   attachmentsForThread,
   buildComposerMentionOptions,
   type ComposerMention,
+  clampMentionHighlightIndex,
   cronFromPreset,
   groupBotsForSidebar,
   inferAttachmentMimeType,
@@ -53,6 +54,7 @@ import {
   mentionChipKey,
   reorderBotTo,
   resolveComposerSendPlan,
+  resolveMentionPickerKey,
   SLASH_ACTIONS,
   type SlashActionId,
   searchHitThreadTarget,
@@ -103,6 +105,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -4134,10 +4137,12 @@ const Composer = memo(function Composer({
   const { t } = useLingui();
   const [draft, setDraft] = useState("");
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionHighlightIndex, setMentionHighlightIndex] = useState(0);
   const [slashQuery, setSlashQuery] = useState<string | null>(null);
   const [selectedSkill, setSelectedSkill] = useState<AgentSkillCatalogEntry | null>(null);
   const [selectedMentions, setSelectedMentions] = useState<ComposerMention[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const mentionListboxId = useId();
   const dragDepth = useRef(0);
   const [draggingFiles, setDraggingFiles] = useState(false);
   const canSend =
@@ -4182,14 +4187,20 @@ const Composer = memo(function Composer({
     setSlashQuery(nextSlash);
   }
 
+  function focusComposer() {
+    textareaRef.current?.focus();
+  }
+
   function insertMention(mention: ComposerMention) {
     setDraft((current) => current.replace(/@([\w-]*)$/, ""));
     setMentionQuery(null);
+    setMentionHighlightIndex(0);
     setSelectedMentions((current) =>
       current.some((selected) => mentionChipKey(selected) === mentionChipKey(mention))
         ? current
         : [...current, mention],
     );
+    focusComposer();
   }
 
   function insertSkill(skill: AgentSkillCatalogEntry) {
@@ -4219,6 +4230,19 @@ const Composer = memo(function Composer({
       .filter((target) => !query || target.name.toLowerCase().startsWith(query))
       .slice(0, 10);
   }, [mentionQuery, mentionTargets]);
+
+  useEffect(() => {
+    setMentionHighlightIndex(0);
+  }, [mentionQuery, mentionOptions]);
+
+  const activeMentionIndex = clampMentionHighlightIndex(
+    mentionHighlightIndex,
+    mentionOptions.length,
+  );
+  const mentionPickerOpen = mentionOptions.length > 0;
+  const activeMentionOptionId = mentionPickerOpen
+    ? `${mentionListboxId}-option-${activeMentionIndex}`
+    : undefined;
 
   const slashSkillOptions = useMemo(() => {
     if (slashQuery === null) return [];
@@ -4251,6 +4275,7 @@ const Composer = memo(function Composer({
     const text = serializeComposerPrompt(draft, selectedSkill, selectedMentions);
     setDraft("");
     setMentionQuery(null);
+    setMentionHighlightIndex(0);
     setSlashQuery(null);
     setSelectedSkill(null);
     const mentions = selectedMentions;
@@ -4390,32 +4415,46 @@ const Composer = memo(function Composer({
           ))}
         </div>
       ) : null}
-      {mentionOptions.length ? (
+      {mentionPickerOpen ? (
         <div
+          id={mentionListboxId}
+          role="listbox"
+          aria-label={t`Mentions`}
           data-testid="mention-picker"
           className="mb-2 overflow-hidden rounded-[14px] border border-[#26262A] bg-[#17171A]"
         >
-          {mentionOptions.map((mention) => (
-            <button
-              key={mentionChipKey(mention)}
-              type="button"
-              aria-label={t`@${mention.name}`}
-              onClick={() => insertMention(mention)}
-              className="flex w-full items-start gap-3 px-4 py-2.5 text-start hover:bg-[#1F1F22]"
-            >
-              <MentionOptionIcon mention={mention} />
-              <span className="min-w-0">
-                <span dir="auto" className="block text-[14px] text-[#ECECEE]">
-                  @{mention.name}
-                </span>
-                {mention.subtitle ? (
-                  <span dir="auto" className="block truncate text-[12.5px] text-[#85858A]">
-                    {mention.subtitle}
+          {mentionOptions.map((mention, index) => {
+            const optionId = `${mentionListboxId}-option-${index}`;
+            const highlighted = index === activeMentionIndex;
+            return (
+              <button
+                id={optionId}
+                key={mentionChipKey(mention)}
+                type="button"
+                role="option"
+                aria-selected={highlighted}
+                aria-label={t`@${mention.name}`}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => insertMention(mention)}
+                onMouseEnter={() => setMentionHighlightIndex(index)}
+                className={`flex w-full items-start gap-3 px-4 py-2.5 text-start hover:bg-[#1F1F22] ${
+                  highlighted ? "bg-[#1F1F22]" : ""
+                }`}
+              >
+                <MentionOptionIcon mention={mention} />
+                <span className="min-w-0">
+                  <span dir="auto" className="block text-[14px] text-[#ECECEE]">
+                    @{mention.name}
                   </span>
-                ) : null}
-              </span>
-            </button>
-          ))}
+                  {mention.subtitle ? (
+                    <span dir="auto" className="block truncate text-[12.5px] text-[#85858A]">
+                      {mention.subtitle}
+                    </span>
+                  ) : null}
+                </span>
+              </button>
+            );
+          })}
         </div>
       ) : null}
       {showSlashPicker ? (
@@ -4566,7 +4605,32 @@ const Composer = memo(function Composer({
                 removeLastChip();
                 return;
               }
-              if (event.key === "Enter" && !event.shiftKey) {
+              const action = resolveMentionPickerKey({
+                key: event.key,
+                shiftKey: event.shiftKey,
+                isComposing: event.nativeEvent.isComposing || event.keyCode === 229,
+                optionCount: mentionOptions.length,
+                highlightedIndex: activeMentionIndex,
+              });
+              if (action.type === "complete") {
+                const mention = mentionOptions[action.index];
+                if (!mention) return;
+                event.preventDefault();
+                insertMention(mention);
+                return;
+              }
+              if (action.type === "move") {
+                event.preventDefault();
+                setMentionHighlightIndex(action.index);
+                return;
+              }
+              if (action.type === "dismiss") {
+                event.preventDefault();
+                setMentionQuery(null);
+                setMentionHighlightIndex(0);
+                return;
+              }
+              if (action.type === "send") {
                 event.preventDefault();
                 send();
               }
@@ -4580,6 +4644,12 @@ const Composer = memo(function Composer({
                 : undefined
             }
             aria-label={activeName ? t`Message ${activeName}` : t`Message`}
+            role="combobox"
+            aria-autocomplete="list"
+            aria-haspopup="listbox"
+            aria-expanded={mentionPickerOpen}
+            aria-controls={mentionPickerOpen ? mentionListboxId : undefined}
+            aria-activedescendant={activeMentionOptionId}
             name="chat-message"
             autoComplete="off"
             dir="auto"
