@@ -51,6 +51,33 @@ describe("SmtpEmailProvider", () => {
     expect(sleep.mock.calls).toEqual([[250], [1_000]]);
   });
 
+  it("bounds graceful shutdown when delivery never settles", async () => {
+    vi.useFakeTimers();
+    try {
+      const sendMail = vi.fn(() => new Promise<never>(() => undefined));
+      const close = vi.fn();
+      const provider = new SmtpEmailProvider(
+        { url: "smtp://smtp.example.test", from: "a@example.test" },
+        {
+          transport: { sendMail, close } as never,
+          retryDelaysMs: [],
+          drainTimeoutMs: 100,
+        },
+      );
+
+      void provider
+        .send({ to: "ada@example.test", subject: "Reset password", text: "Use this link" })
+        .catch(() => undefined);
+      const draining = provider.drain();
+      await vi.advanceTimersByTimeAsync(100);
+
+      await expect(draining).resolves.toBeUndefined();
+      expect(close).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("rejects unsafe transports and incomplete sender configuration", () => {
     expect(
       () => new SmtpEmailProvider({ url: "https://smtp.example.test", from: "a@example.test" }),

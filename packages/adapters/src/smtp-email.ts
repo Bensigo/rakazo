@@ -10,6 +10,7 @@ interface SmtpEmailDependencies {
   transport?: Transporter;
   createTransport?: (url: string) => Transporter;
   retryDelaysMs?: readonly number[];
+  drainTimeoutMs?: number;
   sleep?: (delayMs: number) => Promise<void>;
 }
 
@@ -17,6 +18,7 @@ interface SmtpEmailDependencies {
 export class SmtpEmailProvider implements TransactionalEmailProvider {
   private readonly transport: Transporter;
   private readonly retryDelaysMs: readonly number[];
+  private readonly drainTimeoutMs: number;
   private readonly sleep: (delayMs: number) => Promise<void>;
   private readonly inFlight = new Set<Promise<void>>();
 
@@ -34,6 +36,7 @@ export class SmtpEmailProvider implements TransactionalEmailProvider {
       dependencies.transport ??
       (dependencies.createTransport ?? nodemailer.createTransport)(secureUrl);
     this.retryDelaysMs = dependencies.retryDelaysMs ?? [250, 1_000];
+    this.drainTimeoutMs = dependencies.drainTimeoutMs ?? 10_000;
     this.sleep = dependencies.sleep ?? wait;
   }
 
@@ -57,8 +60,17 @@ export class SmtpEmailProvider implements TransactionalEmailProvider {
   }
 
   async drain(): Promise<void> {
+    const deadline = Date.now() + this.drainTimeoutMs;
     while (this.inFlight.size > 0) {
-      await Promise.allSettled(this.inFlight);
+      const completed = await settlesWithin(this.inFlight, Math.max(0, deadline - Date.now()));
+      if (completed) continue;
+      this.inFlight.clear();
+      try {
+        this.transport.close();
+      } catch {
+        // Cleanup must continue even when the transport cannot close cleanly.
+      }
+      return;
     }
   }
 
@@ -106,6 +118,23 @@ function secureSmtpUrl(value: string): string {
 
 function wait(delayMs: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+async function settlesWithin(
+  promises: Iterable<Promise<void>>,
+  timeoutMs: number,
+): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      Promise.allSettled([...promises]).then(() => true),
+      new Promise<false>((resolve) => {
+        timer = setTimeout(() => resolve(false), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 function safeProtocol(value: string): string | undefined {
