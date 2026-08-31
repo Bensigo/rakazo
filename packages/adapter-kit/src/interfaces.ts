@@ -138,6 +138,11 @@ export interface SandboxProvider {
 export interface ConnectorProvider {
   describe(): AdapterDescriptor<ConnectorCapabilities>;
   discoverTools(context: AdapterContext): Promise<ConnectorTool[]>;
+  /** Resolve a lazy catalog call to its authoritative authorized tool before approval. */
+  resolveCall?(
+    call: ConnectorCall,
+    context: AdapterContext,
+  ): Promise<{ call: ConnectorCall; tool: ConnectorTool } | undefined>;
   execute(call: ConnectorCall, context: AdapterContext): AsyncIterable<ConnectorEvent>;
 }
 
