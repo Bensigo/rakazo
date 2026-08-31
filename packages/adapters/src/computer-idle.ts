@@ -16,27 +16,33 @@ const BACKGROUND_WORK_MARKER_PREFIX = "/tmp/rakazo-background-";
 const BACKGROUND_WORK_IDLE_SENTINEL = "rakazo-background-idle";
 
 export const BACKGROUND_WORK_LAUNCH = [
-  `marker="${BACKGROUND_WORK_MARKER_PREFIX}$1"`,
-  'exec 9>>"$marker"',
-  'exec bash -lc "$2"',
+  `marker="${BACKGROUND_WORK_MARKER_PREFIX}$1-$2"`,
+  "set -o noclobber",
+  'exec 9>"$marker" || exit 1',
+  "set +o noclobber",
+  'exec bash -lc "$3"',
 ].join("\n");
 
 export const BACKGROUND_WORK_PROBE = [
-  `marker="${BACKGROUND_WORK_MARKER_PREFIX}$1"`,
+  `prefix="${BACKGROUND_WORK_MARKER_PREFIX}$1-"`,
   `idle() { printf '${BACKGROUND_WORK_IDLE_SENTINEL}\\n'; exit 1; }`,
-  '[ -e "$marker" ] || idle',
+  'markers=("$prefix"*)',
   "if [ -d /proc ]; then",
   "  command -v readlink >/dev/null 2>&1 || exit 2",
   "  for fd in /proc/[0-9]*/fd/*; do",
-  '    [ "$(readlink "$fd" 2>/dev/null)" = "$marker" ] && exit 0',
+  '    target="$(readlink "$fd" 2>/dev/null)"',
+  '    case "$target" in "$prefix"*) exit 0 ;; esac',
   "  done",
-  '  rm -f -- "$marker"',
+  `  for marker in "\${markers[@]}"; do [ -e "$marker" ] && rm -f -- "$marker"; done`,
   "  idle",
   "fi",
   'if [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then',
   "  command -v lsof >/dev/null 2>&1 || exit 2",
-  '  lsof -t -- "$marker" >/dev/null 2>&1 && exit 0',
-  '  rm -f -- "$marker"',
+  `  for marker in "\${markers[@]}"; do`,
+  '    [ -e "$marker" ] || continue',
+  '    lsof -t -- "$marker" >/dev/null 2>&1 && exit 0',
+  '    rm -f -- "$marker"',
+  "  done",
   "  idle",
   "fi",
   "exit 2",
@@ -126,19 +132,21 @@ export async function sleepComputerIfIdle(
     return;
   }
 
-  const [current, activeAfterCheckpoint] = await Promise.all([
+  const [current, activeAfterCheckpoint, backgroundAfterCheckpoint] = await Promise.all([
     deps.prisma.computer.findUnique({
       where: { id: computerId },
       select: { state: true, providerRef: true, updatedAt: true },
     }),
     findActiveRun(deps.prisma, computerId, activeStatuses),
+    hasActiveBackgroundWork(deps.sandbox, ref, ctx, computerId),
   ]);
-  if (activeAfterCheckpoint) {
+  if (activeAfterCheckpoint || backgroundAfterCheckpoint) {
     await deps.prisma.computer.updateMany({
       where: { id: computerId, state: "suspending" },
       data: { state: "running" },
     });
     scheduleComputerSleep(deps.jobs, computerId);
+    if (backgroundAfterCheckpoint) await deps.sandbox.keepAlive?.(ref);
     return;
   }
   if (
@@ -226,6 +234,13 @@ async function hasActiveBackgroundWork(
   context: AdapterContext,
   computerId: string,
 ): Promise<boolean> {
+  if (sandbox.inspectBackgroundWork) {
+    try {
+      return (await sandbox.inspectBackgroundWork(computer, computerId, context)) !== "idle";
+    } catch {
+      return true;
+    }
+  }
   let exitCode: number | undefined;
   let stdout = "";
   try {

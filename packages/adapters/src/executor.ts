@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type {
   AdapterContext,
   AgentHomeStore,
@@ -1698,6 +1699,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 // Marker id must match sleepComputerIfIdle's probe (DB id), not ComputerRef.id
                 // (providerRef via toComputerRef).
                 storedComputer.id,
+                randomUUID(),
                 command,
               ],
               cwd,

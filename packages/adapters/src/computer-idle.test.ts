@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, symlinkSync } from "node:fs";
 import type { AgentHomeStore, JobPublisher, SandboxProvider } from "@rakazo/adapter-kit";
 import type { PrismaClient, ThreadEvents } from "@rakazo/db";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -112,6 +112,28 @@ describe("sandbox idle", () => {
     expect(harness.prisma.computer.update).not.toHaveBeenCalled();
   });
 
+  it("rechecks background work after checkpointing before it suspends", async () => {
+    const harness = idleHarness({ backgroundWorkProbeCodes: [1, 0] });
+
+    await sleepComputerIfIdle(harness.deps, harness.computer.id);
+
+    expect(harness.home.commit).toHaveBeenCalledOnce();
+    expect(harness.sandbox.execute).toHaveBeenCalledTimes(2);
+    expect(harness.sandbox.stop).not.toHaveBeenCalled();
+    expect(harness.sandbox.keepAlive).toHaveBeenCalledOnce();
+    expect(harness.jobs.enqueue).toHaveBeenCalledOnce();
+  });
+
+  it("uses provider-native idle inspection instead of retaining emulator computers", async () => {
+    const harness = idleHarness({ providerBackgroundWorkStatus: "idle" });
+
+    await sleepComputerIfIdle(harness.deps, harness.computer.id);
+
+    expect(harness.sandbox.inspectBackgroundWork).toHaveBeenCalledTimes(2);
+    expect(harness.sandbox.execute).not.toHaveBeenCalled();
+    expect(harness.sandbox.stop).toHaveBeenCalledOnce();
+  });
+
   it("checkpoints before suspending a stable idle computer", async () => {
     const harness = idleHarness();
     harness.prisma.run.findFirst.mockResolvedValue(null);
@@ -158,11 +180,7 @@ describe("background work launch and probe", () => {
       child.kill("SIGKILL");
     }
     for (const marker of markers) {
-      try {
-        unlinkSync(marker);
-      } catch {
-        // Marker may already be cleaned by an idle probe.
-      }
+      rmSync(marker, { force: true, recursive: true });
     }
     markers.clear();
   });
@@ -172,12 +190,19 @@ describe("background work launch and probe", () => {
     async () => {
       const databaseId = "computer-db-id";
       const providerRef = "provider-ref";
-      markers.add(`/tmp/rakazo-background-${databaseId}`);
-      markers.add(`/tmp/rakazo-background-${providerRef}`);
+      const launchId = "active";
+      markers.add(`/tmp/rakazo-background-${databaseId}-${launchId}`);
 
       const launched = spawn(
         "bash",
-        ["-c", BACKGROUND_WORK_LAUNCH, "rakazo-background-launch", databaseId, "sleep 30"],
+        [
+          "-c",
+          BACKGROUND_WORK_LAUNCH,
+          "rakazo-background-launch",
+          databaseId,
+          launchId,
+          "exec sleep 30",
+        ],
         { stdio: "ignore" },
       );
       children.push(launched);
@@ -185,6 +210,98 @@ describe("background work launch and probe", () => {
       await expect.poll(() => probeBackgroundWork(databaseId)).toBe(0);
       // ComputerRef.id is providerRef today; probing that path must not see the DB-id marker.
       expect(await probeBackgroundWork(providerRef)).toBe(1);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "cleans a completed marker without blocking a later launch",
+    async () => {
+      const markerId = "computer-relaunch-id";
+      const completedMarker = `/tmp/rakazo-background-${markerId}-completed`;
+      const activeMarker = `/tmp/rakazo-background-${markerId}-active`;
+      markers.add(completedMarker);
+      markers.add(activeMarker);
+      const completed = spawn(
+        "bash",
+        ["-c", BACKGROUND_WORK_LAUNCH, "rakazo-background-launch", markerId, "completed", "true"],
+        { stdio: "ignore" },
+      );
+      children.push(completed);
+
+      expect(await processExit(completed)).toBe(0);
+      expect(await probeBackgroundWork(markerId)).toBe(1);
+      expect(existsSync(completedMarker)).toBe(false);
+
+      const active = spawn(
+        "bash",
+        [
+          "-c",
+          BACKGROUND_WORK_LAUNCH,
+          "rakazo-background-launch",
+          markerId,
+          "active",
+          "exec sleep 30",
+        ],
+        { stdio: "ignore" },
+      );
+      children.push(active);
+      await expect.poll(() => probeBackgroundWork(markerId)).toBe(0);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "does not run the command when its marker cannot be opened",
+    async () => {
+      const markerId = "computer-marker-error";
+      const marker = `/tmp/rakazo-background-${markerId}-collision`;
+      const commandRan = `/tmp/rakazo-background-command-ran-${markerId}`;
+      markers.add(marker);
+      markers.add(commandRan);
+      mkdirSync(marker);
+      const launched = spawn(
+        "bash",
+        [
+          "-c",
+          BACKGROUND_WORK_LAUNCH,
+          "rakazo-background-launch",
+          markerId,
+          "collision",
+          `touch ${commandRan}`,
+        ],
+        { stdio: "ignore" },
+      );
+      children.push(launched);
+
+      expect(await processExit(launched)).not.toBe(0);
+      expect(existsSync(commandRan)).toBe(false);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "does not follow a pre-existing marker symlink",
+    async () => {
+      const markerId = "computer-marker-symlink";
+      const marker = `/tmp/rakazo-background-${markerId}-collision`;
+      const commandRan = `/tmp/rakazo-background-command-ran-${markerId}`;
+      markers.add(marker);
+      markers.add(commandRan);
+      symlinkSync(commandRan, marker);
+      const launched = spawn(
+        "bash",
+        [
+          "-c",
+          BACKGROUND_WORK_LAUNCH,
+          "rakazo-background-launch",
+          markerId,
+          "collision",
+          `touch ${commandRan}`,
+        ],
+        { stdio: "ignore" },
+      );
+      children.push(launched);
+
+      expect(await processExit(launched)).not.toBe(0);
+      expect(existsSync(commandRan)).toBe(false);
     },
   );
 });
@@ -255,10 +372,13 @@ describe("e2b create options", () => {
 function idleHarness(
   options: {
     backgroundWorkProbeCode?: number;
+    backgroundWorkProbeCodes?: number[];
     backgroundWorkProbeFailed?: boolean;
     exportError?: Error;
+    providerBackgroundWorkStatus?: "active" | "idle" | "unknown";
   } = {},
 ) {
+  const backgroundWorkProbeCodes = [...(options.backgroundWorkProbeCodes ?? [])];
   const computer = {
     id: "computer-id",
     homeKey: "team-workspace",
@@ -293,7 +413,7 @@ function idleHarness(
   };
   const sandbox = {
     execute: vi.fn(async function* () {
-      const code = options.backgroundWorkProbeCode ?? 1;
+      const code = backgroundWorkProbeCodes.shift() ?? options.backgroundWorkProbeCode ?? 1;
       if (code === 1 && !options.backgroundWorkProbeFailed) {
         yield { type: "stdout", data: "rakazo-background-idle\n" } as const;
       }
@@ -305,6 +425,11 @@ function idleHarness(
       yield { path: "notes/result.txt", content: new TextEncoder().encode("durable") };
     }),
     stop: vi.fn().mockResolvedValue(undefined),
+    ...(options.providerBackgroundWorkStatus
+      ? {
+          inspectBackgroundWork: vi.fn().mockResolvedValue(options.providerBackgroundWorkStatus),
+        }
+      : {}),
   };
   const home = {
     commit: vi.fn().mockResolvedValue("rev-checkpoint"),
@@ -339,6 +464,13 @@ function probeBackgroundWork(markerId: string): Promise<number> {
       ["-c", BACKGROUND_WORK_PROBE, "rakazo-background-probe", markerId],
       { stdio: ["ignore", "pipe", "pipe"] },
     );
+    child.on("error", reject);
+    child.on("close", (code) => resolve(code ?? 1));
+  });
+}
+
+function processExit(child: ReturnType<typeof spawn>): Promise<number> {
+  return new Promise((resolve, reject) => {
     child.on("error", reject);
     child.on("close", (code) => resolve(code ?? 1));
   });

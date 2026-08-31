@@ -81,6 +81,11 @@ export interface SandboxProvider {
     request: CommandRequest,
     context: AdapterContext,
   ): AsyncIterable<ProcessEvent>;
+  inspectBackgroundWork?(
+    computer: ComputerRef,
+    markerId: string,
+    context: AdapterContext,
+  ): Promise<"active" | "idle" | "unknown">;
   connectScreen(
     computer: ComputerRef,
     request: ScreenRequest,
