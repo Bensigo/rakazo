@@ -20,6 +20,7 @@ import {
   shouldApplyMobileThreadRefresh,
   signIn,
   signOut,
+  signUp,
   subscribeThread,
 } from "./api.js";
 import { resumeLiveNotifications } from "./live-notifications.js";
@@ -71,6 +72,27 @@ describe("mobile API authentication", () => {
     );
     expect(SecureStore.setItemAsync).toHaveBeenCalledWith("rakazo.session_token", "session-token");
     expect(resumeLiveNotifications).not.toHaveBeenCalled();
+  });
+
+  it("creates an account and persists its session token", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ token: "signup-token" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await signUp("new@example.com", "correct horse", "New User");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:3100/api/auth/sign-up/email",
+      expect.objectContaining({
+        method: "POST",
+        headers: { "content-type": "application/json", origin: "rakazo://" },
+        body: JSON.stringify({
+          email: "new@example.com",
+          password: "correct horse",
+          name: "New User",
+        }),
+      }),
+    );
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith("rakazo.session_token", "signup-token");
   });
 
   it("starts notifications only after the inbox selects the default space", async () => {

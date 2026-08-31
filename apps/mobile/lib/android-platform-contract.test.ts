@@ -6,6 +6,14 @@ import { describe, expect, it } from "vitest";
 const mobileRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 describe("Android mobile platform contract", () => {
+  it("keeps authentication actions reachable while the keyboard is open", () => {
+    const signIn = readFileSync(resolve(mobileRoot, "app/sign-in.tsx"), "utf8");
+    expect(signIn).toContain("KeyboardAvoidingView");
+    expect(signIn).toContain("Keyboard.dismiss");
+    expect(signIn).toContain("keyboardDismissMode");
+    expect(signIn).toContain("ScrollView");
+  });
+
   it("pins the thread footer above the keyboard and device safe area", () => {
     const config = JSON.parse(readFileSync(resolve(mobileRoot, "app.json"), "utf8"));
     const packageJson = JSON.parse(readFileSync(resolve(mobileRoot, "package.json"), "utf8"));
