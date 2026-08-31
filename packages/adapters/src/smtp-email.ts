@@ -6,13 +6,22 @@ export interface SmtpEmailConfig {
   from: string;
 }
 
+interface SmtpEmailDependencies {
+  transport?: Transporter;
+  retryDelaysMs?: readonly number[];
+  sleep?: (delayMs: number) => Promise<void>;
+}
+
 /** SMTP delivery works with SES, Resend, and self-hosted mail servers. */
 export class SmtpEmailProvider implements TransactionalEmailProvider {
   private readonly transport: Transporter;
+  private readonly retryDelaysMs: readonly number[];
+  private readonly sleep: (delayMs: number) => Promise<void>;
+  private readonly inFlight = new Set<Promise<void>>();
 
   constructor(
     private readonly config: SmtpEmailConfig,
-    dependencies: { transport?: Transporter } = {},
+    dependencies: SmtpEmailDependencies = {},
   ) {
     const protocol = safeProtocol(config.url);
     if (protocol !== "smtp:" && protocol !== "smtps:") {
@@ -20,6 +29,8 @@ export class SmtpEmailProvider implements TransactionalEmailProvider {
     }
     if (!config.from.trim()) throw new Error("EMAIL_FROM is required when SMTP_URL is configured");
     this.transport = dependencies.transport ?? nodemailer.createTransport(config.url);
+    this.retryDelaysMs = dependencies.retryDelaysMs ?? [250, 1_000];
+    this.sleep = dependencies.sleep ?? wait;
   }
 
   describe() {
@@ -31,15 +42,44 @@ export class SmtpEmailProvider implements TransactionalEmailProvider {
     };
   }
 
-  async send(message: TransactionalEmail): Promise<void> {
-    await this.transport.sendMail({
-      from: this.config.from,
-      to: message.to,
-      subject: message.subject,
-      text: message.text,
-      html: message.html,
-    });
+  send(message: TransactionalEmail): Promise<void> {
+    const delivery = this.deliver(message);
+    this.inFlight.add(delivery);
+    void delivery.then(
+      () => this.inFlight.delete(delivery),
+      () => this.inFlight.delete(delivery),
+    );
+    return delivery;
   }
+
+  async drain(): Promise<void> {
+    while (this.inFlight.size > 0) {
+      await Promise.allSettled(this.inFlight);
+    }
+  }
+
+  private async deliver(message: TransactionalEmail): Promise<void> {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await this.transport.sendMail({
+          from: this.config.from,
+          to: message.to,
+          subject: message.subject,
+          text: message.text,
+          html: message.html,
+        });
+        return;
+      } catch (error) {
+        const retryDelay = this.retryDelaysMs[attempt];
+        if (retryDelay === undefined) throw error;
+        await this.sleep(retryDelay);
+      }
+    }
+  }
+}
+
+function wait(delayMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
 }
 
 function safeProtocol(value: string): string | undefined {

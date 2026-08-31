@@ -51,7 +51,8 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
       resetPasswordTokenExpiresIn: 60 * 60,
       sendResetPassword: env.email
         ? async ({ user, url }) => {
-            // Return before delivery completes so account existence cannot be inferred from timing.
+            // Keep the response timing generic. Production providers track and retry the promise,
+            // while the composition root drains accepted delivery during graceful shutdown.
             void env.email
               ?.send(passwordResetEmail(user, url))
               .catch((error) => env.onEmailError?.(error));

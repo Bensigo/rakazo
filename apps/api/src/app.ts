@@ -190,7 +190,7 @@ export async function createApp(
     (isPhoneSurfaceEnabled(sendBlueConfig, env.deploymentModelKey)
       ? new SendBlueMessagingProvider(sendBlueConfig)
       : undefined);
-  const email =
+  const email: TransactionalEmailProvider | undefined =
     emailOverride ??
     (env.smtpUrl
       ? new SmtpEmailProvider({ url: env.smtpUrl, from: env.emailFrom ?? "" })
@@ -446,6 +446,7 @@ export async function createApp(
     executor,
     stop: async () => {
       oauthLogins.abortAll();
+      await email?.drain?.();
       await reconciler?.stop();
       await jobs.close();
       await realtime.close();

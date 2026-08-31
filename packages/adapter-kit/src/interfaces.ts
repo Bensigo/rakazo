@@ -278,6 +278,8 @@ export interface NotificationProvider {
 export interface TransactionalEmailProvider {
   describe(): AdapterDescriptor<{ transactional: boolean }>;
   send(message: TransactionalEmail): Promise<void>;
+  /** Wait for accepted in-flight deliveries before a graceful shutdown completes. */
+  drain?(): Promise<void>;
 }
 
 export interface ExecutionRunner {

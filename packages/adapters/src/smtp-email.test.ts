@@ -26,6 +26,30 @@ describe("SmtpEmailProvider", () => {
     });
   });
 
+  it("retries transient failures and drains tracked delivery", async () => {
+    const sendMail = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("temporary failure"))
+      .mockRejectedValueOnce(new Error("temporary failure"))
+      .mockResolvedValue({ messageId: "message-1" });
+    const sleep = vi.fn(async () => undefined);
+    const provider = new SmtpEmailProvider(
+      { url: "smtp://smtp.example.test", from: "a@example.test" },
+      { transport: { sendMail } as never, sleep },
+    );
+
+    const delivery = provider.send({
+      to: "ada@example.test",
+      subject: "Reset password",
+      text: "Use this link",
+    });
+    await provider.drain();
+    await expect(delivery).resolves.toBeUndefined();
+
+    expect(sendMail).toHaveBeenCalledTimes(3);
+    expect(sleep.mock.calls).toEqual([[250], [1_000]]);
+  });
+
   it("rejects unsafe transports and incomplete sender configuration", () => {
     expect(
       () => new SmtpEmailProvider({ url: "https://smtp.example.test", from: "a@example.test" }),
