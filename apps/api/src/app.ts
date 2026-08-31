@@ -190,18 +190,20 @@ export async function createApp(
     (isPhoneSurfaceEnabled(sendBlueConfig, env.deploymentModelKey)
       ? new SendBlueMessagingProvider(sendBlueConfig)
       : undefined);
+  const localEmailEmulator =
+    !emailOverride && !env.smtpUrl && env.emailEmulator
+      ? new EmailEmulator((message) => {
+          console.info(`[email-emulator] captured ${message.subject} to ${message.to}`);
+        })
+      : undefined;
+  if (localEmailEmulator && !isLoopbackHost(env.apiHost)) {
+    throw new Error("EMAIL_EMULATOR requires API_HOST to be a loopback host");
+  }
   const email: TransactionalEmailProvider | undefined =
     emailOverride ??
     (env.smtpUrl
       ? new SmtpEmailProvider({ url: env.smtpUrl, from: env.emailFrom ?? "" })
-      : env.emailEmulator
-        ? new EmailEmulator((message) => {
-            const resetUrl = message.text.match(/https?:\/\/\S+/)?.[0];
-            console.info(
-              `[email-emulator] ${message.subject} to ${message.to}${resetUrl ? `: ${resetUrl}` : ""}`,
-            );
-          })
-        : undefined);
+      : localEmailEmulator);
   const installed = new InstalledConnectorProvider(prisma, secrets, remoteConnectors);
   const stack = createConnectorStack(isComposioEnabled(env.composioApiKey), composioOverride, [
     installed,
@@ -350,6 +352,15 @@ export async function createApp(
       resetUrl: email ? new URL("/reset-password", env.webOrigin).href : null,
     }),
   );
+  if (localEmailEmulator) {
+    app.get(
+      "/api/dev/emails",
+      () =>
+        new Response(JSON.stringify(localEmailEmulator.sent), {
+          headers: { "cache-control": "no-store", "content-type": "application/json" },
+        }),
+    );
+  }
   app.on(["GET", "POST"], "/api/auth/*", async (c) => {
     const path = new URL(c.req.url).pathname.replace("/api/auth", "");
     if (blockedAuthPaths.some((blocked) => path.startsWith(blocked))) {
@@ -464,10 +475,14 @@ function isTrustedOrigin(origin: string, env: AppEnv) {
   if (origin.startsWith("rakazo://") || origin.startsWith("exp://")) return true;
   try {
     const host = new URL(origin).hostname;
-    return host === "localhost" || host === "127.0.0.1";
+    return isLoopbackHost(host);
   } catch {
     return false;
   }
+}
+
+function isLoopbackHost(host: string): boolean {
+  return host === "localhost" || host === "127.0.0.1" || host === "::1";
 }
 
 function sessionHeaders(request: Request) {

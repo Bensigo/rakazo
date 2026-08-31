@@ -245,12 +245,11 @@ export default function Account() {
           {passwordMessage ? <Text style={styles.passwordMessage}>{passwordMessage}</Text> : null}
           <Pressable
             accessibilityRole="button"
-            disabled={passwordPending || currentPassword.length < 8 || newPassword.length < 8}
+            disabled={passwordPending || !currentPassword || newPassword.length < 8}
             onPress={() => void handlePasswordChange()}
             style={({ pressed }) => [
               styles.changePasswordButton,
-              (passwordPending || currentPassword.length < 8 || newPassword.length < 8) &&
-                styles.disabled,
+              (passwordPending || !currentPassword || newPassword.length < 8) && styles.disabled,
               pressed && styles.pressed,
             ]}
           >

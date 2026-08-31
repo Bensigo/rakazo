@@ -8,6 +8,7 @@ export interface SmtpEmailConfig {
 
 interface SmtpEmailDependencies {
   transport?: Transporter;
+  createTransport?: (url: string) => Transporter;
   retryDelaysMs?: readonly number[];
   sleep?: (delayMs: number) => Promise<void>;
 }
@@ -23,12 +24,15 @@ export class SmtpEmailProvider implements TransactionalEmailProvider {
     private readonly config: SmtpEmailConfig,
     dependencies: SmtpEmailDependencies = {},
   ) {
-    const protocol = safeProtocol(config.url);
+    const secureUrl = secureSmtpUrl(config.url);
+    const protocol = safeProtocol(secureUrl);
     if (protocol !== "smtp:" && protocol !== "smtps:") {
       throw new Error("SMTP_URL must use smtp:// or smtps://");
     }
     if (!config.from.trim()) throw new Error("EMAIL_FROM is required when SMTP_URL is configured");
-    this.transport = dependencies.transport ?? nodemailer.createTransport(config.url);
+    this.transport =
+      dependencies.transport ??
+      (dependencies.createTransport ?? nodemailer.createTransport)(secureUrl);
     this.retryDelaysMs = dependencies.retryDelaysMs ?? [250, 1_000];
     this.sleep = dependencies.sleep ?? wait;
   }
@@ -76,6 +80,28 @@ export class SmtpEmailProvider implements TransactionalEmailProvider {
       }
     }
   }
+}
+
+function secureSmtpUrl(value: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return value;
+  }
+  const parameters = new Map(
+    [...parsed.searchParams].map(([key, setting]) => [key.toLowerCase(), setting.toLowerCase()]),
+  );
+  if (
+    parameters.get("ignoretls") === "true" ||
+    parameters.get("requiretls") === "false" ||
+    parameters.get("tls.rejectunauthorized") === "false" ||
+    (parsed.protocol === "smtps:" && parameters.get("secure") === "false")
+  ) {
+    throw new Error("SMTP_URL cannot disable TLS or certificate verification");
+  }
+  if (parsed.protocol === "smtp:") parsed.searchParams.set("requireTLS", "true");
+  return parsed.href;
 }
 
 function wait(delayMs: number): Promise<void> {

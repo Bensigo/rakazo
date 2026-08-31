@@ -121,7 +121,9 @@ test("changes and recovers an email password", async ({ page }, testInfo) => {
   await page.getByRole("button", { name: "Log out" }).click();
   await expect(page.getByRole("link", { name: "Forgot password?" })).toBeVisible();
   await page.getByRole("link", { name: "Forgot password?" }).click();
+  await expect(page.getByRole("heading", { name: "Reset your password" })).toBeVisible();
   await page.getByLabel("Email").fill(email);
+  await expect(page.getByLabel("Email")).toHaveValue(email);
   await page.getByRole("button", { name: "Send reset link" }).click();
   await expect(page.getByText("Check your email")).toBeVisible();
   await captureScreenshot(page, testInfo, "42-password-reset-requested");
@@ -133,7 +135,9 @@ test("changes and recovers an email password", async ({ page }, testInfo) => {
       return ((await response.json()) as unknown[]).length;
     })
     .toBeGreaterThan(0);
-  const messages = (await (await page.request.get(`${emailApi}/__e2e/emails`)).json()) as Array<{
+  const messagesResponse = await page.request.get(`${emailApi}/__e2e/emails`);
+  expect(messagesResponse.headers()["cache-control"]).toBe("no-store");
+  const messages = (await messagesResponse.json()) as Array<{
     text: string;
   }>;
   const resetUrl = messages.at(-1)?.text.match(/https?:\/\/\S+/)?.[0];

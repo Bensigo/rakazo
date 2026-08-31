@@ -1,3 +1,4 @@
+import { createServer } from "node:net";
 import { describe, expect, it, vi } from "vitest";
 import { SmtpEmailProvider } from "./smtp-email.js";
 
@@ -57,5 +58,69 @@ describe("SmtpEmailProvider", () => {
     expect(() => new SmtpEmailProvider({ url: "smtp://smtp.example.test", from: "" })).toThrow(
       "EMAIL_FROM is required",
     );
+    expect(
+      () =>
+        new SmtpEmailProvider({
+          url: "smtp://smtp.example.test?ignoreTLS=true",
+          from: "a@example.test",
+        }),
+    ).toThrow("cannot disable TLS");
+    expect(
+      () =>
+        new SmtpEmailProvider({
+          url: "smtps://smtp.example.test?tls.rejectUnauthorized=false",
+          from: "a@example.test",
+        }),
+    ).toThrow("cannot disable TLS");
+  });
+
+  it("requires STARTTLS for smtp URLs", () => {
+    const createTransport = vi.fn((_url: string) => ({ sendMail: vi.fn() }) as never);
+
+    new SmtpEmailProvider(
+      { url: "smtp://user:secret@smtp.example.test:587", from: "a@example.test" },
+      { createTransport },
+    );
+
+    expect(createTransport).toHaveBeenCalledOnce();
+    const configuredUrl = new URL(String(createTransport.mock.calls[0]?.[0]));
+    expect(configuredUrl.protocol).toBe("smtp:");
+    expect(configuredUrl.searchParams.get("requireTLS")).toBe("true");
+  });
+
+  it("rejects an smtp relay that does not advertise STARTTLS", async () => {
+    const sockets = new Set<import("node:net").Socket>();
+    const server = createServer((socket) => {
+      sockets.add(socket);
+      socket.on("close", () => sockets.delete(socket));
+      socket.write("220 localhost ESMTP\r\n");
+      socket.on("data", (chunk) => {
+        for (const line of String(chunk).split("\r\n")) {
+          if (/^(EHLO|HELO) /i.test(line)) socket.write("250-localhost\r\n250 HELP\r\n");
+          else if (/^STARTTLS$/i.test(line)) socket.write("454 TLS not available\r\n");
+        }
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("SMTP test server did not bind");
+    const provider = new SmtpEmailProvider(
+      {
+        url: `smtp://127.0.0.1:${address.port}?connectionTimeout=1000`,
+        from: "a@example.test",
+      },
+      { retryDelaysMs: [] },
+    );
+
+    try {
+      await expect(
+        provider.send({ to: "ada@example.test", subject: "Reset", text: "Use this link" }),
+      ).rejects.toThrow();
+    } finally {
+      for (const socket of sockets) socket.destroy();
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
   });
 });

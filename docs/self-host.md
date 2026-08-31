@@ -89,16 +89,19 @@ EMAIL_FROM=Rakazo <no-reply@example.com>
 For Resend, use `smtp.resend.com`, username `resend`, and an API key as the password. For Amazon
 SES, use the regional SMTP endpoint and SES SMTP credentials; these are different from ordinary AWS
 access keys. Verify the sender/domain with the provider before testing delivery. Keep credentials in
-`.env`, never in tracked files.
+`.env`, never in tracked files. `smtps://` uses implicit TLS; `smtp://` is also supported but requires
+STARTTLS. Rakazo rejects configuration that disables TLS or certificate verification.
 
-Local source development can use the offline email emulator instead. It captures email and prints
-the reset link to the API console without contacting a provider:
+Local source development can use the offline email emulator instead. It captures email without
+contacting a provider:
 
 ```env
 EMAIL_EMULATOR=true
 ```
 
-The emulator is forcibly disabled when `NODE_ENV=production`.
+The emulator is forcibly disabled when `NODE_ENV=production` and requires the API to bind to a
+loopback host. Captured messages are available from `http://127.0.0.1:3100/api/dev/emails` with
+cache disabled; the API console logs only delivery metadata, never reset tokens.
 
 Optional:
 

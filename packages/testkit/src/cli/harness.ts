@@ -143,7 +143,7 @@ async function main() {
     const server = serve({
       fetch: async (request) => {
         if (new URL(request.url).pathname === "/__e2e/emails") {
-          return Response.json(email.sent);
+          return Response.json(email.sent, { headers: { "cache-control": "no-store" } });
         }
         activeRequests += 1;
         try {

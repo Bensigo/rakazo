@@ -193,7 +193,7 @@ export default function SignIn() {
                       color: "#1B1B1E",
                     }}
                   />
-                  {mode === "in" && reset?.passwordReset ? (
+                  {mode === "in" && reset?.passwordReset && reset.resetUrl ? (
                     <Pressable
                       accessibilityRole="button"
                       hitSlop={8}
