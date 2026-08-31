@@ -52,6 +52,9 @@ export function MessagingSettingsOverlay({ onClose }: { onClose: () => void }) {
 
   async function act(action: () => Promise<unknown>) {
     setError(null);
+    // A displayed code must always match the current selection and link
+    // state; the link action re-sets it after issuing.
+    setLinkCode(null);
     try {
       await action();
       await refresh();
@@ -126,7 +129,10 @@ export function MessagingSettingsOverlay({ onClose }: { onClose: () => void }) {
             <select
               aria-label={t`Bot to link`}
               value={linkBotId}
-              onChange={(event) => setLinkBotId(event.target.value)}
+              onChange={(event) => {
+                setLinkBotId(event.target.value);
+                setLinkCode(null);
+              }}
               className="rounded-[10px] border border-[#2A2A2F] bg-[#141416] px-3 py-2 text-[13.5px] text-[#ECECEE]"
             >
               <option value="">{t`Choose a bot…`}</option>
