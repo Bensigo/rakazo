@@ -1080,6 +1080,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
         let assembled = "";
         let currentTextSegment = "";
         let messageSegments: MessageBlock[] = [];
+        // Terminal subagent rows are published as their own messages (not appended to
+        // messageSegments). Treat that like tool/step durable activity so we do not invent
+        // an empty-run "done." completion afterward.
+        let publishedTerminalSubagent = false;
         // Tool calls that land mid-sentence wait here until the narration catches up to a
         // sentence boundary, so the step chips never render in the middle of a clause.
         let pendingToolNames: string[] = [];
@@ -2754,17 +2758,24 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 },
               });
               if (event.status === "completed" || event.status === "failed") {
-                await publishMessage(deps, run, "bot", [
-                  {
-                    kind: "subagent",
-                    agentId: event.agentId,
-                    name: event.name,
-                    task: safeTask,
-                    status: event.status,
-                    progress: safeProgress,
-                    result: safeResult,
-                  },
-                ]);
+                publishedTerminalSubagent ||= !subagentMarksUnread(run.trigger, event.status);
+                await publishMessage(
+                  deps,
+                  run,
+                  "bot",
+                  [
+                    {
+                      kind: "subagent",
+                      agentId: event.agentId,
+                      name: event.name,
+                      task: safeTask,
+                      status: event.status,
+                      progress: safeProgress,
+                      result: safeResult,
+                    },
+                  ],
+                  subagentMarksUnread(run.trigger, event.status),
+                );
               }
             } else if (event.type === "usage") {
               await deps.prisma.usageRecord.create({
@@ -2835,6 +2846,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               allowSilentEmpty: allowSilentPeerMessage || phoneChannelRun,
               emptyResponseText,
               suppressOutput: handedOff,
+              skipEmptyFallback: publishedTerminalSubagent,
             });
           }
           const blocks = handedOff ? [] : redactBlocks(messageSegments, runSecrets);
@@ -2856,6 +2868,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             leaseFence: fence,
             outcome: "completed",
             blocks,
+            markUnread: completionMarksUnread(run.trigger, text),
           });
           if (!completed) return;
           if (run.trigger === "bot_message" && text) {
@@ -3114,7 +3127,12 @@ export function threadContextForRun<T>(
 
 export function completionMessageSegments(
   segments: MessageBlock[],
-  options?: { allowSilentEmpty?: boolean; emptyResponseText?: string; suppressOutput?: boolean },
+  options?: {
+    allowSilentEmpty?: boolean;
+    emptyResponseText?: string;
+    suppressOutput?: boolean;
+    skipEmptyFallback?: boolean;
+  },
 ): MessageBlock[] {
   if (options?.suppressOutput) return [];
   const fallback = options?.emptyResponseText?.trim() || "done.";
@@ -3128,7 +3146,7 @@ export function completionMessageSegments(
     }
     return segments;
   }
-  if (options?.allowSilentEmpty) return [];
+  if (options?.allowSilentEmpty || options?.skipEmptyFallback) return [];
   return [{ kind: "text", text: fallback }];
 }
 
@@ -3139,6 +3157,14 @@ export function completionNotificationBody(assembled: string, blocks: MessageBlo
     .filter((block): block is Extract<MessageBlock, { kind: "text" }> => block.kind === "text")
     .map((block) => block.text)
     .join("");
+}
+
+export function completionMarksUnread(trigger: string, text: string): boolean {
+  return trigger !== "routine" || Boolean(text);
+}
+
+export function subagentMarksUnread(trigger: string, status: "running" | "completed" | "failed") {
+  return status === "failed" || trigger !== "routine";
 }
 
 function computerRunRequeueData(
@@ -3189,9 +3215,10 @@ async function publishMessage(
   run: { id: string; spaceId: string; threadId: string; botId: string },
   role: "user" | "bot" | "system",
   blocks: MessageBlock[],
+  markUnread?: boolean,
 ) {
   const committed = await deps.prisma.$transaction((tx) =>
-    persistMessageInTransaction(tx, run, role, blocks),
+    persistMessageInTransaction(tx, run, role, blocks, markUnread),
   );
   await deps.events.notify(run.threadId, committed.eventSeq).catch((error) => {
     console.error("thread message realtime notification", error);
@@ -3204,6 +3231,7 @@ async function persistMessageInTransaction(
   run: { id: string; spaceId: string; threadId: string; botId: string },
   role: "user" | "bot" | "system",
   blocks: MessageBlock[],
+  markUnread?: boolean,
 ) {
   const message = await createThreadMessageInTransaction(tx, {
     threadId: run.threadId,
@@ -3211,6 +3239,7 @@ async function persistMessageInTransaction(
     blocks,
     botId: run.botId,
     runId: run.id,
+    markUnread,
   });
   const event = await appendEventInTransaction(tx, {
     spaceId: run.spaceId,
