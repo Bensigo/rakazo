@@ -2,12 +2,15 @@ import { Redirect, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import {
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   Text,
   TextInput,
+  TouchableWithoutFeedback,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -22,11 +25,14 @@ import {
   resetApiBase,
   saveApiBase,
   signIn,
+  signUp,
   usesCustomApiBase,
 } from "../lib/api";
 
 export default function SignIn() {
   const router = useRouter();
+  const [mode, setMode] = useState<"in" | "up">("in");
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -53,13 +59,19 @@ export default function SignIn() {
   if (hasSession) return <Redirect href="/" />;
 
   async function submit() {
+    if (pending) return;
     setPending(true);
     setError(null);
     try {
-      await signIn(email.trim(), password);
+      if (mode === "up") {
+        const trimmedEmail = email.trim();
+        await signUp(trimmedEmail, password, name.trim() || trimmedEmail.split("@")[0] || "User");
+      } else {
+        await signIn(email.trim(), password);
+      }
       router.replace("/");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not sign in");
+      setError(err instanceof Error ? err.message : "Could not continue");
     } finally {
       setPending(false);
     }
@@ -70,76 +82,152 @@ export default function SignIn() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#F7F7F4" }}>
       <StatusBar style="dark" />
-      <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 24 }}>
-        <Text style={{ color: "#1B1B1E", fontSize: 32, fontWeight: "500", textAlign: "center" }}>
-          Sign in to Rakazo
-        </Text>
-        <TextInput
-          autoCapitalize="none"
-          keyboardType="email-address"
-          placeholder="Email"
-          placeholderTextColor="#8C8C86"
-          value={email}
-          onChangeText={setEmail}
-          style={{
-            marginTop: 28,
-            backgroundColor: "#F1F1ED",
-            borderRadius: 13,
-            padding: 16,
-            color: "#1B1B1E",
-          }}
-        />
-        <TextInput
-          placeholder="Password"
-          placeholderTextColor="#8C8C86"
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
-          style={{
-            marginTop: 12,
-            backgroundColor: "#F1F1ED",
-            borderRadius: 13,
-            padding: 16,
-            color: "#1B1B1E",
-          }}
-        />
-        {error ? <Text style={{ color: "#C94244", marginTop: 12 }}>{error}</Text> : null}
-        <Pressable
-          onPress={() => void submit()}
-          disabled={pending}
-          style={{
-            marginTop: 16,
-            backgroundColor: "#121215",
-            borderRadius: 13,
-            padding: 18,
-            alignItems: "center",
-          }}
-        >
-          <Text style={{ color: "#FBFBF9", fontSize: 17 }}>
-            {pending ? "Working…" : "Continue with email"}
-          </Text>
-        </Pressable>
-      </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={
-          custom ? `Custom server ${displayApiHost(apiBase)}` : "Use a custom server"
-        }
-        hitSlop={12}
-        onPress={() => setServerOpen(true)}
-        style={{ alignItems: "center", paddingHorizontal: 24, paddingBottom: 12, paddingTop: 8 }}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        {custom ? (
-          <>
-            <Text style={{ color: "#A8A8A2", fontSize: 12 }}>Custom server</Text>
-            <Text style={{ color: "#6E6E68", fontSize: 13, marginTop: 2 }}>
-              {displayApiHost(apiBase)}
-            </Text>
-          </>
-        ) : (
-          <Text style={{ color: "#A8A8A2", fontSize: 13 }}>Use a custom server</Text>
-        )}
-      </Pressable>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <View style={{ flex: 1 }}>
+            <ScrollView
+              contentContainerStyle={{
+                flexGrow: 1,
+                justifyContent: "center",
+                paddingHorizontal: 24,
+                paddingVertical: 24,
+              }}
+              keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+              keyboardShouldPersistTaps="handled"
+            >
+              <Text
+                style={{
+                  color: "#1B1B1E",
+                  fontSize: 32,
+                  fontWeight: "500",
+                  textAlign: "center",
+                }}
+              >
+                {mode === "in" ? "Sign in to Rakazo" : "Sign up for Rakazo"}
+              </Text>
+              {mode === "up" ? (
+                <TextInput
+                  autoComplete="name"
+                  placeholder="Name"
+                  placeholderTextColor="#8C8C86"
+                  value={name}
+                  onChangeText={setName}
+                  style={{
+                    marginTop: 28,
+                    backgroundColor: "#F1F1ED",
+                    borderRadius: 13,
+                    padding: 16,
+                    color: "#1B1B1E",
+                  }}
+                />
+              ) : null}
+              <TextInput
+                autoCapitalize="none"
+                autoComplete="email"
+                keyboardType="email-address"
+                placeholder="Email"
+                placeholderTextColor="#8C8C86"
+                value={email}
+                onChangeText={setEmail}
+                style={{
+                  marginTop: mode === "up" ? 12 : 28,
+                  backgroundColor: "#F1F1ED",
+                  borderRadius: 13,
+                  padding: 16,
+                  color: "#1B1B1E",
+                }}
+              />
+              <TextInput
+                autoComplete={mode === "in" ? "current-password" : "new-password"}
+                placeholder="Password"
+                placeholderTextColor="#8C8C86"
+                returnKeyType="go"
+                secureTextEntry
+                value={password}
+                onChangeText={setPassword}
+                onSubmitEditing={() => void submit()}
+                style={{
+                  marginTop: 12,
+                  backgroundColor: "#F1F1ED",
+                  borderRadius: 13,
+                  padding: 16,
+                  color: "#1B1B1E",
+                }}
+              />
+              {error ? <Text style={{ color: "#C94244", marginTop: 12 }}>{error}</Text> : null}
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => void submit()}
+                disabled={pending}
+                style={{
+                  marginTop: 16,
+                  backgroundColor: "#121215",
+                  borderRadius: 13,
+                  padding: 18,
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ color: "#FBFBF9", fontSize: 17 }}>
+                  {pending ? "Working…" : mode === "in" ? "Sign in" : "Sign up"}
+                </Text>
+              </Pressable>
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  marginTop: 24,
+                }}
+              >
+                <Text style={{ color: "#8C8C86", fontSize: 15 }}>
+                  {mode === "in" ? "Don’t have an account?" : "Already have an account?"}
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  hitSlop={8}
+                  onPress={() => {
+                    setMode((current) => (current === "in" ? "up" : "in"));
+                    setError(null);
+                  }}
+                  style={{ marginLeft: 5 }}
+                >
+                  <Text style={{ color: "#1B1B1E", fontSize: 15, fontWeight: "600" }}>
+                    {mode === "in" ? "Sign up" : "Sign in"}
+                  </Text>
+                </Pressable>
+              </View>
+            </ScrollView>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                custom ? `Custom server ${displayApiHost(apiBase)}` : "Use a custom server"
+              }
+              hitSlop={12}
+              onPress={() => setServerOpen(true)}
+              style={{
+                alignItems: "center",
+                paddingHorizontal: 24,
+                paddingBottom: 12,
+                paddingTop: 8,
+              }}
+            >
+              {custom ? (
+                <>
+                  <Text style={{ color: "#A8A8A2", fontSize: 12 }}>Custom server</Text>
+                  <Text style={{ color: "#6E6E68", fontSize: 13, marginTop: 2 }}>
+                    {displayApiHost(apiBase)}
+                  </Text>
+                </>
+              ) : (
+                <Text style={{ color: "#A8A8A2", fontSize: 13 }}>Use a custom server</Text>
+              )}
+            </Pressable>
+          </View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
       <ServerSheet
         visible={serverOpen}
         current={apiBase}

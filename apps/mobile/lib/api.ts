@@ -286,20 +286,32 @@ export async function captureApiRequestContext(): Promise<ApiRequestContext> {
   return { apiBase, headers };
 }
 
-export async function signIn(email: string, password: string) {
-  const res = await fetch(`${currentApiBase()}/api/auth/sign-in/email`, {
+async function authenticateWithEmail(
+  action: "sign-in" | "sign-up",
+  input: { email: string; password: string; name?: string },
+) {
+  const res = await fetch(`${currentApiBase()}/api/auth/${action}/email`, {
     method: "POST",
     headers: { "content-type": "application/json", origin: "rakazo://" },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify(input),
   });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(responseErrorMessage(body, "Could not sign in"));
+    throw new Error(responseErrorMessage(body, `Could not ${action.replace("-", " ")}`));
   }
   const token = tokenFromAuthResponse(res, body);
-  if (!token) throw new Error("Sign-in did not return a session");
+  if (!token)
+    throw new Error(`${action === "sign-in" ? "Sign-in" : "Sign-up"} did not return a session`);
   if (!(await clearSpace())) throw new Error("Could not clear the previous space");
   await saveSessionToken(token);
+}
+
+export function signIn(email: string, password: string) {
+  return authenticateWithEmail("sign-in", { email, password });
+}
+
+export function signUp(email: string, password: string, name: string) {
+  return authenticateWithEmail("sign-up", { email, password, name });
 }
 
 export async function signOut() {
