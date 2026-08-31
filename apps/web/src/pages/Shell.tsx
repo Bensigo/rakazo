@@ -1,5 +1,4 @@
 import { t } from "@lingui/core/macro";
-import { Trans as RichTrans } from "@lingui/react";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { ChatMarkdown } from "@rakazo/chat-ui/web";
 import type {
@@ -117,7 +116,6 @@ import { AskCard } from "../components/AskCard";
 import {
   ActiveBotGlyph,
   CollaborationMarker,
-  PeerBotChip,
 } from "../components/beautiful-ui/CollaborationMarker";
 import { BuiButton, BuiCard, SuccessPop } from "../components/beautiful-ui/primitives";
 import { ComputerMaintenanceActions } from "../components/ComputerMaintenanceActions";
@@ -5033,30 +5031,16 @@ const MessageView = memo(function MessageView({
           const sent = block.kind === "bot_message_sent";
           const peer = sent ? block.toBotName : block.fromBotName;
           const peerBotId = sent ? block.toBotId : block.fromBotId;
-          const ariaLabel = sent ? t`Messaged ${peer}` : t`Message from ${peer}`;
-          const peerChipProps = {
-            ariaLabel,
-            color: peerBot(peerBotId)?.color ?? "#85858A",
-            identity: peerBotId,
-            botName: peer,
-            onClick: () => onOpenPeerMessages({ peerBotId, peerBotName: peer }),
-          };
+          const label = sent ? t`Messaged ${peer}` : t`Message from ${peer}`;
           return (
-            <CollaborationMarker key={i}>
-              {sent ? (
-                <RichTrans
-                  id="Messaged {peer}"
-                  message="Messaged {peer}"
-                  values={{ peer: <PeerBotChip {...peerChipProps} /> }}
-                />
-              ) : (
-                <RichTrans
-                  id="Message from {peer}"
-                  message="Message from {peer}"
-                  values={{ peer: <PeerBotChip {...peerChipProps} /> }}
-                />
-              )}
-            </CollaborationMarker>
+            <CollaborationMarker
+              key={i}
+              ariaLabel={label}
+              color={peerBot(peerBotId)?.color ?? "#85858A"}
+              identity={peerBotId}
+              label={label}
+              onClick={() => onOpenPeerMessages({ peerBotId, peerBotName: peer })}
+            />
           );
         }
         if (block.kind === "phone_channel_message") {

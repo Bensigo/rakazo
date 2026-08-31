@@ -1191,6 +1191,7 @@ function Thread() {
             groupId={groupId}
             message={message}
             botName={name}
+            bots={mentionBots}
             members={snap?.members}
             replyPreview={
               message.replyToMessageId ? messagesById.get(message.replyToMessageId) : undefined
@@ -1871,6 +1872,7 @@ async function speakMessage(botId: string, message: MobileMessage) {
 const MessageBubble = memo(function MessageBubble({
   botId,
   botName,
+  bots,
   groupId,
   message,
   members,
@@ -1883,6 +1885,7 @@ const MessageBubble = memo(function MessageBubble({
 }: {
   botId: string;
   botName?: string;
+  bots: MobileBot[];
   groupId?: string;
   message: MobileMessage;
   members?: MobileSnapshot["members"];
@@ -1940,12 +1943,30 @@ const MessageBubble = memo(function MessageBubble({
   if (peerMessage) {
     const sent = peerMessage.kind === "bot_message_sent";
     const peer = sent ? peerMessage.toBotName : peerMessage.fromBotName;
+    const peerBotId = sent ? peerMessage.toBotId : peerMessage.fromBotId;
+    const label = sent ? `Messaged ${peer}` : `Message from ${peer}`;
+    const peerColor =
+      bots.find((bot) => bot.id === peerBotId)?.color ??
+      members?.find((member) => member.botId === peerBotId)?.color ??
+      "#85858A";
     // Compact receipt only: peer bodies stay out of the human thread.
     // Full view-only peer chat is web-first; mobile keeps the chip without expand.
     return (
-      <View style={{ width: "100%", paddingVertical: 4, alignItems: "center" }}>
-        <Text style={{ color: "#85858A", fontSize: 13.5, textAlign: "center" }}>
-          {sent ? `Messaged ${peer}` : `Message from ${peer}`}
+      <View
+        accessible
+        accessibilityLabel={label}
+        style={{
+          width: "100%",
+          paddingVertical: 4,
+          alignItems: "center",
+          justifyContent: "flex-start",
+          flexDirection: "row",
+          gap: 6,
+        }}
+      >
+        <BotAvatar color={peerColor} identity={peerBotId} size={16} />
+        <Text numberOfLines={1} style={{ color: "#85858A", fontSize: 13.5, flexShrink: 1 }}>
+          {label}
         </Text>
       </View>
     );
