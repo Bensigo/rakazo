@@ -1,4 +1,5 @@
 import { t } from "@lingui/core/macro";
+import { Trans as RichTrans } from "@lingui/react";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { ChatMarkdown } from "@rakazo/chat-ui/web";
 import type {
@@ -45,6 +46,7 @@ import {
   groupBotsForSidebar,
   inferAttachmentMimeType,
   isActive,
+  isPeerReceiptBlocks,
   isRunTerminalEvent,
   latestAnswerableAskMessageId,
   mentionChipKey,
@@ -56,6 +58,7 @@ import {
   serializeComposerPrompt,
   speechFromBlocks,
   truncateSlashDescription,
+  userVisibleMessages,
 } from "@rakazo/core";
 import {
   AvatarStyleProvider,
@@ -109,6 +112,7 @@ import { AskCard } from "../components/AskCard";
 import {
   ActiveBotGlyph,
   CollaborationMarker,
+  PeerBotChip,
 } from "../components/beautiful-ui/CollaborationMarker";
 import { BuiButton, BuiCard, SuccessPop } from "../components/beautiful-ui/primitives";
 import { ComputerMaintenanceActions } from "../components/ComputerMaintenanceActions";
@@ -301,8 +305,10 @@ export function ShellPage() {
   const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [panel, setPanel] = useState<Panel>(null);
-  const [peerMessagesOpen, setPeerMessagesOpen] = useState(false);
-  const [peerMessagesFocusId, setPeerMessagesFocusId] = useState<string | null>(null);
+  const [peerConversation, setPeerConversation] = useState<{
+    peerBotId: string;
+    peerBotName: string;
+  } | null>(null);
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [routinesBotId, setRoutinesBotId] = useState<string | null>(null);
   const [taughtSkills, setTaughtSkills] = useState<TaughtSkill[]>([]);
@@ -1494,19 +1500,24 @@ export function ShellPage() {
     if (epoch !== historyEpoch.current || jumpId !== jumpGeneration.current) return;
     if (target.groupId && activeGroupId.current !== target.groupId) return;
     if (target.botId && activeBotId.current !== target.botId) return;
-    expandedHistoryThread.current = page.threadId;
-    pinnedAroundRef.current = {
-      ...threadTarget,
-      messageId: target.messageId,
-      threadId: page.threadId,
-      messages: page.messages,
-      olderCursor: page.olderCursor,
-    };
-    initiallyScrolledThread.current = page.threadId;
+    const targetInPage = userVisibleMessages(page.messages, { includePeerReceipts: true }).some(
+      (message) => message.id === target.messageId,
+    );
+    expandedHistoryThread.current = targetInPage ? page.threadId : null;
+    pinnedAroundRef.current = targetInPage
+      ? {
+          ...threadTarget,
+          messageId: target.messageId,
+          threadId: page.threadId,
+          messages: page.messages,
+          olderCursor: page.olderCursor,
+        }
+      : null;
+    if (targetInPage) initiallyScrolledThread.current = page.threadId;
     commitSnapshot({
       ...snap,
-      messages: page.messages,
-      olderCursor: page.olderCursor,
+      messages: targetInPage ? page.messages : snap.messages,
+      olderCursor: targetInPage ? page.olderCursor : snap.olderCursor,
     });
     if (threadTarget.botId) {
       commitComputer(snap.computer ?? null);
@@ -1527,6 +1538,14 @@ export function ShellPage() {
     }
     window.requestAnimationFrame(() => {
       if (epoch !== historyEpoch.current || jumpId !== jumpGeneration.current) return;
+      if (!targetInPage) {
+        const element = messageScroll.current;
+        if (element) {
+          element.scrollTop = element.scrollHeight;
+          initiallyScrolledThread.current = page.threadId;
+        }
+        return;
+      }
       document
         .querySelector(`[data-message-id="${target.messageId}"]`)
         ?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -1587,6 +1606,10 @@ export function ShellPage() {
   const transcriptRunning = workingRuns.length > 0;
   const composerRunning = currentRuns.some((run) => isActive(run.status));
   const runError = threadRunError(activeSnapshot, dismissedRunErrorIds);
+  const transcriptMessages = useMemo(
+    () => userVisibleMessages(activeSnapshot?.messages ?? [], { includePeerReceipts: true }),
+    [activeSnapshot?.messages],
+  );
   const transcriptArtifactTarget = useMemo<ArtifactTarget>(
     () => (inGroup ? { groupId: groupId ?? "" } : { botId: active?.id ?? "" }),
     [active?.id, groupId, inGroup],
@@ -2849,7 +2872,7 @@ export function ShellPage() {
           key={activeSnapshot?.threadId}
           scrollRef={messageScroll}
           artifactTarget={transcriptArtifactTarget}
-          messages={activeSnapshot?.messages ?? []}
+          messages={transcriptMessages}
           olderCursor={activeSnapshot?.olderCursor ?? null}
           loadingOlder={loadingOlder}
           answerableAskMessageId={answerableAskMessageId}
@@ -2860,9 +2883,8 @@ export function ShellPage() {
           onAnswer={answerMessage}
           onReply={setReplyTarget}
           onJumpToMessage={jumpToReplyMessage}
-          onOpenPeerMessages={(peerBotId) => {
-            setPeerMessagesFocusId(peerBotId);
-            setPeerMessagesOpen(true);
+          onOpenPeerMessages={(peer) => {
+            setPeerConversation(peer);
           }}
           memberName={resolveTranscriptMemberName}
           peerBot={resolveTranscriptBot}
@@ -3581,17 +3603,15 @@ export function ShellPage() {
           />
         ) : null}
         {modelsOpen ? <ModelSettingsOverlay onClose={() => setModelsOpen(false)} /> : null}
-        {peerMessagesOpen && active ? (
+        {peerConversation && active ? (
           <PeerMessagesOverlay
             botId={active.id}
             botName={active.name}
-            messages={activeSnapshot?.messages ?? []}
-            olderCursor={activeSnapshot?.olderCursor ?? null}
-            initialPeerBotId={peerMessagesFocusId}
-            onClose={() => {
-              setPeerMessagesOpen(false);
-              setPeerMessagesFocusId(null);
-            }}
+            botColor={active.color}
+            peerBotId={peerConversation.peerBotId}
+            peerBotName={peerConversation.peerBotName}
+            peerBotColor={resolveTranscriptBot(peerConversation.peerBotId)?.color ?? "#85858A"}
+            onClose={() => setPeerConversation(null)}
           />
         ) : null}
         {voiceOpen ? (
@@ -3806,7 +3826,7 @@ const Transcript = memo(function Transcript({
   onAnswer: (message: ThreadMessage, text: string) => Promise<void>;
   onReply: (message: ThreadMessage) => void;
   onJumpToMessage: (messageId: string) => void;
-  onOpenPeerMessages: (peerBotId: string) => void;
+  onOpenPeerMessages: (peer: { peerBotId: string; peerBotName: string }) => void;
   memberName?: (botId: string | undefined) => string | undefined;
   peerBot: (botId: string) => { color: string; status?: string } | undefined;
   onRefresh: () => Promise<void>;
@@ -3949,37 +3969,46 @@ const Transcript = memo(function Transcript({
             {loadingOlder ? t`Loading…` : t`Load earlier messages`}
           </button>
         ) : null}
-        {messages.map((message) => (
-          <div
-            key={message.id}
-            data-message-id={message.id}
-            className="group/message relative pt-9 hover:z-20"
-          >
-            <MessageHoverActions message={message} onReply={onReply} />
-            <MessageView
-              artifactTarget={artifactTarget}
-              message={message}
-              canAnswer={message.id === answerableAskMessageId}
-              onOpenBot={onOpenBot}
-              onOpenPeerMessages={onOpenPeerMessages}
-              onAnswer={onAnswer}
-              speakerName={message.role === "bot" ? memberName?.(message.botId) : undefined}
-              memberName={memberName}
-              peerBot={peerBot}
-              replyPreview={
-                message.replyToMessageId ? messageById.get(message.replyToMessageId) : undefined
-              }
-              replyToMessageId={message.replyToMessageId}
-              onJumpToMessage={onJumpToMessage}
-              onRefresh={onRefresh}
-              onBotChanged={onBotChanged}
-              onAddRoutine={onAddRoutine}
-              voiceReady={voiceReady}
-              speaking={speakingMessageId === message.id}
-              onSpeak={() => onSpeak(message)}
-            />
-          </div>
-        ))}
+        {messages.map((message) => {
+          const peerReceipt = isPeerReceiptBlocks(message.blocks);
+          return (
+            <div
+              key={message.id}
+              data-message-id={message.id}
+              className={peerReceipt ? "relative py-0.5" : "group/message relative pt-9 hover:z-20"}
+            >
+              {peerReceipt ? null : <MessageHoverActions message={message} onReply={onReply} />}
+              <MessageView
+                artifactTarget={artifactTarget}
+                message={message}
+                canAnswer={message.id === answerableAskMessageId}
+                onOpenBot={onOpenBot}
+                onOpenPeerMessages={onOpenPeerMessages}
+                onAnswer={onAnswer}
+                speakerName={
+                  peerReceipt
+                    ? undefined
+                    : message.role === "bot"
+                      ? memberName?.(message.botId)
+                      : undefined
+                }
+                memberName={memberName}
+                peerBot={peerBot}
+                replyPreview={
+                  message.replyToMessageId ? messageById.get(message.replyToMessageId) : undefined
+                }
+                replyToMessageId={message.replyToMessageId}
+                onJumpToMessage={onJumpToMessage}
+                onRefresh={onRefresh}
+                onBotChanged={onBotChanged}
+                onAddRoutine={onAddRoutine}
+                voiceReady={voiceReady}
+                speaking={speakingMessageId === message.id}
+                onSpeak={() => onSpeak(message)}
+              />
+            </div>
+          );
+        })}
         {running &&
         !messages.some(
           (message) =>
@@ -4767,7 +4796,7 @@ const MessageView = memo(function MessageView({
   message: ThreadMessage;
   onAnswer: (message: ThreadMessage, text: string) => Promise<void>;
   onOpenBot: (botId: string) => void;
-  onOpenPeerMessages: (peerBotId: string) => void;
+  onOpenPeerMessages: (peer: { peerBotId: string; peerBotName: string }) => void;
   speakerName?: string;
   memberName?: (botId: string | undefined) => string | undefined;
   peerBot: (botId: string) => { color: string; status?: string } | undefined;
@@ -4879,16 +4908,30 @@ const MessageView = memo(function MessageView({
           const sent = block.kind === "bot_message_sent";
           const peer = sent ? block.toBotName : block.fromBotName;
           const peerBotId = sent ? block.toBotId : block.fromBotId;
-          const label = sent ? t`Messaged ${peer}` : t`Message from ${peer}`;
+          const ariaLabel = sent ? t`Messaged ${peer}` : t`Message from ${peer}`;
+          const peerChipProps = {
+            ariaLabel,
+            color: peerBot(peerBotId)?.color ?? "#85858A",
+            identity: peerBotId,
+            botName: peer,
+            onClick: () => onOpenPeerMessages({ peerBotId, peerBotName: peer }),
+          };
           return (
-            <CollaborationMarker
-              key={i}
-              ariaLabel={label}
-              color={peerBot(peerBotId)?.color ?? "#85858A"}
-              identity={peerBotId}
-              label={label}
-              onClick={() => onOpenPeerMessages(peerBotId)}
-            />
+            <CollaborationMarker key={i}>
+              {sent ? (
+                <RichTrans
+                  id="Messaged {peer}"
+                  message="Messaged {peer}"
+                  values={{ peer: <PeerBotChip {...peerChipProps} /> }}
+                />
+              ) : (
+                <RichTrans
+                  id="Message from {peer}"
+                  message="Message from {peer}"
+                  values={{ peer: <PeerBotChip {...peerChipProps} /> }}
+                />
+              )}
+            </CollaborationMarker>
           );
         }
         if (block.kind === "phone_channel_message") {

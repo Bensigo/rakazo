@@ -1,17 +1,19 @@
 import { BotAvatar, GroupAvatar, type GroupAvatarMember } from "@rakazo/ui-web";
+import type { ReactNode } from "react";
 import { LoadingState } from "./primitives";
 
-export function CollaborationMarker({
+/** Clickable peer bot chip embedded in a Messaged / Message from label. */
+export function PeerBotChip({
   ariaLabel,
   color,
   identity,
-  label,
+  botName,
   onClick,
 }: {
   ariaLabel: string;
   color: string;
   identity: string;
-  label: string;
+  botName: string;
   onClick: () => void;
 }) {
   return (
@@ -19,11 +21,25 @@ export function CollaborationMarker({
       type="button"
       aria-label={ariaLabel}
       onClick={onClick}
-      className="flex items-center justify-center gap-1.5 self-center rounded-full px-2.5 py-1 text-[13px] text-[#85858A] transition-colors hover:bg-[#161618] hover:text-[#B8B8BD]"
+      className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-[#1C1C1F] px-2.5 py-1 text-[13px] text-[#ECECEE] transition-colors hover:bg-[#242428]"
     >
       <BotAvatar color={color} identity={identity} size={16} />
-      <span dir="auto">{label}</span>
+      <span dir="auto" className="truncate">
+        {botName}
+      </span>
     </button>
+  );
+}
+
+/** Centered status line with a peer-aware translated label (chip replaces {peer}). */
+export function CollaborationMarker({ children }: { children: ReactNode }) {
+  return (
+    <div
+      data-testid="peer-receipt-chip"
+      className="flex items-center justify-center gap-2 self-center py-1 text-[13.5px] text-[#85858A]"
+    >
+      {children}
+    </div>
   );
 }
 

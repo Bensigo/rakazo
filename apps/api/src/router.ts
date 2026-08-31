@@ -134,7 +134,7 @@ import {
   UpdaterProxyError,
 } from "./server-update.js";
 import { assertTeachingSendAllowed, createTaughtSkillsService } from "./taught-skills.js";
-import { loadAllMessages, loadMessagePage } from "./thread-message-pages.js";
+import { isPeerRun, loadAllMessages, loadMessagePage } from "./thread-message-pages.js";
 import {
   resolveThreadTarget,
   sendThreadMessage,
@@ -1017,15 +1017,39 @@ export function createRouter(deps: RouterDeps) {
           input.before,
           THREAD_MESSAGE_PAGE_SIZE,
           input.around,
+          input.includePeerRuns,
+          input.includePeerReceipts,
         );
       }),
       subscribe: authed.threads.subscribe.handler(async function* ({ context, input }) {
         const target = await resolveThreadTarget(deps.prisma, context.actor, input);
+        const peerRunCache = new Map<string, Promise<boolean>>();
         for await (const event of deps.events.follow(
           target.threadId,
           input.cursor,
           context.signal,
         )) {
+          if (await isPeerRun(deps.prisma, event.runId, peerRunCache)) {
+            // Keep terminal peer-run events so clients can clear working state.
+            // Keep compact peer receipts for mobile; drop peer activity/replies.
+            const isTerminal =
+              event.type === "run.completed" ||
+              event.type === "run.failed" ||
+              event.type === "run.cancelled";
+            const blocks = event.payload.blocks;
+            const isReceipt =
+              (event.type === "thread.message.created" ||
+                event.type === "thread.message.updated") &&
+              Array.isArray(blocks) &&
+              blocks.some(
+                (block) =>
+                  !!block &&
+                  typeof block === "object" &&
+                  "kind" in block &&
+                  (block.kind === "bot_message_received" || block.kind === "bot_message_sent"),
+              );
+            if (!isTerminal && !isReceipt) continue;
+          }
           yield event;
         }
       }),

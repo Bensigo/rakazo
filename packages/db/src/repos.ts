@@ -6,11 +6,15 @@ import {
   type MessageBlock,
   type SpaceBot,
 } from "@rakazo/contracts";
+import { userVisibleMessages } from "@rakazo/core";
 import type { PrismaClient } from "./client.js";
 import { type ComputerMode, ensureComputerRecord, parseComputerMode } from "./computers.js";
 import { createThreadMessageInTransaction } from "./messages.js";
 import { IsolationError } from "./scope.js";
 import { activeRunSelection, previewFromBlocks } from "./thread-listing.js";
+
+/** Newest messages loaded for sidebar preview; enough to skip a short peer-run tail. */
+const SIDEBAR_PREVIEW_MESSAGE_WINDOW = 16;
 
 function mapBot(
   bot: {
@@ -229,7 +233,7 @@ export function createRepos(prisma: PrismaClient) {
         include: {
           thread: {
             include: {
-              messages: { orderBy: { seq: "desc" }, take: 1 },
+              messages: { orderBy: { seq: "desc" }, take: SIDEBAR_PREVIEW_MESSAGE_WINDOW },
             },
           },
           runs: activeRunSelection,
@@ -237,10 +241,59 @@ export function createRepos(prisma: PrismaClient) {
         },
         orderBy: [{ pinned: "desc" }, { position: "asc" }, { createdAt: "asc" }],
       });
-      return bots.map((bot) => {
-        const preview = previewFromBlocks(bot.thread?.messages[0]?.blocks);
-        return mapBot(bot, preview, bot.runs[0]?.status ?? "idle");
-      });
+      const candidateRunIds = [
+        ...new Set(
+          bots.flatMap((bot) =>
+            (bot.thread?.messages ?? []).flatMap((message) =>
+              message.runId ? [message.runId] : [],
+            ),
+          ),
+        ),
+      ];
+      const peerRuns = candidateRunIds.length
+        ? await prisma.run.findMany({
+            where: { id: { in: candidateRunIds }, trigger: "bot_message" },
+            select: { id: true },
+          })
+        : [];
+      const peerRunIds = new Set(peerRuns.map((run) => run.id));
+      return Promise.all(
+        bots.map(async (bot) => {
+          let messages = bot.thread?.messages ?? [];
+          let preview = "";
+          for (let attempt = 0; attempt < 5; attempt++) {
+            const windowRunIds = [
+              ...new Set(messages.flatMap((message) => (message.runId ? [message.runId] : []))),
+            ].filter((runId) => !peerRunIds.has(runId));
+            if (windowRunIds.length > 0) {
+              const morePeers = await prisma.run.findMany({
+                where: { id: { in: windowRunIds }, trigger: "bot_message" },
+                select: { id: true },
+              });
+              for (const run of morePeers) peerRunIds.add(run.id);
+            }
+            const visible = userVisibleMessages(
+              messages.map((message) => ({
+                ...message,
+                blocks: message.blocks as MessageBlock[],
+                runId: message.runId ?? undefined,
+              })),
+              { knownPeerRunIds: peerRunIds },
+            );
+            preview = previewFromBlocks(visible[0]?.blocks);
+            if (preview || messages.length === 0 || !bot.thread || attempt === 4) break;
+            const oldest = messages[messages.length - 1];
+            if (!oldest) break;
+            messages = await prisma.message.findMany({
+              where: { threadId: bot.thread.id, seq: { lt: oldest.seq } },
+              orderBy: { seq: "desc" },
+              take: SIDEBAR_PREVIEW_MESSAGE_WINDOW,
+            });
+            if (messages.length === 0) break;
+          }
+          return mapBot(bot, preview, bot.runs[0]?.status ?? "idle");
+        }),
+      );
     },
 
     listSpaceBotsForSpaces,
