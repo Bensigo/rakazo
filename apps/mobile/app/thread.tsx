@@ -6,6 +6,7 @@ import type {
   MessageBlock,
   Routine,
 } from "@rakazo/contracts";
+import { canReactToThreadMessage } from "@rakazo/contracts";
 import {
   abortableDelay,
   attachmentsForThread,
@@ -723,6 +724,7 @@ function Thread() {
                 event.type === "agent.tool.called" ||
                 event.type === "thread.message.created" ||
                 event.type === "thread.message.updated" ||
+                event.type === "thread.message.reaction" ||
                 event.type === "thread.subagent" ||
                 event.type === "thread.cleared" ||
                 event.type === "run.waiting_input" ||
@@ -1082,6 +1084,22 @@ function Thread() {
     );
   }
 
+  async function reactToMessage(message: MobileMessage) {
+    const targetBotId = botId;
+    const targetGroupId = groupId;
+    if (!targetBotId && !targetGroupId) return;
+    try {
+      await rpc("threads/react", {
+        ...(targetGroupId ? { groupId: targetGroupId } : { botId: targetBotId! }),
+        messageId: message.id,
+        thumbsUp: !message.thumbsUp,
+      });
+    } catch (err) {
+      if (!isCurrentTarget(targetBotId, targetGroupId)) return;
+      setError(err instanceof Error ? err.message : "Could not update reaction");
+    }
+  }
+
   function renderMessageRow(message: MobileMessage, options?: { enableJump?: boolean }) {
     const ownerId = toolOwnerId(message, inGroup);
     const activityBotId =
@@ -1144,16 +1162,30 @@ function Thread() {
             flexShrink: 1,
           }}
         >
-          <Pressable
-            accessibilityLabel="Reply"
-            onPress={() => setReplyTarget(message)}
+          <View
             style={{
               alignSelf: message.role === "user" ? "flex-end" : "flex-start",
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 12,
               marginBottom: 4,
             }}
           >
-            <Text style={{ color: "#6C6C70", fontSize: 12 }}>Reply</Text>
-          </Pressable>
+            <Pressable accessibilityLabel="Reply" onPress={() => setReplyTarget(message)}>
+              <Text style={{ color: "#6C6C70", fontSize: 12 }}>Reply</Text>
+            </Pressable>
+            {canReactToThreadMessage(message) ? (
+              <Pressable
+                accessibilityLabel={message.thumbsUp ? "Remove thumbs-up" : "Add thumbs-up"}
+                accessibilityState={{ selected: Boolean(message.thumbsUp) }}
+                onPress={() => void reactToMessage(message)}
+              >
+                <Text style={{ color: message.thumbsUp ? "#E9C46A" : "#6C6C70", fontSize: 13 }}>
+                  👍
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
           <MessageBubble
             botId={botId ?? snap?.members?.[0]?.botId ?? ""}
             groupId={groupId}

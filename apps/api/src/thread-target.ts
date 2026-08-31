@@ -175,8 +175,7 @@ export async function cancelSupersededQueuedRuns(
       threadId: input.threadId,
       botId: { in: input.botIds },
       status: "queued",
-      trigger: "user",
-      sourceMessage: { role: "user" },
+      OR: [{ trigger: "user", sourceMessage: { role: "user" } }, { trigger: "reaction" }],
       id: { notIn: input.keepRunIds },
     },
     select: { id: true, taskId: true },
@@ -654,6 +653,71 @@ export async function sendThreadMessage(
   });
   await enqueueRunsNeedingContinue(deps.jobs, committed.runs);
   return sendResult(committed.message, committed.runs);
+}
+
+export async function reactToThreadMessage(
+  deps: { prisma: PrismaClient },
+  actor: Actor,
+  target: ThreadTarget,
+  messageId: string,
+  thumbsUp: boolean,
+) {
+  return deps.prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM threads WHERE id = ${target.threadId} FOR UPDATE`;
+    const [message] = await tx.$queryRaw<
+      Array<{ id: string; thumbsUp: boolean }>
+    >`SELECT id, "thumbsUp" FROM messages WHERE id = ${messageId} AND "threadId" = ${target.threadId} FOR UPDATE`;
+    if (!message) throw new IsolationError();
+    if (message.thumbsUp === thumbsUp) {
+      return { changed: false, eventSeq: null, runId: null };
+    }
+
+    await tx.message.update({ where: { id: message.id }, data: { thumbsUp } });
+    const botId = target.kind === "bot" ? target.botId : target.memberBotIds[0];
+    if (!botId) throw new IsolationError();
+
+    let run: { id: string; status: string } | null = null;
+    if (thumbsUp && target.kind === "bot") {
+      const busy = await tx.run.findFirst({
+        where: { botId, status: { in: ["running", "queued", "leased"] } },
+        select: { id: true },
+      });
+      if (!busy) {
+        const task = await tx.task.create({
+          data: {
+            spaceId: actor.spaceId,
+            botId,
+            threadId: target.threadId,
+            userId: actor.userId,
+            prompt: "The user gave this message a thumbs-up.",
+            status: "queued",
+          },
+        });
+        run = await tx.run.create({
+          data: {
+            spaceId: actor.spaceId,
+            botId,
+            threadId: target.threadId,
+            taskId: task.id,
+            userId: actor.userId,
+            status: "queued",
+            trigger: "reaction",
+            sourceMessageId: message.id,
+          },
+        });
+      }
+    }
+
+    const event = await appendEventInTransaction(tx, {
+      spaceId: actor.spaceId,
+      threadId: target.threadId,
+      botId,
+      type: "thread.message.reaction",
+      payload: { messageId: message.id, thumbsUp },
+      runId: run?.id,
+    });
+    return { changed: true, eventSeq: event.seq, runId: run?.id ?? null };
+  });
 }
 
 export async function stopThreadRuns(
