@@ -154,7 +154,7 @@ async function applyOwnerCommand(
       deps,
       identity,
       `command:leave:${membership.id}`,
-      "You've left the channel; your agent will no longer post there. The group chat itself is unchanged — leaving only stops your agent's participation.",
+      "You've left the channel. Your agent will no longer post there. The group chat itself is unchanged.",
     );
     return true;
   }
@@ -194,7 +194,7 @@ async function applyOwnerCommand(
         identity,
         key,
         approved
-          ? "You're in — your agent will now see and reply to that group."
+          ? "You're in. Your agent will now see and reply to that group."
           : "No problem, your agent will stay out of that group.",
       );
       return true;
@@ -225,7 +225,7 @@ async function applyOwnerCommand(
       identity,
       key,
       approved
-        ? "Connection approved — your agents can now message each other."
+        ? "Connection approved. Your agents can now message each other."
         : "Connection declined.",
     );
     if (requesterIdentity) {
@@ -233,7 +233,7 @@ async function applyOwnerCommand(
         tx,
         requesterIdentity,
         connectedKey,
-        "Your connection request was accepted — your agents can now message each other.",
+        "Your connection request was accepted. Your agents can now message each other.",
       );
     }
     return true;
@@ -359,7 +359,7 @@ async function handleChannelEvent(
           idempotencyKey: `intro:${channel.id}`,
           kind: "intro",
           threadId: channel.threadId,
-          body: "Hi — this line hosts Rakazo personal agents. Some people in this group haven't messaged it yet; send any message to this line first if you want your own agent here.",
+          body: "Hi. This line hosts Rakazo personal agents. Some people in this group haven't messaged it yet; send any message to this line first if you want your own agent here.",
         },
       ],
       skipDuplicates: true,
@@ -398,7 +398,7 @@ async function handleChannelEvent(
     text: event.content,
     hop: 0,
   };
-  const prompt = `[Group "${channel.name ?? "group"}" — ${fromLabel}]: ${event.content}`;
+  const prompt = `[Group "${channel.name ?? "group"}", ${fromLabel}]: ${event.content}`;
   for (const member of approved) {
     const identity = await deps.prisma.messagingIdentity.findUnique({
       where: { id: member.identityId! },

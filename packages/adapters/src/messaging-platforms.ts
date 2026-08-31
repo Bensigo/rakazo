@@ -113,7 +113,7 @@ export function messagingPlatformsFromEnv(env: MessagingEnvironmentValues): Mess
     });
   }
 
-  if (env.telegramBotToken) {
+  if (env.telegramBotToken && env.telegramWebhookSecret) {
     platforms.push({
       provider: "telegram",
       capabilities: { direct: true, groups: false, typing: false },

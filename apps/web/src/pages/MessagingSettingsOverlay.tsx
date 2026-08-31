@@ -97,7 +97,7 @@ export function MessagingSettingsOverlay({ onClose }: { onClose: () => void }) {
               </Trans>
             ) : (
               <Trans>
-                Not linked — message the deployment's line once from any connected chat app to link
+                Not linked. Message the deployment's line once from any connected chat app to link
                 it to your agent.
               </Trans>
             )}

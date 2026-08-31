@@ -1996,7 +1996,7 @@ msgid "Not in the plugin catalog"
 msgstr ""
 
 #: src/pages/PhoneSettingsOverlay.tsx:87
-msgid "Not linked — text the deployment's number once to link your phone to your agent."
+msgid "Not linked. Message the deployment's line once from any connected chat app to link it to your agent."
 msgstr ""
 
 #: src/pages/Shell.tsx:6289

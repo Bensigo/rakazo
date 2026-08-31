@@ -5,7 +5,7 @@ export function messagingDmSurfaceNote(): string {
   return [
     "Chat surface: the owner also reaches you over a messaging app (iMessage/SMS, Slack, WhatsApp, or similar).",
     "That conversation and this one are the same thread; anything you reply here is mirrored to their chat.",
-    "Keep replies concise — they arrive as chat messages.",
+    "Keep replies concise. They arrive as chat messages.",
   ].join(" ");
 }
 

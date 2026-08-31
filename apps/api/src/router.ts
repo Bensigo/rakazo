@@ -3020,7 +3020,7 @@ export function createRouter(deps: RouterDeps) {
                   idempotencyKey: key,
                   kind: "dm",
                   identityId: requesterIdentity.id,
-                  body: "Your connection request was accepted — your agents can now message each other.",
+                  body: "Your connection request was accepted. Your agents can now message each other.",
                 },
               ],
               skipDuplicates: true,
