@@ -61,7 +61,7 @@ describe("resolveMentionPickerKey", () => {
     });
   });
 
-  it("ignores Shift+Enter and Shift+Tab while the picker is open", () => {
+  it("ignores Shift+Enter while completing on Tab and Shift+Tab", () => {
     expect(
       resolveMentionPickerKey({
         key: "Enter",
@@ -77,7 +77,7 @@ describe("resolveMentionPickerKey", () => {
         optionCount: 2,
         highlightedIndex: 0,
       }),
-    ).toEqual({ type: "none" });
+    ).toEqual({ type: "complete", index: 0 });
   });
 
   it("does not send on Shift+Enter when the picker is closed", () => {

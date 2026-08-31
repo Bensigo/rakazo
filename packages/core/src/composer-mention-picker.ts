@@ -48,7 +48,7 @@ export function resolveMentionPickerKey(input: {
     if (key === "Enter" && !shiftKey) {
       return { type: "complete", index: highlightedIndex };
     }
-    if (key === "Tab" && !shiftKey) {
+    if (key === "Tab") {
       return { type: "complete", index: highlightedIndex };
     }
     if (key === "Escape") {
