@@ -41,6 +41,7 @@ import {
   Text,
   TextInput,
   View,
+  Linking,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useReducedMotion } from "react-native-reanimated";
@@ -2059,7 +2060,8 @@ const MessageBubble = memo(function MessageBubble({
     );
   }
   const special = message.blocks.find(
-    (block) => block.kind === "subagent" || block.kind === "child_bot",
+    (block) =>
+      block.kind === "subagent" || block.kind === "child_bot" || block.kind === "cloud_agent",
   );
   if (special?.kind === "subagent") {
     const running = special.status === "running";
@@ -2110,7 +2112,48 @@ const MessageBubble = memo(function MessageBubble({
   }
   if (special?.kind === "child_bot") {
     const removed = special.status === "deleted" || special.status === "archived";
+    if (special?.kind === "cloud_agent") {
+    const running = special.status === "running";
+    const failed = special.status === "failed" || special.status === "cancelled";
+    const href = special.prUrl || special.url;
     return (
+      <Pressable
+        onPress={() => {
+          if (href) Linking.openURL(href).catch(() => undefined);
+        }}
+        testID="cloud-agent-card"
+        style={{
+          width: "90%",
+          borderRadius: 18,
+          borderWidth: 1,
+          borderColor: "#232326",
+          backgroundColor: "#17171A",
+          paddingHorizontal: 16,
+          paddingVertical: 14,
+        }}
+      >
+        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 8 }}>
+          <Text style={{ color: "#ECECEE", fontSize: 15, fontWeight: "600" }}>
+            {special.title || "Cloud agent"}
+          </Text>
+          <Text
+            style={{
+              color: failed ? "#E65707" : running ? "#F5A03C" : "#4ECB71",
+              fontSize: 13,
+            }}
+          >
+            {running ? "running" : special.status}
+          </Text>
+        </View>
+        {special.prUrl ? (
+          <Text style={{ color: "#A8A8AD", marginTop: 8, fontSize: 14.5 }}>Pull request</Text>
+        ) : special.branch ? (
+          <Text style={{ color: "#85858A", marginTop: 8, fontSize: 13.5 }}>{special.branch}</Text>
+        ) : null}
+      </Pressable>
+    );
+  }
+  return (
       <Pressable
         disabled={removed}
         onPress={() => onOpenBot(special.botId ?? "", special.name ?? "Bot")}

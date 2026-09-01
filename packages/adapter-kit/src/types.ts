@@ -442,6 +442,15 @@ export interface BackgroundJobPayloads {
   "skill.teaching-expire": { skillId: string };
   "history.compact": { threadId: string };
   "messaging.deliver": { runId?: string };
+  /** Poll a remote cloud agent until its latest run is terminal, then wake the bot. */
+  "cloud_agent.poll": {
+    agentId: string;
+    messageId: string;
+    spaceId: string;
+    threadId: string;
+    botId: string;
+    userId: string;
+  };
 }
 
 export type BackgroundJobName = keyof BackgroundJobPayloads;
@@ -577,4 +586,53 @@ export interface WebFetchResult {
   title: string;
   text: string;
   truncated: boolean;
+}
+
+/** Vendor-neutral status for a remote cloud coding agent. */
+export type CloudAgentStatus = "running" | "finished" | "failed" | "cancelled";
+
+export interface CloudAgentCapabilities {
+  launch: boolean;
+  reply: boolean;
+  cancel: boolean;
+  /** True when the adapter never leaves the process (tests / Playwright). */
+  offline?: boolean;
+}
+
+export type CloudAgentImage =
+  | { data: string; mimeType: string }
+  | { url: string };
+
+export interface CloudAgentLaunchRequest {
+  prompt: string;
+  repository?: string;
+  images?: CloudAgentImage[];
+  environment?: Record<string, string>;
+  openPr?: boolean;
+  signal?: AbortSignal;
+}
+
+export interface CloudAgentHandle {
+  id: string;
+  url: string;
+  title: string;
+  status: CloudAgentStatus;
+  /** Latest remote run id when the vendor exposes one (needed for cancel). */
+  latestRunId?: string;
+}
+
+export interface CloudAgentSnapshot {
+  id: string;
+  url: string;
+  title: string;
+  status: CloudAgentStatus;
+  branch?: string;
+  prUrl?: string;
+  latestRunId?: string;
+}
+
+export interface CloudAgentReplyRequest {
+  prompt: string;
+  images?: CloudAgentImage[];
+  signal?: AbortSignal;
 }

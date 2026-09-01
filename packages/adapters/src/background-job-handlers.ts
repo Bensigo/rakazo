@@ -15,6 +15,7 @@ import { compactHistory } from "./history-compaction.js";
 import type { MemoryProviderResolver } from "./memory-provider-factory.js";
 import { deliverMessagingOutbound, mirrorMessagingOutbound } from "./messaging-delivery.js";
 import type { EncryptedSecretStore } from "./secrets.js";
+import { pollCloudAgent } from "./cloud-agent-poll.js";
 import { expireTaughtSkillTeaching } from "./teaching-session.js";
 
 export function createBackgroundJobHandlers(deps: {
@@ -30,6 +31,7 @@ export function createBackgroundJobHandlers(deps: {
   memoryProviders: MemoryProviderResolver;
   deploymentModelKey?: string;
   messaging?: MessagingSurface;
+  cloudAgent?: import("@rakazo/adapter-kit").CloudAgentProvider | null;
 }): BackgroundJobHandlers {
   const deliverMessaging = async (runId?: string) => {
     if (!deps.messaging) return;
@@ -78,6 +80,12 @@ export function createBackgroundJobHandlers(deps: {
     },
     "skill.teaching-expire": async (payload) => {
       await expireTaughtSkillTeaching(deps, payload.skillId);
+    },
+    "cloud_agent.poll": async (payload) => {
+      await pollCloudAgent(
+        { prisma: deps.prisma, jobs: deps.jobs, cloudAgent: deps.cloudAgent },
+        payload,
+      );
     },
     "history.compact": async (payload) => {
       await compactHistory(

@@ -13,6 +13,7 @@ import {
   createRunExecutor,
   createRunSandbox,
   createRunSecretWriter,
+  createCloudAgentProvider,
   createWebProvider,
   EncryptedSecretStore,
   ExpoPushProvider,
@@ -135,6 +136,7 @@ async function main() {
     events,
     messaging: messaging ? createMessagingContextLoader(prisma) : undefined,
     web: createWebProvider(),
+    cloudAgent: createCloudAgentProvider(),
   });
 
   const jobHandlers = createBackgroundJobHandlers({
@@ -150,6 +152,7 @@ async function main() {
     memoryProviders,
     deploymentModelKey,
     messaging,
+    cloudAgent: createCloudAgentProvider(),
   });
   await jobHost.start(jobHandlers);
   const reconciler = createJobReconciler({

@@ -22,6 +22,7 @@ import {
   createRunExecutor,
   createRunSandbox,
   createRunSecretWriter,
+  createCloudAgentProvider,
   createWebProvider,
   type DestinationEmulator,
   destroyBot,
@@ -281,6 +282,7 @@ export async function createApp(
     events,
     messaging: messaging ? createMessagingContextLoader(prisma) : undefined,
     web: createWebProvider(),
+    cloudAgent: createCloudAgentProvider(),
   });
 
   const jobHandlers = createBackgroundJobHandlers({
@@ -296,6 +298,7 @@ export async function createApp(
     memoryProviders,
     deploymentModelKey: env.deploymentModelKey,
     messaging,
+    cloudAgent: createCloudAgentProvider(),
   });
   if (inMemoryJobs) {
     await inMemoryJobs.start(jobHandlers);

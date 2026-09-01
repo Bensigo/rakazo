@@ -16,9 +16,11 @@ import type {
   NotificationProvider,
   SandboxProvider,
   SemanticMemoryProvider,
+  CloudAgentProvider,
   WebProvider,
 } from "@rakazo/adapter-kit";
 import {
+  cloudAgentPollJob,
   historyCompactJob,
   routineJobKey,
   routineWakeupJob,
@@ -176,6 +178,7 @@ import {
 } from "./mcp-server-tool.js";
 import { loadAgentMemoryContext } from "./memory-context.js";
 import type { MemoryProviderResolver } from "./memory-provider-factory.js";
+import { selectCloudAgentTools } from "./cloud-agent-tools-select.js";
 import { selectMemoryTools } from "./memory-tools.js";
 import {
   filterImageReturningComputerTools,
@@ -241,7 +244,14 @@ import {
 } from "./thread-artifacts.js";
 import { advanceToolCallLoopGuard } from "./tool-loop.js";
 import { textContentArg } from "./tool-text.js";
+import { createCloudAgentProvider } from "./cloud-agent-factory.js";
 import { createWebProvider } from "./web-provider-factory.js";
+import {
+  cloudAgentCancelFromTool,
+  cloudAgentLaunchFromTool,
+  cloudAgentReplyFromTool,
+  cloudAgentStatusFromTool,
+} from "./cloud-agent-tools.js";
 import { webFetchFromTool, webSearchFromTool } from "./web-tools.js";
 
 const modelCredentialLocks = new Map<string, Promise<void>>();
@@ -257,6 +267,7 @@ const READ_ONLY_AGENT_TOOLS = new Set([
   "skill_read",
   "web_search",
   "web_fetch",
+  "cloud_agent_status",
 ]);
 const MAX_MODEL_FILE_BYTES = 250_000;
 const TURN_ATTACHMENT_UNAVAILABLE =
@@ -395,6 +406,8 @@ export interface ExecutorDeps {
   listConnectedPluginSlugs?: (userId: string) => Promise<string[]>;
   /** Builtin web_search / web_fetch. Defaults to keyless HTTP when omitted. */
   web?: WebProvider;
+  /** Remote cloud coding agents. Null/omit means tools stay uninjected. */
+  cloudAgent?: CloudAgentProvider | null;
 }
 
 export async function deferFutureRoutine(
@@ -522,6 +535,7 @@ export function buildApprovalContinuation(
 
 export function createRunExecutor(deps: ExecutorDeps) {
   const web = deps.web ?? createWebProvider();
+  const cloudAgent = deps.cloudAgent === undefined ? createCloudAgentProvider() : deps.cloudAgent;
   return {
     async resolveModel(scope: {
       userId: string;
@@ -1110,6 +1124,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             groupId: thread.groupId,
             trigger: run.trigger,
             semanticMemoryEnabled,
+            cloudAgentEnabled: Boolean(cloudAgent),
           }),
           // Cross-owner agent connections only exist for chat-linked bots.
           ...(hasMessagingIdentity ? agentConnectionTools : []),
@@ -2032,6 +2047,51 @@ export function createRunExecutor(deps: ExecutorDeps) {
           }
           if (name === "web_fetch") {
             return finish(await webFetchFromTool(web, context, args));
+          }
+
+          if (name === "cloud_agent_launch") {
+            if (!cloudAgent) return finish({ error: "Cloud agents are not configured." });
+            const launched = await cloudAgentLaunchFromTool(cloudAgent, context, args);
+            if ("error" in launched) return finish(launched);
+            try {
+              const message = await publishMessage(deps, run, "bot", [
+                {
+                  kind: "cloud_agent",
+                  agentId: launched.id,
+                  title: launched.title,
+                  status: launched.status,
+                  url: launched.url,
+                  latestRunId: launched.latestRunId,
+                },
+              ]);
+              await deps.jobs.enqueue(
+                cloudAgentPollJob({
+                  agentId: launched.id,
+                  messageId: message.id,
+                  spaceId: run.spaceId,
+                  threadId: run.threadId,
+                  botId: bot.id,
+                  userId: run.userId,
+                }),
+              );
+            } catch (error) {
+              console.error("cloud agent launch card", error);
+            }
+            return finish(launched);
+          }
+          if (name === "cloud_agent_status") {
+            if (!cloudAgent) return finish({ error: "Cloud agents are not configured." });
+            return finish(await cloudAgentStatusFromTool(cloudAgent, context, args));
+          }
+          if (name === "cloud_agent_reply") {
+            if (!cloudAgent) return finish({ error: "Cloud agents are not configured." });
+            const replied = await cloudAgentReplyFromTool(cloudAgent, context, args);
+            if ("error" in replied) return finish(replied);
+            return finish(replied);
+          }
+          if (name === "cloud_agent_cancel") {
+            if (!cloudAgent) return finish({ error: "Cloud agents are not configured." });
+            return finish(await cloudAgentCancelFromTool(cloudAgent, context, args));
           }
           if (name === "scratchpad_list") {
             return listScratchpadItemsFromTool(deps, {
@@ -3430,16 +3490,20 @@ export function selectBuiltinToolsForRun(options: {
   groupId: string | null;
   trigger: string;
   semanticMemoryEnabled: boolean;
+  cloudAgentEnabled?: boolean;
 }) {
-  return selectMemoryTools(
-    filterBuiltinToolsForRun(
-      filterBuiltinToolsForThread(
-        filterImageReturningComputerTools(builtinAgentTools, options.graphicalToolsAllowed),
-        options.groupId,
+  return selectCloudAgentTools(
+    selectMemoryTools(
+      filterBuiltinToolsForRun(
+        filterBuiltinToolsForThread(
+          filterImageReturningComputerTools(builtinAgentTools, options.graphicalToolsAllowed),
+          options.groupId,
+        ),
+        options.trigger,
       ),
-      options.trigger,
+      options.semanticMemoryEnabled,
     ),
-    options.semanticMemoryEnabled,
+    Boolean(options.cloudAgentEnabled),
   );
 }
 
