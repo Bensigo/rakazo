@@ -11,6 +11,7 @@ import Docker from "dockerode";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
+  COMPUTER_CONTROL_PORT,
   COMPUTER_GID,
   COMPUTER_IMAGE,
   COMPUTER_UID,
@@ -72,6 +73,9 @@ let imageReady: Promise<void> | undefined;
 let supervisorInfo: Docker.ContainerInspectInfo | undefined;
 const supervisorToken = resolveSupervisorToken(process.env);
 const screenNetworkMode = resolveScreenNetworkMode(process.env.SANDBOX_SCREEN_NETWORK);
+// Host-run supervisors on Docker Desktop (macOS/Windows) cannot reach container
+// IPs, so computer control must use a published loopback port instead.
+const controlViaLoopback = process.env.SANDBOX_CONTROL_VIA_LOOPBACK === "true";
 const computerScreens = new Map<string, Map<string, ScreenAssignment>>();
 
 const app = new Hono();
@@ -179,6 +183,7 @@ app.post("/computers", async (c) => {
           user: computerUser,
           networkMode,
           controlToken: randomUUID(),
+          publishControlPort: controlViaLoopback,
         }),
       );
       await container.start();
@@ -711,10 +716,14 @@ function computerControlEndpoint(info: Docker.ContainerInspectInfo) {
   const token = info.Config.Env?.find((value) =>
     value.startsWith("RAKAZO_COMPUTER_CONTROL_TOKEN="),
   )?.slice("RAKAZO_COMPUTER_CONTROL_TOKEN=".length);
+  const publishedHostPort = controlViaLoopback
+    ? info.NetworkSettings?.Ports?.[`${COMPUTER_CONTROL_PORT}/tcp`]?.[0]?.HostPort
+    : undefined;
   return resolveComputerControlEndpoint({
     token,
     networkMode: info.HostConfig.NetworkMode,
     networks: info.NetworkSettings?.Networks,
+    publishedHostPort,
   });
 }
 

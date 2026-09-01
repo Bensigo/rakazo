@@ -36,7 +36,7 @@ export function screenPorts(index: number) {
   };
 }
 
-export function computerPortBindings() {
+export function computerPortBindings(publishControlPort = false) {
   const ExposedPorts: Record<string, object> = {};
   const PortBindings: Record<string, Array<{ HostIp: string; HostPort: string }>> = {};
   for (let index = 0; index < TEAM_SCREEN_LIMIT; index += 1) {
@@ -47,7 +47,13 @@ export function computerPortBindings() {
     PortBindings[`${ports.controlPort}/tcp`] = [{ HostIp: "127.0.0.1", HostPort: "0" }];
   }
   // Control stays on the container network only (0.0.0.0 inside the container).
-  // Do not publish 7070 to the host.
+  // Do not publish 7070 to the host, except via SANDBOX_CONTROL_VIA_LOOPBACK:
+  // a host-run supervisor on Docker Desktop (macOS/Windows) has no route to
+  // container IPs, so control must go through a token-guarded loopback mapping.
+  if (publishControlPort) {
+    ExposedPorts[`${COMPUTER_CONTROL_PORT}/tcp`] = {};
+    PortBindings[`${COMPUTER_CONTROL_PORT}/tcp`] = [{ HostIp: "127.0.0.1", HostPort: "0" }];
+  }
   return { ExposedPorts, PortBindings };
 }
 
@@ -60,6 +66,7 @@ export interface ComputerCreateInput {
   user?: string;
   controlToken?: string;
   networkMode?: string;
+  publishControlPort?: boolean;
 }
 
 interface PointerInput {
@@ -76,7 +83,7 @@ export type SandboxInput =
   | { kind: "clipboard"; text: string };
 
 export function containerCreateOptions(input: ComputerCreateInput) {
-  const ports = computerPortBindings();
+  const ports = computerPortBindings(input.publishControlPort);
   return {
     Image: input.image,
     name: input.name,
@@ -189,8 +196,15 @@ export function resolveComputerControlEndpoint(input: {
   token: string | undefined;
   networkMode: string | null | undefined;
   networks: Record<string, { IPAddress?: string } | undefined> | null | undefined;
+  publishedHostPort?: string;
 }): { url: string; token: string } | undefined {
   if (!input.token) return undefined;
+  if (input.publishedHostPort) {
+    return {
+      url: `http://127.0.0.1:${input.publishedHostPort}/v1/desktop`,
+      token: input.token,
+    };
+  }
   const address =
     (input.networkMode ? input.networks?.[input.networkMode]?.IPAddress : undefined) ||
     Object.values(input.networks ?? {}).find((network) => network?.IPAddress)?.IPAddress;

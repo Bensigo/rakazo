@@ -351,6 +351,21 @@ describe("graphical computer spec", () => {
     expect(JSON.stringify(options.HostConfig.PortBindings)).not.toMatch(/7070/);
   });
 
+  it("publishes the control port to loopback only when explicitly opted in", () => {
+    const options = containerCreateOptions({
+      name: "rakazo-bot-ctrl",
+      image: COMPUTER_IMAGE,
+      botId: "ctrl",
+      spaceId: "ws",
+      homePath: "/var/rakazo/homes/ctrl",
+      publishControlPort: true,
+    });
+    expect(options.ExposedPorts["7070/tcp"]).toEqual({});
+    expect(options.HostConfig.PortBindings["7070/tcp"]).toEqual([
+      { HostIp: "127.0.0.1", HostPort: "0" },
+    ]);
+  });
+
   it("resolves computer control through the container network IP, never a host mapping", () => {
     const networkMode = "rakazo_default";
     expect(
@@ -379,6 +394,26 @@ describe("graphical computer spec", () => {
         token: "secret",
         networkMode,
         networks: {},
+      }),
+    ).toBeUndefined();
+  });
+
+  it("resolves computer control through a published loopback port when provided", () => {
+    const networkMode = "rakazo_default";
+    expect(
+      resolveComputerControlEndpoint({
+        token: "secret",
+        networkMode,
+        networks: { [networkMode]: { IPAddress: "172.18.0.4" } },
+        publishedHostPort: "55101",
+      }),
+    ).toEqual({ url: "http://127.0.0.1:55101/v1/desktop", token: "secret" });
+    expect(
+      resolveComputerControlEndpoint({
+        token: undefined,
+        networkMode,
+        networks: { [networkMode]: { IPAddress: "172.18.0.4" } },
+        publishedHostPort: "55101",
       }),
     ).toBeUndefined();
   });
