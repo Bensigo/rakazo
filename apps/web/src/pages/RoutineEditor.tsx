@@ -110,8 +110,9 @@ function eventTriggerSummary(trigger: RoutineEventTrigger): string {
 export function routineTriggerSummary(routine: Routine): string {
   if (!routine.active) return t`Paused`;
   const parts: string[] = [];
-  const triggers = routine.eventTriggers?.length
-    ? routine.eventTriggers
+  const eventTriggers = withoutChatChannelTriggers(routine.eventTriggers ?? []);
+  const triggers = eventTriggers.length
+    ? eventTriggers
     : routine.webhookEnabled
       ? [{ id: "legacy-webhook", kind: "webhook" as const }]
       : [];
