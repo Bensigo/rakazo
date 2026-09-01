@@ -249,11 +249,16 @@ export class PageBrowserSessionStore {
   }
 }
 
-/** Isolate page state per computer, bot, and screen lease on Team Computers. */
+/**
+ * Isolate page state per computer, bot, and screen lease on Team Computers.
+ * Prefer `context.botId` (the running bot). `computer.botId` is the home key and
+ * is shared by every bot on a Team Computer, so it alone cannot isolate sessions.
+ */
 export function pageBrowserSessionKey(
   computer: { id: string; botId: string },
-  context?: { screenLeaseId?: string },
+  context?: { botId?: string; screenLeaseId?: string },
 ): string {
+  const bot = context?.botId?.trim() || computer.botId;
   const lease = context?.screenLeaseId?.trim() || "default";
-  return `${computer.id}::${computer.botId}::${lease}`;
+  return `${computer.id}::${bot}::${lease}`;
 }
