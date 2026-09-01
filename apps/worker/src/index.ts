@@ -6,6 +6,7 @@ loadRootEnv();
 import {
   ChatSdkMessagingSurface,
   createBackgroundJobHandlers,
+  createBrowserProvider,
   createConnectorStack,
   createJobReconciler,
   createMessagingContextLoader,
@@ -135,6 +136,7 @@ async function main() {
     events,
     messaging: messaging ? createMessagingContextLoader(prisma) : undefined,
     web: createWebProvider(),
+    browser: createBrowserProvider(),
   });
 
   const jobHandlers = createBackgroundJobHandlers({

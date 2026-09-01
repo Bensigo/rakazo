@@ -16,6 +16,7 @@ import {
   type ComposioProvider,
   type ConnectorRegistry,
   createBackgroundJobHandlers,
+  createBrowserProvider,
   createConnectorStack,
   createJobReconciler,
   createMessagingContextLoader,
@@ -281,6 +282,7 @@ export async function createApp(
     events,
     messaging: messaging ? createMessagingContextLoader(prisma) : undefined,
     web: createWebProvider(),
+    browser: createBrowserProvider(),
   });
 
   const jobHandlers = createBackgroundJobHandlers({
