@@ -4,6 +4,7 @@ import type { PrismaClient } from "./client.js";
 import {
   answerRunInput,
   appendEvent,
+  claimSteering,
   clearThread,
   finalizeComputerControlRelease,
   followThreadEvents,
@@ -1145,6 +1146,7 @@ describe("sendUserMessage", () => {
       task: { create: vi.fn().mockResolvedValue({ id: "task-1" }) },
       run: {
         create: vi.fn().mockResolvedValue({ id: "run-1" }),
+        findFirst: vi.fn().mockResolvedValue(null),
         findUnique: vi.fn().mockResolvedValue({ status: "queued" }),
       },
       event: {
@@ -1199,7 +1201,7 @@ describe("sendUserMessage", () => {
     expect(publish).toHaveBeenCalledWith("thread:thread-1", JSON.stringify({ cursor: 8 }));
   });
 
-  it("skips run creation when the bot is already busy and onlyIfIdle is set", async () => {
+  it("persists steering instead of starting a parallel run when the bot is busy", async () => {
     const tx = {
       thread: {
         update: vi
@@ -1209,11 +1211,13 @@ describe("sendUserMessage", () => {
       },
       message: {
         create: vi.fn().mockResolvedValue({ id: "message-1", seq: 4 }),
-        update: vi.fn(),
+        update: vi.fn().mockResolvedValue({ id: "message-1" }),
       },
+      steeringMessage: { create: vi.fn() },
       task: { create: vi.fn() },
       run: {
-        findFirst: vi.fn().mockResolvedValue({ id: "run-0" }),
+        findFirst: vi.fn().mockResolvedValue({ id: "run-0", taskId: "task-0" }),
+        findUnique: vi.fn().mockResolvedValue({ status: "running" }),
         create: vi.fn(),
       },
       event: {
@@ -1236,13 +1240,97 @@ describe("sendUserMessage", () => {
         blocks: [{ kind: "text", text: "hello" }],
         prompt: "hello",
         trigger: "follow_up",
-        onlyIfIdle: true,
       }),
-    ).resolves.toEqual({ messageId: "message-1", seq: 4, taskId: null, runId: null });
+    ).resolves.toEqual({ messageId: "message-1", seq: 4, taskId: null, runId: "run-0" });
 
     expect(tx.task.create).not.toHaveBeenCalled();
     expect(tx.run.create).not.toHaveBeenCalled();
-    expect(tx.message.update).not.toHaveBeenCalled();
+    expect(tx.message.update).toHaveBeenCalledWith({
+      where: { id: "message-1" },
+      data: { runId: "run-0" },
+    });
+    expect(tx.steeringMessage.create).toHaveBeenCalledWith({
+      data: { messageId: "message-1", botId: "bot-1", userId: "user-1", runId: "run-0" },
+    });
+  });
+});
+
+describe("claimSteering", () => {
+  it("claims pending messages for the fenced run in message order", async () => {
+    const tx = {
+      $queryRaw: vi.fn(),
+      run: { findFirst: vi.fn().mockResolvedValue({ id: "run-1" }) },
+      steeringMessage: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "steer-1",
+            messageId: "message-1",
+            message: {
+              seq: 5,
+              blocks: [
+                { kind: "text", text: "First" },
+                {
+                  kind: "image",
+                  artifactId: "artifact-1",
+                  name: "chart.png",
+                  mimeType: "image/png",
+                },
+              ],
+            },
+          },
+          {
+            id: "steer-2",
+            messageId: "message-2",
+            message: { seq: 6, blocks: [{ kind: "text", text: "Second" }] },
+          },
+        ]),
+        updateMany: vi.fn().mockResolvedValue({ count: 2 }),
+      },
+    };
+    const prisma = {
+      $transaction: vi.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+    } as unknown as PrismaClient;
+
+    await expect(
+      claimSteering(prisma, {
+        threadId: "thread-1",
+        botId: "bot-1",
+        runId: "run-1",
+        leaseOwner: "worker-1",
+        leaseFence: 2,
+        seenIds: [],
+      }),
+    ).resolves.toEqual([
+      {
+        id: "steer-1",
+        messageId: "message-1",
+        text: "First\n[image: chart.png]",
+        blocks: [
+          { kind: "text", text: "First" },
+          {
+            kind: "image",
+            artifactId: "artifact-1",
+            name: "chart.png",
+            mimeType: "image/png",
+          },
+        ],
+      },
+      {
+        id: "steer-2",
+        messageId: "message-2",
+        text: "Second",
+        blocks: [{ kind: "text", text: "Second" }],
+      },
+    ]);
+    expect(tx.run.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ leaseOwner: "worker-1", leaseFence: 2 }),
+      }),
+    );
+    expect(tx.steeringMessage.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["steer-1", "steer-2"] }, claimedAt: null },
+      data: { runId: "run-1", claimedAt: expect.any(Date) },
+    });
   });
 });
 

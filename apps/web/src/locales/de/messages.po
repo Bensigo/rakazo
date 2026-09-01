@@ -3152,3 +3152,15 @@ msgstr "Link zum Zurücksetzen senden"
 #: src/pages/Auth.tsx:261
 msgid "This reset link is invalid or expired"
 msgstr "Dieser Link zum Zurücksetzen ist ungültig oder abgelaufen"
+
+#: src/pages/Shell.tsx
+msgid "Messages sent now guide the next turn."
+msgstr "Jetzt gesendete Nachrichten steuern den nächsten Durchgang."
+
+#: src/pages/Shell.tsx
+msgid "Steer {activeName}"
+msgstr "{activeName} Anweisungen geben"
+
+#: src/pages/Shell.tsx
+msgid "Send steering message"
+msgstr "Zusätzliche Anweisung senden"

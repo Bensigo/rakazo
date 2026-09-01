@@ -3152,3 +3152,15 @@ msgstr "रीसेट लिंक भेजें"
 #: src/pages/Auth.tsx:261
 msgid "This reset link is invalid or expired"
 msgstr "यह रीसेट लिंक अमान्य है या इसकी समय-सीमा समाप्त हो गई है"
+
+#: src/pages/Shell.tsx
+msgid "Messages sent now guide the next turn."
+msgstr "अभी भेजे गए संदेश अगले चरण का मार्गदर्शन करते हैं।"
+
+#: src/pages/Shell.tsx
+msgid "Steer {activeName}"
+msgstr "{activeName} को निर्देश दें"
+
+#: src/pages/Shell.tsx
+msgid "Send steering message"
+msgstr "अतिरिक्त निर्देश भेजें"

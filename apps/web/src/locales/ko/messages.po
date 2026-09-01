@@ -3152,3 +3152,15 @@ msgstr "재설정 링크 보내기"
 #: src/pages/Auth.tsx:261
 msgid "This reset link is invalid or expired"
 msgstr "이 재설정 링크는 유효하지 않거나 만료되었습니다"
+
+#: src/pages/Shell.tsx
+msgid "Messages sent now guide the next turn."
+msgstr "지금 보내는 메시지는 다음 응답에 반영됩니다."
+
+#: src/pages/Shell.tsx
+msgid "Steer {activeName}"
+msgstr "{activeName}에게 지시하기"
+
+#: src/pages/Shell.tsx
+msgid "Send steering message"
+msgstr "추가 지시 보내기"

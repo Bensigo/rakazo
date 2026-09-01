@@ -50,9 +50,20 @@ export async function deliverMessagingOutbound(
   context: AdapterContext,
 ): Promise<void> {
   if (input.runId) {
-    await mirrorRun(deps, input.runId);
+    await mirrorMessagingOutbound(deps, input.runId);
   }
   await drain(deps, context);
+}
+
+export async function mirrorMessagingOutbound(
+  deps: MessagingDeliveryDeps,
+  runId: string,
+): Promise<void> {
+  await mirrorRun(deps, runId);
+  await deps.prisma.run.updateMany({
+    where: { id: runId, trigger: "messaging" },
+    data: { messagingMirroredAt: new Date() },
+  });
 }
 
 async function mirrorRun(deps: MessagingDeliveryDeps, runId: string): Promise<void> {

@@ -4,7 +4,12 @@ import {
   MessageBlock as MessageBlockSchema,
   type ProductEvent,
 } from "@rakazo/contracts";
-import { isApprovalAskBlock, isSecretAskBlock, sanitizeJsonValue } from "@rakazo/core";
+import {
+  blocksToAgentHistoryText,
+  isApprovalAskBlock,
+  isSecretAskBlock,
+  sanitizeJsonValue,
+} from "@rakazo/core";
 import type { Prisma, PrismaClient } from "./client.js";
 import {
   assertRunCanWriteHistory,
@@ -28,11 +33,12 @@ export interface AppendEventInput {
 export interface ThreadEvents {
   answerRunInput(input: AnswerRunInput): Promise<boolean>;
   append(input: AppendEventInput): Promise<ProductEvent>;
+  claimSteering(input: ClaimSteeringInput): Promise<ClaimedSteeringMessage[]>;
   clearThread(input: ClearThreadInput): Promise<ClearThreadResult>;
   finalizeComputerControlRelease(
     input: FinalizeComputerControlReleaseInput,
   ): Promise<FinalizeComputerControlReleaseResult | false>;
-  finalizeRun(input: FinalizeRunInput): Promise<boolean>;
+  finalizeRun(input: FinalizeRunInput): Promise<FinalizeRunResult | false>;
   notify(threadId: string, seq: number): Promise<void>;
   pauseRunForInput(input: PauseRunForInput): Promise<boolean>;
   pauseRunForTakeover(input: PauseRunForTakeover): Promise<boolean>;
@@ -66,6 +72,26 @@ export interface FinalizeComputerControlReleaseInput {
 
 export interface FinalizeComputerControlReleaseResult {
   runId: string | null;
+}
+
+export interface ClaimSteeringInput {
+  threadId: string;
+  botId: string;
+  runId: string;
+  leaseOwner: string;
+  leaseFence: number;
+  seenIds: string[];
+}
+
+export interface ClaimedSteeringMessage {
+  id: string;
+  messageId: string;
+  text: string;
+  blocks: MessageBlock[];
+}
+
+export interface FinalizeRunResult {
+  continuationRunId: string | null;
 }
 
 interface FinalizeRunBase {
@@ -158,8 +184,6 @@ export interface SendUserMessageInput {
   prompt: string;
   trigger: "user" | "follow_up" | "webhook" | "messaging";
   clientNonce?: string;
-  /** Skip task/run creation when the bot already has active work (follow-up behavior). */
-  onlyIfIdle?: boolean;
   linkMessageToRun?: boolean;
 }
 
@@ -188,6 +212,7 @@ export function createThreadEvents(
   return {
     answerRunInput: (input) => answerRunInput(prisma, input, realtime, options.runSecretWriter),
     append: (input) => appendEvent(prisma, input, realtime),
+    claimSteering: (input) => claimSteering(prisma, input),
     clearThread: (input) => clearThread(prisma, input, realtime),
     finalizeComputerControlRelease: (input) =>
       finalizeComputerControlRelease(prisma, input, realtime),
@@ -325,11 +350,14 @@ export async function sendUserMessage(
       include: { sourceRuns: { orderBy: { createdAt: "asc" }, take: 1 } },
     });
     if (!message) return null;
-    const run = message.sourceRuns[0] ?? null;
+    const created = message.sourceRuns[0];
+    const run =
+      created ??
+      (message.runId ? await prisma.run.findUnique({ where: { id: message.runId } }) : null);
     return {
       messageId: message.id,
       seq: message.seq,
-      taskId: run?.taskId ?? null,
+      taskId: created?.taskId ?? null,
       runId: run?.id ?? null,
     };
   };
@@ -349,12 +377,14 @@ export async function sendUserMessage(
         blocks: input.blocks,
         clientNonce: input.clientNonce,
       });
-      const busy = input.onlyIfIdle
-        ? await tx.run.findFirst({
-            where: { botId: input.botId, status: { in: ["running", "queued", "leased"] } },
-            select: { id: true },
-          })
-        : null;
+      const busy = await tx.run.findFirst({
+        where: {
+          threadId: input.threadId,
+          botId: input.botId,
+          status: { in: ["running", "queued", "leased", "waiting_input", "waiting_takeover"] },
+        },
+        select: { id: true, taskId: true },
+      });
       let task = null;
       let run = null;
       if (!busy) {
@@ -384,16 +414,26 @@ export async function sendUserMessage(
         if (input.linkMessageToRun) {
           await tx.message.update({ where: { id: message.id }, data: { runId: run.id } });
         }
+      } else {
+        await tx.steeringMessage.create({
+          data: {
+            messageId: message.id,
+            botId: input.botId,
+            userId: input.userId,
+            runId: busy.id,
+          },
+        });
+        await tx.message.update({ where: { id: message.id }, data: { runId: busy.id } });
       }
       const event = await appendEventInTransaction(tx, {
         spaceId: input.spaceId,
         threadId: input.threadId,
         botId: input.botId,
         type: "thread.message.created",
-        runId: run?.id,
+        runId: run?.id ?? busy?.id,
         payload: { messageId: message.id, role: "user", blocks: input.blocks },
       });
-      return { message, task, run, event };
+      return { message, task, run, busy, event };
     });
   const committed = await commit().catch(async (error) => {
     const winner = await replay();
@@ -409,8 +449,50 @@ export async function sendUserMessage(
     messageId: committed.message.id,
     seq: committed.message.seq,
     taskId: committed.task?.id ?? null,
-    runId: committed.run?.id ?? null,
+    runId: committed.run?.id ?? committed.busy?.id ?? null,
   };
+}
+
+export async function claimSteering(
+  prisma: PrismaClient,
+  input: ClaimSteeringInput,
+): Promise<ClaimedSteeringMessage[]> {
+  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    await tx.$queryRaw`SELECT id FROM threads WHERE id = ${input.threadId} FOR UPDATE`;
+    const run = await tx.run.findFirst({
+      where: {
+        id: input.runId,
+        threadId: input.threadId,
+        botId: input.botId,
+        status: "running",
+        leaseOwner: input.leaseOwner,
+        leaseFence: input.leaseFence,
+      },
+      select: { id: true },
+    });
+    if (!run) return [];
+    const steering = await tx.steeringMessage.findMany({
+      where: {
+        botId: input.botId,
+        id: input.seenIds.length ? { notIn: input.seenIds } : undefined,
+        OR: [{ runId: null }, { runId: input.runId }],
+        message: { threadId: input.threadId },
+      },
+      include: { message: { select: { blocks: true, seq: true } } },
+      orderBy: [{ message: { seq: "asc" } }, { id: "asc" }],
+    });
+    if (steering.length === 0) return [];
+    await tx.steeringMessage.updateMany({
+      where: { id: { in: steering.map((item) => item.id) }, claimedAt: null },
+      data: { runId: input.runId, claimedAt: new Date() },
+    });
+    return steering.map((item) => ({
+      id: item.id,
+      messageId: item.messageId,
+      text: blocksToAgentHistoryText(item.message.blocks as MessageBlock[]),
+      blocks: item.message.blocks as MessageBlock[],
+    }));
+  });
 }
 
 export async function answerRunInput(
@@ -788,7 +870,7 @@ export async function finalizeRun(
   prisma: PrismaClient,
   input: FinalizeRunInput,
   realtime?: RealtimeFanout,
-): Promise<boolean> {
+): Promise<FinalizeRunResult | false> {
   const committed = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     await tx.$queryRaw`SELECT id FROM threads WHERE id = ${input.threadId} FOR UPDATE`;
     try {
@@ -872,13 +954,81 @@ export async function finalizeRun(
       payload: input.outcome === "completed" ? {} : { error: input.error },
     });
     await tx.event.deleteMany({ where: { runId: input.runId, type: "thread.progress" } });
+    if (input.outcome === "completed") {
+      await tx.steeringMessage.deleteMany({
+        where: { runId: input.runId, claimedAt: { not: null } },
+      });
+      await tx.steeringMessage.updateMany({
+        where: { runId: input.runId },
+        data: { runId: null },
+      });
+    } else {
+      await tx.steeringMessage.updateMany({
+        where: { runId: input.runId },
+        data: { runId: null },
+      });
+    }
+    const continuationRunId = await createSteeringContinuation(tx, input);
     await tx.bot.update({ where: { id: input.botId }, data: { updatedAt: now } });
-    return { threadId: lastEvent.threadId, seq: lastEvent.seq };
+    return { threadId: lastEvent.threadId, seq: lastEvent.seq, continuationRunId };
   });
 
   if (!committed) return false;
   await notifyRealtime(realtime, committed.threadId, committed.seq);
-  return true;
+  return { continuationRunId: committed.continuationRunId };
+}
+
+async function createSteeringContinuation(
+  tx: Prisma.TransactionClient,
+  input: FinalizeRunBase,
+): Promise<string | null> {
+  const active = await tx.run.findFirst({
+    where: {
+      threadId: input.threadId,
+      botId: input.botId,
+      status: { in: ["queued", "leased", "running", "waiting_input", "waiting_takeover"] },
+    },
+    select: { id: true },
+  });
+  if (active) return null;
+  const pending = await tx.steeringMessage.findMany({
+    where: {
+      botId: input.botId,
+      runId: null,
+      message: { threadId: input.threadId },
+    },
+    include: { message: { select: { id: true, blocks: true, seq: true } } },
+    orderBy: [{ message: { seq: "asc" } }, { id: "asc" }],
+  });
+  if (pending.length === 0) return null;
+  const last = pending.at(-1)!;
+  const task = await tx.task.create({
+    data: {
+      spaceId: input.spaceId,
+      botId: input.botId,
+      threadId: input.threadId,
+      userId: pending[0]!.userId,
+      prompt: "Respond to the user's steering context.",
+      status: "queued",
+    },
+  });
+  const run = await tx.run.create({
+    data: {
+      spaceId: input.spaceId,
+      botId: input.botId,
+      threadId: input.threadId,
+      taskId: task.id,
+      userId: pending[0]!.userId,
+      status: "queued",
+      trigger: "follow_up",
+      sourceMessageId: last.message.id,
+    },
+  });
+  await tx.steeringMessage.updateMany({
+    where: { id: { in: pending.map((item) => item.id) }, runId: null },
+    data: { runId: run.id, claimedAt: null },
+  });
+  return run.id;
 }
 
 export async function appendEventInTransaction(

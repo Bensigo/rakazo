@@ -75,7 +75,10 @@ function createDeps(overrides: {
   const identityRow =
     overrides.identity === null ? null : { ...identity, ...(overrides.identity ?? {}) };
   const prisma = {
-    run: { findUnique: vi.fn(async () => overrides.run ?? messagingRun) },
+    run: {
+      findUnique: vi.fn(async () => overrides.run ?? messagingRun),
+      updateMany: vi.fn(async () => ({ count: 1 })),
+    },
     message: {
       findMany: vi.fn(
         async () =>
@@ -203,6 +206,10 @@ describe("deliverMessagingOutbound", () => {
     expect(deps.prisma.messagingIdentity.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { outboundSinceInbound: { increment: 1 } } }),
     );
+    expect(deps.prisma.run.updateMany).toHaveBeenCalledWith({
+      where: { id: "run-1", trigger: "messaging" },
+      data: { messagingMirroredAt: expect.any(Date) },
+    });
   });
 
   it("resolves the DM thread once and caches it when the identity has none", async () => {
@@ -630,7 +637,10 @@ function createChannelDeps(
     },
   };
   const prisma = {
-    run: { findUnique: vi.fn(async () => channelRun) },
+    run: {
+      findUnique: vi.fn(async () => channelRun),
+      updateMany: vi.fn(async () => ({ count: 1 })),
+    },
     message: {
       findMany: vi.fn(
         async () => overrides.messages ?? [{ id: "m-1", blocks: [{ kind: "text", text }] }],

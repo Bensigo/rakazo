@@ -259,6 +259,9 @@ const READ_ONLY_AGENT_TOOLS = new Set([
   "web_fetch",
 ]);
 const MAX_MODEL_FILE_BYTES = 250_000;
+const TURN_ATTACHMENT_UNAVAILABLE =
+  "An attachment in this message could not be loaded. Tell the user the attachment was unavailable and do not guess its contents.";
+const STEERING_ATTACHMENT_UNAVAILABLE = TURN_ATTACHMENT_UNAVAILABLE;
 const BUILTIN_AGENT_TOOL_NAMES = new Set(builtinAgentTools.map((tool) => tool.name));
 
 const SHELL_INTERPRETER_NAMES = /^(?:bash|sh|dash|zsh|ksh|fish)$/;
@@ -939,6 +942,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           : Promise.resolve([]);
         const threadContext = threadContextForRun(run.trigger, {
           messages: [...messages].reverse().map((m) => ({
+            id: m.id,
             seq: m.seq,
             role: (m.role === "user" ? "user" : m.role === "system" ? "system" : "assistant") as
               | "user"
@@ -954,7 +958,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
           summary: threadContext.summary,
           historyCompactedUpToSeq: threadContext.historyCompactedUpToSeq,
         });
-        let history = compactedHistory.history.map(({ role, content }) => ({ role, content }));
+        let history = compactedHistory.history.map(({ id, role, content }) => ({
+          id,
+          role,
+          content,
+        }));
         const turnBlocks = userTurnBlocksForRun(
           run.trigger,
           runId,
@@ -2684,8 +2692,12 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 )}\nWhen the user asks to run a taught skill by name, follow that skill's playbook exactly. The full playbook is included in the user task when they invoke it.`
             : undefined;
         const agentSkillsLine = formatSkillsCatalogInstruction(agentSkills);
+        const missingImagesInstruction = missingTurnImagesInstruction(
+          turnBlocks,
+          currentTurnImages,
+        );
         const taskPrompt = expandSkillReferencesInPrompt(
-          [task.prompt, attachedFilesPrompt].filter(Boolean).join("\n\n"),
+          [task.prompt, attachedFilesPrompt, missingImagesInstruction].filter(Boolean).join("\n\n"),
           agentSkills,
         );
         const invokedSkill = savedSkills.find((skill) =>
@@ -2753,6 +2765,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               botId: bot.id,
               threadId: thread.id,
               runId,
+              sourceMessageId: run.sourceMessageId,
               prompt,
               instructions: [
                 bot.instructions || `${bot.name}: ${bot.title}\n${bot.description}`,
@@ -2802,6 +2815,48 @@ export function createRunExecutor(deps: ExecutorDeps) {
               allowSilentEmpty: allowSilentPeerMessage || messagingChannelRun,
               emptyResponseText,
               executeTool: scripted ? undefined : applyTool,
+              claimSteering: scripted
+                ? undefined
+                : async (seenIds) => {
+                    const steering = await deps.events.claimSteering({
+                      threadId: thread.id,
+                      botId: bot.id,
+                      runId,
+                      leaseOwner: workerId,
+                      leaseFence: fence,
+                      seenIds,
+                    });
+                    return Promise.all(
+                      steering.map(async (item) => {
+                        const { images, files, unavailableInstruction } =
+                          await settleSteeringAttachmentLoads(
+                            loadCurrentTurnImages(deps, item.blocks, context),
+                            deps.artifacts
+                              ? materializeCurrentTurnFiles(
+                                  {
+                                    prisma: deps.prisma,
+                                    artifacts: deps.artifacts,
+                                    sandbox: deps.sandbox,
+                                  },
+                                  item.blocks,
+                                  { context, computer, computerMode },
+                                )
+                              : Promise.resolve([]),
+                            item.blocks,
+                          );
+                        const filesInstruction = currentTurnFilesInstruction(files);
+                        return {
+                          id: item.id,
+                          messageId: item.messageId,
+                          historyText: item.text,
+                          text: [item.text, filesInstruction, unavailableInstruction]
+                            .filter(Boolean)
+                            .join("\n\n"),
+                          images,
+                        };
+                      }),
+                    );
+                  },
             },
             context,
           )) {
@@ -2984,6 +3039,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   blocks: [{ kind: "text", text: stuckText }],
                 });
                 if (!stopped) return;
+                if (stopped.continuationRunId) {
+                  await deps.jobs
+                    .enqueue(runContinueJob(stopped.continuationRunId))
+                    .catch((error) => console.error("steering continuation enqueue", error));
+                }
                 if (run.trigger === "bot_message") {
                   await returnBotMessageOutcome(
                     deps,
@@ -3134,6 +3194,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
             markUnread: completionMarksUnread(run.trigger, text),
           });
           if (!completed) return;
+          if (completed.continuationRunId) {
+            await deps.jobs
+              .enqueue(runContinueJob(completed.continuationRunId))
+              .catch((error) => console.error("steering continuation enqueue", error));
+          }
           if (run.trigger === "bot_message" && text) {
             await returnBotMessageOutcome(
               deps,
@@ -3142,7 +3207,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               text,
             ).catch((error) => console.error("bot message result return", error));
           }
-          if (text) {
+          if (text && !completed.continuationRunId) {
             await notifyRun(deps, run, {
               kind: "completion",
               title: `${bot.name} finished`,
@@ -3201,6 +3266,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
             error: message,
           });
           if (!failed) return;
+          if (failed.continuationRunId) {
+            await deps.jobs
+              .enqueue(runContinueJob(failed.continuationRunId))
+              .catch((error) => console.error("steering continuation enqueue", error));
+          }
           if (run.trigger === "bot_message") {
             await returnBotMessageOutcome(
               deps,
@@ -3210,13 +3280,15 @@ export function createRunExecutor(deps: ExecutorDeps) {
               "status",
             ).catch((returnError) => console.error("bot message failure return", returnError));
           }
-          await notifyRun(deps, run, {
-            kind: "failure",
-            title: `${bot.name} failed`,
-            body: message.slice(0, 180),
-            botId: bot.id,
-            threadId: thread.id,
-          });
+          if (!failed.continuationRunId) {
+            await notifyRun(deps, run, {
+              kind: "failure",
+              title: `${bot.name} failed`,
+              body: message.slice(0, 180),
+              botId: bot.id,
+              threadId: thread.id,
+            });
+          }
         }
       } catch (setupError) {
         const computerBusy = setupError instanceof ComputerBusyError;
@@ -3424,6 +3496,39 @@ export function completionNotificationBody(assembled: string, blocks: MessageBlo
 
 export function completionMarksUnread(trigger: string, text: string): boolean {
   return trigger !== "routine" || Boolean(text);
+}
+
+export function missingTurnImagesInstruction(
+  blocks: MessageBlock[] | undefined,
+  images: { length: number } | undefined,
+): string {
+  const expected = blocks?.filter((block) => block.kind === "image").length ?? 0;
+  const loaded = images?.length ?? 0;
+  return expected > 0 && loaded < expected ? TURN_ATTACHMENT_UNAVAILABLE : "";
+}
+
+export async function settleSteeringAttachmentLoads<TImage, TFile>(
+  images: Promise<TImage[] | undefined>,
+  files: Promise<TFile[]>,
+  blocks?: MessageBlock[],
+): Promise<{
+  images: TImage[] | undefined;
+  files: TFile[];
+  unavailableInstruction: string;
+}> {
+  const [loadedImages, loadedFiles] = await Promise.allSettled([images, files]);
+  const expectedImageCount = blocks?.filter((block) => block.kind === "image").length ?? 0;
+  const loadedImageCount =
+    loadedImages.status === "fulfilled" ? (loadedImages.value?.length ?? 0) : 0;
+  const unavailable =
+    loadedImages.status === "rejected" ||
+    loadedFiles.status === "rejected" ||
+    loadedImageCount < expectedImageCount;
+  return {
+    images: loadedImages.status === "fulfilled" ? loadedImages.value : undefined,
+    files: loadedFiles.status === "fulfilled" ? loadedFiles.value : [],
+    unavailableInstruction: unavailable ? STEERING_ATTACHMENT_UNAVAILABLE : "",
+  };
 }
 
 export function subagentMarksUnread(trigger: string, status: "running" | "completed" | "failed") {
@@ -3715,7 +3820,7 @@ async function withModelCredentialLock<T>(key: string, fn: () => Promise<T>): Pr
   }
 }
 
-async function loadCurrentTurnImages(
+export async function loadCurrentTurnImages(
   deps: ExecutorDeps,
   blocks: MessageBlock[] | undefined,
   context: {
@@ -3748,12 +3853,14 @@ async function loadCurrentTurnImages(
   for (const block of imageBlocks) {
     const row = byId.get(block.artifactId);
     if (!row || !isAttachmentImageMimeType(block.mimeType)) continue;
-    const bytes = await deps.artifacts.get(row.storageKey, context);
-    images.push({
-      name: block.name,
-      mimeType: block.mimeType as "image/jpeg" | "image/png" | "image/webp" | "image/gif",
-      data: bytes,
-    });
+    try {
+      const bytes = await deps.artifacts.get(row.storageKey, context);
+      images.push({
+        name: block.name,
+        mimeType: block.mimeType as "image/jpeg" | "image/png" | "image/webp" | "image/gif",
+        data: bytes,
+      });
+    } catch {}
   }
 
   return images.length ? images : undefined;

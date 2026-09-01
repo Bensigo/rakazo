@@ -3152,3 +3152,15 @@ msgstr "Sıfırlama bağlantısı gönder"
 #: src/pages/Auth.tsx:261
 msgid "This reset link is invalid or expired"
 msgstr "Bu sıfırlama bağlantısı geçersiz veya süresi dolmuş"
+
+#: src/pages/Shell.tsx
+msgid "Messages sent now guide the next turn."
+msgstr "Şimdi gönderilen mesajlar bir sonraki adımı yönlendirir."
+
+#: src/pages/Shell.tsx
+msgid "Steer {activeName}"
+msgstr "{activeName} için yönlendir"
+
+#: src/pages/Shell.tsx
+msgid "Send steering message"
+msgstr "Yönlendirme mesajı gönder"

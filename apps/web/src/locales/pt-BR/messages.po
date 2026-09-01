@@ -3152,3 +3152,15 @@ msgstr "Enviar link de redefinição"
 #: src/pages/Auth.tsx:261
 msgid "This reset link is invalid or expired"
 msgstr "Este link de redefinição é inválido ou expirou"
+
+#: src/pages/Shell.tsx
+msgid "Messages sent now guide the next turn."
+msgstr "As mensagens enviadas agora orientam a próxima etapa."
+
+#: src/pages/Shell.tsx
+msgid "Steer {activeName}"
+msgstr "Orientar {activeName}"
+
+#: src/pages/Shell.tsx
+msgid "Send steering message"
+msgstr "Enviar orientação adicional"
