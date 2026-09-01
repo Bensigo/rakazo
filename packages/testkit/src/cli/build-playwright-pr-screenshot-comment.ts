@@ -24,8 +24,12 @@ const changedPaths = (await readFile(changedPathsPath, "utf8"))
 if (!Array.isArray(review.screenshots)) {
   throw new Error("review.json must include a screenshots array");
 }
-if (typeof review.screenshotsUrl !== "string" || !URL.canParse(review.screenshotsUrl)) {
-  throw new Error("review.json must include a screenshotsUrl");
+if (
+  typeof review.screenshotsUrl !== "string" ||
+  !URL.canParse(review.screenshotsUrl) ||
+  new URL(review.screenshotsUrl).protocol !== "https:"
+) {
+  throw new Error("review.json must include an https screenshotsUrl");
 }
 
 const galleryUrl = getRequiredHttpsEnvironmentVariable("PLAYWRIGHT_GALLERY_URL");
