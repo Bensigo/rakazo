@@ -279,7 +279,6 @@ export class ThirdPartyConnectorEmulator {
     });
     return Response.json({ data: { ok: true, path: url.pathname } });
   }
-
 }
 
 function parseBody(body: RequestInit["body"] | undefined): Record<string, unknown> {

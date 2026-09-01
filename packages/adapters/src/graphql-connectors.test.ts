@@ -1,8 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  importGraphqlSchema,
-  prepareGraphqlInstall,
-} from "./graphql-connectors.js";
+import { importGraphqlSchema, prepareGraphqlInstall } from "./graphql-connectors.js";
 import { InstalledConnectorProvider } from "./installed-connectors.js";
 
 const STAR_WARS_INTROSPECTION = {

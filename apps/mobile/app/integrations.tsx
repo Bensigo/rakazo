@@ -60,7 +60,11 @@ export default function Integrations() {
     setCatalogReady(true);
     try {
       const installs = await rpc<CapabilityInstall[]>("capabilities/list");
-      setSources(installs.filter((item) => item.kind === "mcp" || item.kind === "api" || item.kind === "graphql"));
+      setSources(
+        installs.filter(
+          (item) => item.kind === "mcp" || item.kind === "api" || item.kind === "graphql",
+        ),
+      );
     } catch {
       // Tool sources are optional; keep featured/catalog usable if this fails.
     }
@@ -180,7 +184,11 @@ export default function Integrations() {
         kind: sourceKind === "api" ? "api" : sourceKind === "graphql" ? "graphql" : "mcp",
         name:
           name.trim() ||
-          (sourceKind === "treg" ? "Treg" : sourceKind === "graphql" ? "GraphQL" : "Custom connector"),
+          (sourceKind === "treg"
+            ? "Treg"
+            : sourceKind === "graphql"
+              ? "GraphQL"
+              : "Custom connector"),
         source: url.trim(),
         credential: credential.trim() || undefined,
         config:

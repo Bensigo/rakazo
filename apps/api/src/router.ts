@@ -2232,7 +2232,12 @@ export function createRouter(deps: RouterDeps) {
         if (JSON.stringify(config).length > 2_000_000) {
           throw new ORPCError("BAD_REQUEST", { message: "Capability configuration is too large" });
         }
-        if (credential && input.kind !== "mcp" && input.kind !== "api" && input.kind !== "graphql") {
+        if (
+          credential &&
+          input.kind !== "mcp" &&
+          input.kind !== "api" &&
+          input.kind !== "graphql"
+        ) {
           throw new ORPCError("BAD_REQUEST", {
             message: "Credentials are only accepted for MCP, API, and GraphQL tool sources",
           });

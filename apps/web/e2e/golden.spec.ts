@@ -216,7 +216,9 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
 
   await page.getByRole("button", { name: "Add GraphQL", exact: true }).click();
   await page.getByPlaceholder("Display name").fill("Browser GraphQL");
-  await page.getByPlaceholder("https://example.com/graphql").fill("https://graphql.example.test/graphql");
+  await page
+    .getByPlaceholder("https://example.com/graphql")
+    .fill("https://graphql.example.test/graphql");
   await page.getByRole("button", { name: "Verify and add", exact: true }).click();
   await expect(
     page.getByText(/GRAPHQL · https:\/\/graphql\.example\.test\/graphql · no auth/),

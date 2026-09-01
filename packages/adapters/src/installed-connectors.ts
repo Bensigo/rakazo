@@ -12,6 +12,7 @@ import {
   redactConnectorPayload,
   sanitizeConnectorError,
 } from "./connector-safety.js";
+import { executeGraphqlOperation, GraphqlConfigSchema } from "./graphql-connectors.js";
 import {
   CATALOG_EXECUTE,
   catalogEntries,
@@ -31,11 +32,6 @@ import {
   type RemoteTransportDependencies,
 } from "./remote-mcp.js";
 import type { EncryptedSecretStore } from "./secrets.js";
-import {
-  executeGraphqlOperation,
-  GraphqlConfigSchema,
-} from "./graphql-connectors.js";
-
 
 const HeaderValue = z.string().max(2_048);
 const HeaderName = z

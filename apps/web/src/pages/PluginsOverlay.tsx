@@ -58,7 +58,11 @@ export function PluginsOverlay({
       rpc.capabilities.list(),
     ]);
     setCatalog(items);
-    setSources(installs.filter((install) => install.kind === "mcp" || install.kind === "api" || install.kind === "graphql"));
+    setSources(
+      installs.filter(
+        (install) => install.kind === "mcp" || install.kind === "api" || install.kind === "graphql",
+      ),
+    );
     return items;
   }
 
@@ -198,7 +202,11 @@ export function PluginsOverlay({
         kind: sourceKind === "api" ? "api" : sourceKind === "graphql" ? "graphql" : "mcp",
         name:
           sourceName.trim() ||
-          (sourceKind === "treg" ? "Treg" : sourceKind === "graphql" ? "GraphQL" : "Custom connector"),
+          (sourceKind === "treg"
+            ? "Treg"
+            : sourceKind === "graphql"
+              ? "GraphQL"
+              : "Custom connector"),
         source: sourceUrl.trim(),
         credential: credential.trim() || undefined,
         config:
@@ -440,7 +448,12 @@ export function PluginsOverlay({
                 <Button type="button" variant="pill" size="sm" onClick={() => beginSource("api")}>
                   <Trans>Add OpenAPI</Trans>
                 </Button>
-                <Button type="button" variant="pill" size="sm" onClick={() => beginSource("graphql")}>
+                <Button
+                  type="button"
+                  variant="pill"
+                  size="sm"
+                  onClick={() => beginSource("graphql")}
+                >
                   <Trans>Add GraphQL</Trans>
                 </Button>
                 <Button type="button" variant="pill" size="sm" onClick={() => beginSource("treg")}>
