@@ -1612,19 +1612,11 @@ function Thread() {
             ))}
           </View>
         ) : null}
-        {working ? (
-          <Text
-            accessibilityLiveRegion="polite"
-            style={{ color: "#85858A", fontSize: 12, marginTop: 12, marginHorizontal: 8 }}
-          >
-            Messages sent now guide the next turn.
-          </Text>
-        ) : null}
         <View
           style={{
             flexDirection: "row",
             gap: 8,
-            marginTop: working ? 8 : 16,
+            marginTop: 16,
             alignItems: "flex-end",
           }}
         >
@@ -1721,7 +1713,7 @@ function Thread() {
             <TextInput
               value={draft}
               onChangeText={updateDraft}
-              accessibilityLabel={working ? `Steer ${name ?? "bot"}` : "Message"}
+              accessibilityLabel={name ? `Message ${name}` : "Message"}
               onKeyPress={(event) => {
                 if (
                   event.nativeEvent.key === "Backspace" &&
@@ -1734,8 +1726,8 @@ function Thread() {
               placeholder={
                 selectedSkill || selectedMentions.length
                   ? undefined
-                  : working
-                    ? `Steer ${name ?? "bot"}`
+                  : name
+                    ? `Message ${name}`
                     : "Message…"
               }
               placeholderTextColor="#6C6C70"
@@ -1755,7 +1747,7 @@ function Thread() {
             />
           </View>
           <Pressable
-            accessibilityLabel={working ? "Send steering message" : "Send"}
+            accessibilityLabel="Send"
             disabled={sending || !canSend}
             onPress={() => void send()}
             style={{
