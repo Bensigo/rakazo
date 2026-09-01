@@ -16,6 +16,7 @@ import {
   createThreadMessageInTransaction,
   RunHistoryWriteError,
 } from "./messages.js";
+import { withTransactionRetry } from "./transaction-retry.js";
 
 const EVENT_BATCH_SIZE = 200;
 const PUSH_CATCH_UP_MS = 30_000;
@@ -871,7 +872,17 @@ export async function finalizeRun(
   input: FinalizeRunInput,
   realtime?: RealtimeFanout,
 ): Promise<FinalizeRunResult | false> {
-  const committed = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+  const committed = await withTransactionRetry(() => finalizeRunOnce(prisma, input));
+  if (!committed) return false;
+  await notifyRealtime(realtime, committed.threadId, committed.seq);
+  return { continuationRunId: committed.continuationRunId };
+}
+
+async function finalizeRunOnce(
+  prisma: PrismaClient,
+  input: FinalizeRunInput,
+): Promise<{ threadId: string; seq: number; continuationRunId: string | null } | null> {
+  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     await tx.$queryRaw`SELECT id FROM threads WHERE id = ${input.threadId} FOR UPDATE`;
     try {
       await assertRunCanWriteHistory(tx, input.runId);
@@ -972,10 +983,6 @@ export async function finalizeRun(
     await tx.bot.update({ where: { id: input.botId }, data: { updatedAt: now } });
     return { threadId: lastEvent.threadId, seq: lastEvent.seq, continuationRunId };
   });
-
-  if (!committed) return false;
-  await notifyRealtime(realtime, committed.threadId, committed.seq);
-  return { continuationRunId: committed.continuationRunId };
 }
 
 async function createSteeringContinuation(

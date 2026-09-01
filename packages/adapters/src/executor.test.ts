@@ -115,6 +115,21 @@ describe("steering attachment hydration", () => {
     expect(withoutExpectedImages.unavailableInstruction).toBe("");
   });
 
+  it("propagates cancellation while steering attachments settle", async () => {
+    const controller = new AbortController();
+    const cancellation = new Error("cancelled");
+    controller.abort();
+
+    await expect(
+      settleSteeringAttachmentLoads(
+        Promise.reject(cancellation),
+        Promise.resolve([]),
+        undefined,
+        controller.signal,
+      ),
+    ).rejects.toBe(cancellation);
+  });
+
   it("treats unreadable image bytes as missing instead of failing hydration", async () => {
     const blocks: MessageBlock[] = [
       { kind: "image", artifactId: "image-1", name: "one.png", mimeType: "image/png" },
@@ -156,6 +171,35 @@ describe("steering attachment hydration", () => {
       blocks,
     );
     expect(settled.unavailableInstruction).toContain("do not guess its contents");
+  });
+
+  it("does not swallow image hydration cancellation", async () => {
+    const controller = new AbortController();
+    const cancellation = new Error("cancelled");
+    controller.abort(cancellation);
+
+    await expect(
+      loadCurrentTurnImages(
+        {
+          artifacts: { get: vi.fn(async () => Promise.reject(cancellation)) },
+          prisma: {
+            artifact: {
+              findMany: vi.fn(async () => [{ id: "image-1", storageKey: "one.png" }]),
+            },
+          },
+        } as never,
+        [{ kind: "image", artifactId: "image-1", name: "one.png", mimeType: "image/png" }],
+        {
+          operationId: "run-1",
+          traceId: "run-1",
+          spaceId: "space-1",
+          userId: "user-1",
+          botId: "bot-1",
+          runId: "run-1",
+          signal: controller.signal,
+        },
+      ),
+    ).rejects.toBe(cancellation);
   });
 
   it("warns when an ordinary turn expects more images than were loaded", () => {

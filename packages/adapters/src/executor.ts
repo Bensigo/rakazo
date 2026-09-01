@@ -2843,6 +2843,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                                 )
                               : Promise.resolve([]),
                             item.blocks,
+                            context.signal,
                           );
                         const filesInstruction = currentTurnFilesInstruction(files);
                         return {
@@ -3511,12 +3512,17 @@ export async function settleSteeringAttachmentLoads<TImage, TFile>(
   images: Promise<TImage[] | undefined>,
   files: Promise<TFile[]>,
   blocks?: MessageBlock[],
+  signal?: AbortSignal,
 ): Promise<{
   images: TImage[] | undefined;
   files: TFile[];
   unavailableInstruction: string;
 }> {
   const [loadedImages, loadedFiles] = await Promise.allSettled([images, files]);
+  if (signal?.aborted) {
+    if (loadedImages.status === "rejected") throw loadedImages.reason;
+    if (loadedFiles.status === "rejected") throw loadedFiles.reason;
+  }
   const expectedImageCount = blocks?.filter((block) => block.kind === "image").length ?? 0;
   const loadedImageCount =
     loadedImages.status === "fulfilled" ? (loadedImages.value?.length ?? 0) : 0;
@@ -3860,7 +3866,9 @@ export async function loadCurrentTurnImages(
         mimeType: block.mimeType as "image/jpeg" | "image/png" | "image/webp" | "image/gif",
         data: bytes,
       });
-    } catch {}
+    } catch (error) {
+      if (context.signal.aborted) throw error;
+    }
   }
 
   return images.length ? images : undefined;
