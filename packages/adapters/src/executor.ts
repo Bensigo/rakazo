@@ -2909,6 +2909,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
               const safeDetail = event.detail
                 ? redactSecrets(event.detail, runSecrets)
                 : event.detail;
+              const safeActions = event.actions?.map((action) => ({
+                id: action.id,
+                label: redactSecrets(action.label, runSecrets),
+              }));
               await checkpointAndRecordComputerWorkspace(deps, storedComputer, computer, context);
               const paused = await deps.events.pauseRunForInput({
                 spaceId: run.spaceId,
@@ -2918,7 +2922,17 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 attemptId: attempt.id,
                 leaseOwner: workerId,
                 leaseFence: fence,
-                blocks: [{ kind: "ask", text: safeText, detail: safeDetail, status: "pending" }],
+                blocks: [
+                  {
+                    kind: "ask",
+                    text: safeText,
+                    detail: safeDetail,
+                    status: "pending",
+                    actions: safeActions,
+                  },
+                ],
+                // Keep unredacted labels on the run for resume; message blocks stay redacted.
+                offeredActions: event.actions,
               });
               if (!paused) return;
               await notifyRun(deps, run, {
