@@ -85,9 +85,10 @@ describe("the images compose file", () => {
     expect(published.size).toBeGreaterThan(0);
     expect(referenced.has("computer")).toBe(true);
     for (const name of referenced) {
-      expect(published.has(name), `${name} referenced by images compose but omitted from publish matrix`).toBe(
-        true,
-      );
+      expect(
+        published.has(name),
+        `${name} referenced by images compose but omitted from publish matrix`,
+      ).toBe(true);
     }
   });
 
