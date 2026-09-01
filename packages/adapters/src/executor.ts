@@ -721,9 +721,23 @@ export function createRunExecutor(deps: ExecutorDeps) {
      * Event-driven wake (webhook / repo / chat). Reuses the cron wake path's
      * task+run+continue enqueue without claiming or advancing nextRunAt.
      */
-    async wakeRoutineFromEvent(routineId: string, event: NormalizedRoutineEvent) {
+    async wakeRoutineFromEvent(
+      routineId: string,
+      event: NormalizedRoutineEvent,
+      options?: { idempotencyKey?: string },
+    ) {
       const routine = await deps.prisma.routine.findUnique({ where: { id: routineId } });
       if (!routine?.active) return null;
+      if (options?.idempotencyKey) {
+        const existing = await deps.prisma.run.findFirst({
+          where: {
+            spaceId: routine.spaceId,
+            clientNonce: options.idempotencyKey,
+          },
+          select: { id: true, threadId: true },
+        });
+        if (existing) return { runId: existing.id, threadId: existing.threadId };
+      }
       const bot = await deps.prisma.bot.findUnique({
         where: { id: routine.botId },
         include: { thread: true },
@@ -756,35 +770,60 @@ export function createRunExecutor(deps: ExecutorDeps) {
       const prompt = formatRoutineEventPrompt(routinePrompt, event);
       const trigger = event.source === "chat" ? ("messaging" as const) : ("webhook" as const);
       const previousLastRunAt = routine.lastRunAt;
-      const claimed = await deps.prisma.$transaction(async (tx) => {
-        const updated = await tx.routine.updateMany({
-          where: { id: routine.id, active: true },
-          data: { lastRunAt: new Date() },
+      const preservedNextRunAt = routine.nextRunAt;
+      let claimed: { id: string; taskId: string; threadId: string } | null = null;
+      try {
+        claimed = await deps.prisma.$transaction(async (tx) => {
+          const updated = await tx.routine.updateMany({
+            where: { id: routine.id, active: true },
+            data: { lastRunAt: new Date() },
+          });
+          if (updated.count !== 1) return null;
+          const task = await tx.task.create({
+            data: {
+              spaceId: routine.spaceId,
+              botId: bot.id,
+              threadId: thread.id,
+              userId: routine.userId,
+              prompt,
+              status: "queued",
+            },
+          });
+          const run = await tx.run.create({
+            data: {
+              spaceId: routine.spaceId,
+              botId: bot.id,
+              threadId: thread.id,
+              taskId: task.id,
+              userId: routine.userId,
+              status: "queued",
+              trigger,
+              routineId: routine.id,
+              clientNonce: options?.idempotencyKey,
+            },
+          });
+          // Cron schedule must stay put for event wakes.
+          if (preservedNextRunAt) {
+            await tx.routine.updateMany({
+              where: { id: routine.id },
+              data: { nextRunAt: preservedNextRunAt },
+            });
+          }
+          return { id: run.id, taskId: task.id, threadId: thread.id };
         });
-        if (updated.count !== 1) return null;
-        const task = await tx.task.create({
-          data: {
-            spaceId: routine.spaceId,
-            botId: bot.id,
-            threadId: thread.id,
-            userId: routine.userId,
-            prompt,
-            status: "queued",
-          },
-        });
-        return tx.run.create({
-          data: {
-            spaceId: routine.spaceId,
-            botId: bot.id,
-            threadId: thread.id,
-            taskId: task.id,
-            userId: routine.userId,
-            status: "queued",
-            trigger,
-            routineId: routine.id,
-          },
-        });
-      });
+      } catch (error) {
+        if (options?.idempotencyKey && isUniqueConstraintError(error)) {
+          const existing = await deps.prisma.run.findFirst({
+            where: {
+              spaceId: routine.spaceId,
+              clientNonce: options.idempotencyKey,
+            },
+            select: { id: true, threadId: true },
+          });
+          if (existing) return { runId: existing.id, threadId: existing.threadId };
+        }
+        throw error;
+      }
       if (!claimed) return null;
       try {
         await deps.jobs.enqueue(runContinueJob(claimed.id));
@@ -794,7 +833,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
           await tx.task.deleteMany({ where: { id: claimed.taskId, status: "queued" } });
           await tx.routine.updateMany({
             where: { id: routine.id },
-            data: { lastRunAt: previousLastRunAt },
+            data: {
+              lastRunAt: previousLastRunAt,
+              nextRunAt: preservedNextRunAt,
+            },
           });
         });
         throw error;
@@ -819,7 +861,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
       } catch {
         // Best effort: the run is already queued.
       }
-      return { runId: claimed.id, threadId: thread.id };
+      return { runId: claimed.id, threadId: claimed.threadId };
     },
 
     async continueRun(runId: string, workerId: string) {
@@ -3979,4 +4021,8 @@ export async function loadCurrentTurnImages(
   }
 
   return images.length ? images : undefined;
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return Boolean(error && typeof error === "object" && "code" in error && error.code === "P2002");
 }

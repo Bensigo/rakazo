@@ -1,8 +1,11 @@
-import { createHash } from "node:crypto";
 import type { JobPublisher } from "@rakazo/adapter-kit";
 import { runContinueJob } from "@rakazo/adapter-kit";
 import type { EncryptedSecretStore } from "@rakazo/adapters";
-import { dispatchRoutineEvents, eventsFromWebhookPayload } from "@rakazo/adapters";
+import {
+  dispatchRoutineEvents,
+  eventsFromWebhookPayload,
+  webhookDeliveryIdempotencyKey,
+} from "@rakazo/adapters";
 import type { NormalizedRoutineEvent } from "@rakazo/core";
 import { hasValidBearerToken } from "@rakazo/core";
 import type { PrismaClient } from "@rakazo/db";
@@ -32,6 +35,7 @@ export type WebhookDeps = {
   wakeRoutineFromEvent(
     routineId: string,
     event: NormalizedRoutineEvent,
+    options?: { idempotencyKey?: string },
   ): Promise<{ runId: string; threadId: string } | null>;
 };
 
@@ -154,6 +158,11 @@ export function mountWebhookHttpRoutes(app: Hono, deps: WebhookDeps) {
       eventName: c.req.header("x-github-event") ?? c.req.header("x-rakazo-event"),
     });
 
+    const deliveryKey = webhookDeliveryIdempotencyKey({
+      botId: bot.id,
+      headers: c.req.raw.headers,
+      payload,
+    });
     const woken = await dispatchRoutineEvents({
       deps: {
         prisma: deps.prisma,
@@ -162,6 +171,7 @@ export function mountWebhookHttpRoutes(app: Hono, deps: WebhookDeps) {
       botId: bot.id,
       spaceId: bot.spaceId,
       events,
+      idempotencyKey: deliveryKey,
     });
 
     if (woken.length > 0) {
@@ -175,15 +185,7 @@ export function mountWebhookHttpRoutes(app: Hono, deps: WebhookDeps) {
 
     // No matching routine trigger: keep the legacy bot-level webhook wake.
     const eventPrompt = formatWebhookPrompt(payload);
-    const idempotencyKey =
-      c.req.header("idempotency-key")?.trim() ||
-      c.req.header("x-idempotency-key")?.trim() ||
-      (typeof payload.id === "string" ? payload.id.trim() : "") ||
-      (typeof payload.event_id === "string" ? payload.event_id.trim() : "") ||
-      undefined;
-    const clientNonce = idempotencyKey
-      ? `webhook:${bot.id}:${createHash("sha256").update(idempotencyKey).digest("base64url")}`
-      : undefined;
+    const clientNonce = deliveryKey;
 
     const sent = await deps.events.sendUserMessage({
       spaceId: bot.spaceId,

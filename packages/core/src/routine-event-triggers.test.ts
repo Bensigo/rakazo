@@ -4,6 +4,7 @@ import {
   matchingEventTriggers,
   normalizeRepoEventPayload,
   normalizeRepoName,
+  textMentionsBot,
   triggerMatchesEvent,
   webhookEnabledFromTriggers,
 } from "./routine-event-triggers.js";
@@ -185,5 +186,83 @@ describe("routine event triggers", () => {
         payload: {},
       }).map((t) => t.id),
     ).toEqual(["r1"]);
+  });
+
+  it("appends webhook when webhookEnabled is true alongside other triggers", () => {
+    const triggers = coalesceRoutineEventTriggers(
+      [
+        {
+          id: "r1",
+          kind: "repo",
+          repo: "acme/app",
+          events: ["push"],
+        },
+      ],
+      true,
+    );
+    expect(triggers.map((trigger) => trigger.kind).sort()).toEqual(["repo", "webhook"]);
+  });
+
+  it("strips @ and # from chat targets", () => {
+    const trigger = {
+      id: "c3",
+      kind: "chat" as const,
+      scope: "dm" as const,
+      target: "@alice",
+      match: "message" as const,
+    };
+    expect(
+      triggerMatchesEvent(trigger, {
+        source: "chat",
+        provider: "slack",
+        scope: "dm",
+        targets: ["alice"],
+        text: "hi",
+        mentioned: false,
+        reaction: false,
+        payload: {},
+      }),
+    ).toBe(true);
+  });
+
+  it("matches reactions without requiring text", () => {
+    const trigger = {
+      id: "c4",
+      kind: "chat" as const,
+      scope: "dm" as const,
+      target: "U1",
+      match: "reaction" as const,
+    };
+    expect(
+      triggerMatchesEvent(trigger, {
+        source: "chat",
+        provider: "slack",
+        scope: "dm",
+        targets: ["U1"],
+        text: "",
+        mentioned: false,
+        reaction: true,
+        payload: {},
+      }),
+    ).toBe(true);
+    expect(
+      triggerMatchesEvent(trigger, {
+        source: "chat",
+        provider: "slack",
+        scope: "dm",
+        targets: ["U1"],
+        text: "hello",
+        mentioned: false,
+        reaction: false,
+        payload: {},
+      }),
+    ).toBe(false);
+  });
+
+  it("detects this-bot mentions, not arbitrary @words", () => {
+    expect(textMentionsBot("hey @Scout please look", ["Scout", "B123"])).toBe(true);
+    expect(textMentionsBot("ping <@B123>", ["Scout", "B123"])).toBe(true);
+    expect(textMentionsBot("hey @someone else", ["Scout", "B123"])).toBe(false);
+    expect(textMentionsBot("no mention here", ["Scout"])).toBe(false);
   });
 });

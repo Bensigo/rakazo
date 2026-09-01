@@ -57,7 +57,12 @@ export function coalesceRoutineEventTriggers(
   webhookEnabled: boolean,
 ): RoutineEventTriggers {
   const parsed = parseRoutineEventTriggers(eventTriggers);
-  if (parsed.length > 0) return parsed;
+  if (parsed.length > 0) {
+    if (webhookEnabled && !parsed.some((trigger) => trigger.kind === "webhook")) {
+      return [...parsed, { id: "legacy-webhook", kind: "webhook" }];
+    }
+    return parsed;
+  }
   if (webhookEnabled) return [{ id: "legacy-webhook", kind: "webhook" }];
   return [];
 }
@@ -80,12 +85,42 @@ export function matchRepoTrigger(trigger: RoutineRepoTrigger, event: NormalizedR
 }
 
 function normalizeTarget(value: string): string {
-  return value.trim().replace(/^#/, "").toLowerCase();
+  return value
+    .trim()
+    .replace(/^[#@]+/, "")
+    .toLowerCase();
+}
+
+/**
+ * True when `text` mentions this bot via an explicit token (@Name, <@id>, etc.).
+ * Any bare @word does not count.
+ */
+export function textMentionsBot(text: string, mentionTokens: string[]): boolean {
+  const haystack = text.toLowerCase();
+  for (const raw of mentionTokens) {
+    const token = raw.trim();
+    if (!token) continue;
+    const lowered = token.toLowerCase();
+    const bare = normalizeTarget(token);
+    if (!bare) continue;
+    if (haystack.includes(`<@${bare}>`)) return true;
+    if (new RegExp(`(^|\\s)@${escapeRegExp(bare)}(?=$|\\s|[.,!?])`, "i").test(text)) {
+      return true;
+    }
+    // Display-name mentions without @ when the platform already flagged this bot.
+    if (lowered.length >= 2 && haystack.includes(`@${bare}`)) return true;
+  }
+  return false;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 export function matchChatTrigger(trigger: RoutineChatTrigger, event: NormalizedChatEvent): boolean {
   if (trigger.scope !== event.scope) return false;
   const wanted = normalizeTarget(trigger.target);
+  if (!wanted) return false;
   if (!event.targets.some((target) => normalizeTarget(target) === wanted)) return false;
 
   switch (trigger.match) {

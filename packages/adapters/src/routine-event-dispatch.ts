@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { NormalizedRoutineEvent } from "@rakazo/core";
 import {
   coalesceRoutineEventTriggers,
@@ -19,6 +20,7 @@ export type RoutineEventDispatchDeps = {
           botId: string;
           spaceId: string;
           active: boolean;
+          OR: Array<Record<string, unknown>>;
         };
         select: {
           id: true;
@@ -26,7 +28,6 @@ export type RoutineEventDispatchDeps = {
           webhookEnabled: true;
         };
         orderBy: { updatedAt: "desc" };
-        take: number;
       }): Promise<
         Array<{
           id: string;
@@ -39,6 +40,7 @@ export type RoutineEventDispatchDeps = {
   wakeRoutineFromEvent(
     routineId: string,
     event: NormalizedRoutineEvent,
+    options?: { idempotencyKey?: string },
   ): Promise<{ runId: string; threadId: string } | null>;
 };
 
@@ -51,13 +53,14 @@ export async function dispatchRoutineEvents(input: {
   botId: string;
   spaceId: string;
   events: NormalizedRoutineEvent[];
-  limit?: number;
+  idempotencyKey?: string;
 }): Promise<RoutineEventWakeResult[]> {
   const routines = await input.deps.prisma.routine.findMany({
     where: {
       botId: input.botId,
       spaceId: input.spaceId,
       active: true,
+      OR: [{ webhookEnabled: true }, { NOT: { eventTriggers: { equals: [] } } }],
     },
     select: {
       id: true,
@@ -65,7 +68,6 @@ export async function dispatchRoutineEvents(input: {
       webhookEnabled: true,
     },
     orderBy: { updatedAt: "desc" },
-    take: input.limit ?? 25,
   });
 
   const results: RoutineEventWakeResult[] = [];
@@ -78,11 +80,13 @@ export async function dispatchRoutineEvents(input: {
     const matched = input.events.some((event) => matchingEventTriggers(triggers, event).length > 0);
     if (!matched || woken.has(routine.id)) continue;
 
-    const wake = await input.deps.wakeRoutineFromEvent(
-      routine.id,
-      // Prefer the most specific matching event for the prompt payload.
-      pickPromptEvent(triggers, input.events),
-    );
+    const promptEvent = pickPromptEvent(triggers, input.events);
+    const idempotencyKey = input.idempotencyKey
+      ? routineEventIdempotencyKey(routine.id, input.idempotencyKey)
+      : undefined;
+    const wake = await input.deps.wakeRoutineFromEvent(routine.id, promptEvent, {
+      idempotencyKey,
+    });
     if (!wake) continue;
     woken.add(routine.id);
     results.push({ routineId: routine.id, runId: wake.runId, threadId: wake.threadId });
@@ -91,14 +95,20 @@ export async function dispatchRoutineEvents(input: {
   return results;
 }
 
-function pickPromptEvent(
+/** Prefer a matching repo event over a generic webhook event for the prompt. */
+export function pickPromptEvent(
   triggers: ReturnType<typeof coalesceRoutineEventTriggers>,
   events: NormalizedRoutineEvent[],
 ): NormalizedRoutineEvent {
-  for (const event of events) {
-    if (matchingEventTriggers(triggers, event).length > 0) return event;
-  }
-  return events[0]!;
+  const matching = events.filter((event) => matchingEventTriggers(triggers, event).length > 0);
+  const repo = matching.find((event) => event.source === "repo");
+  if (repo) return repo;
+  return matching[0] ?? events[0]!;
+}
+
+export function routineEventIdempotencyKey(routineId: string, eventKey: string): string {
+  const digest = createHash("sha256").update(`${routineId}:${eventKey}`).digest("base64url");
+  return `routine-event:${digest}`;
 }
 
 /** Build the webhook + optional repo events from an inbound HTTP payload. */
@@ -110,4 +120,19 @@ export function eventsFromWebhookPayload(
   const repo = normalizeRepoEventPayload(payload, headers);
   if (repo) events.push(repo);
   return events;
+}
+
+export function webhookDeliveryIdempotencyKey(input: {
+  botId: string;
+  headers: Headers | { get(name: string): string | null };
+  payload: Record<string, unknown>;
+}): string | undefined {
+  const raw =
+    input.headers.get("idempotency-key")?.trim() ||
+    input.headers.get("x-idempotency-key")?.trim() ||
+    (typeof input.payload.id === "string" ? input.payload.id.trim() : "") ||
+    (typeof input.payload.event_id === "string" ? input.payload.event_id.trim() : "") ||
+    undefined;
+  if (!raw) return undefined;
+  return `webhook:${input.botId}:${createHash("sha256").update(raw).digest("base64url")}`;
 }

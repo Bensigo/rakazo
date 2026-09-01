@@ -54,13 +54,6 @@ const SCHEDULE_PRESETS: CronFreq[] = [
   "Advanced",
 ];
 
-const COMING_SOON = [
-  { id: "teams", label: () => t`Teams message` },
-  { id: "linear", label: () => t`Linear issue` },
-  { id: "sentry", label: () => t`Sentry alert` },
-  { id: "pagerduty", label: () => t`PagerDuty incident` },
-] as const;
-
 const REPO_EVENT_OPTIONS: RepoEventKind[] = [...REPO_EVENT_KIND_VALUES];
 const CHAT_MATCH_OPTIONS: ChatMatchKind[] = [...ChatMatchKindSchema.options];
 const CHAT_SCOPE_OPTIONS: ChatTriggerScope[] = [...ChatTriggerScopeSchema.options];
@@ -298,7 +291,7 @@ export function RoutineEditor({
     }
   }
 
-  function addRepoTrigger() {
+  async function addRepoTrigger() {
     upsertTriggers([
       ...draft.eventTriggers,
       {
@@ -310,6 +303,9 @@ export function RoutineEditor({
     ]);
     setMenuOpen(false);
     setScheduleOpen(false);
+    if (!webhook.configured) {
+      await onEnsureWebhook().catch(() => undefined);
+    }
   }
 
   function addChatTrigger() {
@@ -318,7 +314,7 @@ export function RoutineEditor({
       {
         id: newRoutineEventTriggerId("chat"),
         kind: "chat",
-        scope: "channel",
+        scope: "dm",
         target: "",
         match: "mention",
       },
@@ -456,6 +452,10 @@ export function RoutineEditor({
                 <RepoTriggerCard
                   key={trigger.id}
                   value={trigger}
+                  saved={Boolean(editing)}
+                  path={webhook.path}
+                  secret={webhook.secret}
+                  configured={webhook.configured}
                   onChange={(next) =>
                     upsertTriggers(
                       draft.eventTriggers.map((item) => (item.id === trigger.id ? next : item)),
@@ -464,6 +464,7 @@ export function RoutineEditor({
                   onRemove={() =>
                     upsertTriggers(draft.eventTriggers.filter((item) => item.id !== trigger.id))
                   }
+                  onRotate={() => void onEnsureWebhook()}
                 />
               );
             }
@@ -560,7 +561,7 @@ export function RoutineEditor({
               <button
                 type="button"
                 role="menuitem"
-                onClick={addRepoTrigger}
+                onClick={() => void addRepoTrigger()}
                 className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-start text-[14px] text-[#ECECEE] hover:bg-[#1E1E22]"
               >
                 <span aria-hidden className="inline-block h-3.5 w-3.5 rounded-[4px] bg-[#F97316]" />
@@ -576,24 +577,6 @@ export function RoutineEditor({
                 <span aria-hidden className="inline-block h-3.5 w-3.5 rounded-[4px] bg-[#E11D48]" />
                 <Trans>Slack message</Trans>
               </button>
-
-              {COMING_SOON.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  role="menuitem"
-                  disabled
-                  title={t`Coming soon`}
-                  className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-start text-[14px] text-[#6C6C70]"
-                >
-                  <span
-                    aria-hidden
-                    className="inline-block h-3.5 w-3.5 rounded-[4px]"
-                    style={{ background: comingSoonColor(item.id), opacity: 0.55 }}
-                  />
-                  {item.label()}
-                </button>
-              ))}
 
               <button
                 type="button"
@@ -725,14 +708,38 @@ function WebhookTriggerCard({
 
 function RepoTriggerCard({
   value,
+  saved,
+  path,
+  secret,
+  configured,
   onChange,
   onRemove,
+  onRotate,
 }: {
   value: Extract<RoutineEventTrigger, { kind: "repo" }>;
+  saved: boolean;
+  path: string;
+  secret: string | null;
+  configured: boolean;
   onChange: (next: Extract<RoutineEventTrigger, { kind: "repo" }>) => void;
   onRemove: () => void;
+  onRotate: () => void;
 }) {
   const { t } = useLingui();
+  const pending = !saved;
+  const placeholder = t`Available after the routine is saved`;
+  const postValue = pending ? placeholder : path;
+  const keyValue = pending
+    ? placeholder
+    : (secret ?? (configured ? t`Saved. Rotate to reveal.` : placeholder));
+  const headerValue = pending
+    ? placeholder
+    : secret
+      ? `Authorization: Bearer ${secret}`
+      : configured
+        ? "Authorization: Bearer …"
+        : placeholder;
+
   return (
     <div className="rounded-[13px] border border-[#26262A] p-3">
       <div className="flex items-center gap-2.5 px-0.5">
@@ -788,6 +795,40 @@ function RepoTriggerCard({
             );
           })}
         </div>
+      </div>
+      <div className="mt-2.5 space-y-2.5 rounded-[11px] bg-[#16161A] px-2.5 py-2.5 text-[13.5px]">
+        <div className="block text-[#7A7A80]">
+          <Trans>POST to</Trans>
+          <div className="mt-1 break-all rounded-lg bg-[#24242A] px-2.5 py-1.5 font-mono text-[12.5px] text-[#C9C9CE]">
+            {postValue}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 text-[#7A7A80]">
+          <span className="shrink-0">
+            <Trans>key</Trans>
+          </span>
+          <div className="min-w-0 flex-1 break-all rounded-lg bg-[#24242A] px-2.5 py-1.5 font-mono text-[12.5px] text-[#C9C9CE]">
+            {keyValue}
+          </div>
+        </div>
+        <div className="block text-[#7A7A80]">
+          <Trans>header</Trans>
+          <div className="mt-1 break-all rounded-lg bg-[#24242A] px-2.5 py-1.5 font-mono text-[12.5px] text-[#C9C9CE]">
+            {headerValue}
+          </div>
+        </div>
+        <p className="text-[12px] text-[#6C6C70]">
+          <Trans>Needs Bearer. GitHub.com hooks cannot send it.</Trans>
+        </p>
+        {saved && configured && !secret ? (
+          <button
+            type="button"
+            onClick={onRotate}
+            className="text-[12.5px] text-[#9A9AA0] hover:text-[#ECECEE]"
+          >
+            <Trans>Rotate key</Trans>
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -893,23 +934,6 @@ function schedulePresetLabel(freq: CronFreq): string {
       return t`Advanced...`;
     default:
       return freq;
-  }
-}
-
-function comingSoonColor(id: string): string {
-  switch (id) {
-    case "slack":
-      return "#E01E5A";
-    case "git":
-      return "#8B949E";
-    case "teams":
-      return "#6264A7";
-    case "linear":
-      return "#5E6AD2";
-    case "sentry":
-      return "#A467FD";
-    default:
-      return "#06AC38";
   }
 }
 

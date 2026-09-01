@@ -78,7 +78,7 @@ export default function RoutineDetail() {
             </Text>
           </View>
           <Text style={{ color: "#85858A", fontSize: 13 }}>
-            Event triggers can be added and edited on web. Mobile stays read-only for routines.
+            Edit triggers on web. Mobile is read-only.
           </Text>
           <View style={{ gap: 8 }}>
             <Text style={{ color: "#85858A", fontSize: 13, textTransform: "uppercase" }}>

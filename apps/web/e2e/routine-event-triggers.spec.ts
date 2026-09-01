@@ -28,6 +28,8 @@ test("routine editor event triggers: webhook, git, and slack", async ({ page }, 
     .fill("Summarize the event and open a follow-up.");
 
   await page.getByRole("button", { name: "Add trigger" }).click();
+  await expect(page.getByRole("menuitem", { name: "Teams message" })).toHaveCount(0);
+  await expect(page.getByRole("menuitem", { name: "Linear issue" })).toHaveCount(0);
   await page.getByRole("menuitem", { name: "Webhook" }).click();
   await expect(page.getByText("When a webhook fires")).toBeVisible();
 
@@ -35,10 +37,11 @@ test("routine editor event triggers: webhook, git, and slack", async ({ page }, 
   await page.getByRole("menuitem", { name: "Git event" }).click();
   await page.getByPlaceholder("owner/repo").fill("acme/app");
   await page.getByRole("button", { name: "PR opened", exact: true }).click();
+  await expect(page.getByText("Needs Bearer. GitHub.com hooks cannot send it.")).toBeVisible();
 
   await page.getByRole("button", { name: "Add trigger" }).click();
   await page.getByRole("menuitem", { name: "Slack message" }).click();
-  await page.getByPlaceholder("#channel or id").fill("alerts");
+  await page.getByPlaceholder("@user or id").fill("@alerts");
 
   await captureScreenshot(page, testInfo, "routine-event-triggers");
 

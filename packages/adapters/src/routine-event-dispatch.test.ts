@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { dispatchRoutineEvents, eventsFromWebhookPayload } from "./routine-event-dispatch.js";
+import {
+  dispatchRoutineEvents,
+  eventsFromWebhookPayload,
+  pickPromptEvent,
+} from "./routine-event-dispatch.js";
 
 describe("routine event dispatch", () => {
   it("normalizes webhook payloads into webhook and repo events when possible", () => {
@@ -15,7 +19,28 @@ describe("routine event dispatch", () => {
     expect(events[1]).toMatchObject({ source: "repo", repo: "acme/app", event: "pr_opened" });
   });
 
-  it("wakes matching routines once per event batch", async () => {
+  it("prefers a matching repo event over the generic webhook event for the prompt", () => {
+    const triggers = [
+      { id: "w1", kind: "webhook" as const },
+      {
+        id: "r1",
+        kind: "repo" as const,
+        repo: "acme/app",
+        events: ["pr_opened" as const],
+      },
+    ];
+    const events = eventsFromWebhookPayload(
+      {
+        action: "opened",
+        pull_request: { merged: false },
+        repository: { full_name: "acme/app" },
+      },
+      { eventName: "pull_request" },
+    );
+    expect(pickPromptEvent(triggers, events).source).toBe("repo");
+  });
+
+  it("wakes matching routines once per event batch with idempotency keys", async () => {
     const wakeRoutineFromEvent = vi.fn(async (routineId: string) => ({
       runId: `run-${routineId}`,
       threadId: "thread-1",
@@ -71,9 +96,36 @@ describe("routine event dispatch", () => {
         },
         { eventName: "pull_request" },
       ),
+      idempotencyKey: "webhook:bot-1:abc",
     });
 
     expect(results.map((row) => row.routineId).sort()).toEqual(["routine-repo", "routine-webhook"]);
     expect(wakeRoutineFromEvent).toHaveBeenCalledTimes(2);
+    const calls = wakeRoutineFromEvent.mock.calls as unknown as Array<
+      [string, { source: string; event?: string }, { idempotencyKey?: string }?]
+    >;
+    expect(calls[0]?.[2]?.idempotencyKey).toMatch(/^routine-event:/);
+    const repoCall = calls.find((call) => call[0] === "routine-repo");
+    expect(repoCall?.[1]).toMatchObject({ source: "repo", event: "pr_opened" });
+  });
+
+  it("skips inactive routines via the active filter", async () => {
+    const wakeRoutineFromEvent = vi.fn(async () => ({ runId: "run-1", threadId: "thread-1" }));
+    const findMany = vi.fn(async () => []);
+    await dispatchRoutineEvents({
+      deps: {
+        prisma: { routine: { findMany } },
+        wakeRoutineFromEvent,
+      },
+      botId: "bot-1",
+      spaceId: "space-1",
+      events: [{ source: "webhook", payload: {} }],
+    });
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ active: true }),
+      }),
+    );
+    expect(wakeRoutineFromEvent).not.toHaveBeenCalled();
   });
 });
