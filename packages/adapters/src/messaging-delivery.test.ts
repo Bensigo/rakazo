@@ -253,14 +253,33 @@ describe("deliverMessagingOutbound", () => {
     expect(noIdentity.sendToThread).not.toHaveBeenCalled();
   });
 
-  it("holds DM sends at the consecutive-outbound cap", async () => {
+  it("holds sendblue DM sends at the consecutive-outbound cap", async () => {
     const deps = createDeps({
-      identity: { outboundSinceInbound: MESSAGING_DM_OUTBOUND_CAP },
+      identity: {
+        provider: "sendblue",
+        outboundSinceInbound: MESSAGING_DM_OUTBOUND_CAP,
+      },
     });
     await deliverMessagingOutbound(deps, { runId: "run-1" }, context);
 
     expect(deps.sendToThread).not.toHaveBeenCalled();
     expect(deps.rows).toEqual([expect.objectContaining({ kind: "dm", status: "pending" })]);
+  });
+
+  it("does not apply the sendblue outbound cap to other providers", async () => {
+    const deps = createDeps({
+      identity: {
+        provider: "slack",
+        address: "U123",
+        outboundSinceInbound: MESSAGING_DM_OUTBOUND_CAP,
+      },
+    });
+    await deliverMessagingOutbound(deps, { runId: "run-1" }, context);
+
+    expect(deps.sendToThread).toHaveBeenCalled();
+    expect(deps.rows).toEqual([
+      expect.objectContaining({ kind: "dm", status: "sent", providerHandle: "handle-out-1" }),
+    ]);
   });
 
   it("returns a transient send failure to pending and schedules a delayed retry", async () => {

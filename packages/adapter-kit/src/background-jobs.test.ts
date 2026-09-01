@@ -37,16 +37,6 @@ describe("background job contracts", () => {
     });
   });
 
-  it("accepts legacy phone.deliver as a temporary alias for messaging.deliver", async () => {
-    const target = handlers();
-    await dispatchBackgroundJob(target, "phone.deliver", { runId: "run-legacy" });
-    expect(target["messaging.deliver"]).toHaveBeenCalledWith({ runId: "run-legacy" });
-    expect(parseBackgroundJob("phone.deliver", { runId: "run-2" })).toEqual({
-      name: "messaging.deliver",
-      payload: { runId: "run-2" },
-    });
-  });
-
   it("validates and dispatches a typed job", async () => {
     const target = handlers();
     await dispatchBackgroundJob(target, "routine.wakeup", {

@@ -339,7 +339,12 @@ async function drain(deps: MessagingDeliveryDeps, context: AdapterContext): Prom
         });
         continue;
       }
-      if (identity.outboundSinceInbound >= MESSAGING_DM_OUTBOUND_CAP) {
+      // Sendblue's consecutive-outbound vendor cap; other providers have no
+      // equivalent limit, so do not hold Slack/WhatsApp/Telegram DMs.
+      if (
+        identity.provider === "sendblue" &&
+        identity.outboundSinceInbound >= MESSAGING_DM_OUTBOUND_CAP
+      ) {
         // Cap holds are not failures: release the claim back to pending.
         await deps.prisma.messagingOutbound.update({
           where: { id: row.id },

@@ -173,10 +173,7 @@ describe("ChatSdkMessagingSurface inbound", () => {
       participants: (raw) => (raw as { roster: string[] }).roster,
     });
     const threadId = "mock:C1:9";
-    await surface.handleWebhook(
-      "mock",
-      webhookRequest({ threadId, id: "m-sub-1", text: "first" }),
-    );
+    await surface.handleWebhook("mock", webhookRequest({ threadId, id: "m-sub-1", text: "first" }));
     expect(events).toHaveLength(1);
 
     await getChat().getState().subscribe(threadId);

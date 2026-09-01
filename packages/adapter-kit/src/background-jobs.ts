@@ -22,19 +22,9 @@ const payloadSchemas = {
   "messaging.deliver": z.object({ runId: z.string().min(1).optional() }),
 } satisfies { [Name in BackgroundJobName]: z.ZodType<BackgroundJobPayloads[Name]> };
 
-/**
- * Temporary alias so Graphile rows queued as phone.deliver before the
- * messaging rename still parse and dispatch to messaging.deliver. Remove once
- * pre-upgrade queues have drained.
- */
-const LEGACY_BACKGROUND_JOB_ALIASES: Record<string, BackgroundJobName> = {
-  "phone.deliver": "messaging.deliver",
-};
-
 export function parseBackgroundJob(name: string, payload: unknown): BackgroundJob {
-  const canonical = LEGACY_BACKGROUND_JOB_ALIASES[name] ?? name;
-  if (!(canonical in payloadSchemas)) throw new Error(`Unknown background job: ${name}`);
-  const typedName = canonical as BackgroundJobName;
+  if (!(name in payloadSchemas)) throw new Error(`Unknown background job: ${name}`);
+  const typedName = name as BackgroundJobName;
   const parsed = payloadSchemas[typedName].parse(payload);
   return { name: typedName, payload: parsed } as BackgroundJob;
 }

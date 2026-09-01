@@ -55,16 +55,12 @@ export class GraphileJobWorkerHost implements JobWorkerHost {
 
   async start(handlers: BackgroundJobHandlers): Promise<void> {
     if (this.runner) return;
-    const taskList: Record<string, (payload: unknown) => Promise<void>> = Object.fromEntries(
+    const taskList = Object.fromEntries(
       Object.keys(handlers).map((name) => [
         name,
         async (payload: unknown) => dispatchBackgroundJob(handlers, name, payload),
       ]),
     );
-    // Temporary: drain pre-upgrade phone.deliver Graphile jobs via the alias
-    // in parseBackgroundJob (maps to messaging.deliver).
-    taskList["phone.deliver"] = async (payload) =>
-      dispatchBackgroundJob(handlers, "phone.deliver", payload);
     this.runner = await run({
       connectionString: this.connectionString,
       concurrency: this.options.concurrency ?? 4,
