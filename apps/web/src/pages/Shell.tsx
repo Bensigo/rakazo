@@ -4577,15 +4577,6 @@ const Composer = memo(function Composer({
           })}
         </div>
       ) : null}
-      {running ? (
-        <p
-          className="mb-2 px-3 text-[12px] text-[#85858A]"
-          data-testid="composer-steering-status"
-          aria-live="polite"
-        >
-          {t`Messages sent now guide the next turn.`}
-        </p>
-      ) : null}
       <div
         data-testid="composer-bar"
         className="flex items-center gap-3.5 rounded-full border border-[#202023] bg-[#131315] py-[9px] pe-2.5 ps-3"

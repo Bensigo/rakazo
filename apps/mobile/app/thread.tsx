@@ -1612,19 +1612,11 @@ function Thread() {
             ))}
           </View>
         ) : null}
-        {working ? (
-          <Text
-            accessibilityLiveRegion="polite"
-            style={{ color: "#85858A", fontSize: 12, marginTop: 12, marginHorizontal: 8 }}
-          >
-            Messages sent now guide the next turn.
-          </Text>
-        ) : null}
         <View
           style={{
             flexDirection: "row",
             gap: 8,
-            marginTop: working ? 8 : 16,
+            marginTop: 16,
             alignItems: "flex-end",
           }}
         >

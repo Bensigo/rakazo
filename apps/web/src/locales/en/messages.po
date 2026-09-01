@@ -3154,10 +3154,6 @@ msgid "This reset link is invalid or expired"
 msgstr "This reset link is invalid or expired"
 
 #: src/pages/Shell.tsx
-msgid "Messages sent now guide the next turn."
-msgstr "Messages sent now guide the next turn."
-
-#: src/pages/Shell.tsx
 msgid "Steer {activeName}"
 msgstr "Steer {activeName}"
 
