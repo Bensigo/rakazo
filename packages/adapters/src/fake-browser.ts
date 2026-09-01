@@ -9,7 +9,7 @@ import type {
   BrowserSnapshotResult,
   ComputerRef,
 } from "@rakazo/adapter-kit";
-import { PageBrowserSessionStore } from "./page-browser-session.js";
+import { PageBrowserSessionStore, pageBrowserSessionKey } from "./page-browser-session.js";
 import { fetchSafeWebText } from "./web-ssrf.js";
 
 export interface FakeBrowserProviderOptions {
@@ -69,7 +69,7 @@ export class FakeBrowserProvider implements BrowserProvider {
     if (!url) {
       return { url: "", title: "", fallback: "computer_act", error: "url is required" };
     }
-    const session = this.sessions.get(computer.id);
+    const session = this.sessions.get(pageBrowserSessionKey(computer, context));
     const seeded = this.pages[url] ?? this.pages[stripHash(url)];
     if (seeded) {
       const html = seeded.title ? ensureTitle(seeded.html, seeded.title) : seeded.html;
@@ -94,7 +94,7 @@ export class FakeBrowserProvider implements BrowserProvider {
   async snapshot(
     computer: ComputerRef,
     _request: BrowserSnapshotRequest,
-    _context: AdapterContext,
+    context: AdapterContext,
   ): Promise<BrowserSnapshotResult> {
     if (this.forceFallback) {
       return {
@@ -107,13 +107,13 @@ export class FakeBrowserProvider implements BrowserProvider {
       };
     }
     if (this.snapshotError) throw this.snapshotError;
-    return this.sessions.get(computer.id).snapshot();
+    return this.sessions.get(pageBrowserSessionKey(computer, context)).snapshot();
   }
 
   async act(
     computer: ComputerRef,
     request: BrowserActRequest,
-    _context: AdapterContext,
+    context: AdapterContext,
   ): Promise<BrowserActResult> {
     if (this.forceFallback) {
       return {
@@ -130,13 +130,13 @@ export class FakeBrowserProvider implements BrowserProvider {
       return {
         ok: false,
         completed: 0,
-        url: this.sessions.get(computer.id).url,
-        title: this.sessions.get(computer.id).title,
+        url: this.sessions.get(pageBrowserSessionKey(computer, context)).url,
+        title: this.sessions.get(pageBrowserSessionKey(computer, context)).title,
         error: "actions is required",
         fallback: "computer_act",
       };
     }
-    return this.sessions.get(computer.id).act(request.actions);
+    return this.sessions.get(pageBrowserSessionKey(computer, context)).act(request.actions);
   }
 }
 

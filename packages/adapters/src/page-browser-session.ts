@@ -226,21 +226,34 @@ function valueFor(win: DomWindow, el: DomElement): string | undefined {
   return undefined;
 }
 
-/** Shared per-computer sessions for fake/emulator providers. */
+/**
+ * In-process page sessions for fake/emulator providers.
+ * Callers must pass an isolation key that includes bot identity on Team
+ * Computers (see `pageBrowserSessionKey`), never the bare computer id alone.
+ */
 export class PageBrowserSessionStore {
   private readonly sessions = new Map<string, PageBrowserSession>();
 
-  get(computerId: string): PageBrowserSession {
-    let session = this.sessions.get(computerId);
+  get(sessionKey: string): PageBrowserSession {
+    let session = this.sessions.get(sessionKey);
     if (!session) {
       session = new PageBrowserSession();
-      this.sessions.set(computerId, session);
+      this.sessions.set(sessionKey, session);
     }
     return session;
   }
 
-  clear(computerId?: string): void {
-    if (computerId) this.sessions.delete(computerId);
+  clear(sessionKey?: string): void {
+    if (sessionKey) this.sessions.delete(sessionKey);
     else this.sessions.clear();
   }
+}
+
+/** Isolate page state per computer, bot, and screen lease on Team Computers. */
+export function pageBrowserSessionKey(
+  computer: { id: string; botId: string },
+  context?: { screenLeaseId?: string },
+): string {
+  const lease = context?.screenLeaseId?.trim() || "default";
+  return `${computer.id}::${computer.botId}::${lease}`;
 }

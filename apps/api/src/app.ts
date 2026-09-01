@@ -282,7 +282,7 @@ export async function createApp(
     events,
     messaging: messaging ? createMessagingContextLoader(prisma) : undefined,
     web: createWebProvider(),
-    browser: createBrowserProvider(),
+    browser: createBrowserProvider(undefined, { sandbox }),
   });
 
   const jobHandlers = createBackgroundJobHandlers({
