@@ -34,6 +34,6 @@ export function createCloudAgentProvider(
       });
     }
     default:
-      throw new Error(`Unknown cloud agent provider "${kind}"`);
+      return null;
   }
 }

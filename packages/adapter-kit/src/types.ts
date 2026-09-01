@@ -450,6 +450,8 @@ export interface BackgroundJobPayloads {
     threadId: string;
     botId: string;
     userId: string;
+    /** 0-based poll attempt; omitted means 0. Caps unbounded retries. */
+    attempt?: number;
   };
 }
 
@@ -599,9 +601,7 @@ export interface CloudAgentCapabilities {
   offline?: boolean;
 }
 
-export type CloudAgentImage =
-  | { data: string; mimeType: string }
-  | { url: string };
+export type CloudAgentImage = { data: string; mimeType: string } | { url: string };
 
 export interface CloudAgentLaunchRequest {
   prompt: string;

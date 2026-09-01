@@ -11,7 +11,8 @@ export function resolveCloudAgentProvider(source: NodeJS.ProcessEnv = process.en
   if (requested === "cursor") {
     return optional(source.CURSOR_API_KEY) ? "cursor" : "none";
   }
-  return requested;
+  // Soft-fall: do not throw at API boot for typos / future vendor names.
+  return "none";
 }
 
 function optional(value: string | undefined): string | undefined {

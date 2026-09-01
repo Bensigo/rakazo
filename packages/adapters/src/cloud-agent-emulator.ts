@@ -19,7 +19,12 @@ interface EmulatorAgent {
   repository?: string;
   prompt: string;
   replies: string[];
+  /** Gets while status is running; auto-finishes after a few so E2E polls terminate. */
+  runningGets: number;
 }
+
+/** After this many get() calls while running, the emulator finishes (branch/PR if openPr). */
+const AUTO_FINISH_AFTER_GETS = 2;
 
 /**
  * In-process cloud agent provider for unit tests and Playwright. Never hits
@@ -62,6 +67,7 @@ export class EmulatorCloudAgentProvider implements CloudAgentProvider {
       repository: request.repository,
       prompt,
       replies: [],
+      runningGets: 0,
       ...(request.openPr
         ? {
             branch: `emulator/${slug(title)}`,
@@ -73,7 +79,14 @@ export class EmulatorCloudAgentProvider implements CloudAgentProvider {
   }
 
   async get(id: string, _context: AdapterContext): Promise<CloudAgentSnapshot> {
-    return snapshotOf(this.require(id));
+    const agent = this.require(id);
+    if (agent.status === "running") {
+      agent.runningGets += 1;
+      if (agent.runningGets >= AUTO_FINISH_AFTER_GETS) {
+        this.complete(id);
+      }
+    }
+    return snapshotOf(agent);
   }
 
   async reply(
@@ -88,6 +101,7 @@ export class EmulatorCloudAgentProvider implements CloudAgentProvider {
     this.seq += 1;
     agent.latestRunId = `emu-run-${this.seq}`;
     agent.status = "running";
+    agent.runningGets = 0;
     agent.replies.push(prompt);
     return handleOf(agent);
   }

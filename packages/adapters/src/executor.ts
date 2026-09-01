@@ -6,6 +6,7 @@ import type {
   AgentRunRequest,
   AgentRuntime,
   ArtifactStore,
+  CloudAgentProvider,
   ComputerRef,
   ConnectorCall,
   ConnectorProvider,
@@ -16,7 +17,6 @@ import type {
   NotificationProvider,
   SandboxProvider,
   SemanticMemoryProvider,
-  CloudAgentProvider,
   WebProvider,
 } from "@rakazo/adapter-kit";
 import {
@@ -125,6 +125,14 @@ import {
 import { loadBotMessageContext, messageBot, returnBotMessageOutcome } from "./bot-messages.js";
 import { agentConnectionTools, builtinAgentTools } from "./builtin-tools.js";
 import { archiveSpawnedBot, spawnBot } from "./child-bots.js";
+import { createCloudAgentProvider } from "./cloud-agent-factory.js";
+import {
+  cloudAgentCancelFromTool,
+  cloudAgentLaunchFromTool,
+  cloudAgentReplyFromTool,
+  cloudAgentStatusFromTool,
+} from "./cloud-agent-tools.js";
+import { selectCloudAgentTools } from "./cloud-agent-tools-select.js";
 import {
   collectLogIds,
   mergeConnectedPlugins,
@@ -178,7 +186,6 @@ import {
 } from "./mcp-server-tool.js";
 import { loadAgentMemoryContext } from "./memory-context.js";
 import type { MemoryProviderResolver } from "./memory-provider-factory.js";
-import { selectCloudAgentTools } from "./cloud-agent-tools-select.js";
 import { selectMemoryTools } from "./memory-tools.js";
 import {
   filterImageReturningComputerTools,
@@ -244,14 +251,7 @@ import {
 } from "./thread-artifacts.js";
 import { advanceToolCallLoopGuard } from "./tool-loop.js";
 import { textContentArg } from "./tool-text.js";
-import { createCloudAgentProvider } from "./cloud-agent-factory.js";
 import { createWebProvider } from "./web-provider-factory.js";
-import {
-  cloudAgentCancelFromTool,
-  cloudAgentLaunchFromTool,
-  cloudAgentReplyFromTool,
-  cloudAgentStatusFromTool,
-} from "./cloud-agent-tools.js";
 import { webFetchFromTool, webSearchFromTool } from "./web-tools.js";
 
 const modelCredentialLocks = new Map<string, Promise<void>>();
@@ -2087,11 +2087,27 @@ export function createRunExecutor(deps: ExecutorDeps) {
             if (!cloudAgent) return finish({ error: "Cloud agents are not configured." });
             const replied = await cloudAgentReplyFromTool(cloudAgent, context, args);
             if ("error" in replied) return finish(replied);
+            try {
+              await syncCloudAgentCard(deps, run, replied, {
+                requeuePoll: true,
+                userId: run.userId,
+              });
+            } catch (error) {
+              console.error("cloud agent reply card", error);
+            }
             return finish(replied);
           }
           if (name === "cloud_agent_cancel") {
             if (!cloudAgent) return finish({ error: "Cloud agents are not configured." });
-            return finish(await cloudAgentCancelFromTool(cloudAgent, context, args));
+            const cancelled = await cloudAgentCancelFromTool(cloudAgent, context, args);
+            if (!("error" in cancelled)) {
+              try {
+                await syncCloudAgentCard(deps, run, cancelled, { userId: run.userId });
+              } catch (error) {
+                console.error("cloud agent cancel card", error);
+              }
+            }
+            return finish(cancelled);
           }
           if (name === "scratchpad_list") {
             return listScratchpadItemsFromTool(deps, {
@@ -3646,6 +3662,85 @@ function redactBlocks(blocks: MessageBlock[], secrets: string[]): MessageBlock[]
     }
     return block;
   });
+}
+
+async function syncCloudAgentCard(
+  deps: ExecutorDeps,
+  run: { id: string; spaceId: string; threadId: string; botId: string },
+  snapshot: {
+    id: string;
+    title: string;
+    status: string;
+    url: string;
+    branch?: string;
+    prUrl?: string;
+    latestRunId?: string;
+  },
+  options: { requeuePoll?: boolean; userId: string },
+) {
+  const messages = await deps.prisma.message.findMany({
+    where: { threadId: run.threadId },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+    select: { id: true, blocks: true },
+  });
+  const target = messages.find((message) =>
+    (message.blocks as MessageBlock[]).some(
+      (block) => block.kind === "cloud_agent" && block.agentId === snapshot.id,
+    ),
+  );
+  if (!target) return;
+
+  const blocks = (target.blocks as MessageBlock[]).map((block) => {
+    if (block.kind !== "cloud_agent" || block.agentId !== snapshot.id) return block;
+    return {
+      ...block,
+      title: snapshot.title || block.title,
+      status: snapshot.status as Extract<MessageBlock, { kind: "cloud_agent" }>["status"],
+      url: snapshot.url || block.url,
+      ...(snapshot.branch ? { branch: snapshot.branch } : {}),
+      ...(snapshot.prUrl ? { prUrl: snapshot.prUrl } : {}),
+      ...(snapshot.latestRunId ? { latestRunId: snapshot.latestRunId } : {}),
+    } satisfies MessageBlock;
+  });
+
+  const committed = await deps.prisma.$transaction(async (tx) => {
+    await tx.message.update({ where: { id: target.id }, data: { blocks } });
+    return appendEventInTransaction(tx, {
+      spaceId: run.spaceId,
+      threadId: run.threadId,
+      botId: run.botId,
+      type: "thread.cloud_agent",
+      runId: run.id,
+      payload: {
+        messageId: target.id,
+        agentId: snapshot.id,
+        title: snapshot.title,
+        status: snapshot.status,
+        url: snapshot.url,
+        branch: snapshot.branch,
+        prUrl: snapshot.prUrl,
+        latestRunId: snapshot.latestRunId,
+      },
+    });
+  });
+  await deps.events.notify(run.threadId, committed.seq).catch((error) => {
+    console.error("cloud agent card realtime notification", error);
+  });
+
+  if (options.requeuePoll) {
+    await deps.jobs.enqueue(
+      cloudAgentPollJob({
+        agentId: snapshot.id,
+        messageId: target.id,
+        spaceId: run.spaceId,
+        threadId: run.threadId,
+        botId: run.botId,
+        userId: options.userId,
+        attempt: 0,
+      }),
+    );
+  }
 }
 
 async function publishMessage(

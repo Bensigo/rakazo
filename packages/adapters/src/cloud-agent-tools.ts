@@ -7,7 +7,13 @@ function parseImages(raw: unknown) {
     if (!entry || typeof entry !== "object") continue;
     const record = entry as Record<string, unknown>;
     if (typeof record.url === "string" && record.url.trim()) {
-      images.push({ url: record.url.trim() });
+      try {
+        if (new URL(record.url.trim()).protocol === "https:") {
+          images.push({ url: record.url.trim() });
+        }
+      } catch {
+        // ignore non-https / invalid image urls
+      }
       continue;
     }
     if (typeof record.data === "string" && typeof record.mimeType === "string") {

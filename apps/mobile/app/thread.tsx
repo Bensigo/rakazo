@@ -34,6 +34,7 @@ import {
   AppState,
   FlatList,
   Image,
+  Linking,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   Pressable,
@@ -41,7 +42,6 @@ import {
   Text,
   TextInput,
   View,
-  Linking,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useReducedMotion } from "react-native-reanimated";
@@ -741,6 +741,7 @@ function Thread() {
                 event.type === "thread.message.updated" ||
                 event.type === "thread.message.reaction" ||
                 event.type === "thread.subagent" ||
+                event.type === "thread.cloud_agent" ||
                 event.type === "thread.cleared" ||
                 event.type === "run.waiting_input" ||
                 isRunTerminalEvent(event)
@@ -1943,6 +1944,16 @@ async function speakMessage(botId: string, message: MobileMessage) {
   }
 }
 
+function httpsOnlyUrl(value: string | undefined | null): string | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 const MessageBubble = memo(function MessageBubble({
   botId,
   botName,
@@ -2110,12 +2121,10 @@ const MessageBubble = memo(function MessageBubble({
       </View>
     );
   }
-  if (special?.kind === "child_bot") {
-    const removed = special.status === "deleted" || special.status === "archived";
-    if (special?.kind === "cloud_agent") {
+  if (special?.kind === "cloud_agent") {
     const running = special.status === "running";
     const failed = special.status === "failed" || special.status === "cancelled";
-    const href = special.prUrl || special.url;
+    const href = httpsOnlyUrl(special.prUrl) ?? httpsOnlyUrl(special.url);
     return (
       <Pressable
         onPress={() => {
@@ -2153,7 +2162,9 @@ const MessageBubble = memo(function MessageBubble({
       </Pressable>
     );
   }
-  return (
+  if (special?.kind === "child_bot") {
+    const removed = special.status === "deleted" || special.status === "archived";
+    return (
       <Pressable
         disabled={removed}
         onPress={() => onOpenBot(special.botId ?? "", special.name ?? "Bot")}

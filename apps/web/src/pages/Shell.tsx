@@ -249,6 +249,16 @@ type PendingBrowserNotification = {
 const ATTACHMENT_ACCEPT = ATTACHMENT_ALLOWED_MIME_TYPES.join(",");
 const THREAD_SNAPSHOT_TIMEOUT_MS = 2_000;
 
+function httpsOnlyUrl(value: string | undefined | null): string | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function threadSnapshotSignal(parent: AbortSignal): AbortSignal {
   return AbortSignal.any([parent, AbortSignal.timeout(THREAD_SNAPSHOT_TIMEOUT_MS)]);
 }
@@ -5360,13 +5370,12 @@ const MessageView = memo(function MessageView({
         if (block.kind === "cloud_agent") {
           const running = block.status === "running";
           const failed = block.status === "failed" || block.status === "cancelled";
-          const href = block.prUrl || block.url;
+          const href = httpsOnlyUrl(block.prUrl) ?? httpsOnlyUrl(block.url);
+          const Card = href ? "a" : "div";
           return (
-            <a
+            <Card
               key={i}
-              href={href}
-              target="_blank"
-              rel="noreferrer"
+              {...(href ? { href, target: "_blank", rel: "noreferrer" } : {})}
               data-testid="cloud-agent-card"
               className="block w-[min(340px,90%)] rounded-[18px] border border-[#232326] bg-[#17171A] px-[18px] py-4 text-start no-underline"
             >
@@ -5398,7 +5407,7 @@ const MessageView = memo(function MessageView({
                   {block.branch}
                 </div>
               ) : null}
-            </a>
+            </Card>
           );
         }
         if (block.kind === "skill_draft") {

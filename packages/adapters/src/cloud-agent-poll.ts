@@ -15,6 +15,8 @@ import {
 
 const TERMINAL = new Set(["finished", "failed", "cancelled"]);
 const POLL_DELAY_MS = 5_000;
+/** Cap retries so a stuck agent cannot poll forever. */
+const MAX_ATTEMPTS = 60;
 
 export async function pollCloudAgent(
   deps: {
@@ -34,12 +36,20 @@ export async function pollCloudAgent(
     signal: new AbortController().signal,
   };
 
-  let snapshot;
+  const attempt = payload.attempt ?? 0;
+  let snapshot: Awaited<ReturnType<CloudAgentProvider["get"]>>;
   try {
     snapshot = await deps.cloudAgent.get(payload.agentId, context);
   } catch (error) {
     console.error("cloud agent poll", error);
-    await deps.jobs.enqueue(cloudAgentPollJob(payload, new Date(Date.now() + POLL_DELAY_MS)));
+    if (attempt < MAX_ATTEMPTS) {
+      await deps.jobs.enqueue(
+        cloudAgentPollJob(
+          { ...payload, attempt: attempt + 1 },
+          new Date(Date.now() + POLL_DELAY_MS),
+        ),
+      );
+    }
     return;
   }
 
@@ -49,44 +59,69 @@ export async function pollCloudAgent(
   });
   if (!message || message.threadId !== payload.threadId) return;
 
-  const blocks = (message.blocks as MessageBlock[]).map((block) => {
-    if (block.kind !== "cloud_agent" || block.agentId !== payload.agentId) return block;
-    return {
-      ...block,
-      title: snapshot.title || block.title,
-      status: snapshot.status,
-      url: snapshot.url || block.url,
-      ...(snapshot.branch ? { branch: snapshot.branch } : {}),
-      ...(snapshot.prUrl ? { prUrl: snapshot.prUrl } : {}),
-      ...(snapshot.latestRunId ? { latestRunId: snapshot.latestRunId } : {}),
-    } satisfies MessageBlock;
-  });
+  const previous = (message.blocks as MessageBlock[]).find(
+    (block): block is Extract<MessageBlock, { kind: "cloud_agent" }> =>
+      block.kind === "cloud_agent" && block.agentId === payload.agentId,
+  );
+  const nextBlock = {
+    kind: "cloud_agent" as const,
+    agentId: payload.agentId,
+    title: snapshot.title || previous?.title || "Cloud agent",
+    status: snapshot.status,
+    url: snapshot.url || previous?.url || "",
+    ...(snapshot.branch || previous?.branch ? { branch: snapshot.branch || previous?.branch } : {}),
+    ...(snapshot.prUrl || previous?.prUrl ? { prUrl: snapshot.prUrl || previous?.prUrl } : {}),
+    ...(snapshot.latestRunId || previous?.latestRunId
+      ? { latestRunId: snapshot.latestRunId || previous?.latestRunId }
+      : {}),
+  } satisfies Extract<MessageBlock, { kind: "cloud_agent" }>;
 
-  await deps.prisma.$transaction(async (tx) => {
-    await tx.message.update({
-      where: { id: message.id },
-      data: { blocks },
+  const changed =
+    !previous ||
+    previous.title !== nextBlock.title ||
+    previous.status !== nextBlock.status ||
+    previous.url !== nextBlock.url ||
+    previous.branch !== nextBlock.branch ||
+    previous.prUrl !== nextBlock.prUrl ||
+    previous.latestRunId !== nextBlock.latestRunId;
+
+  if (changed) {
+    const blocks = (message.blocks as MessageBlock[]).map((block) =>
+      block.kind === "cloud_agent" && block.agentId === payload.agentId ? nextBlock : block,
+    );
+    await deps.prisma.$transaction(async (tx) => {
+      await tx.message.update({
+        where: { id: message.id },
+        data: { blocks },
+      });
+      await appendEventInTransaction(tx, {
+        spaceId: payload.spaceId,
+        threadId: payload.threadId,
+        botId: payload.botId,
+        type: "thread.cloud_agent",
+        payload: {
+          messageId: message.id,
+          agentId: snapshot.id,
+          title: nextBlock.title,
+          status: nextBlock.status,
+          url: nextBlock.url,
+          branch: nextBlock.branch,
+          prUrl: nextBlock.prUrl,
+          latestRunId: nextBlock.latestRunId,
+        },
+      });
     });
-    await appendEventInTransaction(tx, {
-      spaceId: payload.spaceId,
-      threadId: payload.threadId,
-      botId: payload.botId,
-      type: "thread.cloud_agent",
-      payload: {
-        messageId: message.id,
-        agentId: snapshot.id,
-        title: snapshot.title,
-        status: snapshot.status,
-        url: snapshot.url,
-        branch: snapshot.branch,
-        prUrl: snapshot.prUrl,
-        latestRunId: snapshot.latestRunId,
-      },
-    });
-  });
+  }
 
   if (!TERMINAL.has(snapshot.status)) {
-    await deps.jobs.enqueue(cloudAgentPollJob(payload, new Date(Date.now() + POLL_DELAY_MS)));
+    if (attempt < MAX_ATTEMPTS) {
+      await deps.jobs.enqueue(
+        cloudAgentPollJob(
+          { ...payload, attempt: attempt + 1 },
+          new Date(Date.now() + POLL_DELAY_MS),
+        ),
+      );
+    }
     return;
   }
 

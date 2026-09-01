@@ -65,6 +65,8 @@ describe("cloud agent provider", () => {
       resolveCloudAgentProvider({ CLOUD_AGENT_PROVIDER: "cursor", CURSOR_API_KEY: "ck_test" }),
     ).toBe("cursor");
     expect(resolveCloudAgentProvider({ CLOUD_AGENT_PROVIDER: "emulator" })).toBe("emulator");
+    expect(resolveCloudAgentProvider({ CLOUD_AGENT_PROVIDER: "bogus-vendor" })).toBe("none");
+    expect(createCloudAgentProvider("bogus-vendor")).toBeNull();
   });
 
   it("factory returns null for none", () => {
@@ -100,7 +102,8 @@ describe("cloud agent provider", () => {
           return Response.json({
             id: "bc-1",
             name: "Task",
-            status: latestRunStatus === "FINISHED" || latestRunStatus === "CANCELLED" ? "IDLE" : "ACTIVE",
+            status:
+              latestRunStatus === "FINISHED" || latestRunStatus === "CANCELLED" ? "IDLE" : "ACTIVE",
             url: "https://cursor.com/agents/bc-1",
             latestRunId: "run-1",
           });

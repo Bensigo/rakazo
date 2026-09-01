@@ -401,7 +401,8 @@ export function reduceThreadSnapshot(
       kind: "cloud_agent" as const,
       agentId,
       title: String(event.payload.title ?? "Cloud agent"),
-      status: (event.payload.status as "running" | "finished" | "failed" | "cancelled") ?? "running",
+      status:
+        (event.payload.status as "running" | "finished" | "failed" | "cancelled") ?? "running",
       url: String(event.payload.url ?? ""),
       branch: event.payload.branch ? String(event.payload.branch) : undefined,
       prUrl: event.payload.prUrl ? String(event.payload.prUrl) : undefined,
