@@ -396,8 +396,9 @@ function buildSelection(
   const parts: string[] = [];
   for (const field of resolved.fields) {
     if (!field.name || field.name.startsWith("__")) continue;
-    // Skip fields that need arguments; generated documents cannot invent them.
-    if ((field.args ?? []).length > 0) continue;
+    // Skip fields that require arguments; generated documents cannot invent them.
+    // Nullable or defaulted args may be omitted, so those fields stay selectable.
+    if (fieldRequiresArguments(field)) continue;
     const fieldNamed = unwrapNamedType(field.type);
     if (!fieldNamed) continue;
     if (fieldNamed.kind === "SCALAR" || fieldNamed.kind === "ENUM") {
@@ -411,6 +412,10 @@ function buildSelection(
     if (parts.join(" ").length > 6_000) break;
   }
   return parts.length > 0 ? parts.join(" ") : "__typename";
+}
+
+function fieldRequiresArguments(field: GqlField): boolean {
+  return (field.args ?? []).some((arg) => isNonNull(arg.type) && arg.defaultValue == null);
 }
 
 function graphqlTypeToJsonSchema(

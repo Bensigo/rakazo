@@ -569,7 +569,7 @@ export function PluginsOverlay({
                 </div>
                 {sources.length === 0 && !sourceKind ? (
                   <p className="text-[#6C6C70]">
-                    <Trans>No MCP, API, or GraphQL tool sources installed yet.</Trans>
+                    <Trans>No tool sources yet.</Trans>
                   </p>
                 ) : null}
                 {sources.map((source) => (

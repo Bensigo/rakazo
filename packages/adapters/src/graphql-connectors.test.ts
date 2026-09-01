@@ -147,7 +147,7 @@ describe("GraphQL connector import", () => {
     ).rejects.toThrow(/encrypted credential field/);
   });
 
-  it("skips nested fields that require arguments in generated selections", () => {
+  it("skips nested fields that require arguments so generated documents stay valid", async () => {
     const operations = importGraphqlSchema({
       data: {
         __schema: {
@@ -173,6 +173,17 @@ describe("GraphQL connector import", () => {
                   name: "id",
                   args: [],
                   type: { kind: "SCALAR", name: "ID", ofType: null },
+                },
+                {
+                  name: "status",
+                  args: [
+                    {
+                      name: "includePrivate",
+                      type: { kind: "SCALAR", name: "Boolean", ofType: null },
+                      defaultValue: "false",
+                    },
+                  ],
+                  type: { kind: "SCALAR", name: "String", ofType: null },
                 },
                 {
                   name: "repository",
@@ -204,12 +215,35 @@ describe("GraphQL connector import", () => {
             },
             { kind: "SCALAR", name: "ID" },
             { kind: "SCALAR", name: "String" },
+            { kind: "SCALAR", name: "Boolean" },
           ],
         },
       },
     });
-    expect(operations[0]!.selection).toContain("id");
-    expect(operations[0]!.selection).not.toContain("repository");
+    const viewer = operations[0]!;
+    expect(viewer.selection).toContain("id");
+    expect(viewer.selection).toContain("status");
+    expect(viewer.selection).not.toContain("repository");
+
+    let sentQuery = "";
+    await executeGraphqlOperation(
+      "https://graphql.example.test/graphql",
+      { auth: { type: "none" }, headers: {}, operations: [viewer] },
+      viewer,
+      {},
+      undefined,
+      new AbortController().signal,
+      {
+        fetch: async (_input, init) => {
+          sentQuery = String(JSON.parse(String(init?.body)).query);
+          return Response.json({ data: { viewer: { id: "1", status: "ok" } } });
+        },
+        resolveHostname: async () => [{ address: "203.0.113.10", family: 4 as const }],
+      },
+    );
+    expect(sentQuery).toMatch(/viewer\s*\{\s*id\s+status\s*\}/);
+    expect(sentQuery).not.toMatch(/repository\s*(\{|$)/);
+    expect(sentQuery).not.toContain("repository(");
   });
 
   it("keeps mutations when a large query catalog would otherwise fill the cap", () => {
@@ -248,6 +282,60 @@ describe("GraphQL connector import", () => {
 });
 
 describe("GraphQL execution failures", () => {
+  const helloOperation = importGraphqlSchema(STAR_WARS_INTROSPECTION).find(
+    (operation) => operation.id === "query_hello",
+  )!;
+
+  function graphqlInstall() {
+    return {
+      id: "graphql-1",
+      kind: "graphql",
+      name: "Example GraphQL",
+      source: "https://graphql.example.test/graphql",
+      secretId: null,
+      createdAt: new Date(0),
+      config: {
+        auth: { type: "none" },
+        headers: {},
+        operations: [helloOperation],
+      },
+    };
+  }
+
+  async function executeGraphqlProvider(fetchImpl: typeof globalThis.fetch) {
+    const install = graphqlInstall();
+    const prisma = {
+      capabilityInstall: {
+        findMany: vi.fn().mockResolvedValue([install]),
+        findFirst: vi.fn().mockResolvedValue(install),
+      },
+    };
+    const provider = new InstalledConnectorProvider(prisma as never, {} as never, {
+      fetch: fetchImpl,
+      resolveHostname: async () => [{ address: "203.0.113.10", family: 4 as const }],
+    });
+    const context = {
+      spaceId: "space-1",
+      userId: "user-1",
+      signal: new AbortController().signal,
+    } as never;
+    const tools = await provider.discoverTools(context);
+    const tool = tools.find((candidate) => candidate.name === "hello") ?? tools[0]!;
+    const events = [];
+    for await (const event of provider.execute(
+      {
+        tool: tool.name,
+        args: {},
+        executionId: "graphql-fail",
+        route: tool.route,
+      },
+      context,
+    )) {
+      events.push(event);
+    }
+    return events;
+  }
+
   it("throws when the GraphQL response includes protocol errors", async () => {
     const operation = importGraphqlSchema(STAR_WARS_INTROSPECTION)[0]!;
     await expect(
@@ -283,6 +371,26 @@ describe("GraphQL execution failures", () => {
         },
       ),
     ).rejects.toThrow(/HTTP 500/);
+  });
+
+  it("yields type error from InstalledConnectorProvider on GraphQL errors array", async () => {
+    const events = await executeGraphqlProvider(async () =>
+      Response.json({ errors: [{ message: "Field 'hello' is required" }], data: null }),
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: "error" });
+    expect(events[0]).not.toMatchObject({ type: "result" });
+    expect(String((events[0] as { message?: string }).message)).toMatch(/hello/i);
+  });
+
+  it("yields type error from InstalledConnectorProvider on GraphQL HTTP failure", async () => {
+    const events = await executeGraphqlProvider(
+      async () => new Response("nope", { status: 502, headers: { "content-type": "text/plain" } }),
+    );
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: "error" });
+    expect(events[0]).not.toMatchObject({ type: "result" });
+    expect(String((events[0] as { message?: string }).message)).toMatch(/HTTP 502/);
   });
 });
 

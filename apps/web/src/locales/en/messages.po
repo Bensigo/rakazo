@@ -2073,8 +2073,8 @@ msgid "No MCP servers yet."
 msgstr "No MCP servers yet."
 
 #: src/pages/PluginsOverlay.tsx:559
-msgid "No MCP, API, or GraphQL tool sources installed yet."
-msgstr "No MCP, API, or GraphQL tool sources installed yet."
+msgid "No tool sources yet."
+msgstr "No tool sources yet."
 
 #: src/pages/PeerMessagesOverlay.tsx:168
 msgid "No messages with {peerBotName} yet."
