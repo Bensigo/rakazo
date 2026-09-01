@@ -133,7 +133,10 @@ export async function pollCloudAgent(
     return;
   }
 
-  await wakeBotForCloudAgent(deps, payload, snapshot);
+  await wakeBotForCloudAgent(deps, payload, {
+    ...snapshot,
+    latestRunId: snapshot.latestRunId || nextBlock.latestRunId,
+  });
 }
 
 function pollDelayMs(attempt: number): number {
@@ -205,18 +208,28 @@ async function wakeBotForCloudAgent(
     url: string;
     branch?: string;
     prUrl?: string;
+    latestRunId?: string;
   },
 ) {
-  const wakeNonce = `cloud-agent-wake:${payload.agentId}:${snapshot.status}`;
+  // Include latestRunId so a later follow-up that ends in the same status still wakes the bot.
+  let wakeNonce = `cloud-agent-wake:${payload.agentId}:${snapshot.status}:${snapshot.latestRunId ?? "na"}`;
   const existing = await deps.prisma.message.findFirst({
     where: { threadId: payload.threadId, clientNonce: wakeNonce },
     select: { id: true, runId: true },
   });
   if (existing?.runId) {
-    await deps.jobs.enqueue(runContinueJob(existing.runId)).catch((error) => {
-      console.error("cloud agent wake reenqueue", error);
+    const prior = await deps.prisma.run.findUnique({
+      where: { id: existing.runId },
+      select: { status: true },
     });
-    return;
+    if (prior && !TERMINAL.has(prior.status)) {
+      await deps.jobs.enqueue(runContinueJob(existing.runId)).catch((error) => {
+        console.error("cloud agent wake reenqueue", error);
+      });
+      return;
+    }
+    // Prior wake already finished; mint a fresh nonce for this completion.
+    wakeNonce = `${wakeNonce}:${Date.now()}`;
   }
 
   const summary = [
@@ -257,7 +270,7 @@ async function wakeBotForCloudAgent(
           status: "queued",
           trigger: "cloud_agent",
           sourceMessageId: wakeMessage.id,
-          clientNonce: `cloud-agent-wake-run:${payload.agentId}:${snapshot.status}`,
+          clientNonce: `cloud-agent-wake-run:${wakeNonce}`,
         },
       });
       await tx.message.update({ where: { id: wakeMessage.id }, data: { runId: run.id } });

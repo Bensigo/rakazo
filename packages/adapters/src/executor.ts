@@ -2053,6 +2053,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             if (!cloudAgent) return finish({ error: "Cloud agents are not configured." });
             const launched = await cloudAgentLaunchFromTool(cloudAgent, context, args);
             if ("error" in launched) return finish(launched);
+            let messageId: string | undefined;
             try {
               const message = await publishMessage(deps, run, "bot", [
                 {
@@ -2064,18 +2065,37 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   latestRunId: launched.latestRunId,
                 },
               ]);
-              await deps.jobs.enqueue(
-                cloudAgentPollJob({
-                  agentId: launched.id,
-                  messageId: message.id,
-                  spaceId: run.spaceId,
-                  threadId: run.threadId,
-                  botId: bot.id,
-                  userId: run.userId,
-                }),
-              );
+              messageId = message.id;
             } catch (error) {
               console.error("cloud agent launch card", error);
+              return finish({
+                ...launched,
+                error: "Cloud agent launched but the status card could not be posted.",
+              });
+            }
+            const pollPayload = {
+              agentId: launched.id,
+              messageId,
+              spaceId: run.spaceId,
+              threadId: run.threadId,
+              botId: bot.id,
+              userId: run.userId,
+            };
+            try {
+              await deps.jobs.enqueue(cloudAgentPollJob(pollPayload));
+            } catch (error) {
+              console.error("cloud agent poll enqueue", error);
+              try {
+                await deps.jobs.enqueue(
+                  cloudAgentPollJob(pollPayload, new Date(Date.now() + 5_000)),
+                );
+              } catch (retryError) {
+                console.error("cloud agent poll enqueue retry", retryError);
+                return finish({
+                  ...launched,
+                  error: "Cloud agent launched but status polling could not be scheduled.",
+                });
+              }
             }
             return finish(launched);
           }
