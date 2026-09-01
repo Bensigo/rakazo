@@ -137,11 +137,11 @@ export class ComputerBrowserProvider implements BrowserProvider {
       return this.fake.act(computer, request, context);
     }
     const live = await this.runLive(computer, context, "act", {
-      actions: request.actions.map((step) => ({
-        kind: step.kind,
-        ref: step.ref,
-        text: step.text,
-      })),
+      actions: request.actions.map((step) =>
+        step.kind === "click"
+          ? { kind: step.kind, ref: step.ref }
+          : { kind: step.kind, ref: step.ref, text: step.text },
+      ),
     });
     if (!live || live.ok === false || live.fallback === "computer_act") {
       return {

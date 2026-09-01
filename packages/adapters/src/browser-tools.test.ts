@@ -71,6 +71,62 @@ describe("browser tools", () => {
     expect(acted).toMatchObject({ ok: true, completed: 1 });
   });
 
+  it("toggles checkboxes via click without undoing activation", async () => {
+    const browser = new FakeBrowserProvider({
+      pages: {
+        "https://example.test/form": {
+          title: "Form",
+          html: `<!doctype html><html><head><title>Form</title></head><body>
+            <label><input type="checkbox" aria-label="Agree" /> Agree</label>
+          </body></html>`,
+        },
+      },
+    });
+    await browserNavigateFromTool(browser, computer, context, { url: "https://example.test/form" });
+    const before = await browserSnapshotFromTool(browser, computer, context, {});
+    const agree = (
+      before as { elements: Array<{ ref: string; name: string; value?: string }> }
+    ).elements.find((el) => el.name.includes("Agree"))!;
+    expect(agree.value).toMatch(/unchecked|false|^$/i);
+    const acted = await browserActFromTool(browser, computer, context, {
+      actions: [{ kind: "click", ref: agree.ref }],
+    });
+    expect(acted).toMatchObject({ ok: true });
+    const after = await browserSnapshotFromTool(browser, computer, context, {});
+    const toggled = (after as { elements: Array<{ name: string; value?: string }> }).elements.find(
+      (el) => el.name.includes("Agree"),
+    )!;
+    expect(toggled.value).toMatch(/checked|true/i);
+  });
+
+  it("falls back to computer_act for link navigation the in-process page cannot load", async () => {
+    const browser = new FakeBrowserProvider({
+      pages: {
+        "https://example.test/start": {
+          title: "Start",
+          html: `<!doctype html><html><head><title>Start</title></head><body>
+            <a href="https://example.test/next">Next</a>
+          </body></html>`,
+        },
+      },
+    });
+    await browserNavigateFromTool(browser, computer, context, {
+      url: "https://example.test/start",
+    });
+    const snap = await browserSnapshotFromTool(browser, computer, context, {});
+    const link = (snap as { elements: Array<{ ref: string; name: string }> }).elements.find((el) =>
+      el.name.includes("Next"),
+    )!;
+    const acted = await browserActFromTool(browser, computer, context, {
+      actions: [{ kind: "click", ref: link.ref }],
+    });
+    expect(acted).toMatchObject({
+      ok: false,
+      fallback: "computer_act",
+      error: expect.stringMatching(/cannot navigate links|computer_act/i),
+    });
+  });
+
   it("surfaces computer_act fallback from the tool layer", async () => {
     const browser = new FakeBrowserProvider();
     browser.forceFallback = "cannot attach to page";

@@ -626,13 +626,9 @@ export interface BrowserSnapshotResult {
 
 export type BrowserActKind = "click" | "fill" | "type";
 
-export interface BrowserActStep {
-  kind: BrowserActKind;
-  /** Element ref from the latest browser_snapshot. */
-  ref: string;
-  /** Text for fill/type. */
-  text?: string;
-}
+export type BrowserActStep =
+  | { kind: "click"; ref: string }
+  | { kind: "fill" | "type"; ref: string; text: string };
 
 export interface BrowserActRequest {
   actions: BrowserActStep[];

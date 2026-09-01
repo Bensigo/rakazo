@@ -81,14 +81,13 @@ export function parseBrowserActions(value: unknown): BrowserActStep[] {
     }
     const ref = String(action.ref ?? "").trim();
     if (!ref) throw new Error(`browser_act action ${index} requires ref`);
-    const step: BrowserActStep = { kind, ref };
     if (kind === "fill" || kind === "type") {
       if (action.text === undefined || action.text === null) {
         throw new Error(`browser_act ${kind} requires text`);
       }
-      step.text = String(action.text);
+      return { kind, ref, text: String(action.text) };
     }
-    return step;
+    return { kind, ref };
   });
 }
 

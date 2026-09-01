@@ -115,18 +115,24 @@ export class PageBrowserSession {
     if (action.kind === "click") {
       if (el instanceof win.HTMLAnchorElement && el.href) {
         const next = new URL(el.href, this.url);
-        if (next.href !== this.url && next.origin === new URL(this.url).origin) {
-          win.location.href = next.href;
+        if (next.href !== this.url) {
+          // jsdom does not load a new document on location changes. Fall back so
+          // callers use computer_act on the live browser instead of a false success.
+          throw new Error(
+            "In-process page browser cannot navigate links. Use computer_act on the desktop browser.",
+          );
         }
       }
       el.dispatchEvent(new win.MouseEvent("click", { bubbles: true, cancelable: true }));
-      if (el instanceof win.HTMLInputElement && (el.type === "checkbox" || el.type === "radio")) {
-        el.checked = el.type === "radio" ? true : !el.checked;
+      // Checkboxes toggle via jsdom activation behavior. Force radios on; do not
+      // invert checkboxes after dispatchEvent (that would undo the activation).
+      if (el instanceof win.HTMLInputElement && el.type === "radio") {
+        el.checked = true;
       }
       return;
     }
     if (action.kind === "fill" || action.kind === "type") {
-      const text = action.text ?? "";
+      const text = action.text;
       if (el instanceof win.HTMLInputElement || el instanceof win.HTMLTextAreaElement) {
         if (action.kind === "fill") el.value = text;
         else el.value = `${el.value}${text}`;
