@@ -71,20 +71,20 @@ function createPlatform(
     adapter,
     ...overrides,
   };
-  return { adapter, platform };
+  return { adapter, platform, getChat: () => chat! };
 }
 
 function createSurface(
   overrides: Partial<MessagingPlatform> = {},
   adapterOverrides: Partial<Adapter> = {},
 ) {
-  const { adapter, platform } = createPlatform(overrides, adapterOverrides);
+  const { adapter, platform, getChat } = createPlatform(overrides, adapterOverrides);
   const surface = new ChatSdkMessagingSurface([platform]);
   const events: MessagingInboundEvent[] = [];
   surface.onInbound(async (event) => {
     events.push(event);
   });
-  return { adapter, platform, surface, events };
+  return { adapter, platform, surface, events, getChat };
 }
 
 function webhookRequest(payload: unknown): Request {
@@ -164,6 +164,28 @@ describe("ChatSdkMessagingSurface inbound", () => {
 
     expect(response?.status).toBe(200);
     expect(events).toHaveLength(0);
+  });
+
+  it("still delivers a follow-up after the thread is subscribed", async () => {
+    // Chat SDK routes post-subscribe messages only to onSubscribedMessage;
+    // without that handler the catch-all never sees them.
+    const { surface, events, getChat } = createSurface({
+      participants: (raw) => (raw as { roster: string[] }).roster,
+    });
+    const threadId = "mock:C1:9";
+    await surface.handleWebhook(
+      "mock",
+      webhookRequest({ threadId, id: "m-sub-1", text: "first" }),
+    );
+    expect(events).toHaveLength(1);
+
+    await getChat().getState().subscribe(threadId);
+
+    await surface.handleWebhook(
+      "mock",
+      webhookRequest({ threadId, id: "m-sub-2", text: "second" }),
+    );
+    expect(events.map((event) => event.handle)).toEqual(["m-sub-1", "m-sub-2"]);
   });
 
   it("delivers overlapping messages on one conversation instead of dropping them", async () => {

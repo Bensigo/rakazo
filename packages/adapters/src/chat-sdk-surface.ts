@@ -86,8 +86,11 @@ export class ChatSdkMessagingSurface implements MessagingSurface {
     };
     // Priority routing makes these disjoint: DMs, then @-mentions in
     // unsubscribed threads, then the catch-all pattern for everything else.
+    // Subscribed threads skip the catch-all and only fire onSubscribedMessage
+    // (chat SDK docs / dispatchToHandlersWithSignal); register deliver there too.
     this.chat.onDirectMessage(deliver);
     this.chat.onNewMention(deliver);
+    this.chat.onSubscribedMessage(deliver);
     this.chat.onNewMessage(/(?:)/, deliver);
   }
 
