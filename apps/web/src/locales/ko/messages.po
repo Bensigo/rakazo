@@ -3060,3 +3060,95 @@ msgstr "이름"
 #: src/pages/Welcome.tsx:21
 msgid "Your team of always-on agents<0/>that you can give real work to."
 msgstr "언제든 실제 작업을 맡길 수 있는<0/>나만의 Agent 팀"
+
+#: src/pages/Auth.tsx:107
+#: src/pages/Auth.tsx:242
+#: src/pages/Auth.tsx:335
+msgid "Back to sign in"
+msgstr "로그인으로 돌아가기"
+
+#: src/pages/AccountSettingsOverlay.tsx:337
+msgid "Change password"
+msgstr "비밀번호 변경"
+
+#: src/pages/AccountSettingsOverlay.tsx:337
+msgid "Changing…"
+msgstr "변경 중…"
+
+#: src/pages/Auth.tsx:101
+msgid "Check your email"
+msgstr "이메일을 확인하세요"
+
+#: src/pages/Auth.tsx:296
+msgid "Choose a new password"
+msgstr "새 비밀번호 선택"
+
+#: src/pages/AccountSettingsOverlay.tsx:320
+#: src/pages/Auth.tsx:317
+msgid "Confirm password"
+msgstr "비밀번호 확인"
+
+#: src/pages/AccountSettingsOverlay.tsx:287
+msgid "Could not change password"
+msgstr "비밀번호를 변경할 수 없습니다"
+
+#: src/pages/AccountSettingsOverlay.tsx:295
+#: src/pages/Auth.tsx:84
+#: src/pages/Auth.tsx:282
+msgid "Could not reach the server"
+msgstr "서버에 연결할 수 없습니다"
+
+#: src/pages/Auth.tsx:277
+msgid "Could not reset password"
+msgstr "비밀번호를 재설정할 수 없습니다"
+
+#: src/pages/Auth.tsx:63
+msgid "Could not send reset email"
+msgstr "재설정 이메일을 보낼 수 없습니다"
+
+#: src/pages/AccountSettingsOverlay.tsx:308
+msgid "Current password"
+msgstr "현재 비밀번호"
+
+#: src/pages/Auth.tsx:203
+msgid "Forgot password?"
+msgstr "비밀번호를 잊으셨나요?"
+
+#: src/pages/Auth.tsx:104
+msgid "If an account exists for that address, we sent a password reset link."
+msgstr "해당 주소의 계정이 존재하면 비밀번호 재설정 링크를 보냈습니다."
+
+#: src/pages/AccountSettingsOverlay.tsx:314
+#: src/pages/Auth.tsx:311
+msgid "New password"
+msgstr "새 비밀번호"
+
+#: src/pages/Auth.tsx:55
+msgid "Password recovery is not configured for this server"
+msgstr "이 서버에는 비밀번호 복구가 설정되어 있지 않습니다"
+
+#: src/pages/AccountSettingsOverlay.tsx:339
+#: src/pages/Auth.tsx:301
+msgid "Password updated"
+msgstr "비밀번호가 업데이트되었습니다"
+
+#: src/pages/AccountSettingsOverlay.tsx:274
+#: src/pages/Auth.tsx:269
+msgid "Passwords do not match"
+msgstr "비밀번호가 일치하지 않습니다"
+
+#: src/pages/Auth.tsx:332
+msgid "Reset password"
+msgstr "비밀번호 재설정"
+
+#: src/pages/Auth.tsx:28
+msgid "Reset your password"
+msgstr "비밀번호를 재설정하세요"
+
+#: src/pages/Auth.tsx:220
+msgid "Send reset link"
+msgstr "재설정 링크 보내기"
+
+#: src/pages/Auth.tsx:261
+msgid "This reset link is invalid or expired"
+msgstr "이 재설정 링크는 유효하지 않거나 만료되었습니다"

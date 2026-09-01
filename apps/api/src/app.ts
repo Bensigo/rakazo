@@ -8,6 +8,7 @@ import type {
   MessagingSurface,
   RealtimeFanout,
   SandboxProvider,
+  TransactionalEmailProvider,
 } from "@rakazo/adapter-kit";
 import {
   applyMessagingOutboundStatus,
@@ -24,6 +25,7 @@ import {
   createWebProvider,
   type DestinationEmulator,
   destroyBot,
+  EmailEmulator,
   EncryptedSecretStore,
   ExpoPushProvider,
   GraphileJobPublisher,
@@ -46,6 +48,7 @@ import {
   pushTokenPath,
   type RemoteConnectorDependencies,
   ScriptedAgentRuntime,
+  SmtpEmailProvider,
   SpaceMemoryProviderResolver,
 } from "@rakazo/adapters";
 import { blockedAuthPaths, createAuth } from "@rakazo/auth";
@@ -76,6 +79,7 @@ export interface AppHandles {
   composio?: ComposioProvider;
   connectors: ConnectorRegistry;
   messaging?: MessagingSurface;
+  email?: TransactionalEmailProvider;
   executor: ReturnType<typeof createRunExecutor>;
   stop: () => Promise<void>;
 }
@@ -87,6 +91,7 @@ export async function createApp(
     composio?: ComposioProvider;
     pipedream?: ManagedConnectorProvider;
     messaging?: MessagingSurface;
+    email?: TransactionalEmailProvider;
     remoteConnectors?: RemoteConnectorDependencies;
   } = {},
 ): Promise<AppHandles> {
@@ -96,6 +101,7 @@ export async function createApp(
     composio: composioOverride,
     pipedream: pipedreamOverride,
     messaging: messagingOverride,
+    email: emailOverride,
     remoteConnectors,
     ...envOverrides
   } = overrides;
@@ -186,6 +192,20 @@ export async function createApp(
     })
       ? new ChatSdkMessagingSurface(messagingPlatforms)
       : undefined);
+  const localEmailEmulator =
+    !emailOverride && !env.smtpUrl && env.emailEmulator
+      ? new EmailEmulator((message) => {
+          console.info(`[email-emulator] captured ${message.subject} to ${message.to}`);
+        })
+      : undefined;
+  if (localEmailEmulator && !isLoopbackHost(env.apiHost)) {
+    throw new Error("EMAIL_EMULATOR requires API_HOST to be a loopback host");
+  }
+  const email: TransactionalEmailProvider | undefined =
+    emailOverride ??
+    (env.smtpUrl
+      ? new SmtpEmailProvider({ url: env.smtpUrl, from: env.emailFrom ?? "" })
+      : localEmailEmulator);
   const installed = new InstalledConnectorProvider(prisma, secrets, remoteConnectors);
   const stack = createConnectorStack(isComposioEnabled(env.composioApiKey), composioOverride, [
     installed,
@@ -205,6 +225,8 @@ export async function createApp(
     webOrigin: env.webOrigin,
     signupsEnabled: env.signupsEnabled,
     signupAllowlist: env.signupAllowlist,
+    email,
+    onEmailError: (error) => console.error("transactional email delivery failed", error),
     extraOrigins: [
       "rakazo://",
       "exp://",
@@ -330,6 +352,21 @@ export async function createApp(
       credentials: true,
     }),
   );
+  app.get("/api/auth/capabilities", (c) =>
+    c.json({
+      passwordReset: Boolean(email),
+      resetUrl: email ? new URL("/reset-password", env.webOrigin).href : null,
+    }),
+  );
+  if (localEmailEmulator && env.nodeEnv === "development") {
+    app.get(
+      "/api/dev/emails",
+      () =>
+        new Response(JSON.stringify(localEmailEmulator.sent), {
+          headers: { "cache-control": "no-store", "content-type": "application/json" },
+        }),
+    );
+  }
   app.on(["GET", "POST"], "/api/auth/*", async (c) => {
     const path = new URL(c.req.url).pathname.replace("/api/auth", "");
     if (blockedAuthPaths.some((blocked) => path.startsWith(blocked))) {
@@ -401,6 +438,7 @@ export async function createApp(
       composio: Boolean(stack.composio),
       pipedream: Boolean(pipedream),
       messaging: Boolean(messaging),
+      email: email?.describe().id ?? null,
       jobs: jobKind,
       realtime: realtime.describe().id,
       revision: env.gitSha ?? null,
@@ -416,9 +454,11 @@ export async function createApp(
     composio: stack.composio,
     connectors: stack.connector,
     messaging,
+    email,
     executor,
     stop: async () => {
       oauthLogins.abortAll();
+      await email?.drain?.();
       await reconciler?.stop();
       await jobs.close();
       await realtime.close();
@@ -436,10 +476,14 @@ function isTrustedOrigin(origin: string, env: AppEnv) {
   if (origin.startsWith("rakazo://") || origin.startsWith("exp://")) return true;
   try {
     const host = new URL(origin).hostname;
-    return host === "localhost" || host === "127.0.0.1";
+    return isLoopbackHost(host);
   } catch {
     return false;
   }
+}
+
+function isLoopbackHost(host: string): boolean {
+  return host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
 }
 
 function sessionHeaders(request: Request) {

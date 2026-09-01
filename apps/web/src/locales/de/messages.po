@@ -3060,3 +3060,95 @@ msgstr "Dein Name"
 #: src/pages/Welcome.tsx:21
 msgid "Your team of always-on agents<0/>that you can give real work to."
 msgstr "Dein Team aus jederzeit verfügbaren Agents<0/>für echte Aufgaben."
+
+#: src/pages/Auth.tsx:107
+#: src/pages/Auth.tsx:242
+#: src/pages/Auth.tsx:335
+msgid "Back to sign in"
+msgstr "Zurück zur Anmeldung"
+
+#: src/pages/AccountSettingsOverlay.tsx:337
+msgid "Change password"
+msgstr "Passwort ändern"
+
+#: src/pages/AccountSettingsOverlay.tsx:337
+msgid "Changing…"
+msgstr "Wird geändert…"
+
+#: src/pages/Auth.tsx:101
+msgid "Check your email"
+msgstr "Prüfe deine E-Mails"
+
+#: src/pages/Auth.tsx:296
+msgid "Choose a new password"
+msgstr "Wähle ein neues Passwort"
+
+#: src/pages/AccountSettingsOverlay.tsx:320
+#: src/pages/Auth.tsx:317
+msgid "Confirm password"
+msgstr "Passwort bestätigen"
+
+#: src/pages/AccountSettingsOverlay.tsx:287
+msgid "Could not change password"
+msgstr "Passwort konnte nicht geändert werden"
+
+#: src/pages/AccountSettingsOverlay.tsx:295
+#: src/pages/Auth.tsx:84
+#: src/pages/Auth.tsx:282
+msgid "Could not reach the server"
+msgstr "Server konnte nicht erreicht werden"
+
+#: src/pages/Auth.tsx:277
+msgid "Could not reset password"
+msgstr "Passwort konnte nicht zurückgesetzt werden"
+
+#: src/pages/Auth.tsx:63
+msgid "Could not send reset email"
+msgstr "E-Mail zum Zurücksetzen konnte nicht gesendet werden"
+
+#: src/pages/AccountSettingsOverlay.tsx:308
+msgid "Current password"
+msgstr "Aktuelles Passwort"
+
+#: src/pages/Auth.tsx:203
+msgid "Forgot password?"
+msgstr "Passwort vergessen?"
+
+#: src/pages/Auth.tsx:104
+msgid "If an account exists for that address, we sent a password reset link."
+msgstr "Wenn ein Konto mit dieser Adresse existiert, haben wir einen Link zum Zurücksetzen des Passworts gesendet."
+
+#: src/pages/AccountSettingsOverlay.tsx:314
+#: src/pages/Auth.tsx:311
+msgid "New password"
+msgstr "Neues Passwort"
+
+#: src/pages/Auth.tsx:55
+msgid "Password recovery is not configured for this server"
+msgstr "Die Passwortwiederherstellung ist für diesen Server nicht konfiguriert"
+
+#: src/pages/AccountSettingsOverlay.tsx:339
+#: src/pages/Auth.tsx:301
+msgid "Password updated"
+msgstr "Passwort aktualisiert"
+
+#: src/pages/AccountSettingsOverlay.tsx:274
+#: src/pages/Auth.tsx:269
+msgid "Passwords do not match"
+msgstr "Die Passwörter stimmen nicht überein"
+
+#: src/pages/Auth.tsx:332
+msgid "Reset password"
+msgstr "Passwort zurücksetzen"
+
+#: src/pages/Auth.tsx:28
+msgid "Reset your password"
+msgstr "Setze dein Passwort zurück"
+
+#: src/pages/Auth.tsx:220
+msgid "Send reset link"
+msgstr "Link zum Zurücksetzen senden"
+
+#: src/pages/Auth.tsx:261
+msgid "This reset link is invalid or expired"
+msgstr "Dieser Link zum Zurücksetzen ist ungültig oder abgelaufen"
