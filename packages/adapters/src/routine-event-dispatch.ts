@@ -40,7 +40,12 @@ export type RoutineEventDispatchDeps = {
   wakeRoutineFromEvent(
     routineId: string,
     event: NormalizedRoutineEvent,
-    options?: { idempotencyKey?: string; alternateIdempotencyKeys?: string[] },
+    options?: {
+      idempotencyKey?: string;
+      alternateIdempotencyKeys?: string[];
+      /** strict = any status; inflight = only non-terminal runs (body-hash fallback). */
+      idempotencyScope?: "strict" | "inflight";
+    },
   ): Promise<{ runId: string; threadId: string } | null>;
 };
 
@@ -56,6 +61,8 @@ export async function dispatchRoutineEvents(input: {
   idempotencyKey?: string;
   /** Extra delivery keys that should resolve to the same wake (e.g. previous time bucket). */
   alternateIdempotencyKeys?: string[];
+  /** strict for explicit delivery ids; inflight for body-hash fallback. */
+  idempotencyScope?: "strict" | "inflight";
 }): Promise<RoutineEventWakeResult[]> {
   const routines = await input.deps.prisma.routine.findMany({
     where: {
@@ -92,6 +99,7 @@ export async function dispatchRoutineEvents(input: {
     const wake = await input.deps.wakeRoutineFromEvent(routine.id, promptEvent, {
       idempotencyKey,
       alternateIdempotencyKeys,
+      idempotencyScope: input.idempotencyScope,
     });
     if (!wake) continue;
     woken.add(routine.id);
@@ -150,27 +158,52 @@ function webhookHashedKey(botId: string, material: string): string {
   return `webhook:${botId}:${createHash("sha256").update(material).digest("base64url")}`;
 }
 
+export type WebhookDeliveryIdempotency = {
+  keys: string[];
+  /**
+   * strict — explicit delivery ids; recover any prior run.
+   * inflight — body-hash fallback; only dedupe while a run is still non-terminal,
+   * so a later intentional identical payload can wake again after completion.
+   */
+  scope: "strict" | "inflight";
+};
+
 /**
  * Delivery keys for a webhook. Index 0 is the claim key for new wakes.
  * Body-hash fallbacks also include the previous time bucket so a retry that
- * crosses a five-minute boundary still resolves to the same wake.
+ * crosses a five-minute boundary still resolves to an in-flight wake.
  */
-export function webhookDeliveryIdempotencyKeys(input: {
+export function webhookDeliveryIdempotency(input: {
   botId: string;
   headers: Headers | { get(name: string): string | null };
   payload: Record<string, unknown>;
   /** Exact request body when available; used when no explicit delivery id is present. */
   rawBody?: string;
   nowMs?: number;
-}): string[] {
+}): WebhookDeliveryIdempotency {
   const explicit = webhookDeliveryExplicitId(input);
-  if (explicit) return [webhookHashedKey(input.botId, explicit)];
+  if (explicit) {
+    return { keys: [webhookHashedKey(input.botId, explicit)], scope: "strict" };
+  }
   const body = input.rawBody?.trim() || JSON.stringify(input.payload);
   const bucket = Math.floor((input.nowMs ?? Date.now()) / WEBHOOK_BODY_HASH_WINDOW_MS);
-  return [
-    webhookHashedKey(input.botId, `${bucket}:${body}`),
-    webhookHashedKey(input.botId, `${bucket - 1}:${body}`),
-  ];
+  return {
+    keys: [
+      webhookHashedKey(input.botId, `${bucket}:${body}`),
+      webhookHashedKey(input.botId, `${bucket - 1}:${body}`),
+    ],
+    scope: "inflight",
+  };
+}
+
+export function webhookDeliveryIdempotencyKeys(input: {
+  botId: string;
+  headers: Headers | { get(name: string): string | null };
+  payload: Record<string, unknown>;
+  rawBody?: string;
+  nowMs?: number;
+}): string[] {
+  return webhookDeliveryIdempotency(input).keys;
 }
 
 export function webhookDeliveryIdempotencyKey(input: {
@@ -180,5 +213,5 @@ export function webhookDeliveryIdempotencyKey(input: {
   rawBody?: string;
   nowMs?: number;
 }): string {
-  return webhookDeliveryIdempotencyKeys(input)[0]!;
+  return webhookDeliveryIdempotency(input).keys[0]!;
 }

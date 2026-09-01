@@ -4,6 +4,7 @@ import {
   eventsFromWebhookPayload,
   pickPromptEvent,
   webhookDeliveryIdempotencyKey,
+  webhookDeliveryIdempotency,
   webhookDeliveryIdempotencyKeys,
 } from "./routine-event-dispatch.js";
 
@@ -186,4 +187,25 @@ describe("routine event dispatch", () => {
     // claim key from just before the boundary.
     expect(after[1]).toBe(before[0]);
   });
+
+  it("marks body-hash deliveries as inflight and explicit ids as strict", () => {
+    const headers = { get: () => null };
+    const bodyHash = webhookDeliveryIdempotency({
+      botId: "bot-1",
+      headers,
+      payload: { text: "hello" },
+      rawBody: '{"text":"hello"}',
+    });
+    expect(bodyHash.scope).toBe("inflight");
+    expect(bodyHash.keys.length).toBe(2);
+
+    const explicit = webhookDeliveryIdempotency({
+      botId: "bot-1",
+      headers: { get: (name: string) => (name === "x-github-delivery" ? "deliv-1" : null) },
+      payload: { text: "hello" },
+    });
+    expect(explicit.scope).toBe("strict");
+    expect(explicit.keys).toHaveLength(1);
+  });
+
 });

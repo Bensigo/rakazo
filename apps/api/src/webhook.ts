@@ -4,7 +4,7 @@ import type { EncryptedSecretStore } from "@rakazo/adapters";
 import {
   dispatchRoutineEvents,
   eventsFromWebhookPayload,
-  webhookDeliveryIdempotencyKeys,
+  webhookDeliveryIdempotency,
 } from "@rakazo/adapters";
 import type { NormalizedRoutineEvent } from "@rakazo/core";
 import { hasValidBearerToken } from "@rakazo/core";
@@ -35,7 +35,11 @@ export type WebhookDeps = {
   wakeRoutineFromEvent(
     routineId: string,
     event: NormalizedRoutineEvent,
-    options?: { idempotencyKey?: string; alternateIdempotencyKeys?: string[] },
+    options?: {
+      idempotencyKey?: string;
+      alternateIdempotencyKeys?: string[];
+      idempotencyScope?: "strict" | "inflight";
+    },
   ): Promise<{ runId: string; threadId: string } | null>;
 };
 
@@ -158,13 +162,13 @@ export function mountWebhookHttpRoutes(app: Hono, deps: WebhookDeps) {
       eventName: c.req.header("x-github-event") ?? c.req.header("x-rakazo-event"),
     });
 
-    const deliveryKeys = webhookDeliveryIdempotencyKeys({
+    const delivery = webhookDeliveryIdempotency({
       botId: bot.id,
       headers: c.req.raw.headers,
       payload,
       rawBody: raw,
     });
-    const deliveryKey = deliveryKeys[0]!;
+    const deliveryKey = delivery.keys[0]!;
     const woken = await dispatchRoutineEvents({
       deps: {
         prisma: deps.prisma,
@@ -174,7 +178,8 @@ export function mountWebhookHttpRoutes(app: Hono, deps: WebhookDeps) {
       spaceId: bot.spaceId,
       events,
       idempotencyKey: deliveryKey,
-      alternateIdempotencyKeys: deliveryKeys.slice(1),
+      alternateIdempotencyKeys: delivery.keys.slice(1),
+      idempotencyScope: delivery.scope,
     });
 
     if (woken.length > 0) {

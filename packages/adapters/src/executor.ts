@@ -724,7 +724,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
     async wakeRoutineFromEvent(
       routineId: string,
       event: NormalizedRoutineEvent,
-      options?: { idempotencyKey?: string; alternateIdempotencyKeys?: string[] },
+      options?: {
+        idempotencyKey?: string;
+        alternateIdempotencyKeys?: string[];
+        idempotencyScope?: "strict" | "inflight";
+      },
     ) {
       const routine = await deps.prisma.routine.findUnique({ where: { id: routineId } });
       if (!routine?.active) return null;
@@ -732,13 +736,16 @@ export function createRunExecutor(deps: ExecutorDeps) {
         options?.idempotencyKey,
         ...(options?.alternateIdempotencyKeys ?? []),
       ].filter((key): key is string => Boolean(key));
+      const idempotencyScope = options?.idempotencyScope ?? "strict";
+      const inflightStatuses = ["queued", "leased", "running", "waiting_input", "waiting_takeover"] as const;
 
-      const findExistingByNonce = async () => {
+      const findExistingByNonce = async (inflightOnly: boolean) => {
         if (idempotencyKeys.length === 0) return null;
         return deps.prisma.run.findFirst({
           where: {
             spaceId: routine.spaceId,
             clientNonce: { in: idempotencyKeys },
+            ...(inflightOnly ? { status: { in: [...inflightStatuses] } } : {}),
           },
           select: { id: true, threadId: true, status: true },
         });
@@ -760,7 +767,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
         return { runId: existing.id, threadId: existing.threadId };
       };
 
-      const existingEarly = await findExistingByNonce();
+      const existingEarly = await findExistingByNonce(idempotencyScope === "inflight");
       if (existingEarly) return recoverExisting(existingEarly);
 
       const bot = await deps.prisma.bot.findUnique({
@@ -796,9 +803,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
       const trigger = event.source === "chat" ? ("messaging" as const) : ("webhook" as const);
       // Event wakes only bump lastRunAt; they never touch nextRunAt.
       const claimedAt = new Date();
-      let claimed: { id: string; taskId: string; threadId: string } | null = null;
-      try {
-        claimed = await deps.prisma.$transaction(async (tx) => {
+
+      const claimRun = async () =>
+        deps.prisma.$transaction(async (tx) => {
           const updated = await tx.routine.updateMany({
             where: { id: routine.id, active: true },
             data: { lastRunAt: claimedAt },
@@ -829,12 +836,43 @@ export function createRunExecutor(deps: ExecutorDeps) {
           });
           return { id: run.id, taskId: task.id, threadId: thread.id };
         });
+
+      let claimed: { id: string; taskId: string; threadId: string } | null = null;
+      try {
+        claimed = await claimRun();
       } catch (error) {
         if (idempotencyKeys.length > 0 && isUniqueConstraintError(error)) {
-          const existing = await findExistingByNonce();
-          if (existing) return recoverExisting(existing);
+          const existing = await findExistingByNonce(false);
+          if (existing) {
+            const terminal =
+              existing.status === "completed" ||
+              existing.status === "failed" ||
+              existing.status === "cancelled";
+            if (idempotencyScope === "inflight" && terminal) {
+              // Free the body-hash nonce so a later intentional identical
+              // payload can claim a new run after the prior one finished.
+              await deps.prisma.run.updateMany({
+                where: { id: existing.id, clientNonce: { in: idempotencyKeys } },
+                data: { clientNonce: null },
+              });
+              try {
+                claimed = await claimRun();
+              } catch (retryError) {
+                if (isUniqueConstraintError(retryError)) {
+                  const again = await findExistingByNonce(idempotencyScope === "inflight");
+                  if (again) return recoverExisting(again);
+                }
+                throw retryError;
+              }
+            } else {
+              return recoverExisting(existing);
+            }
+          } else {
+            throw error;
+          }
+        } else {
+          throw error;
         }
-        throw error;
       }
       if (!claimed) return null;
       try {
