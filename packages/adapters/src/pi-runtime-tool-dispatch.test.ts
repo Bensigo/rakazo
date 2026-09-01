@@ -17,6 +17,7 @@ const fakeAgentState = vi.hoisted(() => ({
   steeredMessages: [] as unknown[],
   initialMessages: [] as unknown[],
   promptInputs: [] as string[],
+  promptImages: [] as unknown[][],
 }));
 
 vi.mock("@earendil-works/pi-agent-core", () => ({
@@ -45,8 +46,9 @@ vi.mock("@earendil-works/pi-agent-core", () => ({
       this.listeners.push(listener);
     }
 
-    async prompt(prompt: string) {
+    async prompt(prompt: string, images?: unknown[]) {
       fakeAgentState.promptInputs.push(prompt);
+      fakeAgentState.promptImages.push(images ?? []);
       if (fakeAgentState.mode === "empty" || fakeAgentState.mode === "two-boundaries") {
         await this.prepareNextTurnWithContext?.({ context: { messages: [] } });
         if (fakeAgentState.mode === "two-boundaries") {
@@ -182,6 +184,7 @@ describe("Pi connector tool dispatch", () => {
     fakeAgentState.steeredMessages = [];
     fakeAgentState.initialMessages = [];
     fakeAgentState.promptInputs = [];
+    fakeAgentState.promptImages = [];
     fakeAgentState.invoke = {
       name: "destination_write",
       args: { collection: "notes", title: "Result", body: "Done" },
@@ -302,6 +305,68 @@ describe("Pi connector tool dispatch", () => {
       expect(JSON.stringify(fakeAgentState.initialMessages)).not.toContain(item.text);
     }
     expect(fakeAgentState.steeredMessages).toEqual([]);
+  });
+
+  it("delivers images attached to initial and boundary steering", async () => {
+    fakeAgentState.mode = "empty";
+    let claimCount = 0;
+    const claimSteering = vi.fn(async () => {
+      claimCount += 1;
+      if (claimCount === 1) {
+        return [
+          {
+            id: "initial-image",
+            text: "Inspect the first image.",
+            images: [
+              {
+                name: "first.png",
+                mimeType: "image/png" as const,
+                data: new Uint8Array([1, 2, 3]),
+              },
+            ],
+          },
+        ];
+      }
+      return [
+        {
+          id: "boundary-image",
+          text: "Compare the second image.",
+          images: [
+            { name: "second.png", mimeType: "image/png" as const, data: new Uint8Array([4, 5, 6]) },
+          ],
+        },
+      ];
+    });
+    const runtime = new PiAgentRuntime();
+
+    for await (const _event of runtime.run(
+      {
+        botId: "b",
+        threadId: "t",
+        runId: "image-steering",
+        prompt: "continue",
+        instructions: "Inspect attached images.",
+        history: [],
+        tools: [],
+        model: { provider: "test", id: "dispatch-test-model" },
+        claimSteering,
+      },
+      { signal: new AbortController().signal },
+    )) {
+      // Exhaust the runtime event stream.
+    }
+
+    expect(fakeAgentState.promptImages).toEqual([
+      [{ type: "image", data: "AQID", mimeType: "image/png" }],
+    ]);
+    expect(fakeAgentState.steeredMessages).toContainEqual({
+      role: "user",
+      content: [
+        { type: "text", text: "Compare the second image." },
+        { type: "image", data: "BAUG", mimeType: "image/png" },
+      ],
+      timestamp: expect.any(Number),
+    });
   });
 
   afterEach(() => {

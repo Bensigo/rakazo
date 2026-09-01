@@ -2804,15 +2804,41 @@ export function createRunExecutor(deps: ExecutorDeps) {
               executeTool: scripted ? undefined : applyTool,
               claimSteering: scripted
                 ? undefined
-                : (seenIds) =>
-                    deps.events.claimSteering({
+                : async (seenIds) => {
+                    const steering = await deps.events.claimSteering({
                       threadId: thread.id,
                       botId: bot.id,
                       runId,
                       leaseOwner: workerId,
                       leaseFence: fence,
                       seenIds,
-                    }),
+                    });
+                    return Promise.all(
+                      steering.map(async (item) => {
+                        const [images, files] = await Promise.all([
+                          loadCurrentTurnImages(deps, item.blocks, context),
+                          deps.artifacts
+                            ? materializeCurrentTurnFiles(
+                                {
+                                  prisma: deps.prisma,
+                                  artifacts: deps.artifacts,
+                                  sandbox: deps.sandbox,
+                                },
+                                item.blocks,
+                                { context, computer, computerMode },
+                              )
+                            : [],
+                        ]);
+                        const filesInstruction = currentTurnFilesInstruction(files);
+                        return {
+                          id: item.id,
+                          historyText: item.text,
+                          text: [item.text, filesInstruction].filter(Boolean).join("\n\n"),
+                          images,
+                        };
+                      }),
+                    );
+                  },
             },
             context,
           )) {

@@ -1012,7 +1012,21 @@ describe("claimSteering", () => {
       run: { findFirst: vi.fn().mockResolvedValue({ id: "run-1" }) },
       steeringMessage: {
         findMany: vi.fn().mockResolvedValue([
-          { id: "steer-1", message: { seq: 5, blocks: [{ kind: "text", text: "First" }] } },
+          {
+            id: "steer-1",
+            message: {
+              seq: 5,
+              blocks: [
+                { kind: "text", text: "First" },
+                {
+                  kind: "image",
+                  artifactId: "artifact-1",
+                  name: "chart.png",
+                  mimeType: "image/png",
+                },
+              ],
+            },
+          },
           { id: "steer-2", message: { seq: 6, blocks: [{ kind: "text", text: "Second" }] } },
         ]),
         updateMany: vi.fn().mockResolvedValue({ count: 2 }),
@@ -1032,8 +1046,20 @@ describe("claimSteering", () => {
         seenIds: [],
       }),
     ).resolves.toEqual([
-      { id: "steer-1", text: "First" },
-      { id: "steer-2", text: "Second" },
+      {
+        id: "steer-1",
+        text: "First\n[image: chart.png]",
+        blocks: [
+          { kind: "text", text: "First" },
+          {
+            kind: "image",
+            artifactId: "artifact-1",
+            name: "chart.png",
+            mimeType: "image/png",
+          },
+        ],
+      },
+      { id: "steer-2", text: "Second", blocks: [{ kind: "text", text: "Second" }] },
     ]);
     expect(tx.run.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({

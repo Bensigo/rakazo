@@ -300,6 +300,20 @@ export interface SemanticMemoryPurgeHistoryRequest {
   generations: number[];
 }
 
+export interface AgentInputImage {
+  name: string;
+  mimeType: "image/jpeg" | "image/png" | "image/webp" | "image/gif";
+  data: Uint8Array;
+}
+
+export interface AgentSteeringMessage {
+  id: string;
+  text: string;
+  /** Persisted history text before attachment paths are appended. */
+  historyText?: string;
+  images?: AgentInputImage[];
+}
+
 export interface AgentRunRequest {
   botId: string;
   threadId: string;
@@ -307,11 +321,7 @@ export interface AgentRunRequest {
   prompt: string;
   instructions: string;
   history: Array<{ role: "user" | "assistant" | "system"; content: string }>;
-  currentTurnImages?: Array<{
-    name: string;
-    mimeType: "image/jpeg" | "image/png" | "image/webp" | "image/gif";
-    data: Uint8Array;
-  }>;
+  currentTurnImages?: AgentInputImage[];
   tools: ConnectorTool[];
   model: {
     provider: string;
@@ -342,7 +352,7 @@ export interface AgentRunRequest {
     route?: ConnectorRoute,
   ) => Promise<unknown>;
   /** Atomically claim durable user steering at the runtime's next safe turn boundary. */
-  claimSteering?: (seenIds: string[]) => Promise<Array<{ id: string; text: string }>>;
+  claimSteering?: (seenIds: string[]) => Promise<AgentSteeringMessage[]>;
 }
 
 export interface ScriptedTurn {

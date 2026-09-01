@@ -150,7 +150,7 @@ export class PiAgentRuntime implements AgentRuntime {
         const history = toHistory(
           withoutSteeringMessages(
             request.history,
-            initialSteering.map((item) => item.text),
+            initialSteering.map((item) => item.historyText ?? item.text),
           ),
           request.prompt,
         );
@@ -169,15 +169,16 @@ export class PiAgentRuntime implements AgentRuntime {
           transformContext: async (messages) => pruneComputerScreenshotContext(messages),
           prepareNextTurnWithContext: async () => {
             if (!request.claimSteering) return undefined;
-            try {
-              const steering = await request.claimSteering([...seenSteeringIds]);
-              if (steering.length === 0) return undefined;
-              seenSteeringIds.push(...steering.map((item) => item.id));
-              for (const item of steering) {
-                agent.steer({ role: "user", content: item.text, timestamp: Date.now() });
-              }
-            } catch {
-              // Durable steering remains claimable at the next boundary or retry.
+            const steering = await request.claimSteering([...seenSteeringIds]);
+            if (steering.length === 0) return undefined;
+            seenSteeringIds.push(...steering.map((item) => item.id));
+            for (const item of steering) {
+              const images = toPiImages(item.images);
+              agent.steer({
+                role: "user",
+                content: images.length ? [{ type: "text", text: item.text }, ...images] : item.text,
+                timestamp: Date.now(),
+              });
             }
             return undefined;
           },
@@ -255,11 +256,10 @@ export class PiAgentRuntime implements AgentRuntime {
 
         // No "working…" progress push here: the shell already renders its own
         // placeholder while a run is active, and emitting one here shows two.
-        const images = request.currentTurnImages?.map((image) => ({
-          type: "image" as const,
-          data: Buffer.from(image.data).toString("base64"),
-          mimeType: image.mimeType,
-        }));
+        const images = toPiImages([
+          ...(request.currentTurnImages ?? []),
+          ...initialSteering.flatMap((item) => item.images ?? []),
+        ]);
         try {
           await agent.prompt(initialPrompt, images?.length ? images : undefined);
           await agent.waitForIdle();
@@ -313,6 +313,14 @@ export class PiAgentRuntime implements AgentRuntime {
       running.delete(request.runId);
     }
   }
+}
+
+function toPiImages(images: AgentRunRequest["currentTurnImages"]) {
+  return (images ?? []).map((image) => ({
+    type: "image" as const,
+    data: Buffer.from(image.data).toString("base64"),
+    mimeType: image.mimeType,
+  }));
 }
 
 function configuredOpenRouterModel(id: string): Model<"openai-completions"> {

@@ -86,6 +86,7 @@ export interface ClaimSteeringInput {
 export interface ClaimedSteeringMessage {
   id: string;
   text: string;
+  blocks: MessageBlock[];
 }
 
 export interface FinalizeRunResult {
@@ -453,6 +454,7 @@ export async function claimSteering(
     return steering.map((item) => ({
       id: item.id,
       text: blocksToAgentHistoryText(item.message.blocks as MessageBlock[]),
+      blocks: item.message.blocks as MessageBlock[],
     }));
   });
 }
