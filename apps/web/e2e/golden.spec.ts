@@ -319,10 +319,11 @@ test("sign-in, spawn, and stop work in the shell", async ({ page }, testInfo) =>
   await expect(page.getByRole("button", { name: "Send", exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeDisabled();
   releaseStopRequest();
-  await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled({
+  // Idle Send stays disabled with an empty draft; wait for Stop to leave instead.
+  await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0, {
     timeout: 30_000,
   });
-  await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Send", exact: true })).toBeVisible();
 
   await page.context().clearCookies();
   await page.goto("/sign-in");
