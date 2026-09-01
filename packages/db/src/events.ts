@@ -123,7 +123,7 @@ export interface SendUserMessageInput {
   userId: string;
   blocks: MessageBlock[];
   prompt: string;
-  trigger: "user" | "follow_up" | "webhook" | "phone";
+  trigger: "user" | "follow_up" | "webhook" | "messaging";
   clientNonce?: string;
   /** Skip task/run creation when the bot already has active work (follow-up behavior). */
   onlyIfIdle?: boolean;

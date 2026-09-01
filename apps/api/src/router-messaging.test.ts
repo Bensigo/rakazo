@@ -4,19 +4,25 @@ import type { PrismaClient } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
 import { createRouter, type RouterDeps } from "./router.js";
 
+/** Prisma filters the handlers use when scoping memberships to the caller. */
+type MembershipWhere = { id?: string; identityId?: { in: string[] } };
+
 const identity = {
-  id: "pi-1",
-  phoneE164: "+15551111111",
+  id: "mi-1",
+  provider: "sendblue",
+  address: "+15551111111",
   userId: "user-1",
   spaceId: "ws-1",
   botId: "bot-1",
   outboundSinceInbound: 0,
 };
 
-function phoneDeps(
+function messagingDeps(
   overrides: {
     enabled?: boolean;
     identity?: unknown;
+    /** Every chat app the caller has linked; defaults to the single identity. */
+    identities?: Array<Record<string, unknown>>;
     membership?: Record<string, unknown> | null;
     memberships?: Array<Record<string, unknown>>;
     connection?: Record<string, unknown> | null;
@@ -27,12 +33,17 @@ function phoneDeps(
   const membership =
     overrides.membership === undefined
       ? {
-          id: "pm-1",
+          id: "cm-1",
           channelId: "ch-1",
-          phoneE164: "+15551111111",
-          identityId: "pi-1",
+          address: "+15551111111",
+          identityId: "mi-1",
           status: "invited",
-          channel: { id: "ch-1", name: "Family", members: [{ id: "pm-1" }, { id: "pm-2" }] },
+          channel: {
+            id: "ch-1",
+            provider: "sendblue",
+            name: "Family",
+            members: [{ id: "cm-1" }, { id: "cm-2" }],
+          },
         }
       : overrides.membership;
   const connection =
@@ -44,41 +55,77 @@ function phoneDeps(
           status: "pending",
         }
       : overrides.connection;
-  const membershipState = membership ? { ...membership } : null;
+  // One user can hold several memberships in the same channel (one per linked
+  // chat app), so the mock resolves them by id the way the handlers do.
+  const membershipPool = (overrides.memberships ?? (membership ? [membership] : [])).map(
+    (row) => ({ ...row }) as Record<string, unknown>,
+  );
+  const ownedBy = (where: { identityId?: { in: string[] } } | undefined, row: unknown) =>
+    !where?.identityId ||
+    where.identityId.in.includes(String((row as { identityId?: string })?.identityId));
+  const visibleMemberships = (where: { identityId?: { in: string[] } } | undefined) =>
+    membershipPool.filter((row) => ownedBy(where, row));
+  const findMembership = (where: { id?: string; identityId?: { in: string[] } } | undefined) => {
+    const pool = visibleMemberships(where);
+    return where?.id ? (pool.find((row) => row.id === where.id) ?? null) : (pool[0] ?? null);
+  };
+  const defaultChannel = { id: "ch-1", provider: "sendblue", name: "Family", members: [] };
   const connectionState = connection ? { ...connection } : null;
   const prisma = {
-    phoneIdentity: {
+    messagingIdentity: {
       findFirst: vi.fn(async () => resolvedIdentity),
+      findMany: vi.fn(
+        async () => overrides.identities ?? (resolvedIdentity ? [resolvedIdentity] : []),
+      ),
+      update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
+        ...(resolvedIdentity as Record<string, unknown>),
+        ...data,
+      })),
+      deleteMany: vi.fn(async ({ where }: { where: { id: string } }) => ({
+        count: resolvedIdentity && where.id === "mi-1" ? 1 : 0,
+      })),
       findUnique: vi.fn(async ({ where }: { where: { botId?: string } }) =>
         where.botId === "bot-9"
-          ? { id: "pi-9", phoneE164: "+15559999999", userId: "user-9", botId: "bot-9" }
+          ? {
+              id: "mi-9",
+              provider: "sendblue",
+              address: "+15559999999",
+              userId: "user-9",
+              botId: "bot-9",
+            }
           : resolvedIdentity,
       ),
     },
-    phoneChannelMember: {
-      findMany: vi.fn(async () => overrides.memberships ?? (membership ? [membership] : [])),
-      findFirst: vi.fn(async () => membership),
-      update: vi.fn(async ({ data }: { data: unknown }) => ({
-        ...membership,
-        ...(data as object),
-        channel: membership?.channel ?? { id: "ch-1", name: "Family", members: [] },
-      })),
+    messagingChannelMember: {
+      findMany: vi.fn(async ({ where }: { where?: MembershipWhere } = {}) =>
+        visibleMemberships(where),
+      ),
+      findFirst: vi.fn(async ({ where }: { where?: MembershipWhere } = {}) =>
+        findMembership(where),
+      ),
+      update: vi.fn(async ({ where, data }: { where?: MembershipWhere; data: unknown }) => {
+        const row = findMembership(where);
+        if (row) Object.assign(row, data as object);
+        return { ...row, channel: row?.channel ?? defaultChannel };
+      }),
       updateMany: vi.fn(
         async ({
           where,
           data,
         }: {
-          where: { id?: string; status?: string };
+          where: MembershipWhere & { status?: string };
           data: Record<string, unknown>;
         }) => {
-          if (!membershipState) return { count: 0 };
-          if (where.id && membershipState.id !== where.id) return { count: 0 };
-          if (where.status && membershipState.status !== where.status) return { count: 0 };
-          Object.assign(membershipState, data);
+          const row = findMembership(where);
+          if (!row) return { count: 0 };
+          if (where.status && row.status !== where.status) return { count: 0 };
+          Object.assign(row, data);
           return { count: 1 };
         },
       ),
-      findUniqueOrThrow: vi.fn(async () => membershipState),
+      findUniqueOrThrow: vi.fn(async ({ where }: { where?: MembershipWhere } = {}) =>
+        findMembership(where),
+      ),
     },
     agentConnection: {
       findMany: vi.fn(async () => overrides.connections ?? (connection ? [connection] : [])),
@@ -88,20 +135,26 @@ function phoneDeps(
         }: {
           where?: {
             id?: string;
-            targetBotId?: string;
+            targetBotId?: string | { in: string[] };
             status?: string;
-            OR?: Array<Record<string, string>>;
+            OR?: Array<Record<string, string | { in: string[] }>>;
           };
         }) => {
+          // Handlers scope by every linked identity, so bot filters arrive
+          // as { in: [...] } lists.
+          const matches = (filter: string | { in: string[] } | undefined, value: string) =>
+            filter === undefined ||
+            (typeof filter === "string" ? filter === value : filter.in.includes(value));
           if (!connection) return null;
           if (where?.id && connection.id !== where.id) return null;
-          if (where?.targetBotId && connection.targetBotId !== where.targetBotId) return null;
+          if (!matches(where?.targetBotId, connection.targetBotId)) return null;
           if (where?.status && connection.status !== where.status) return null;
           if (where?.OR) {
             const involved = where.OR.some(
               (cond) =>
-                connection.requesterBotId === cond.requesterBotId ||
-                connection.targetBotId === cond.targetBotId,
+                matches(cond.requesterBotId, connection.requesterBotId) &&
+                matches(cond.targetBotId, connection.targetBotId) &&
+                (cond.requesterBotId !== undefined || cond.targetBotId !== undefined),
             );
             if (!involved) return null;
           }
@@ -134,13 +187,20 @@ function phoneDeps(
         id: where.id,
         name: where.id === "bot-9" ? "Helper" : "Assistant",
       })),
+      findFirst: vi.fn(async ({ where }: { where: { id: string } }) =>
+        where.id.startsWith("bot-") ? { id: where.id } : null,
+      ),
+    },
+    messagingLinkCode: {
+      deleteMany: vi.fn(async () => ({ count: 0 })),
+      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => data),
     },
     user: {
       findUnique: vi.fn(async () => ({ id: "user-9", name: "Bob Owner" })),
     },
   } as unknown as PrismaClient;
   const outboundRows: Array<Record<string, unknown>> = [];
-  const phoneOutbound = {
+  const messagingOutbound = {
     createMany: vi.fn(async ({ data }: { data: Array<Record<string, unknown>> }) => {
       let count = 0;
       for (const item of data) {
@@ -183,7 +243,7 @@ function phoneDeps(
       },
     ),
   };
-  (prisma as { phoneOutbound?: unknown }).phoneOutbound = phoneOutbound;
+  (prisma as { messagingOutbound?: unknown }).messagingOutbound = messagingOutbound;
   // The claim-and-confirm handlers run inside one interactive transaction;
   // the mock passes the same stateful models as the tx delegate.
   (prisma as { $transaction?: unknown }).$transaction = vi.fn(
@@ -200,7 +260,11 @@ function phoneDeps(
       screenProxySecret: "fake-test-secret",
       sandboxProvider: "fake",
     },
-    phone: { enabled: overrides.enabled ?? true },
+    messaging: {
+      enabled: overrides.enabled ?? true,
+      providers: ["sendblue"],
+      openSignup: false,
+    },
     dataDir: "/tmp/rakazo-router-test",
   } as unknown as RouterDeps;
   const actor = {
@@ -231,35 +295,102 @@ async function call(handler: RPCHandler<never>, actor: Actor, path: string, body
   return response;
 }
 
-describe("phone.status", () => {
-  it("reports enablement and the caller's link state", async () => {
-    const { handler, actor } = phoneDeps({ enabled: true });
-    const response = await call(handler, actor, "phone/status");
+describe("messaging.status", () => {
+  it("reports enablement, providers, and the caller's linked identities", async () => {
+    const { handler, actor } = messagingDeps({ enabled: true });
+    const response = await call(handler, actor, "messaging/status");
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       json: {
         enabled: true,
-        linked: true,
-        phoneE164: "+15551111111",
-        botId: "bot-1",
+        providers: ["sendblue"],
+        openSignup: false,
+        identities: [
+          {
+            id: "mi-1",
+            provider: "sendblue",
+            address: "+15551111111",
+            botId: "bot-1",
+            botName: "Assistant",
+          },
+        ],
       },
     });
   });
 
-  it("reports unlinked when the caller has no phone identity", async () => {
-    const { handler, actor } = phoneDeps({ identity: null });
-    const response = await call(handler, actor, "phone/status");
+  it("reports no identities when the caller has not linked a chat app", async () => {
+    const { handler, actor } = messagingDeps({ identity: null });
+    const response = await call(handler, actor, "messaging/status");
     await expect(response.json()).resolves.toEqual({
-      json: { enabled: true, linked: false, phoneE164: null, botId: null },
+      json: { enabled: true, providers: ["sendblue"], openSignup: false, identities: [] },
     });
   });
 });
 
-describe("phone.channels", () => {
+describe("messaging.link", () => {
+  it("issues a formatted single-use code for an owned unlinked bot", async () => {
+    const { handler, actor, prisma } = messagingDeps({ identity: null });
+    (prisma.messagingIdentity.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    const response = await call(handler, actor, "messaging/link/start", { botId: "bot-2" });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { json: { code: string; expiresAt: string } };
+    expect(body.json.code).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{4}$/);
+    expect(Date.parse(body.json.expiresAt)).toBeGreaterThan(Date.now());
+    expect(prisma.messagingLinkCode.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ userId: "user-1", botId: "bot-2" }),
+      }),
+    );
+  });
+
+  it("refuses to issue a code for an already-linked bot", async () => {
+    const { handler, actor } = messagingDeps();
+    // messagingIdentity.findUnique resolves an identity for bot-1 by default.
+    const response = await call(handler, actor, "messaging/link/start", { botId: "bot-1" });
+    expect(response.status).toBe(400);
+  });
+});
+
+describe("messaging.identities", () => {
+  it("re-points an identity at another owned bot", async () => {
+    const { handler, actor } = messagingDeps();
+    const response = await call(handler, actor, "messaging/identities/setBot", {
+      identityId: "mi-1",
+      botId: "bot-2",
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      json: {
+        id: "mi-1",
+        provider: "sendblue",
+        address: "+15551111111",
+        botId: "bot-2",
+        botName: "Assistant",
+      },
+    });
+  });
+
+  it("unlinks only the caller's own identity", async () => {
+    const { handler, actor, prisma } = messagingDeps();
+    const response = await call(handler, actor, "messaging/identities/unlink", {
+      identityId: "mi-1",
+    });
+    expect(response.status).toBe(200);
+    expect(prisma.messagingIdentity.deleteMany).toHaveBeenCalledWith({
+      where: { id: "mi-1", userId: "user-1" },
+    });
+    const missing = await call(handler, actor, "messaging/identities/unlink", {
+      identityId: "mi-other",
+    });
+    expect(missing.status).toBe(404);
+  });
+});
+
+describe("messaging.channels", () => {
   it("lists the caller's memberships with channel names, counting only active members", async () => {
-    const { handler, actor, prisma } = phoneDeps();
-    const response = await call(handler, actor, "phone/channels/list");
-    expect(prisma.phoneChannelMember.findMany).toHaveBeenCalledWith(
+    const { handler, actor, prisma } = messagingDeps();
+    const response = await call(handler, actor, "messaging/channels/list");
+    expect(prisma.messagingChannelMember.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         include: expect.objectContaining({
           channel: expect.objectContaining({
@@ -273,19 +404,29 @@ describe("phone.channels", () => {
       }),
     );
     await expect(response.json()).resolves.toEqual({
-      json: [{ channelId: "ch-1", name: "Family", status: "invited", memberCount: 2 }],
+      json: [
+        {
+          id: "cm-1",
+          channelId: "ch-1",
+          identityId: "mi-1",
+          provider: "sendblue",
+          name: "Family",
+          status: "invited",
+          memberCount: 2,
+        },
+      ],
     });
   });
 
   it("approves an invited membership", async () => {
-    const { handler, actor, prisma } = phoneDeps();
-    const approved = await call(handler, actor, "phone/channels/respond", {
-      channelId: "ch-1",
+    const { handler, actor, prisma } = messagingDeps();
+    const approved = await call(handler, actor, "messaging/channels/respond", {
+      membershipId: "cm-1",
       accept: true,
     });
-    expect(prisma.phoneChannelMember.updateMany).toHaveBeenCalledWith(
+    expect(prisma.messagingChannelMember.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "pm-1", status: "invited" },
+        where: { id: "cm-1", status: "invited" },
         data: { status: "approved" },
       }),
     );
@@ -295,14 +436,14 @@ describe("phone.channels", () => {
   });
 
   it("declines an invited membership on accept=false", async () => {
-    const { handler, actor, prisma } = phoneDeps();
-    const declined = await call(handler, actor, "phone/channels/respond", {
-      channelId: "ch-1",
+    const { handler, actor, prisma } = messagingDeps();
+    const declined = await call(handler, actor, "messaging/channels/respond", {
+      membershipId: "cm-1",
       accept: false,
     });
-    expect(prisma.phoneChannelMember.updateMany).toHaveBeenCalledWith(
+    expect(prisma.messagingChannelMember.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "pm-1", status: "invited" },
+        where: { id: "cm-1", status: "invited" },
         data: { status: "declined" },
       }),
     );
@@ -312,51 +453,87 @@ describe("phone.channels", () => {
   });
 
   it("rejects respond on another user's membership or a non-invited one", async () => {
-    const foreign = phoneDeps({ membership: null });
-    const response = await call(foreign.handler, foreign.actor, "phone/channels/respond", {
-      channelId: "ch-1",
+    const foreign = messagingDeps({ membership: null });
+    const response = await call(foreign.handler, foreign.actor, "messaging/channels/respond", {
+      membershipId: "cm-1",
       accept: true,
     });
     expect(response.status).toBeGreaterThanOrEqual(400);
 
-    const already = phoneDeps({
+    const already = messagingDeps({
       membership: {
-        id: "pm-1",
+        id: "cm-1",
         channelId: "ch-1",
-        identityId: "pi-1",
+        identityId: "mi-1",
         status: "approved",
-        channel: { id: "ch-1", name: "Family", members: [] },
+        channel: { id: "ch-1", provider: "sendblue", name: "Family", members: [] },
       },
     });
-    const second = await call(already.handler, already.actor, "phone/channels/respond", {
-      channelId: "ch-1",
+    const second = await call(already.handler, already.actor, "messaging/channels/respond", {
+      membershipId: "cm-1",
       accept: true,
     });
     expect(second.status).toBeGreaterThanOrEqual(400);
   });
 
   it("leaves an approved channel", async () => {
-    const { handler, actor, prisma } = phoneDeps({
+    const { handler, actor, prisma } = messagingDeps({
       membership: {
-        id: "pm-1",
+        id: "cm-1",
         channelId: "ch-1",
-        identityId: "pi-1",
+        identityId: "mi-1",
         status: "approved",
-        channel: { id: "ch-1", name: "Family", members: [] },
+        channel: { id: "ch-1", provider: "sendblue", name: "Family", members: [] },
       },
     });
-    const response = await call(handler, actor, "phone/channels/leave", { channelId: "ch-1" });
-    expect(prisma.phoneChannelMember.update).toHaveBeenCalledWith(
+    const response = await call(handler, actor, "messaging/channels/leave", {
+      membershipId: "cm-1",
+    });
+    expect(prisma.messagingChannelMember.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { status: "left" } }),
     );
     await expect(response.json()).resolves.toEqual({ json: { ok: true } });
   });
+
+  it("answers the named membership when one user has two chat apps in a group", async () => {
+    const channel = {
+      id: "ch-1",
+      provider: "sendblue",
+      name: "Family",
+      members: [{ id: "cm-1" }, { id: "cm-2" }],
+    };
+    const { handler, actor, prisma } = messagingDeps({
+      identities: [identity, { ...identity, id: "mi-2", address: "+15552222222", botId: "bot-2" }],
+      memberships: [
+        // Same user, same group, one membership per linked chat app. Answering
+        // by channel would pick an arbitrary one and leave the other live.
+        { id: "cm-work", channelId: "ch-1", identityId: "mi-1", status: "approved", channel },
+        { id: "cm-home", channelId: "ch-1", identityId: "mi-2", status: "invited", channel },
+      ],
+    });
+
+    const approved = await call(handler, actor, "messaging/channels/respond", {
+      membershipId: "cm-home",
+      accept: true,
+    });
+    expect(prisma.messagingChannelMember.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "cm-home", status: "invited" } }),
+    );
+    await expect(approved.json()).resolves.toEqual({
+      json: expect.objectContaining({ id: "cm-home", identityId: "mi-2", status: "approved" }),
+    });
+
+    const listed = await call(handler, actor, "messaging/channels/list");
+    const rows = (await listed.json()).json as Array<{ id: string; channelId: string }>;
+    expect(rows.map((row) => row.id)).toEqual(["cm-work", "cm-home"]);
+    expect(new Set(rows.map((row) => row.channelId))).toEqual(new Set(["ch-1"]));
+  });
 });
 
-describe("phone.connections", () => {
+describe("messaging.connections", () => {
   it("lists connections with the peer label and direction", async () => {
-    const { handler, actor } = phoneDeps();
-    const response = await call(handler, actor, "phone/connections/list");
+    const { handler, actor } = messagingDeps();
+    const response = await call(handler, actor, "messaging/connections/list");
     await expect(response.json()).resolves.toEqual({
       json: [
         {
@@ -371,10 +548,10 @@ describe("phone.connections", () => {
   });
 
   it("hides peer identity for outgoing connections that are not approved", async () => {
-    const { handler, actor } = phoneDeps({
+    const { handler, actor } = messagingDeps({
       connection: { id: "ac-4", requesterBotId: "bot-1", targetBotId: "bot-9", status: "pending" },
     });
-    const response = await call(handler, actor, "phone/connections/list");
+    const response = await call(handler, actor, "messaging/connections/list");
     await expect(response.json()).resolves.toEqual({
       json: [
         expect.objectContaining({ peerBotName: "agent", peerOwnerLabel: "owner", incoming: false }),
@@ -382,9 +559,9 @@ describe("phone.connections", () => {
     });
   });
 
-  it("approves a pending incoming connection and texts the requester", async () => {
-    const { handler, actor, prisma, outboundRows, enqueue } = phoneDeps();
-    const response = await call(handler, actor, "phone/connections/respond", {
+  it("approves a pending incoming connection and notifies the requester", async () => {
+    const { handler, actor, prisma, outboundRows, enqueue } = messagingDeps();
+    const response = await call(handler, actor, "messaging/connections/respond", {
       connectionId: "ac-1",
       accept: true,
     });
@@ -401,17 +578,17 @@ describe("phone.connections", () => {
       expect.objectContaining({
         idempotencyKey: "command:connected:ac-1",
         kind: "dm",
-        toNumber: "+15559999999",
+        identityId: "mi-9",
       }),
     ]);
     expect(enqueue).toHaveBeenCalled();
   });
 
   it("rejects respond from the requester side", async () => {
-    const outgoing = phoneDeps({
+    const outgoing = messagingDeps({
       connection: { id: "ac-2", requesterBotId: "bot-1", targetBotId: "bot-9", status: "pending" },
     });
-    const response = await call(outgoing.handler, outgoing.actor, "phone/connections/respond", {
+    const response = await call(outgoing.handler, outgoing.actor, "messaging/connections/respond", {
       connectionId: "ac-2",
       accept: true,
     });
@@ -419,10 +596,10 @@ describe("phone.connections", () => {
   });
 
   it("revokes an approved connection from either side", async () => {
-    const { handler, actor, prisma } = phoneDeps({
+    const { handler, actor, prisma } = messagingDeps({
       connection: { id: "ac-3", requesterBotId: "bot-1", targetBotId: "bot-9", status: "approved" },
     });
-    const response = await call(handler, actor, "phone/connections/revoke", {
+    const response = await call(handler, actor, "messaging/connections/revoke", {
       connectionId: "ac-3",
     });
     expect(prisma.agentConnection.updateMany).toHaveBeenCalledWith(
@@ -435,13 +612,13 @@ describe("phone.connections", () => {
   });
 
   it("cancels a pending connect invite when revoking a re-requested connection", async () => {
-    const { handler, actor, prisma, outboundRows } = phoneDeps({
+    const { handler, actor, prisma, outboundRows } = messagingDeps({
       connection: { id: "ac-4", requesterBotId: "bot-1", targetBotId: "bot-9", status: "pending" },
     });
     outboundRows.push({
       idempotencyKey: "connect:bot-1:bot-9",
       kind: "dm",
-      toNumber: "+15559999999",
+      identityId: "mi-9",
       body: "wants to connect",
       status: "pending",
     });
@@ -451,11 +628,11 @@ describe("phone.connections", () => {
       status: "sent",
     });
 
-    const response = await call(handler, actor, "phone/connections/revoke", {
+    const response = await call(handler, actor, "messaging/connections/revoke", {
       connectionId: "ac-4",
     });
 
-    expect(prisma.phoneOutbound.deleteMany).toHaveBeenCalledWith({
+    expect(prisma.messagingOutbound.deleteMany).toHaveBeenCalledWith({
       where: {
         idempotencyKey: "connect:bot-1:bot-9",
         OR: [{ status: "pending" }, { status: "sent", providerHandle: null }],
@@ -471,7 +648,7 @@ describe("phone.connections", () => {
   });
 
   it("cancels a claimed-but-undelivered connect invite on revoke", async () => {
-    const { handler, actor, outboundRows } = phoneDeps({
+    const { handler, actor, outboundRows } = messagingDeps({
       connection: {
         id: "ac-claimed",
         requesterBotId: "bot-1",
@@ -493,7 +670,7 @@ describe("phone.connections", () => {
       providerHandle: "h-delivered",
     });
 
-    const response = await call(handler, actor, "phone/connections/revoke", {
+    const response = await call(handler, actor, "messaging/connections/revoke", {
       connectionId: "ac-claimed",
     });
 
@@ -507,7 +684,7 @@ describe("phone.connections", () => {
   });
 
   it("revokes status and cancels invites in one transaction", async () => {
-    const { handler, actor, prisma, outboundRows } = phoneDeps({
+    const { handler, actor, prisma, outboundRows } = messagingDeps({
       connection: { id: "ac-5", requesterBotId: "bot-1", targetBotId: "bot-9", status: "pending" },
     });
     outboundRows.push({
@@ -520,7 +697,7 @@ describe("phone.connections", () => {
       updateMany: (args: unknown) => Promise<{ count: number }>;
     };
     const baseUpdateMany = connectionModel.updateMany.bind(connectionModel);
-    const baseDeleteMany = prisma.phoneOutbound.deleteMany;
+    const baseDeleteMany = prisma.messagingOutbound.deleteMany;
     (prisma as unknown as Record<string, unknown>).$transaction = vi.fn(
       async (fn: (tx: unknown) => Promise<unknown>) => {
         order.push("tx-start");
@@ -531,7 +708,7 @@ describe("phone.connections", () => {
               return baseUpdateMany(args);
             },
           },
-          phoneOutbound: {
+          messagingOutbound: {
             deleteMany: async (args: unknown) => {
               order.push("delete");
               return baseDeleteMany(args as never);
@@ -543,7 +720,7 @@ describe("phone.connections", () => {
       },
     );
 
-    const response = await call(handler, actor, "phone/connections/revoke", {
+    const response = await call(handler, actor, "messaging/connections/revoke", {
       connectionId: "ac-5",
     });
 
@@ -553,7 +730,7 @@ describe("phone.connections", () => {
   });
 
   it("does not delete a reconnect invite created after revoke commits", async () => {
-    const { handler, actor, prisma, outboundRows } = phoneDeps({
+    const { handler, actor, prisma, outboundRows } = messagingDeps({
       connection: { id: "ac-6", requesterBotId: "bot-1", targetBotId: "bot-9", status: "pending" },
     });
     outboundRows.push({
@@ -566,20 +743,20 @@ describe("phone.connections", () => {
       updateMany: (args: unknown) => Promise<{ count: number }>;
     };
     const baseUpdateMany = connectionModel.updateMany.bind(connectionModel);
-    const baseDeleteMany = prisma.phoneOutbound.deleteMany;
+    const baseDeleteMany = prisma.messagingOutbound.deleteMany;
     (prisma as unknown as Record<string, unknown>).$transaction = vi.fn(
       async (fn: (tx: unknown) => Promise<unknown>) =>
         fn({
           agentConnection: {
             updateMany: async (args: unknown) => baseUpdateMany(args),
           },
-          phoneOutbound: {
+          messagingOutbound: {
             deleteMany: async (args: unknown) => baseDeleteMany(args as never),
           },
         }),
     );
 
-    await call(handler, actor, "phone/connections/revoke", { connectionId: "ac-6" });
+    await call(handler, actor, "messaging/connections/revoke", { connectionId: "ac-6" });
     expect(outboundRows).toEqual([]);
 
     // Reconnect after revoke has committed: its fresh invite must survive.
@@ -589,7 +766,7 @@ describe("phone.connections", () => {
       status: "pending",
       body: "fresh reconnect invite",
     });
-    expect(prisma.phoneOutbound.deleteMany).toHaveBeenCalledTimes(1);
+    expect(prisma.messagingOutbound.deleteMany).toHaveBeenCalledTimes(1);
     expect(outboundRows).toEqual([
       expect.objectContaining({
         idempotencyKey: "connect:bot-1:bot-9",
@@ -599,7 +776,7 @@ describe("phone.connections", () => {
   });
 
   it("does not let a stale revoke overwrite a newer pending re-request", async () => {
-    const { handler, actor, prisma } = phoneDeps({
+    const { handler, actor, prisma } = messagingDeps({
       connection: {
         id: "ac-stale",
         requesterBotId: "bot-1",
@@ -627,7 +804,7 @@ describe("phone.connections", () => {
         return { count: 1 };
       },
     );
-    const response = await call(handler, actor, "phone/connections/revoke", {
+    const response = await call(handler, actor, "messaging/connections/revoke", {
       connectionId: "ac-stale",
     });
 
@@ -636,9 +813,9 @@ describe("phone.connections", () => {
   });
 });
 
-describe("phone status-write races", () => {
+describe("messaging status-write races", () => {
   it("does not overwrite a concurrent revoke when responding to a connection", async () => {
-    const { handler, actor, prisma, outboundRows } = phoneDeps();
+    const { handler, actor, prisma, outboundRows } = messagingDeps();
     const state = { status: "pending" };
     const connectionModel = prisma.agentConnection as unknown as Record<string, unknown>;
     connectionModel.findFirst = vi.fn(async () => {
@@ -663,7 +840,7 @@ describe("phone status-write races", () => {
         return { count: 1 };
       },
     );
-    const response = await call(handler, actor, "phone/connections/respond", {
+    const response = await call(handler, actor, "messaging/connections/respond", {
       connectionId: "ac-1",
       accept: true,
     });
@@ -674,17 +851,17 @@ describe("phone status-write races", () => {
   });
 
   it("does not overwrite a concurrent leave when responding to a channel invite", async () => {
-    const { handler, actor, prisma } = phoneDeps();
+    const { handler, actor, prisma } = messagingDeps();
     const state = { status: "invited" };
-    const memberModel = prisma.phoneChannelMember as unknown as Record<string, unknown>;
+    const memberModel = prisma.messagingChannelMember as unknown as Record<string, unknown>;
     memberModel.findFirst = vi.fn(async () => {
       const snapshot = {
-        id: "pm-1",
+        id: "cm-1",
         channelId: "ch-1",
-        phoneE164: "+15551111111",
-        identityId: "pi-1",
+        address: "+15551111111",
+        identityId: "mi-1",
         status: state.status,
-        channel: { id: "ch-1", name: "Family", members: [{ id: "pm-1" }] },
+        channel: { id: "ch-1", provider: "sendblue", name: "Family", members: [{ id: "cm-1" }] },
       };
       // Interleaved: the owner left (or was swept out) after the read.
       state.status = "left";
@@ -701,8 +878,8 @@ describe("phone status-write races", () => {
         return { count: 1 };
       },
     );
-    const response = await call(handler, actor, "phone/channels/respond", {
-      channelId: "ch-1",
+    const response = await call(handler, actor, "messaging/channels/respond", {
+      membershipId: "cm-1",
       accept: true,
     });
 
@@ -711,9 +888,9 @@ describe("phone status-write races", () => {
   });
 });
 
-describe("phone.connections.respond confirmation atomicity", () => {
+describe("messaging.connections.respond confirmation atomicity", () => {
   it("writes the requester confirmation under the claim's transaction", async () => {
-    const { handler, actor, prisma, outboundRows } = phoneDeps();
+    const { handler, actor, prisma, outboundRows } = messagingDeps();
     // Track the transaction-scoped outbox delegate separately: a revoke can
     // only be excluded from the confirmation window if the claim's row lock
     // is still held when the confirmation row is written.
@@ -725,14 +902,14 @@ describe("phone.connections.respond confirmation atomicity", () => {
       async (fn: (tx: unknown) => Promise<unknown>) =>
         fn({
           agentConnection: prisma.agentConnection,
-          phoneIdentity: prisma.phoneIdentity,
-          phoneOutbound: {
+          messagingIdentity: prisma.messagingIdentity,
+          messagingOutbound: {
             createMany: txCreateMany,
             deleteMany: vi.fn(async () => ({ count: 0 })),
           },
         }),
     );
-    const response = await call(handler, actor, "phone/connections/respond", {
+    const response = await call(handler, actor, "messaging/connections/respond", {
       connectionId: "ac-1",
       accept: true,
     });

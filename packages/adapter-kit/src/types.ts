@@ -422,7 +422,7 @@ export interface BackgroundJobPayloads {
   "computer.control-expire": { computerId: string; leaseId: string };
   "skill.teaching-expire": { skillId: string };
   "history.compact": { threadId: string };
-  "phone.deliver": { runId?: string };
+  "messaging.deliver": { runId?: string };
 }
 
 export type BackgroundJobName = keyof BackgroundJobPayloads;
@@ -465,45 +465,48 @@ export interface MessagingCapabilities {
   typing: boolean;
 }
 
-export interface MessagingDirectRequest {
-  to: string;
-  body: string;
+/** One messaging platform behind the chat surface (sendblue, slack, …). */
+export interface MessagingPlatformDescriptor {
+  provider: string;
+  capabilities: MessagingCapabilities;
 }
 
-export interface MessagingGroupRequest {
-  groupId: string;
+/** Send into an existing conversation, addressed by its opaque thread id. */
+export interface MessagingSendRequest {
+  threadId: string;
   body: string;
-}
-
-export interface MessagingTypingRequest {
-  to: string;
 }
 
 export interface MessagingSendResult {
   handle: string;
 }
 
-export interface MessagingGroup {
-  id: string;
-  name: string | null;
-  participants: string[];
-}
-
-/** Provider-neutral inbound message after vendor webhook parsing. */
+/** Provider-neutral inbound message after platform webhook parsing. */
 export interface MessagingInboundMessage {
   type: "message";
+  provider: string;
+  /** Provider message id; drives replay-safe client nonces downstream. */
   handle: string;
-  fromNumber: string;
-  groupId: string | null;
-  groupName: string | null;
+  /** Opaque conversation id — pass back to sendToThread to reply. */
+  threadId: string;
+  /** True for a 1:1 conversation with the deployment's line/bot. */
+  isDirect: boolean;
+  /** Sender address within the provider (E.164, Slack user id, …). */
+  from: string;
+  /** Sender display name when the platform provides one. */
+  fromLabel: string | null;
+  /** Group/channel display name; null for DMs or when unknown. */
+  channelName: string | null;
+  /** Group roster addresses when the platform reports them; often empty. */
   participants: string[];
   content: string;
   mediaUrl: string | null;
 }
 
-/** Provider-neutral outbound delivery status after vendor webhook parsing. */
+/** Provider-neutral outbound delivery status after platform webhook parsing. */
 export interface MessagingOutboundStatus {
   type: "status";
+  provider: string;
   handle: string;
   status: string;
 }

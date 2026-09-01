@@ -1,13 +1,13 @@
-import type { AdapterContext, MessagingProvider } from "@rakazo/adapter-kit";
+import type { AdapterContext, MessagingSurface } from "@rakazo/adapter-kit";
 import type { PrismaClient } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
 import {
-  applyPhoneOutboundStatus,
-  deliverPhoneOutbound,
-  PHONE_DM_OUTBOUND_CAP,
-  PHONE_OUTBOUND_MAX_ATTEMPTS,
-  type PhoneDeliveryDeps,
-} from "./phone-delivery.js";
+  applyMessagingOutboundStatus,
+  deliverMessagingOutbound,
+  MESSAGING_DM_OUTBOUND_CAP,
+  MESSAGING_OUTBOUND_MAX_ATTEMPTS,
+  type MessagingDeliveryDeps,
+} from "./messaging-delivery.js";
 
 const context: AdapterContext = {
   operationId: "op-1",
@@ -18,24 +18,51 @@ const context: AdapterContext = {
 };
 
 const identity = {
-  id: "pi-1",
-  phoneE164: "+15551234567",
+  id: "mi-1",
+  provider: "sendblue",
+  address: "+15551234567",
+  dmThreadId: "sendblue:dm-1",
   userId: "user-1",
   spaceId: "ws-1",
   botId: "bot-1",
   outboundSinceInbound: 0,
 };
 
-const phoneRun = {
+const messagingRun = {
   id: "run-1",
   botId: "bot-1",
-  trigger: "phone",
+  trigger: "messaging",
   sourceMessage: { blocks: [{ kind: "text", text: "hi" }] },
 };
 
+function createFakeSurface(sendError?: Error) {
+  const sendToThread = vi.fn(async () => ({ handle: "handle-out-1" }));
+  if (sendError) sendToThread.mockRejectedValue(sendError);
+  const openDirectThread = vi.fn(
+    async (_provider: string, address: string) => `sendblue:opened:${address}`,
+  );
+  const messaging: MessagingSurface = {
+    describe: () => ({
+      id: "chat-sdk",
+      contractVersion: "1",
+      adapterVersion: "0.1.0",
+      capabilities: { providers: ["sendblue"] },
+    }),
+    platforms: () => [
+      { provider: "sendblue", capabilities: { direct: true, groups: true, typing: true } },
+    ],
+    handleWebhook: () => null,
+    onInbound: () => undefined,
+    sendToThread,
+    openDirectThread,
+    sendTyping: vi.fn(async () => undefined),
+  };
+  return { messaging, sendToThread, openDirectThread };
+}
+
 function createDeps(overrides: {
   run?: unknown;
-  identity?: unknown;
+  identity?: Record<string, unknown> | null;
   messages?: unknown[];
   outboundRows?: unknown[];
   existingOutbox?: unknown;
@@ -43,25 +70,12 @@ function createDeps(overrides: {
   connectionStatus?: string | null;
 }) {
   const rows = [...(overrides.outboundRows ?? [])] as Array<Record<string, unknown>>;
-  const sendDirect = vi.fn(async () => ({ handle: "handle-out-1" }));
-  const sendGroup = vi.fn(async () => ({ handle: "handle-group-1" }));
-  if (overrides.sendError) {
-    sendDirect.mockRejectedValue(overrides.sendError);
-    sendGroup.mockRejectedValue(overrides.sendError);
-  }
-  const messaging = {
-    describe: () => ({
-      id: "sendblue",
-      contractVersion: "1",
-      adapterVersion: "0.1.0",
-      capabilities: { direct: true, groups: true },
-    }),
-    sendDirect,
-    sendGroup,
-    getGroup: vi.fn(),
-  } as unknown as MessagingProvider;
+  const { messaging, sendToThread, openDirectThread } = createFakeSurface(overrides.sendError);
+  // Stateful identity row so a cached dmThreadId is visible to later reads.
+  const identityRow =
+    overrides.identity === null ? null : { ...identity, ...(overrides.identity ?? {}) };
   const prisma = {
-    run: { findUnique: vi.fn(async () => overrides.run ?? phoneRun) },
+    run: { findUnique: vi.fn(async () => overrides.run ?? messagingRun) },
     message: {
       findMany: vi.fn(
         async () =>
@@ -70,11 +84,14 @@ function createDeps(overrides: {
           ],
       ),
     },
-    phoneIdentity: {
-      findUnique: vi.fn(async () =>
-        overrides.identity === null ? null : (overrides.identity ?? identity),
-      ),
-      update: vi.fn(async () => identity),
+    messagingIdentity: {
+      findUnique: vi.fn(async () => identityRow),
+      update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        if (identityRow && typeof data.dmThreadId === "string") {
+          identityRow.dmThreadId = data.dmThreadId;
+        }
+        return identityRow;
+      }),
     },
     agentConnection: {
       findUnique: vi.fn(async () =>
@@ -90,7 +107,7 @@ function createDeps(overrides: {
         ? []
         : [{ status: overrides.connectionStatus ?? "pending" }],
     ),
-    phoneOutbound: {
+    messagingOutbound: {
       findUnique: vi.fn(async ({ where }: { where?: { id?: string } } = {}) => {
         if (overrides.existingOutbox) return overrides.existingOutbox;
         if (where?.id) return rows.find((row) => row.id === where.id) ?? null;
@@ -156,35 +173,63 @@ function createDeps(overrides: {
     events: {
       sendUserMessage: vi.fn(),
       notify: vi.fn(async () => undefined),
-    } as unknown as PhoneDeliveryDeps["events"],
+    } as unknown as MessagingDeliveryDeps["events"],
     jobs: { enqueue: vi.fn(async () => undefined) },
-    sendDirect,
-    sendGroup,
+    sendToThread,
+    openDirectThread,
     rows,
   };
 }
 
-describe("deliverPhoneOutbound", () => {
-  it("mirrors a phone DM run's bot text to the identity's number", async () => {
+describe("deliverMessagingOutbound", () => {
+  it("mirrors a messaging DM run's bot text to the identity's conversation", async () => {
     const deps = createDeps({});
-    await deliverPhoneOutbound(deps, { runId: "run-1" }, context);
+    await deliverMessagingOutbound(deps, { runId: "run-1" }, context);
 
-    expect(deps.sendDirect).toHaveBeenCalledWith(
-      { to: "+15551234567", body: "Hello from your bot" },
+    expect(deps.sendToThread).toHaveBeenCalledWith(
+      { threadId: "sendblue:dm-1", body: "Hello from your bot" },
       context,
     );
     expect(deps.rows).toEqual([
       expect.objectContaining({
         idempotencyKey: "msg:m-1",
         kind: "dm",
-        toNumber: "+15551234567",
+        identityId: "mi-1",
         status: "sent",
         providerHandle: "handle-out-1",
         sourceMessageId: "m-1",
       }),
     ]);
-    expect(deps.prisma.phoneIdentity.update).toHaveBeenCalledWith(
+    expect(deps.prisma.messagingIdentity.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { outboundSinceInbound: { increment: 1 } } }),
+    );
+  });
+
+  it("resolves the DM thread once and caches it when the identity has none", async () => {
+    const deps = createDeps({
+      identity: { dmThreadId: null },
+      messages: [
+        { id: "m-1", blocks: [{ kind: "text", text: "first" }] },
+        { id: "m-2", blocks: [{ kind: "text", text: "second" }] },
+      ],
+    });
+    await deliverMessagingOutbound(deps, { runId: "run-1" }, context);
+
+    expect(deps.openDirectThread).toHaveBeenCalledTimes(1);
+    expect(deps.openDirectThread).toHaveBeenCalledWith("sendblue", "+15551234567", context);
+    expect(deps.prisma.messagingIdentity.update).toHaveBeenCalledWith({
+      where: { id: "mi-1" },
+      data: { dmThreadId: "sendblue:opened:+15551234567" },
+    });
+    expect(deps.sendToThread).toHaveBeenNthCalledWith(
+      1,
+      { threadId: "sendblue:opened:+15551234567", body: "first" },
+      context,
+    );
+    expect(deps.sendToThread).toHaveBeenNthCalledWith(
+      2,
+      { threadId: "sendblue:opened:+15551234567", body: "second" },
+      context,
     );
   });
 
@@ -192,35 +237,54 @@ describe("deliverPhoneOutbound", () => {
     const deps = createDeps({
       existingOutbox: { id: "out-1", idempotencyKey: "msg:m-1", status: "sent" },
     });
-    await deliverPhoneOutbound(deps, { runId: "run-1" }, context);
+    await deliverMessagingOutbound(deps, { runId: "run-1" }, context);
 
     expect(deps.rows).toHaveLength(0);
-    expect(deps.sendDirect).not.toHaveBeenCalled();
+    expect(deps.sendToThread).not.toHaveBeenCalled();
   });
 
-  it("ignores non-phone runs and runs without a phone identity", async () => {
-    const notPhone = createDeps({ run: { ...phoneRun, trigger: "user" } });
-    await deliverPhoneOutbound(notPhone, { runId: "run-1" }, context);
-    expect(notPhone.sendDirect).not.toHaveBeenCalled();
+  it("ignores non-messaging runs and runs without a messaging identity", async () => {
+    const notMessaging = createDeps({ run: { ...messagingRun, trigger: "user" } });
+    await deliverMessagingOutbound(notMessaging, { runId: "run-1" }, context);
+    expect(notMessaging.sendToThread).not.toHaveBeenCalled();
 
     const noIdentity = createDeps({ identity: null });
-    await deliverPhoneOutbound(noIdentity, { runId: "run-1" }, context);
-    expect(noIdentity.sendDirect).not.toHaveBeenCalled();
+    await deliverMessagingOutbound(noIdentity, { runId: "run-1" }, context);
+    expect(noIdentity.sendToThread).not.toHaveBeenCalled();
   });
 
-  it("holds DM sends at the consecutive-outbound cap", async () => {
+  it("holds sendblue DM sends at the consecutive-outbound cap", async () => {
     const deps = createDeps({
-      identity: { ...identity, outboundSinceInbound: PHONE_DM_OUTBOUND_CAP },
+      identity: {
+        provider: "sendblue",
+        outboundSinceInbound: MESSAGING_DM_OUTBOUND_CAP,
+      },
     });
-    await deliverPhoneOutbound(deps, { runId: "run-1" }, context);
+    await deliverMessagingOutbound(deps, { runId: "run-1" }, context);
 
-    expect(deps.sendDirect).not.toHaveBeenCalled();
+    expect(deps.sendToThread).not.toHaveBeenCalled();
     expect(deps.rows).toEqual([expect.objectContaining({ kind: "dm", status: "pending" })]);
+  });
+
+  it("does not apply the sendblue outbound cap to other providers", async () => {
+    const deps = createDeps({
+      identity: {
+        provider: "slack",
+        address: "U123",
+        outboundSinceInbound: MESSAGING_DM_OUTBOUND_CAP,
+      },
+    });
+    await deliverMessagingOutbound(deps, { runId: "run-1" }, context);
+
+    expect(deps.sendToThread).toHaveBeenCalled();
+    expect(deps.rows).toEqual([
+      expect.objectContaining({ kind: "dm", status: "sent", providerHandle: "handle-out-1" }),
+    ]);
   });
 
   it("returns a transient send failure to pending and schedules a delayed retry", async () => {
     const deps = createDeps({ sendError: new Error("messaging provider 500") });
-    await deliverPhoneOutbound(deps, { runId: "run-1" }, context);
+    await deliverMessagingOutbound(deps, { runId: "run-1" }, context);
 
     expect(deps.rows).toEqual([
       expect.objectContaining({
@@ -232,7 +296,7 @@ describe("deliverPhoneOutbound", () => {
     ]);
     expect(deps.rows[0]!.providerHandle ?? null).toBeNull();
     expect(deps.jobs.enqueue).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "phone.deliver", availableAt: expect.any(Date) }),
+      expect.objectContaining({ name: "messaging.deliver", availableAt: expect.any(Date) }),
     );
   });
 
@@ -242,9 +306,9 @@ describe("deliverPhoneOutbound", () => {
       outboundRows: [
         {
           id: "out-wait",
-          idempotencyKey: "invite:ch-1:+15551234567",
+          idempotencyKey: "invite:ch-1:mi-1",
           kind: "dm",
-          toNumber: "+15551234567",
+          identityId: "mi-1",
           body: "backoff hold",
           status: "pending",
           attempts: 1,
@@ -253,9 +317,9 @@ describe("deliverPhoneOutbound", () => {
         },
       ],
     });
-    await deliverPhoneOutbound(deps, {}, context);
+    await deliverMessagingOutbound(deps, {}, context);
 
-    expect(deps.sendDirect).not.toHaveBeenCalled();
+    expect(deps.sendToThread).not.toHaveBeenCalled();
     expect(deps.rows[0]).toEqual(expect.objectContaining({ status: "pending", attempts: 1 }));
   });
 
@@ -265,19 +329,19 @@ describe("deliverPhoneOutbound", () => {
       outboundRows: [
         {
           id: "out-9",
-          idempotencyKey: "invite:ch-1:+15551234567",
+          idempotencyKey: "invite:ch-1:mi-1",
           kind: "dm",
-          toNumber: "+15551234567",
+          identityId: "mi-1",
           body: "pending earlier",
           status: "pending",
           providerHandle: null,
         },
       ],
     });
-    await deliverPhoneOutbound(deps, {}, context);
+    await deliverMessagingOutbound(deps, {}, context);
 
-    expect(deps.sendDirect).toHaveBeenCalledWith(
-      { to: "+15551234567", body: "pending earlier" },
+    expect(deps.sendToThread).toHaveBeenCalledWith(
+      { threadId: "sendblue:dm-1", body: "pending earlier" },
       context,
     );
     expect(deps.rows[0]).toEqual(expect.objectContaining({ status: "sent" }));
@@ -285,26 +349,26 @@ describe("deliverPhoneOutbound", () => {
 
   it("claims a row before sending so concurrent drains cannot double-send", async () => {
     const deps = createDeps({});
-    await deliverPhoneOutbound(deps, { runId: "run-1" }, context);
+    await deliverMessagingOutbound(deps, { runId: "run-1" }, context);
 
-    const calls = deps.prisma.phoneOutbound.updateMany.mock.calls as Array<
+    const calls = deps.prisma.messagingOutbound.updateMany.mock.calls as Array<
       [{ where?: { status?: string } }]
     >;
     const claimIndex = calls.findIndex(([args]) => args.where?.status === "pending");
     expect(claimIndex).toBeGreaterThanOrEqual(0);
-    expect(deps.prisma.phoneOutbound.updateMany.mock.invocationCallOrder[claimIndex]!).toBeLessThan(
-      deps.sendDirect.mock.invocationCallOrder[0]!,
-    );
+    expect(
+      deps.prisma.messagingOutbound.updateMany.mock.invocationCallOrder[claimIndex]!,
+    ).toBeLessThan(deps.sendToThread.mock.invocationCallOrder[0]!);
   });
 
   it("skips the send when another drain won the claim", async () => {
     const deps = createDeps({});
-    deps.prisma.phoneOutbound.updateMany = vi.fn(async () => ({
+    deps.prisma.messagingOutbound.updateMany = vi.fn(async () => ({
       count: 0,
-    })) as unknown as typeof deps.prisma.phoneOutbound.updateMany;
-    await deliverPhoneOutbound(deps, { runId: "run-1" }, context);
+    })) as unknown as typeof deps.prisma.messagingOutbound.updateMany;
+    await deliverMessagingOutbound(deps, { runId: "run-1" }, context);
 
-    expect(deps.sendDirect).not.toHaveBeenCalled();
+    expect(deps.sendToThread).not.toHaveBeenCalled();
   });
 
   it("fails malformed rows instead of re-scanning them forever", async () => {
@@ -315,16 +379,16 @@ describe("deliverPhoneOutbound", () => {
           id: "out-bad",
           idempotencyKey: "broken:1",
           kind: "dm",
-          toNumber: null,
+          identityId: null,
           body: "nowhere to go",
           status: "pending",
           providerHandle: null,
         },
       ],
     });
-    await deliverPhoneOutbound(deps, {}, context);
+    await deliverMessagingOutbound(deps, {}, context);
 
-    expect(deps.sendDirect).not.toHaveBeenCalled();
+    expect(deps.sendToThread).not.toHaveBeenCalled();
     expect(deps.rows[0]).toEqual(expect.objectContaining({ status: "failed" }));
   });
 
@@ -337,16 +401,16 @@ describe("deliverPhoneOutbound", () => {
           id: "out-connect",
           idempotencyKey: "connect:bot-1:bot-9",
           kind: "dm",
-          toNumber: "+15559999999",
+          identityId: "mi-1",
           body: "wants to connect. Reply YES to allow, NO to decline.",
           status: "pending",
           providerHandle: null,
         },
       ],
     });
-    await deliverPhoneOutbound(deps, {}, context);
+    await deliverMessagingOutbound(deps, {}, context);
 
-    expect(deps.sendDirect).not.toHaveBeenCalled();
+    expect(deps.sendToThread).not.toHaveBeenCalled();
     expect(deps.rows[0]).toEqual(expect.objectContaining({ status: "failed" }));
     expect(deps.prisma.$queryRaw).toHaveBeenCalled();
   });
@@ -360,7 +424,7 @@ describe("deliverPhoneOutbound", () => {
           id: "out-connect",
           idempotencyKey: "connect:bot-1:bot-9",
           kind: "dm",
-          toNumber: "+15559999999",
+          identityId: "mi-1",
           body: "wants to connect. Reply YES to allow, NO to decline.",
           status: "pending",
           providerHandle: null,
@@ -368,10 +432,10 @@ describe("deliverPhoneOutbound", () => {
       ],
     });
     // After claim, revoke deletes the row before the locked gate runs.
-    deps.prisma.phoneOutbound.findUnique = vi.fn(async () => null) as never;
-    await deliverPhoneOutbound(deps, {}, context);
+    deps.prisma.messagingOutbound.findUnique = vi.fn(async () => null) as never;
+    await deliverMessagingOutbound(deps, {}, context);
 
-    expect(deps.sendDirect).not.toHaveBeenCalled();
+    expect(deps.sendToThread).not.toHaveBeenCalled();
   });
 
   it("still sends a connect invite while the connection is pending", async () => {
@@ -383,25 +447,25 @@ describe("deliverPhoneOutbound", () => {
           id: "out-connect",
           idempotencyKey: "connect:bot-1:bot-9",
           kind: "dm",
-          toNumber: "+15559999999",
+          identityId: "mi-1",
           body: "wants to connect. Reply YES to allow, NO to decline.",
           status: "pending",
           providerHandle: null,
         },
       ],
     });
-    await deliverPhoneOutbound(deps, {}, context);
+    await deliverMessagingOutbound(deps, {}, context);
 
-    expect(deps.sendDirect).toHaveBeenCalledWith(
+    expect(deps.sendToThread).toHaveBeenCalledWith(
       {
-        to: "+15559999999",
+        threadId: "sendblue:dm-1",
         body: "wants to connect. Reply YES to allow, NO to decline.",
       },
       context,
     );
     expect(deps.rows[0]).toEqual(expect.objectContaining({ status: "sent" }));
-    expect(deps.prisma.phoneIdentity.update).toHaveBeenCalledWith({
-      where: { id: "pi-1" },
+    expect(deps.prisma.messagingIdentity.update).toHaveBeenCalledWith({
+      where: { id: "mi-1" },
       data: { outboundSinceInbound: { increment: 1 } },
     });
   });
@@ -416,7 +480,7 @@ describe("deliverPhoneOutbound", () => {
           id: "out-connect",
           idempotencyKey: "connect:bot-1:bot-9",
           kind: "dm",
-          toNumber: "+15559999999",
+          identityId: "mi-1",
           body: "wants to connect",
           status: "pending",
           providerHandle: null,
@@ -424,12 +488,12 @@ describe("deliverPhoneOutbound", () => {
         },
       ],
     });
-    await deliverPhoneOutbound(deps, {}, context);
+    await deliverMessagingOutbound(deps, {}, context);
 
     // At-most-once: keep the claim rather than risk a duplicate YES/NO.
     expect(deps.rows[0]).toEqual(expect.objectContaining({ status: "sent" }));
     expect(deps.jobs.enqueue).not.toHaveBeenCalled();
-    expect(deps.prisma.phoneIdentity.update).not.toHaveBeenCalled();
+    expect(deps.prisma.messagingIdentity.update).not.toHaveBeenCalled();
   });
 
   it("does not re-queue a connect invite after a delivery transaction timeout", async () => {
@@ -441,7 +505,7 @@ describe("deliverPhoneOutbound", () => {
           id: "out-connect",
           idempotencyKey: "connect:bot-1:bot-9",
           kind: "dm",
-          toNumber: "+15559999999",
+          identityId: "mi-1",
           body: "wants to connect",
           status: "pending",
           providerHandle: null,
@@ -451,39 +515,46 @@ describe("deliverPhoneOutbound", () => {
     (deps.prisma as unknown as { $transaction: unknown }).$transaction = vi.fn(async () => {
       throw new Error("Transaction API error: Transaction already closed");
     });
-    await deliverPhoneOutbound(deps, {}, context);
+    await deliverMessagingOutbound(deps, {}, context);
 
-    expect(deps.sendDirect).not.toHaveBeenCalled();
+    expect(deps.sendToThread).not.toHaveBeenCalled();
     expect(deps.rows[0]).toEqual(expect.objectContaining({ status: "sent" }));
     expect(deps.jobs.enqueue).not.toHaveBeenCalled();
   });
 });
 
-describe("applyPhoneOutboundStatus", () => {
+describe("applyMessagingOutboundStatus", () => {
   it("maps terminal statuses onto outbox rows by handle", async () => {
     const deps = createDeps({});
-    await applyPhoneOutboundStatus(deps.prisma, { type: "status", handle: "h-1", status: "ERROR" });
-    expect(deps.prisma.phoneOutbound.updateMany).toHaveBeenCalledWith({
+    await applyMessagingOutboundStatus(deps.prisma, {
+      type: "status",
+      provider: "sendblue",
+      handle: "h-1",
+      status: "ERROR",
+    });
+    expect(deps.prisma.messagingOutbound.updateMany).toHaveBeenCalledWith({
       where: { providerHandle: "h-1" },
       data: { status: "failed" },
     });
 
-    await applyPhoneOutboundStatus(deps.prisma, {
+    await applyMessagingOutboundStatus(deps.prisma, {
       type: "status",
+      provider: "sendblue",
       handle: "h-2",
       status: "DELIVERED",
     });
-    expect(deps.prisma.phoneOutbound.updateMany).toHaveBeenCalledWith({
+    expect(deps.prisma.messagingOutbound.updateMany).toHaveBeenCalledWith({
       where: { providerHandle: "h-2" },
       data: { status: "sent" },
     });
 
-    await applyPhoneOutboundStatus(deps.prisma, {
+    await applyMessagingOutboundStatus(deps.prisma, {
       type: "status",
+      provider: "sendblue",
       handle: "h-3",
       status: "QUEUED",
     });
-    expect(deps.prisma.phoneOutbound.updateMany).toHaveBeenCalledTimes(2);
+    expect(deps.prisma.messagingOutbound.updateMany).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -499,13 +570,14 @@ function createChannelDeps(
   const channelRun = {
     id: "run-1",
     botId: "bot-1",
-    trigger: "phone",
+    trigger: "messaging",
     sourceMessage: {
       blocks: [
         {
-          kind: "phone_channel_message",
+          kind: "channel_message",
+          provider: "sendblue",
           channelId: "ch-1",
-          fromNumber: "+15551111111",
+          fromAddress: "+15551111111",
           fromLabel: "Alice",
           text: "group hi",
           hop: overrides.sourceHop ?? 0,
@@ -514,16 +586,20 @@ function createChannelDeps(
     },
   };
   const posterIdentity = {
-    id: "pi-1",
-    phoneE164: "+15551111111",
+    id: "mi-1",
+    provider: "sendblue",
+    address: "+15551111111",
+    dmThreadId: "sendblue:dm-1",
     userId: "user-1",
     spaceId: "ws-1",
     botId: "bot-1",
     outboundSinceInbound: 0,
   };
   const peerIdentity = {
-    id: "pi-2",
-    phoneE164: "+15553333333",
+    id: "mi-2",
+    provider: "sendblue",
+    address: "+15553333333",
+    dmThreadId: "sendblue:dm-2",
     userId: "user-2",
     spaceId: "ws-2",
     botId: "bot-2",
@@ -531,7 +607,7 @@ function createChannelDeps(
   };
   const rows: Array<Record<string, unknown>> = [];
   const contextMessages: Array<Record<string, unknown>> = [];
-  const sendGroup = vi.fn(async () => ({ handle: "handle-group-1" }));
+  const { messaging, sendToThread } = createFakeSurface();
   const sendUserMessage = vi.fn(async () => ({ messageId: "msg-wake", runId: "run-wake", seq: 4 }));
   const notify = vi.fn(async () => undefined);
   const enqueue = vi.fn(async () => undefined);
@@ -561,36 +637,35 @@ function createChannelDeps(
       ),
       findUnique: vi.fn(async () => null),
     },
-    phoneIdentity: {
-      findUnique: vi.fn(
-        async ({ where }: { where: { botId?: string; id?: string; phoneE164?: string } }) => {
-          if (where.botId === "bot-1" || where.id === "pi-1") return posterIdentity;
-          if (where.botId === "bot-2" || where.id === "pi-2") return peerIdentity;
-          return null;
-        },
-      ),
+    messagingIdentity: {
+      findUnique: vi.fn(async ({ where }: { where: { botId?: string; id?: string } }) => {
+        if (where.botId === "bot-1" || where.id === "mi-1") return posterIdentity;
+        if (where.botId === "bot-2" || where.id === "mi-2") return peerIdentity;
+        return null;
+      }),
       update: vi.fn(async () => posterIdentity),
     },
-    phoneChannel: {
+    messagingChannel: {
       findUnique: vi.fn(async () => ({
         id: "ch-1",
-        providerGroupId: "grp-1",
+        provider: "sendblue",
+        threadId: "sendblue:grp-1",
         name: "Family",
         introPostedAt: null,
       })),
     },
-    phoneChannelMember: {
+    messagingChannelMember: {
       findMany: vi.fn(async () => [
         {
-          id: "pm-2",
+          id: "mm-2",
           channelId: "ch-1",
-          phoneE164: "+15553333333",
-          identityId: "pi-2",
+          address: "+15553333333",
+          identityId: "mi-2",
           status: "approved",
         },
       ]),
     },
-    phoneOutbound: {
+    messagingOutbound: {
       findMany: vi.fn(async ({ where }: { where?: { status?: string; OR?: unknown[] } } = {}) => {
         const now = Date.now();
         return rows.filter((row) => {
@@ -638,23 +713,12 @@ function createChannelDeps(
     thread: { findFirst: vi.fn(async () => ({ id: "thread-2" })) },
     $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(txMock)),
   };
-  const messaging = {
-    describe: () => ({
-      id: "sendblue",
-      contractVersion: "1",
-      adapterVersion: "0.1.0",
-      capabilities: { direct: true, groups: true },
-    }),
-    sendDirect: vi.fn(async () => ({ handle: "h-dm" })),
-    sendGroup,
-    getGroup: vi.fn(),
-  } as unknown as MessagingProvider;
   return {
     prisma: prisma as unknown as PrismaClient & typeof prisma,
     messaging,
-    events: { sendUserMessage, notify } as unknown as PhoneDeliveryDeps["events"],
+    events: { sendUserMessage, notify } as unknown as MessagingDeliveryDeps["events"],
     jobs: { enqueue },
-    sendGroup,
+    sendToThread,
     sendUserMessage,
     notify,
     enqueue,
@@ -664,20 +728,20 @@ function createChannelDeps(
   };
 }
 
-describe("deliverPhoneOutbound channel runs", () => {
+describe("deliverMessagingOutbound channel runs", () => {
   it("posts the bot reply to the group with owner attribution and fans it out to peers", async () => {
     const deps = createChannelDeps();
-    await deliverPhoneOutbound(deps, { runId: "run-1" }, context);
+    await deliverMessagingOutbound(deps, { runId: "run-1" }, context);
 
-    expect(deps.sendGroup).toHaveBeenCalledWith(
-      { groupId: "grp-1", body: "Alice's agent: found it" },
+    expect(deps.sendToThread).toHaveBeenCalledWith(
+      { threadId: "sendblue:grp-1", body: "Alice's agent: found it" },
       context,
     );
     expect(deps.rows).toEqual([
       expect.objectContaining({
         idempotencyKey: "msg:m-1",
         kind: "group",
-        providerGroupId: "grp-1",
+        threadId: "sendblue:grp-1",
         status: "sent",
       }),
     ]);
@@ -686,12 +750,13 @@ describe("deliverPhoneOutbound channel runs", () => {
       expect.objectContaining({
         threadId: "thread-2",
         role: "user",
-        clientNonce: "phone-peer:m-1:bot-2",
+        clientNonce: "messaging-peer:m-1:bot-2",
         blocks: [
           {
-            kind: "phone_channel_message",
+            kind: "channel_message",
+            provider: "sendblue",
             channelId: "ch-1",
-            fromNumber: "+15551111111",
+            fromAddress: "+15551111111",
             fromLabel: "Alice's agent",
             text: "found it",
             hop: 1,
@@ -705,15 +770,15 @@ describe("deliverPhoneOutbound channel runs", () => {
 
   it("wakes an @-mentioned peer bot with a run", async () => {
     const deps = createChannelDeps({ text: "@Helper what do you think?" });
-    await deliverPhoneOutbound(deps, { runId: "run-1" }, context);
+    await deliverMessagingOutbound(deps, { runId: "run-1" }, context);
 
     expect(deps.sendUserMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         spaceId: "ws-2",
         threadId: "thread-2",
         botId: "bot-2",
-        trigger: "phone",
-        clientNonce: "phone-peer:m-1:bot-2",
+        trigger: "messaging",
+        clientNonce: "messaging-peer:m-1:bot-2",
       }),
     );
     expect(deps.enqueue).toHaveBeenCalledWith(
@@ -724,27 +789,27 @@ describe("deliverPhoneOutbound channel runs", () => {
 
   it("wakes an @-mentioned peer even when the casing differs", async () => {
     const deps = createChannelDeps({ text: "@helper ping" });
-    await deliverPhoneOutbound(deps, { runId: "run-1" }, context);
+    await deliverMessagingOutbound(deps, { runId: "run-1" }, context);
 
     expect(deps.sendUserMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ botId: "bot-2", clientNonce: "phone-peer:m-1:bot-2" }),
+      expect.objectContaining({ botId: "bot-2", clientNonce: "messaging-peer:m-1:bot-2" }),
     );
   });
 
   it("does not wake anyone when the hop budget is exhausted", async () => {
     const deps = createChannelDeps({ text: "@Helper again?", sourceHop: 6 });
-    await deliverPhoneOutbound(deps, { runId: "run-1" }, context);
+    await deliverMessagingOutbound(deps, { runId: "run-1" }, context);
 
     expect(deps.sendUserMessage).not.toHaveBeenCalled();
     expect(deps.enqueue).not.toHaveBeenCalled();
     // still delivered as context, with the clamped hop recorded
     expect(deps.contextMessages[0]).toEqual(
-      expect.objectContaining({ clientNonce: "phone-peer:m-1:bot-2" }),
+      expect.objectContaining({ clientNonce: "messaging-peer:m-1:bot-2" }),
     );
   });
 });
 
-describe("deliverPhoneOutbound transient failure retry", () => {
+describe("deliverMessagingOutbound transient failure retry", () => {
   it("marks the row failed only once the attempt budget is exhausted", async () => {
     const deps = createDeps({
       run: null,
@@ -754,32 +819,32 @@ describe("deliverPhoneOutbound transient failure retry", () => {
           id: "out-9",
           idempotencyKey: "msg:m-9",
           kind: "dm",
-          toNumber: "+15551234567",
+          identityId: "mi-1",
           body: "fourth failure",
           status: "pending",
           providerHandle: null,
-          attempts: PHONE_OUTBOUND_MAX_ATTEMPTS - 1,
+          attempts: MESSAGING_OUTBOUND_MAX_ATTEMPTS - 1,
         },
       ],
     });
-    await deliverPhoneOutbound(deps, {}, context);
+    await deliverMessagingOutbound(deps, {}, context);
 
     expect(deps.rows).toEqual([
-      expect.objectContaining({ status: "failed", attempts: PHONE_OUTBOUND_MAX_ATTEMPTS }),
+      expect.objectContaining({ status: "failed", attempts: MESSAGING_OUTBOUND_MAX_ATTEMPTS }),
     ]);
     expect(deps.jobs.enqueue).not.toHaveBeenCalled();
   });
 });
 
-describe("deliverPhoneOutbound retry enqueue failure", () => {
+describe("deliverMessagingOutbound retry enqueue failure", () => {
   it("propagates the enqueue failure so the job queue retries the drain", async () => {
     const deps = createDeps({});
-    deps.sendDirect.mockRejectedValueOnce(new Error("messaging provider 500"));
+    deps.sendToThread.mockRejectedValueOnce(new Error("messaging provider 500"));
     deps.jobs.enqueue.mockRejectedValueOnce(new Error("queue down"));
 
     // A swallowed enqueue failure would strand the row in pending forever:
-    // no job reconciler reclaims phone_outbound rows.
-    await expect(deliverPhoneOutbound(deps, { runId: "run-1" }, context)).rejects.toThrow(
+    // no job reconciler reclaims messaging_outbound rows.
+    await expect(deliverMessagingOutbound(deps, { runId: "run-1" }, context)).rejects.toThrow(
       "queue down",
     );
     expect(deps.rows).toEqual([
@@ -791,10 +856,10 @@ describe("deliverPhoneOutbound retry enqueue failure", () => {
       }),
     ]);
 
-    // The delayed phone.deliver job fires at nextAttemptAt: make the row due.
+    // The delayed messaging.deliver job fires at nextAttemptAt: make the row due.
     deps.rows[0]!.nextAttemptAt = new Date(Date.now() - 1);
-    await deliverPhoneOutbound(deps, { runId: "run-1" }, context);
-    expect(deps.sendDirect).toHaveBeenCalledTimes(2);
+    await deliverMessagingOutbound(deps, { runId: "run-1" }, context);
+    expect(deps.sendToThread).toHaveBeenCalledTimes(2);
     expect(deps.rows).toEqual([
       expect.objectContaining({ kind: "dm", status: "sent", providerHandle: "handle-out-1" }),
     ]);

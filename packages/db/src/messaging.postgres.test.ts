@@ -1,27 +1,28 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { createDb, type PrismaClient } from "./client.js";
-import { provisionPhoneIdentity } from "./phone.js";
+import { provisionMessagingIdentity } from "./messaging.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const describePostgres =
   process.env.VERIFY_DATABASE && databaseUrl ? describe.sequential : describe.skip;
 
-describePostgres("provisionPhoneIdentity (PostgreSQL)", () => {
-  const phone = "+15550001111";
+describePostgres("provisionMessagingIdentity (PostgreSQL)", () => {
+  const provider = "sendblue";
+  const address = "+15550001111";
   let prisma: PrismaClient;
   let close: () => Promise<void>;
   let provisioned: { userId: string; spaceId: string; botId: string } | null = null;
 
   afterAll(async () => {
     if (provisioned) {
-      await prisma.phoneIdentity.deleteMany({ where: { phoneE164: phone } });
+      await prisma.messagingIdentity.deleteMany({ where: { provider, address } });
       await prisma.organization.deleteMany({ where: { id: provisioned.spaceId } });
       await prisma.user.deleteMany({ where: { id: provisioned.userId } });
     }
     await close?.();
   });
 
-  it("provisions a user, workspace, bot, thread, and phone identity row", async () => {
+  it("provisions a user, workspace, bot, thread, and messaging identity row", async () => {
     const db = createDb(databaseUrl!);
     prisma = db.prisma;
     close = async () => {
@@ -29,21 +30,23 @@ describePostgres("provisionPhoneIdentity (PostgreSQL)", () => {
       await db.pool.end();
     };
 
-    const result = await provisionPhoneIdentity(prisma, phone, {
-      signupsEnabled: undefined,
-      signupAllowlist: undefined,
-    });
+    const result = await provisionMessagingIdentity(
+      prisma,
+      { provider, address },
+      { signupsEnabled: undefined, signupAllowlist: undefined },
+    );
     provisioned = result;
 
     expect(result.created).toBe(true);
-    expect(result.phoneE164).toBe(phone);
+    expect(result.provider).toBe(provider);
+    expect(result.address).toBe(address);
 
     const user = await prisma.user.findUnique({
       where: { id: result.userId },
       include: { accounts: true, members: true },
     });
     expect(user).toBeTruthy();
-    expect(user!.email).toBe("phone-15550001111@phone.invalid");
+    expect(user!.email).toBe("msg-sendblue15550001111@messaging.invalid");
     expect(user!.accounts).toHaveLength(0);
     expect(user!.members).toHaveLength(1);
     expect(user!.members[0]!.organizationId).toBe(result.spaceId);
@@ -73,11 +76,14 @@ describePostgres("provisionPhoneIdentity (PostgreSQL)", () => {
     expect(bot!.thread).toBeTruthy();
     expect(result.threadId).toBe(bot!.thread!.id);
 
-    const identity = await prisma.phoneIdentity.findUnique({ where: { phoneE164: phone } });
+    const identity = await prisma.messagingIdentity.findUnique({
+      where: { provider_address: { provider, address } },
+    });
     expect(identity).toBeTruthy();
     expect(identity!.userId).toBe(result.userId);
     expect(identity!.spaceId).toBe(result.spaceId);
     expect(identity!.botId).toBe(result.botId);
+    expect(identity!.dmThreadId).toBeNull();
     expect(identity!.outboundSinceInbound).toBe(0);
     expect(identity!.verifiedAt).toBeNull();
 
@@ -98,11 +104,12 @@ describePostgres("provisionPhoneIdentity (PostgreSQL)", () => {
     expect(settings?.ownerUserId ?? null).not.toBe(provisioned!.userId);
   });
 
-  it("is idempotent for a repeat inbound from the same number", async () => {
-    const again = await provisionPhoneIdentity(prisma, phone, {
-      signupsEnabled: undefined,
-      signupAllowlist: undefined,
-    });
+  it("is idempotent for a repeat inbound from the same address", async () => {
+    const again = await provisionMessagingIdentity(
+      prisma,
+      { provider, address },
+      { signupsEnabled: undefined, signupAllowlist: undefined },
+    );
 
     expect(again.created).toBe(false);
     expect(again.userId).toBe(provisioned!.userId);
@@ -110,34 +117,35 @@ describePostgres("provisionPhoneIdentity (PostgreSQL)", () => {
     expect(again.botId).toBe(provisioned!.botId);
 
     const users = await prisma.user.findMany({
-      where: { email: "phone-15550001111@phone.invalid" },
+      where: { email: "msg-sendblue15550001111@messaging.invalid" },
     });
     expect(users).toHaveLength(1);
-    const identities = await prisma.phoneIdentity.findMany({ where: { phoneE164: phone } });
+    const identities = await prisma.messagingIdentity.findMany({ where: { provider, address } });
     expect(identities).toHaveLength(1);
   });
 
   it("resumes after a partial first attempt that only created the user row", async () => {
-    const partialPhone = "+15550002222";
+    const partialAddress = "+15550002222";
     // Simulates a crash between user.create and bootstrapUserSpace.
     const orphan = await prisma.user.create({
       data: {
         id: `partial${Date.now()}`,
-        name: "Phone 2222",
-        email: "phone-15550002222@phone.invalid",
+        name: "Sendblue 2222",
+        email: "msg-sendblue15550002222@messaging.invalid",
         emailVerified: false,
       },
     });
     try {
-      const result = await provisionPhoneIdentity(prisma, partialPhone, {
-        signupsEnabled: undefined,
-        signupAllowlist: undefined,
-      });
+      const result = await provisionMessagingIdentity(
+        prisma,
+        { provider, address: partialAddress },
+        { signupsEnabled: undefined, signupAllowlist: undefined },
+      );
 
       expect(result.created).toBe(true);
       expect(result.userId).toBe(orphan.id);
-      const identity = await prisma.phoneIdentity.findUnique({
-        where: { phoneE164: partialPhone },
+      const identity = await prisma.messagingIdentity.findUnique({
+        where: { provider_address: { provider, address: partialAddress } },
       });
       expect(identity).toBeTruthy();
       const bots = await prisma.bot.findMany({
@@ -145,7 +153,7 @@ describePostgres("provisionPhoneIdentity (PostgreSQL)", () => {
       });
       expect(bots).toHaveLength(1);
 
-      await prisma.phoneIdentity.deleteMany({ where: { phoneE164: partialPhone } });
+      await prisma.messagingIdentity.deleteMany({ where: { provider, address: partialAddress } });
       await prisma.organization.deleteMany({ where: { id: result.spaceId } });
     } finally {
       await prisma.user.deleteMany({ where: { id: orphan.id } });
@@ -153,18 +161,20 @@ describePostgres("provisionPhoneIdentity (PostgreSQL)", () => {
   });
 
   it("resumes after a partial attempt that reached createBot, reusing the orphaned bot", async () => {
-    const partialPhone = "+15550003333";
+    const partialAddress = "+15550003333";
     // First attempt: let it provision fully, then delete only the identity row.
-    const first = await provisionPhoneIdentity(prisma, partialPhone, {
-      signupsEnabled: undefined,
-      signupAllowlist: undefined,
-    });
-    await prisma.phoneIdentity.deleteMany({ where: { phoneE164: partialPhone } });
+    const first = await provisionMessagingIdentity(
+      prisma,
+      { provider, address: partialAddress },
+      { signupsEnabled: undefined, signupAllowlist: undefined },
+    );
+    await prisma.messagingIdentity.deleteMany({ where: { provider, address: partialAddress } });
     try {
-      const second = await provisionPhoneIdentity(prisma, partialPhone, {
-        signupsEnabled: undefined,
-        signupAllowlist: undefined,
-      });
+      const second = await provisionMessagingIdentity(
+        prisma,
+        { provider, address: partialAddress },
+        { signupsEnabled: undefined, signupAllowlist: undefined },
+      );
 
       expect(second.userId).toBe(first.userId);
       expect(second.spaceId).toBe(first.spaceId);
@@ -174,7 +184,7 @@ describePostgres("provisionPhoneIdentity (PostgreSQL)", () => {
       });
       expect(bots).toHaveLength(1);
     } finally {
-      await prisma.phoneIdentity.deleteMany({ where: { phoneE164: partialPhone } });
+      await prisma.messagingIdentity.deleteMany({ where: { provider, address: partialAddress } });
       await prisma.organization.deleteMany({ where: { id: first.spaceId } });
       await prisma.user.deleteMany({ where: { id: first.userId } });
     }

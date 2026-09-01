@@ -612,21 +612,22 @@ export const builtinAgentTools: ConnectorTool[] = [
   },
 ];
 
-/** Agent-connection tools, exposed only when the phone surface is enabled. */
+/** Agent-connection tools, exposed only when the messaging surface is enabled. */
 export const agentConnectionTools: ConnectorTool[] = [
   {
     name: "connect_agent",
     description:
-      "Request a standing connection to another person's agent by their phone number. The other owner must approve before either agent can message the other. Only for agents whose owner texted the deployment's phone line.",
+      "Request a standing connection to another person's agent by their owner's chat address. The other owner must approve before either agent can message the other. Only for agents whose owner messaged the deployment's chat line.",
     inputSchema: {
       type: "object",
       properties: {
-        phone: {
+        address: {
           type: "string",
-          description: "E.164 phone number of the agent's owner, e.g. +15551234567.",
+          description:
+            "The owner's address on the chat surface: an E.164 phone number (e.g. +15551234567) or platform user id.",
         },
       },
-      required: ["phone"],
+      required: ["address"],
     },
   },
   {
@@ -648,13 +649,14 @@ export const agentConnectionTools: ConnectorTool[] = [
     inputSchema: {
       type: "object",
       properties: {
-        phone: {
+        address: {
           type: "string",
-          description: "E.164 phone number of the connected agent's owner.",
+          description:
+            "Chat address (phone number or platform user id) of the connected agent's owner.",
         },
         message: { type: "string", description: "What to send." },
       },
-      required: ["phone", "message"],
+      required: ["address", "message"],
     },
   },
 ];

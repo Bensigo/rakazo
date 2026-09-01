@@ -20,7 +20,7 @@ import {
 } from "./index.js";
 
 describe("contracts", () => {
-  it("limits reactions to persisted non-phone messages", () => {
+  it("limits reactions to persisted non-channel messages", () => {
     expect(
       canReactToThreadMessage({ id: "message-1", blocks: [{ kind: "text", text: "hi" }] }),
     ).toBe(true);
@@ -32,9 +32,10 @@ describe("contracts", () => {
         id: "message-2",
         blocks: [
           {
-            kind: "phone_channel_message",
+            kind: "channel_message",
+            provider: "sendblue",
             channelId: "channel-1",
-            fromNumber: "+15555550100",
+            fromAddress: "+15555550100",
             fromLabel: "Pat",
             text: "hi",
           },
