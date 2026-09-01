@@ -397,12 +397,16 @@ export function reduceThreadSnapshot(
   if (event.type === "thread.cloud_agent") {
     const agentId = String(event.payload.agentId ?? "");
     const messageId = String(event.payload.messageId ?? "");
+    const rawStatus = String(event.payload.status ?? "running");
+    const status =
+      rawStatus === "finished" || rawStatus === "failed" || rawStatus === "cancelled"
+        ? rawStatus
+        : ("running" as const);
     const block = {
       kind: "cloud_agent" as const,
       agentId,
       title: String(event.payload.title ?? "Cloud agent"),
-      status:
-        (event.payload.status as "running" | "finished" | "failed" | "cancelled") ?? "running",
+      status,
       url: String(event.payload.url ?? ""),
       branch: event.payload.branch ? String(event.payload.branch) : undefined,
       prUrl: event.payload.prUrl ? String(event.payload.prUrl) : undefined,

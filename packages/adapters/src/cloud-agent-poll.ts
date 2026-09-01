@@ -10,6 +10,7 @@ import {
   appendEventInTransaction,
   createThreadMessageInTransaction,
   type PrismaClient,
+  type ThreadEvents,
   withTransactionRetry,
 } from "@rakazo/db";
 
@@ -23,6 +24,7 @@ export async function pollCloudAgent(
   deps: {
     prisma: PrismaClient;
     jobs: JobPublisher;
+    events: Pick<ThreadEvents, "notify">;
     cloudAgent: CloudAgentProvider | null | undefined;
   },
   payload: BackgroundJobPayloads["cloud_agent.poll"],
@@ -93,12 +95,12 @@ export async function pollCloudAgent(
     const blocks = (message.blocks as MessageBlock[]).map((block) =>
       block.kind === "cloud_agent" && block.agentId === payload.agentId ? nextBlock : block,
     );
-    await deps.prisma.$transaction(async (tx) => {
+    const committed = await deps.prisma.$transaction(async (tx) => {
       await tx.message.update({
         where: { id: message.id },
         data: { blocks },
       });
-      await appendEventInTransaction(tx, {
+      return appendEventInTransaction(tx, {
         spaceId: payload.spaceId,
         threadId: payload.threadId,
         botId: payload.botId,
@@ -114,6 +116,9 @@ export async function pollCloudAgent(
           latestRunId: nextBlock.latestRunId,
         },
       });
+    });
+    await deps.events.notify(payload.threadId, committed.seq).catch((error) => {
+      console.error("cloud agent poll realtime notification", error);
     });
   }
 
@@ -141,6 +146,7 @@ async function failStuckCloudAgent(
   deps: {
     prisma: PrismaClient;
     jobs: JobPublisher;
+    events: Pick<ThreadEvents, "notify">;
   },
   payload: BackgroundJobPayloads["cloud_agent.poll"],
   reason: string,
@@ -160,9 +166,9 @@ async function failStuckCloudAgent(
     return { ...block, status: "failed" as const };
   });
 
-  await deps.prisma.$transaction(async (tx) => {
+  const committed = await deps.prisma.$transaction(async (tx) => {
     await tx.message.update({ where: { id: message.id }, data: { blocks } });
-    await appendEventInTransaction(tx, {
+    return appendEventInTransaction(tx, {
       spaceId: payload.spaceId,
       threadId: payload.threadId,
       botId: payload.botId,
@@ -176,6 +182,9 @@ async function failStuckCloudAgent(
       },
     });
   });
+  await deps.events.notify(payload.threadId, committed.seq).catch((error) => {
+    console.error("cloud agent fail realtime notification", error);
+  });
 
   await wakeBotForCloudAgent(deps, payload, {
     id: payload.agentId,
@@ -187,7 +196,7 @@ async function failStuckCloudAgent(
 }
 
 async function wakeBotForCloudAgent(
-  deps: { prisma: PrismaClient; jobs: JobPublisher },
+  deps: { prisma: PrismaClient; jobs: JobPublisher; events: Pick<ThreadEvents, "notify"> },
   payload: BackgroundJobPayloads["cloud_agent.poll"],
   snapshot: {
     id: string;
@@ -252,7 +261,7 @@ async function wakeBotForCloudAgent(
         },
       });
       await tx.message.update({ where: { id: wakeMessage.id }, data: { runId: run.id } });
-      await appendEventInTransaction(tx, {
+      const event = await appendEventInTransaction(tx, {
         spaceId: payload.spaceId,
         threadId: payload.threadId,
         botId: payload.botId,
@@ -264,11 +273,14 @@ async function wakeBotForCloudAgent(
           blocks: [{ kind: "meta", text: summary }],
         },
       });
-      return run;
+      return { run, seq: event.seq };
     }),
   );
+  await deps.events.notify(payload.threadId, claimed.seq).catch((error) => {
+    console.error("cloud agent wake realtime notification", error);
+  });
 
-  await deps.jobs.enqueue(runContinueJob(claimed.id)).catch((error) => {
+  await deps.jobs.enqueue(runContinueJob(claimed.run.id)).catch((error) => {
     console.error("cloud agent wake enqueue", error);
   });
 }

@@ -2124,7 +2124,8 @@ const MessageBubble = memo(function MessageBubble({
   if (special?.kind === "cloud_agent") {
     const running = special.status === "running";
     const failed = special.status === "failed" || special.status === "cancelled";
-    const href = httpsOnlyUrl(special.prUrl) ?? httpsOnlyUrl(special.url);
+    const prHref = httpsOnlyUrl(special.prUrl);
+    const href = prHref ?? httpsOnlyUrl(special.url);
     return (
       <Pressable
         onPress={() => {
@@ -2154,7 +2155,7 @@ const MessageBubble = memo(function MessageBubble({
             {running ? "running" : special.status}
           </Text>
         </View>
-        {special.prUrl ? (
+        {prHref ? (
           <Text style={{ color: "#A8A8AD", marginTop: 8, fontSize: 14.5 }}>Pull request</Text>
         ) : special.branch ? (
           <Text style={{ color: "#85858A", marginTop: 8, fontSize: 13.5 }}>{special.branch}</Text>

@@ -83,7 +83,12 @@ export function createBackgroundJobHandlers(deps: {
     },
     "cloud_agent.poll": async (payload) => {
       await pollCloudAgent(
-        { prisma: deps.prisma, jobs: deps.jobs, cloudAgent: deps.cloudAgent },
+        {
+          prisma: deps.prisma,
+          jobs: deps.jobs,
+          events: deps.events,
+          cloudAgent: deps.cloudAgent,
+        },
         payload,
       );
     },

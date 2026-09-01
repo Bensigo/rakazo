@@ -5370,7 +5370,8 @@ const MessageView = memo(function MessageView({
         if (block.kind === "cloud_agent") {
           const running = block.status === "running";
           const failed = block.status === "failed" || block.status === "cancelled";
-          const href = httpsOnlyUrl(block.prUrl) ?? httpsOnlyUrl(block.url);
+          const prHref = httpsOnlyUrl(block.prUrl);
+          const href = prHref ?? httpsOnlyUrl(block.url);
           const Card = href ? "a" : "div";
           return (
             <Card
@@ -5398,7 +5399,7 @@ const MessageView = memo(function MessageView({
                   {running ? <Trans>running</Trans> : block.status}
                 </span>
               </div>
-              {block.prUrl ? (
+              {prHref ? (
                 <div className="mt-2 text-[14.5px] leading-[1.5] text-[#A8A8AD]">
                   <Trans>Pull request</Trans>
                 </div>

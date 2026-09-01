@@ -3723,6 +3723,10 @@ async function syncCloudAgentCard(
       ...(snapshot.latestRunId ? { latestRunId: snapshot.latestRunId } : {}),
     } satisfies MessageBlock;
   });
+  const merged = blocks.find(
+    (block): block is Extract<MessageBlock, { kind: "cloud_agent" }> =>
+      block.kind === "cloud_agent" && block.agentId === snapshot.id,
+  );
 
   const committed = await deps.prisma.$transaction(async (tx) => {
     await tx.message.update({ where: { id: target.id }, data: { blocks } });
@@ -3735,12 +3739,12 @@ async function syncCloudAgentCard(
       payload: {
         messageId: target.id,
         agentId: snapshot.id,
-        title: snapshot.title,
-        status: snapshot.status,
-        url: snapshot.url,
-        branch: snapshot.branch,
-        prUrl: snapshot.prUrl,
-        latestRunId: snapshot.latestRunId,
+        title: merged?.title ?? snapshot.title,
+        status: merged?.status ?? snapshot.status,
+        url: merged?.url ?? snapshot.url,
+        branch: merged?.branch,
+        prUrl: merged?.prUrl,
+        latestRunId: merged?.latestRunId,
       },
     });
   });
