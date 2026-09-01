@@ -2802,6 +2802,17 @@ export function createRunExecutor(deps: ExecutorDeps) {
               allowSilentEmpty: allowSilentPeerMessage || messagingChannelRun,
               emptyResponseText,
               executeTool: scripted ? undefined : applyTool,
+              claimSteering: scripted
+                ? undefined
+                : (seenIds) =>
+                    deps.events.claimSteering({
+                      threadId: thread.id,
+                      botId: bot.id,
+                      runId,
+                      leaseOwner: workerId,
+                      leaseFence: fence,
+                      seenIds,
+                    }),
             },
             context,
           )) {
@@ -2970,6 +2981,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
                   blocks: [{ kind: "text", text: stuckText }],
                 });
                 if (!stopped) return;
+                if (stopped.continuationRunId) {
+                  await deps.jobs
+                    .enqueue(runContinueJob(stopped.continuationRunId))
+                    .catch((error) => console.error("steering continuation enqueue", error));
+                }
                 if (run.trigger === "bot_message") {
                   await returnBotMessageOutcome(
                     deps,
@@ -3120,6 +3136,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
             markUnread: completionMarksUnread(run.trigger, text),
           });
           if (!completed) return;
+          if (completed.continuationRunId) {
+            await deps.jobs
+              .enqueue(runContinueJob(completed.continuationRunId))
+              .catch((error) => console.error("steering continuation enqueue", error));
+          }
           if (run.trigger === "bot_message" && text) {
             await returnBotMessageOutcome(
               deps,
@@ -3128,7 +3149,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               text,
             ).catch((error) => console.error("bot message result return", error));
           }
-          if (text) {
+          if (text && !completed.continuationRunId) {
             await notifyRun(deps, run, {
               kind: "completion",
               title: `${bot.name} finished`,
@@ -3187,6 +3208,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
             error: message,
           });
           if (!failed) return;
+          if (failed.continuationRunId) {
+            await deps.jobs
+              .enqueue(runContinueJob(failed.continuationRunId))
+              .catch((error) => console.error("steering continuation enqueue", error));
+          }
           if (run.trigger === "bot_message") {
             await returnBotMessageOutcome(
               deps,
@@ -3196,13 +3222,15 @@ export function createRunExecutor(deps: ExecutorDeps) {
               "status",
             ).catch((returnError) => console.error("bot message failure return", returnError));
           }
-          await notifyRun(deps, run, {
-            kind: "failure",
-            title: `${bot.name} failed`,
-            body: message.slice(0, 180),
-            botId: bot.id,
-            threadId: thread.id,
-          });
+          if (!failed.continuationRunId) {
+            await notifyRun(deps, run, {
+              kind: "failure",
+              title: `${bot.name} failed`,
+              body: message.slice(0, 180),
+              botId: bot.id,
+              threadId: thread.id,
+            });
+          }
         }
       } catch (setupError) {
         const computerBusy = setupError instanceof ComputerBusyError;

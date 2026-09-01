@@ -144,13 +144,43 @@ export class PiAgentRuntime implements AgentRuntime {
           pausePending: false,
         };
         const tools = toAgentTools(toolDefs, host);
-        const history = toHistory(request.history, request.prompt);
+        const seenSteeringIds: string[] = [];
+        const initialSteering = request.claimSteering ? await request.claimSteering([]) : [];
+        seenSteeringIds.push(...initialSteering.map((item) => item.id));
+        const history = toHistory(
+          withoutSteeringMessages(
+            request.history,
+            initialSteering.map((item) => item.text),
+          ),
+          request.prompt,
+        );
+        const initialPrompt = initialSteering.length
+          ? `${request.prompt}\n\nAdditional user context:\n${initialSteering
+              .map((item) => item.text)
+              .join("\n")}`
+          : request.prompt;
 
-        const agent = new Agent({
+        let agent: Agent;
+        agent = new Agent({
+          steeringMode: "all",
           streamFn: (m, ctx, options) =>
             models.streamSimple(m, ctx, reliableStreamOptions(m, options)),
           getApiKey: async () => apiKey,
           transformContext: async (messages) => pruneComputerScreenshotContext(messages),
+          prepareNextTurnWithContext: async () => {
+            if (!request.claimSteering) return undefined;
+            try {
+              const steering = await request.claimSteering([...seenSteeringIds]);
+              if (steering.length === 0) return undefined;
+              seenSteeringIds.push(...steering.map((item) => item.id));
+              for (const item of steering) {
+                agent.steer({ role: "user", content: item.text, timestamp: Date.now() });
+              }
+            } catch {
+              // Durable steering remains claimable at the next boundary or retry.
+            }
+            return undefined;
+          },
           initialState: {
             systemPrompt:
               request.instructions ||
@@ -231,7 +261,7 @@ export class PiAgentRuntime implements AgentRuntime {
           mimeType: image.mimeType,
         }));
         try {
-          await agent.prompt(request.prompt, images?.length ? images : undefined);
+          await agent.prompt(initialPrompt, images?.length ? images : undefined);
           await agent.waitForIdle();
         } finally {
           signal.removeEventListener("abort", onAbort);
@@ -444,8 +474,18 @@ function stableToolNameHash(name: string): string {
 }
 
 function toHistory(history: AgentRunRequest["history"], prompt: string) {
-  const last = history.at(-1);
-  const prior = last?.role === "user" && last.content === prompt ? history.slice(0, -1) : history;
+  let duplicatePromptIndex = -1;
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const message = history[index];
+    if (message?.role === "user" && message.content === prompt) {
+      duplicatePromptIndex = index;
+      break;
+    }
+  }
+  const prior =
+    duplicatePromptIndex < 0
+      ? history
+      : history.filter((_, index) => index !== duplicatePromptIndex);
   return prior
     .filter((m) => m.role === "user" || m.role === "assistant")
     .map((m) =>
@@ -453,6 +493,25 @@ function toHistory(history: AgentRunRequest["history"], prompt: string) {
         ? { role: "user" as const, content: `Assistant: ${m.content}`, timestamp: Date.now() }
         : { role: "user" as const, content: m.content, timestamp: Date.now() },
     );
+}
+
+function withoutSteeringMessages(
+  history: AgentRunRequest["history"],
+  steering: string[],
+): AgentRunRequest["history"] {
+  if (steering.length === 0) return history;
+  const result = [...history];
+  let beforeIndex = result.length - 1;
+  for (let steeringIndex = steering.length - 1; steeringIndex >= 0; steeringIndex -= 1) {
+    for (let index = beforeIndex; index >= 0; index -= 1) {
+      const message = result[index];
+      if (message?.role !== "user" || message.content !== steering[steeringIndex]) continue;
+      result.splice(index, 1);
+      beforeIndex = index - 1;
+      break;
+    }
+  }
+  return result;
 }
 
 function toAgentTool(tool: ConnectorTool, host: ToolHost, exposedName: string): AgentTool {

@@ -352,6 +352,7 @@ model Bot {
   usageRecords      UsageRecord[]
   tasks             Task[]
   runs              Run[]
+  steeringMessages  SteeringMessage[]
   mcpServers        BotMcpServer[]
   groupMembers      ChatGroupMember[]
 
@@ -469,6 +470,7 @@ model Message {
   clientNonce      String?
   thumbsUp         Boolean   @default(false)
   sourceRuns       Run[]     @relation("RunSourceMessage")
+  steeringMessages SteeringMessage[]
   createdAt        DateTime  @default(now())
 
   @@unique([threadId, seq])
@@ -550,6 +552,7 @@ model Run {
   attempts             Attempt[]
   effects              ExternalEffect[]
   usageRecords         UsageRecord[]
+  steeringMessages     SteeringMessage[]
 
   @@unique([spaceId, clientNonce])
   @@index([status, leaseExpiresAt])
@@ -560,6 +563,24 @@ model Run {
   @@index([threadId, status, createdAt])
   @@index([routineId])
   @@map("runs")
+}
+
+model SteeringMessage {
+  id        String   @id @default(cuid())
+  messageId String
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  botId     String
+  bot       Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
+  userId    String
+  runId     String?
+  run       Run?     @relation(fields: [runId], references: [id], onDelete: SetNull)
+  claimedAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@unique([messageId, botId])
+  @@index([botId, runId, createdAt])
+  @@index([runId])
+  @@map("steering_messages")
 }
 
 model Attempt {

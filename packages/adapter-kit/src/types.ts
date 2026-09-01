@@ -341,6 +341,8 @@ export interface AgentRunRequest {
     executionId: string,
     route?: ConnectorRoute,
   ) => Promise<unknown>;
+  /** Atomically claim durable user steering at the runtime's next safe turn boundary. */
+  claimSteering?: (seenIds: string[]) => Promise<Array<{ id: string; text: string }>>;
 }
 
 export interface ScriptedTurn {

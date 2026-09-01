@@ -1150,7 +1150,6 @@ export function createRouter(deps: RouterDeps) {
             blocks: [{ kind: "text", text: input.text }],
             prompt: input.text,
             trigger: "follow_up",
-            onlyIfIdle: true,
           });
           if (sent.runId) {
             await deps.jobs.enqueue(runContinueJob(sent.runId)).catch((error) => {
@@ -1180,7 +1179,8 @@ export function createRouter(deps: RouterDeps) {
           const active = await tx.run.findFirst({
             where: {
               threadId: target.threadId,
-              status: { in: ["running", "queued", "leased"] },
+              botId,
+              status: { in: [...ACTIVE_RUN_STATUSES] },
             },
             select: { id: true },
           });
@@ -1210,6 +1210,10 @@ export function createRouter(deps: RouterDeps) {
               select: { id: true },
             });
             await tx.message.update({ where: { id: message.id }, data: { runId: run.id } });
+          } else {
+            await tx.steeringMessage.create({
+              data: { messageId: message.id, botId, userId: context.actor.userId },
+            });
           }
           const event = await appendEventInTransaction(tx, {
             spaceId: context.actor.spaceId,
