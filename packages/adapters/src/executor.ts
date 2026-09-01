@@ -2091,6 +2091,14 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 );
               } catch (retryError) {
                 console.error("cloud agent poll enqueue retry", retryError);
+                await syncCloudAgentCard(
+                  deps,
+                  run,
+                  { ...launched, status: "failed" },
+                  { userId: run.userId },
+                ).catch((syncError) => {
+                  console.error("cloud agent launch fail card", syncError);
+                });
                 return finish({
                   ...launched,
                   error: "Cloud agent launched but status polling could not be scheduled.",
@@ -2118,6 +2126,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
               });
             } catch (error) {
               console.error("cloud agent reply card", error);
+              return finish({
+                ...replied,
+                error: "Reply sent but status polling could not be re-scheduled.",
+              });
             }
             return finish(replied);
           }
@@ -3773,18 +3785,22 @@ async function syncCloudAgentCard(
   });
 
   if (options.requeuePoll) {
-    await deps.jobs.enqueue(
-      cloudAgentPollJob({
-        agentId: snapshot.id,
-        messageId: target.id,
-        spaceId: run.spaceId,
-        threadId: run.threadId,
-        botId: run.botId,
-        userId: options.userId,
-        attempt: 0,
-        errorAttempt: 0,
-      }),
-    );
+    const pollPayload = {
+      agentId: snapshot.id,
+      messageId: target.id,
+      spaceId: run.spaceId,
+      threadId: run.threadId,
+      botId: run.botId,
+      userId: options.userId,
+      attempt: 0,
+      errorAttempt: 0,
+    };
+    try {
+      await deps.jobs.enqueue(cloudAgentPollJob(pollPayload));
+    } catch (error) {
+      console.error("cloud agent poll requeue", error);
+      await deps.jobs.enqueue(cloudAgentPollJob(pollPayload, new Date(Date.now() + 5_000)));
+    }
   }
 }
 
