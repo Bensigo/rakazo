@@ -197,15 +197,22 @@ export function importGraphqlSchema(document: Record<string, unknown>): GraphqlO
     if (typeof type.name === "string" && type.name) typeMap.set(type.name, type);
   }
 
-  const operations: GraphqlOperation[] = [];
-  const roots: Array<{ operationType: "query" | "mutation"; typeName: string | undefined }> = [
+  const queries: GraphqlOperation[] = [];
+  const mutations: GraphqlOperation[] = [];
+  const roots: Array<{
+    operationType: "query" | "mutation";
+    typeName: string | undefined;
+    sink: GraphqlOperation[];
+  }> = [
     {
       operationType: "query",
       typeName: stringName(asRecord(schema.queryType)?.name),
+      sink: queries,
     },
     {
       operationType: "mutation",
       typeName: stringName(asRecord(schema.mutationType)?.name),
+      sink: mutations,
     },
   ];
 
@@ -228,7 +235,7 @@ export function importGraphqlSchema(document: Record<string, unknown>): GraphqlO
         if (isNonNull(arg.type) && arg.defaultValue == null) required.push(arg.name);
       }
       const id = `${root.operationType}_${field.name}`.slice(0, 160);
-      operations.push({
+      root.sink.push({
         id,
         name: field.name,
         description: field.description ?? `${root.operationType} ${field.name}`,
@@ -243,15 +250,28 @@ export function importGraphqlSchema(document: Record<string, unknown>): GraphqlO
         readOnly: root.operationType === "query",
         selection: buildSelection(field.type, typeMap, 0),
       });
-      if (operations.length >= 100) break;
     }
-    if (operations.length >= 100) break;
   }
 
+  const operations = boundGraphqlOperations(queries, mutations, 100);
   if (operations.length === 0) {
     throw new Error("GraphQL schema has no query or mutation fields");
   }
   return operations;
+}
+
+function boundGraphqlOperations(
+  queries: GraphqlOperation[],
+  mutations: GraphqlOperation[],
+  maximum: number,
+): GraphqlOperation[] {
+  if (queries.length + mutations.length <= maximum) return [...queries, ...mutations];
+  // Keep both roots represented when the catalog is truncated.
+  const mutationTake = Math.min(mutations.length, Math.floor(maximum / 2));
+  const queryTake = Math.min(queries.length, maximum - mutationTake);
+  const remaining = maximum - queryTake - mutationTake;
+  const extraMutations = Math.min(Math.max(0, mutations.length - mutationTake), remaining);
+  return [...queries.slice(0, queryTake), ...mutations.slice(0, mutationTake + extraMutations)];
 }
 
 export async function executeGraphqlOperation(
@@ -305,14 +325,23 @@ export async function executeGraphqlOperation(
       // Keep non-JSON GraphQL responses as bounded text.
     }
     if (!response.ok) {
-      return {
-        error: true,
-        status: response.status,
-        data: payload,
-        ...(truncated ? { truncated: true } : {}),
-      };
+      throw new Error(`GraphQL request returned HTTP ${response.status}`);
     }
-    return { status: response.status, data: payload, ...(truncated ? { truncated: true } : {}) };
+    const record = asRecord(payload);
+    const graphqlErrors = Array.isArray(record?.errors) ? record.errors : [];
+    if (graphqlErrors.length > 0) {
+      const first = asRecord(graphqlErrors[0]);
+      const message =
+        typeof first?.message === "string" && first.message
+          ? first.message
+          : "GraphQL operation failed";
+      throw new Error(message);
+    }
+    return {
+      status: response.status,
+      data: record?.data ?? payload,
+      ...(truncated ? { truncated: true } : {}),
+    };
   } finally {
     await safeFetch.close().catch(() => undefined);
   }
@@ -367,6 +396,8 @@ function buildSelection(
   const parts: string[] = [];
   for (const field of resolved.fields) {
     if (!field.name || field.name.startsWith("__")) continue;
+    // Skip fields that need arguments; generated documents cannot invent them.
+    if ((field.args ?? []).length > 0) continue;
     const fieldNamed = unwrapNamedType(field.type);
     if (!fieldNamed) continue;
     if (fieldNamed.kind === "SCALAR" || fieldNamed.kind === "ENUM") {

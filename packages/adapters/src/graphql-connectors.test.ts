@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { importGraphqlSchema, prepareGraphqlInstall } from "./graphql-connectors.js";
+import {
+  executeGraphqlOperation,
+  importGraphqlSchema,
+  prepareGraphqlInstall,
+} from "./graphql-connectors.js";
 import { InstalledConnectorProvider } from "./installed-connectors.js";
 
 const STAR_WARS_INTROSPECTION = {
@@ -141,6 +145,144 @@ describe("GraphQL connector import", () => {
         config: { auth: { type: "none" } },
       }),
     ).rejects.toThrow(/encrypted credential field/);
+  });
+
+  it("skips nested fields that require arguments in generated selections", () => {
+    const operations = importGraphqlSchema({
+      data: {
+        __schema: {
+          queryType: { name: "Query" },
+          mutationType: null,
+          types: [
+            {
+              kind: "OBJECT",
+              name: "Query",
+              fields: [
+                {
+                  name: "viewer",
+                  args: [],
+                  type: { kind: "OBJECT", name: "User", ofType: null },
+                },
+              ],
+            },
+            {
+              kind: "OBJECT",
+              name: "User",
+              fields: [
+                {
+                  name: "id",
+                  args: [],
+                  type: { kind: "SCALAR", name: "ID", ofType: null },
+                },
+                {
+                  name: "repository",
+                  args: [
+                    {
+                      name: "name",
+                      type: {
+                        kind: "NON_NULL",
+                        name: null,
+                        ofType: { kind: "SCALAR", name: "String", ofType: null },
+                      },
+                      defaultValue: null,
+                    },
+                  ],
+                  type: { kind: "OBJECT", name: "Repository", ofType: null },
+                },
+              ],
+            },
+            {
+              kind: "OBJECT",
+              name: "Repository",
+              fields: [
+                {
+                  name: "name",
+                  args: [],
+                  type: { kind: "SCALAR", name: "String", ofType: null },
+                },
+              ],
+            },
+            { kind: "SCALAR", name: "ID" },
+            { kind: "SCALAR", name: "String" },
+          ],
+        },
+      },
+    });
+    expect(operations[0]!.selection).toContain("id");
+    expect(operations[0]!.selection).not.toContain("repository");
+  });
+
+  it("keeps mutations when a large query catalog would otherwise fill the cap", () => {
+    const queryFields = Array.from({ length: 100 }, (_, index) => ({
+      name: `queryField${index}`,
+      args: [],
+      type: { kind: "SCALAR", name: "String", ofType: null },
+    }));
+    const operations = importGraphqlSchema({
+      data: {
+        __schema: {
+          queryType: { name: "Query" },
+          mutationType: { name: "Mutation" },
+          types: [
+            { kind: "OBJECT", name: "Query", fields: queryFields },
+            {
+              kind: "OBJECT",
+              name: "Mutation",
+              fields: [
+                {
+                  name: "doThing",
+                  args: [],
+                  type: { kind: "SCALAR", name: "String", ofType: null },
+                },
+              ],
+            },
+            { kind: "SCALAR", name: "String" },
+          ],
+        },
+      },
+    });
+    expect(operations.length).toBeLessThanOrEqual(100);
+    expect(operations.some((operation) => operation.id === "mutation_doThing")).toBe(true);
+    expect(operations.some((operation) => operation.operationType === "query")).toBe(true);
+  });
+});
+
+describe("GraphQL execution failures", () => {
+  it("throws when the GraphQL response includes protocol errors", async () => {
+    const operation = importGraphqlSchema(STAR_WARS_INTROSPECTION)[0]!;
+    await expect(
+      executeGraphqlOperation(
+        "https://graphql.example.test/graphql",
+        { auth: { type: "none" }, headers: {}, operations: [operation] },
+        operation,
+        {},
+        undefined,
+        new AbortController().signal,
+        {
+          fetch: async () => Response.json({ errors: [{ message: "Field 'hero' is required" }] }),
+          resolveHostname: async () => [{ address: "203.0.113.10", family: 4 as const }],
+        },
+      ),
+    ).rejects.toThrow(/Field 'hero' is required/);
+  });
+
+  it("throws when the GraphQL HTTP response is not successful", async () => {
+    const operation = importGraphqlSchema(STAR_WARS_INTROSPECTION)[0]!;
+    await expect(
+      executeGraphqlOperation(
+        "https://graphql.example.test/graphql",
+        { auth: { type: "none" }, headers: {}, operations: [operation] },
+        operation,
+        {},
+        undefined,
+        new AbortController().signal,
+        {
+          fetch: async () =>
+            new Response("nope", { status: 500, headers: { "content-type": "text/plain" } }),
+          resolveHostname: async () => [{ address: "203.0.113.10", family: 4 as const }],
+        },
+      ),
+    ).rejects.toThrow(/HTTP 500/);
   });
 });
 
