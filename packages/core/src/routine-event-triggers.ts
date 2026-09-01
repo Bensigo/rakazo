@@ -49,25 +49,6 @@ export function webhookEnabledFromTriggers(triggers: RoutineEventTriggers): bool
 }
 
 /**
- * Merge legacy webhookEnabled into trigger records when the JSON list is empty.
- * Prefer eventTriggers when present.
- */
-export function coalesceRoutineEventTriggers(
-  eventTriggers: unknown,
-  webhookEnabled: boolean,
-): RoutineEventTriggers {
-  const parsed = parseRoutineEventTriggers(eventTriggers);
-  if (parsed.length > 0) {
-    if (webhookEnabled && !parsed.some((trigger) => trigger.kind === "webhook")) {
-      return [...parsed, { id: "legacy-webhook", kind: "webhook" }];
-    }
-    return parsed;
-  }
-  if (webhookEnabled) return [{ id: "legacy-webhook", kind: "webhook" }];
-  return [];
-}
-
-/**
  * Slack, Telegram, and WhatsApp inbound is DM-only. Groups are iMessage-only.
  * Chat triggers in the product UI are Slack-branded, so channel scope never
  * fires for the providers those triggers target.
@@ -80,10 +61,28 @@ export function hasChatChannelTriggers(triggers: RoutineEventTriggers): boolean 
 }
 
 /** Drop channel-scoped chat triggers that cannot receive Slack/Telegram/WhatsApp events. */
-export function withoutChatChannelTriggers(
-  triggers: RoutineEventTriggers,
-): RoutineEventTriggers {
+export function withoutChatChannelTriggers(triggers: RoutineEventTriggers): RoutineEventTriggers {
   return triggers.filter((trigger) => !(trigger.kind === "chat" && trigger.scope === "channel"));
+}
+
+/**
+ * Merge legacy webhookEnabled into trigger records when the JSON list is empty.
+ * Prefer eventTriggers when present. Always drop channel-scoped chat triggers so
+ * dispatch cannot wake hidden configs that the editor no longer shows.
+ */
+export function coalesceRoutineEventTriggers(
+  eventTriggers: unknown,
+  webhookEnabled: boolean,
+): RoutineEventTriggers {
+  const parsed = withoutChatChannelTriggers(parseRoutineEventTriggers(eventTriggers));
+  if (parsed.length > 0) {
+    if (webhookEnabled && !parsed.some((trigger) => trigger.kind === "webhook")) {
+      return [...parsed, { id: "legacy-webhook", kind: "webhook" }];
+    }
+    return parsed;
+  }
+  if (webhookEnabled) return [{ id: "legacy-webhook", kind: "webhook" }];
+  return [];
 }
 
 export function newRoutineEventTriggerId(kind: RoutineEventTrigger["kind"]): string {

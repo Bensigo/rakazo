@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   coalesceRoutineEventTriggers,
+  hasChatChannelTriggers,
   matchingEventTriggers,
   normalizeRepoEventPayload,
   normalizeRepoName,
   textMentionsBot,
   triggerMatchesEvent,
-  webhookEnabledFromTriggers,
-  hasChatChannelTriggers,
-  withoutChatChannelTriggers,
   UNSUPPORTED_CHAT_CHANNEL_TRIGGER_MESSAGE,
+  webhookEnabledFromTriggers,
+  withoutChatChannelTriggers,
 } from "./routine-event-triggers.js";
 
 describe("routine event triggers", () => {
@@ -297,4 +297,35 @@ describe("routine event triggers", () => {
     expect(UNSUPPORTED_CHAT_CHANNEL_TRIGGER_MESSAGE.toLowerCase()).toContain("dm");
   });
 
+  it("coalesceRoutineEventTriggers drops channel chat triggers used by dispatch", () => {
+    expect(
+      coalesceRoutineEventTriggers(
+        [
+          {
+            id: "c1",
+            kind: "chat",
+            scope: "channel",
+            target: "general",
+            match: "message",
+          },
+          {
+            id: "c2",
+            kind: "chat",
+            scope: "dm",
+            target: "U1",
+            match: "mention",
+          },
+        ],
+        false,
+      ),
+    ).toEqual([
+      {
+        id: "c2",
+        kind: "chat",
+        scope: "dm",
+        target: "U1",
+        match: "mention",
+      },
+    ]);
+  });
 });

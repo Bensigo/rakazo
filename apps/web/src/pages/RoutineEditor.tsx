@@ -1,15 +1,7 @@
 import { t } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
-import type {
-  ChatMatchKind,
-  RepoEventKind,
-  Routine,
-  RoutineEventTrigger,
-} from "@rakazo/contracts";
-import {
-  ChatMatchKindSchema,
-  REPO_EVENT_KIND_VALUES,
-} from "@rakazo/contracts";
+import type { ChatMatchKind, RepoEventKind, Routine, RoutineEventTrigger } from "@rakazo/contracts";
+import { ChatMatchKindSchema, REPO_EVENT_KIND_VALUES } from "@rakazo/contracts";
 import {
   type CronFreq,
   type CronPreset,

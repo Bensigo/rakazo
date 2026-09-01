@@ -86,7 +86,6 @@ import {
   containsSecret,
   expandSkillReferencesInPrompt,
   hasChatChannelTriggers,
-  withoutChatChannelTriggers,
   hasMixedOneShotSchedule,
   isOneShotRoutineCrons,
   nextCronDateAcrossStrict,
@@ -4037,9 +4036,7 @@ function mapRoutine(row: {
   nextRunAt: Date | null;
   createdAt: Date;
 }) {
-  const eventTriggers = withoutChatChannelTriggers(
-    coalesceRoutineEventTriggers(row.eventTriggers, row.webhookEnabled),
-  );
+  const eventTriggers = coalesceRoutineEventTriggers(row.eventTriggers, row.webhookEnabled);
   return {
     id: row.id,
     botId: row.botId,
