@@ -80,13 +80,12 @@ export function draftFromRoutine(routine: Routine): RoutineDraftState {
     schedules: routine.crons.map(presetFromCron),
     webhookEnabled,
     eventTriggers: (() => {
-      const cleaned =
-        eventTriggers.length > 0
-          ? withoutChatChannelTriggers(eventTriggers)
-          : webhookEnabled
-            ? [{ id: "legacy-webhook", kind: "webhook" as const }]
-            : [];
-      return cleaned;
+      const cleaned = withoutChatChannelTriggers(eventTriggers);
+      return cleaned.length > 0
+        ? cleaned
+        : webhookEnabled
+          ? [{ id: "legacy-webhook", kind: "webhook" as const }]
+          : [];
     })(),
     active: routine.active,
     runAtLocal: routineNeedsOneShotArm(routine, routine.crons) ? defaultArmRunAtLocal() : "",
