@@ -162,10 +162,16 @@ async function failStuckCloudAgent(
 
   let title = "Cloud agent";
   let url = "";
+  let branch: string | undefined;
+  let prUrl: string | undefined;
+  let latestRunId: string | undefined;
   const blocks = (message.blocks as MessageBlock[]).map((block) => {
     if (block.kind !== "cloud_agent" || block.agentId !== payload.agentId) return block;
     title = block.title || title;
     url = block.url || url;
+    branch = block.branch;
+    prUrl = block.prUrl;
+    latestRunId = block.latestRunId;
     return { ...block, status: "failed" as const };
   });
 
@@ -182,6 +188,9 @@ async function failStuckCloudAgent(
         title,
         status: "failed",
         url,
+        branch,
+        prUrl,
+        latestRunId,
       },
     });
   });
@@ -194,6 +203,9 @@ async function failStuckCloudAgent(
     title,
     status: "failed",
     url,
+    branch,
+    prUrl,
+    latestRunId,
   });
   console.error("cloud agent poll abandoned", reason, payload.agentId);
 }
@@ -223,9 +235,8 @@ async function wakeBotForCloudAgent(
       select: { status: true },
     });
     if (prior && !TERMINAL.has(prior.status)) {
-      await deps.jobs.enqueue(runContinueJob(existing.runId)).catch((error) => {
-        console.error("cloud agent wake reenqueue", error);
-      });
+      // Let enqueue failures propagate so Graphile can retry this poll job.
+      await deps.jobs.enqueue(runContinueJob(existing.runId));
       return;
     }
     // Prior wake already finished; mint a fresh nonce for this completion.
@@ -293,7 +304,6 @@ async function wakeBotForCloudAgent(
     console.error("cloud agent wake realtime notification", error);
   });
 
-  await deps.jobs.enqueue(runContinueJob(claimed.run.id)).catch((error) => {
-    console.error("cloud agent wake enqueue", error);
-  });
+  // Let enqueue failures propagate so Graphile can retry this poll job.
+  await deps.jobs.enqueue(runContinueJob(claimed.run.id));
 }
