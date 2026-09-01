@@ -769,17 +769,15 @@ export function createRunExecutor(deps: ExecutorDeps) {
       const routinePrompt = expandSkillReferencesInPrompt(routine.prompt, skillRecords);
       const prompt = formatRoutineEventPrompt(routinePrompt, event);
       const trigger = event.source === "chat" ? ("messaging" as const) : ("webhook" as const);
-      const previousLastRunAt = routine.lastRunAt;
-      // Event wakes must not touch nextRunAt. Capture the claim timestamp so
-      // enqueue-failure rollback only restores lastRunAt when this wake still
-      // owns it (a concurrent cron/event wake may have moved schedule state).
-      const claimedAt = new Date();
+      // Event wakes only bump lastRunAt; they never touch nextRunAt. On enqueue
+      // failure, delete the orphaned run/task and leave lastRunAt alone so a
+      // concurrent claim cannot be rolled back to a stale value.
       let claimed: { id: string; taskId: string; threadId: string } | null = null;
       try {
         claimed = await deps.prisma.$transaction(async (tx) => {
           const updated = await tx.routine.updateMany({
             where: { id: routine.id, active: true },
-            data: { lastRunAt: claimedAt },
+            data: { lastRunAt: new Date() },
           });
           if (updated.count !== 1) return null;
           const task = await tx.task.create({
@@ -827,10 +825,6 @@ export function createRunExecutor(deps: ExecutorDeps) {
         await deps.prisma.$transaction(async (tx) => {
           await tx.run.deleteMany({ where: { id: claimed.id, status: "queued" } });
           await tx.task.deleteMany({ where: { id: claimed.taskId, status: "queued" } });
-          await tx.routine.updateMany({
-            where: { id: routine.id, lastRunAt: claimedAt },
-            data: { lastRunAt: previousLastRunAt },
-          });
         });
         throw error;
       }

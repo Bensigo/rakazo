@@ -126,13 +126,15 @@ export function webhookDeliveryIdempotencyKey(input: {
   botId: string;
   headers: Headers | { get(name: string): string | null };
   payload: Record<string, unknown>;
-}): string | undefined {
-  const raw =
+  /** Exact request body when available; used when no explicit delivery id is present. */
+  rawBody?: string;
+}): string {
+  const explicit =
     input.headers.get("idempotency-key")?.trim() ||
     input.headers.get("x-idempotency-key")?.trim() ||
     (typeof input.payload.id === "string" ? input.payload.id.trim() : "") ||
     (typeof input.payload.event_id === "string" ? input.payload.event_id.trim() : "") ||
-    undefined;
-  if (!raw) return undefined;
-  return `webhook:${input.botId}:${createHash("sha256").update(raw).digest("base64url")}`;
+    "";
+  const material = explicit || input.rawBody?.trim() || JSON.stringify(input.payload);
+  return `webhook:${input.botId}:${createHash("sha256").update(material).digest("base64url")}`;
 }

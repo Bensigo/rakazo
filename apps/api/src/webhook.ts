@@ -162,6 +162,7 @@ export function mountWebhookHttpRoutes(app: Hono, deps: WebhookDeps) {
       botId: bot.id,
       headers: c.req.raw.headers,
       payload,
+      rawBody: raw,
     });
     const woken = await dispatchRoutineEvents({
       deps: {

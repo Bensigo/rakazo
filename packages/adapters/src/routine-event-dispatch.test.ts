@@ -3,6 +3,7 @@ import {
   dispatchRoutineEvents,
   eventsFromWebhookPayload,
   pickPromptEvent,
+  webhookDeliveryIdempotencyKey,
 } from "./routine-event-dispatch.js";
 
 describe("routine event dispatch", () => {
@@ -127,5 +128,23 @@ describe("routine event dispatch", () => {
       }),
     );
     expect(wakeRoutineFromEvent).not.toHaveBeenCalled();
+  });
+
+  it("hashes the raw body when no delivery id is present", () => {
+    const headers = { get: () => null };
+    const key = webhookDeliveryIdempotencyKey({
+      botId: "bot-1",
+      headers,
+      payload: { text: "hello" },
+      rawBody: '{"text":"hello"}',
+    });
+    expect(key).toMatch(/^webhook:bot-1:/);
+    const again = webhookDeliveryIdempotencyKey({
+      botId: "bot-1",
+      headers,
+      payload: { text: "hello" },
+      rawBody: '{"text":"hello"}',
+    });
+    expect(again).toBe(key);
   });
 });
