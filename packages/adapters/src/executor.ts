@@ -737,7 +737,13 @@ export function createRunExecutor(deps: ExecutorDeps) {
         ...(options?.alternateIdempotencyKeys ?? []),
       ].filter((key): key is string => Boolean(key));
       const idempotencyScope = options?.idempotencyScope ?? "strict";
-      const inflightStatuses = ["queued", "leased", "running", "waiting_input", "waiting_takeover"] as const;
+      const inflightStatuses = [
+        "queued",
+        "leased",
+        "running",
+        "waiting_input",
+        "waiting_takeover",
+      ] as const;
 
       const findExistingByNonce = async (inflightOnly: boolean) => {
         if (idempotencyKeys.length === 0) return null;
@@ -875,14 +881,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
         }
       }
       if (!claimed) return null;
-      try {
-        await deps.jobs.enqueue(runContinueJob(claimed.id));
-      } catch (error) {
-        // Keep the queued run. Concurrent recoveries and provider retries can
-        // re-enqueue without acknowledging a deleted run id; the job reconciler
-        // also picks up stranded queued runs.
-        throw error;
-      }
+      // Keep the run queued even if enqueue throws so concurrent recoveries
+      // and provider retries can re-enqueue without ACK-ing a deleted run id.
+      await deps.jobs.enqueue(runContinueJob(claimed.id));
       try {
         await deps.events.append({
           spaceId: routine.spaceId,

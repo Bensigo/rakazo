@@ -3,8 +3,8 @@ import {
   dispatchRoutineEvents,
   eventsFromWebhookPayload,
   pickPromptEvent,
-  webhookDeliveryIdempotencyKey,
   webhookDeliveryIdempotency,
+  webhookDeliveryIdempotencyKey,
   webhookDeliveryIdempotencyKeys,
 } from "./routine-event-dispatch.js";
 
@@ -207,5 +207,4 @@ describe("routine event dispatch", () => {
     expect(explicit.scope).toBe("strict");
     expect(explicit.keys).toHaveLength(1);
   });
-
 });
