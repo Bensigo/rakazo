@@ -8,7 +8,8 @@ interface ComposeService {
   build?: unknown;
   command?: unknown;
   env_file?: unknown;
-  environment?: Record<string, string>;
+  /** YAML may parse unquoted scalars as null/number/boolean. */
+  environment?: Record<string, unknown>;
   volumes?: string[];
   ports?: unknown[];
   user?: string;
@@ -36,8 +37,9 @@ const publishWorkflow = parse(readFileSync(publishWorkflowFile, "utf8")) as {
 const appServices = ["api", "worker", "web", "supervisor"] as const;
 const FIRST_PARTY_IMAGE = /ghcr\.io\/elie222\/rakazo\/([a-z0-9][a-z0-9._-]*)/g;
 
-function firstPartyImageNames(text: string): string[] {
-  return [...text.matchAll(FIRST_PARTY_IMAGE)].map((match) => match[1] ?? "");
+function firstPartyImageNames(value: unknown): string[] {
+  if (typeof value !== "string") return [];
+  return [...value.matchAll(FIRST_PARTY_IMAGE)].map((match) => match[1] ?? "");
 }
 
 /**
@@ -65,6 +67,13 @@ describe("the images compose file", () => {
     expect(compose.services.postgres?.image).toMatch(/^postgres:16@sha256:[0-9a-f]{64}$/);
   });
 
+  it("skips non-string Compose environment scalars when collecting image names", () => {
+    expect(firstPartyImageNames(null)).toEqual([]);
+    expect(firstPartyImageNames(true)).toEqual([]);
+    expect(firstPartyImageNames(7091)).toEqual([]);
+    expect(firstPartyImageNames("ghcr.io/elie222/rakazo/computer:edge")).toEqual(["computer"]);
+  });
+
   it("only references first-party images that the publish matrix publishes", () => {
     const published = new Set(
       (publishWorkflow.jobs?.publish?.strategy?.matrix?.include ?? [])
@@ -73,7 +82,7 @@ describe("the images compose file", () => {
     );
     const referenced = new Set<string>();
     for (const service of Object.values(compose.services)) {
-      for (const name of firstPartyImageNames(service.image ?? "")) {
+      for (const name of firstPartyImageNames(service.image)) {
         referenced.add(name);
       }
       for (const value of Object.values(service.environment ?? {})) {
