@@ -724,20 +724,45 @@ export function createRunExecutor(deps: ExecutorDeps) {
     async wakeRoutineFromEvent(
       routineId: string,
       event: NormalizedRoutineEvent,
-      options?: { idempotencyKey?: string },
+      options?: { idempotencyKey?: string; alternateIdempotencyKeys?: string[] },
     ) {
       const routine = await deps.prisma.routine.findUnique({ where: { id: routineId } });
       if (!routine?.active) return null;
-      if (options?.idempotencyKey) {
-        const existing = await deps.prisma.run.findFirst({
+      const idempotencyKeys = [
+        options?.idempotencyKey,
+        ...(options?.alternateIdempotencyKeys ?? []),
+      ].filter((key): key is string => Boolean(key));
+
+      const findExistingByNonce = async () => {
+        if (idempotencyKeys.length === 0) return null;
+        return deps.prisma.run.findFirst({
           where: {
             spaceId: routine.spaceId,
-            clientNonce: options.idempotencyKey,
+            clientNonce: { in: idempotencyKeys },
           },
-          select: { id: true, threadId: true },
+          select: { id: true, threadId: true, status: true },
         });
-        if (existing) return { runId: existing.id, threadId: existing.threadId };
-      }
+      };
+
+      const recoverExisting = async (existing: {
+        id: string;
+        threadId: string;
+        status: string;
+      }) => {
+        // Re-enqueue if the winner left a queued run after a failed publish.
+        if (existing.status === "queued") {
+          try {
+            await deps.jobs.enqueue(runContinueJob(existing.id));
+          } catch {
+            // Job reconciler will retry; the run row must remain for ACK safety.
+          }
+        }
+        return { runId: existing.id, threadId: existing.threadId };
+      };
+
+      const existingEarly = await findExistingByNonce();
+      if (existingEarly) return recoverExisting(existingEarly);
+
       const bot = await deps.prisma.bot.findUnique({
         where: { id: routine.botId },
         include: { thread: true },
@@ -769,10 +794,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
       const routinePrompt = expandSkillReferencesInPrompt(routine.prompt, skillRecords);
       const prompt = formatRoutineEventPrompt(routinePrompt, event);
       const trigger = event.source === "chat" ? ("messaging" as const) : ("webhook" as const);
-      // Event wakes only bump lastRunAt; they never touch nextRunAt. Capture the
-      // claim timestamp so enqueue-failure cleanup can restore lastRunAt only
-      // when this wake still owns it and no sibling run is in flight.
-      const previousLastRunAt = routine.lastRunAt;
+      // Event wakes only bump lastRunAt; they never touch nextRunAt.
       const claimedAt = new Date();
       let claimed: { id: string; taskId: string; threadId: string } | null = null;
       try {
@@ -808,15 +830,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
           return { id: run.id, taskId: task.id, threadId: thread.id };
         });
       } catch (error) {
-        if (options?.idempotencyKey && isUniqueConstraintError(error)) {
-          const existing = await deps.prisma.run.findFirst({
-            where: {
-              spaceId: routine.spaceId,
-              clientNonce: options.idempotencyKey,
-            },
-            select: { id: true, threadId: true },
-          });
-          if (existing) return { runId: existing.id, threadId: existing.threadId };
+        if (idempotencyKeys.length > 0 && isUniqueConstraintError(error)) {
+          const existing = await findExistingByNonce();
+          if (existing) return recoverExisting(existing);
         }
         throw error;
       }
@@ -824,23 +840,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
       try {
         await deps.jobs.enqueue(runContinueJob(claimed.id));
       } catch (error) {
-        await deps.prisma.$transaction(async (tx) => {
-          await tx.run.deleteMany({ where: { id: claimed.id, status: "queued" } });
-          await tx.task.deleteMany({ where: { id: claimed.taskId, status: "queued" } });
-          const sibling = await tx.run.count({
-            where: {
-              routineId: routine.id,
-              id: { not: claimed.id },
-              status: { in: ["queued", "running"] },
-            },
-          });
-          if (sibling === 0) {
-            await tx.routine.updateMany({
-              where: { id: routine.id, lastRunAt: claimedAt },
-              data: { lastRunAt: previousLastRunAt },
-            });
-          }
-        });
+        // Keep the queued run. Concurrent recoveries and provider retries can
+        // re-enqueue without acknowledging a deleted run id; the job reconciler
+        // also picks up stranded queued runs.
         throw error;
       }
       try {

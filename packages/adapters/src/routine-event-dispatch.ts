@@ -40,7 +40,7 @@ export type RoutineEventDispatchDeps = {
   wakeRoutineFromEvent(
     routineId: string,
     event: NormalizedRoutineEvent,
-    options?: { idempotencyKey?: string },
+    options?: { idempotencyKey?: string; alternateIdempotencyKeys?: string[] },
   ): Promise<{ runId: string; threadId: string } | null>;
 };
 
@@ -54,6 +54,8 @@ export async function dispatchRoutineEvents(input: {
   spaceId: string;
   events: NormalizedRoutineEvent[];
   idempotencyKey?: string;
+  /** Extra delivery keys that should resolve to the same wake (e.g. previous time bucket). */
+  alternateIdempotencyKeys?: string[];
 }): Promise<RoutineEventWakeResult[]> {
   const routines = await input.deps.prisma.routine.findMany({
     where: {
@@ -84,8 +86,12 @@ export async function dispatchRoutineEvents(input: {
     const idempotencyKey = input.idempotencyKey
       ? routineEventIdempotencyKey(routine.id, input.idempotencyKey)
       : undefined;
+    const alternateIdempotencyKeys = input.alternateIdempotencyKeys?.map((key) =>
+      routineEventIdempotencyKey(routine.id, key),
+    );
     const wake = await input.deps.wakeRoutineFromEvent(routine.id, promptEvent, {
       idempotencyKey,
+      alternateIdempotencyKeys,
     });
     if (!wake) continue;
     woken.add(routine.id);
@@ -122,15 +128,13 @@ export function eventsFromWebhookPayload(
   return events;
 }
 
-export function webhookDeliveryIdempotencyKey(input: {
-  botId: string;
+const WEBHOOK_BODY_HASH_WINDOW_MS = 5 * 60 * 1000;
+
+function webhookDeliveryExplicitId(input: {
   headers: Headers | { get(name: string): string | null };
   payload: Record<string, unknown>;
-  /** Exact request body when available; used when no explicit delivery id is present. */
-  rawBody?: string;
-  nowMs?: number;
 }): string {
-  const explicit =
+  return (
     input.headers.get("idempotency-key")?.trim() ||
     input.headers.get("x-idempotency-key")?.trim() ||
     input.headers.get("x-github-delivery")?.trim() ||
@@ -138,12 +142,43 @@ export function webhookDeliveryIdempotencyKey(input: {
     input.headers.get("x-request-id")?.trim() ||
     (typeof input.payload.id === "string" ? input.payload.id.trim() : "") ||
     (typeof input.payload.event_id === "string" ? input.payload.event_id.trim() : "") ||
-    "";
-  // Body-only fallback is windowed so provider retries dedupe, while a later
-  // intentional identical payload can still start a new wake.
+    ""
+  );
+}
+
+function webhookHashedKey(botId: string, material: string): string {
+  return `webhook:${botId}:${createHash("sha256").update(material).digest("base64url")}`;
+}
+
+/**
+ * Delivery keys for a webhook. Index 0 is the claim key for new wakes.
+ * Body-hash fallbacks also include the previous time bucket so a retry that
+ * crosses a five-minute boundary still resolves to the same wake.
+ */
+export function webhookDeliveryIdempotencyKeys(input: {
+  botId: string;
+  headers: Headers | { get(name: string): string | null };
+  payload: Record<string, unknown>;
+  /** Exact request body when available; used when no explicit delivery id is present. */
+  rawBody?: string;
+  nowMs?: number;
+}): string[] {
+  const explicit = webhookDeliveryExplicitId(input);
+  if (explicit) return [webhookHashedKey(input.botId, explicit)];
   const body = input.rawBody?.trim() || JSON.stringify(input.payload);
-  const windowMs = 5 * 60 * 1000;
-  const bucket = Math.floor((input.nowMs ?? Date.now()) / windowMs);
-  const material = explicit || `${bucket}:${body}`;
-  return `webhook:${input.botId}:${createHash("sha256").update(material).digest("base64url")}`;
+  const bucket = Math.floor((input.nowMs ?? Date.now()) / WEBHOOK_BODY_HASH_WINDOW_MS);
+  return [
+    webhookHashedKey(input.botId, `${bucket}:${body}`),
+    webhookHashedKey(input.botId, `${bucket - 1}:${body}`),
+  ];
+}
+
+export function webhookDeliveryIdempotencyKey(input: {
+  botId: string;
+  headers: Headers | { get(name: string): string | null };
+  payload: Record<string, unknown>;
+  rawBody?: string;
+  nowMs?: number;
+}): string {
+  return webhookDeliveryIdempotencyKeys(input)[0]!;
 }

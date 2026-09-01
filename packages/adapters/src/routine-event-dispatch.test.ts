@@ -4,6 +4,7 @@ import {
   eventsFromWebhookPayload,
   pickPromptEvent,
   webhookDeliveryIdempotencyKey,
+  webhookDeliveryIdempotencyKeys,
 } from "./routine-event-dispatch.js";
 
 describe("routine event dispatch", () => {
@@ -159,5 +160,30 @@ describe("routine event dispatch", () => {
         nowMs: nowMs + 5 * 60 * 1000,
       }),
     ).not.toBe(key);
+  });
+
+  it("includes the previous body-hash bucket so boundary retries still match", () => {
+    const headers = { get: () => null };
+    const windowMs = 5 * 60 * 1000;
+    const boundary = 1_700_000_000_000;
+    const bucketStart = Math.floor(boundary / windowMs) * windowMs;
+    const before = webhookDeliveryIdempotencyKeys({
+      botId: "bot-1",
+      headers,
+      payload: { text: "hello" },
+      rawBody: '{"text":"hello"}',
+      nowMs: bucketStart - 1,
+    });
+    const after = webhookDeliveryIdempotencyKeys({
+      botId: "bot-1",
+      headers,
+      payload: { text: "hello" },
+      rawBody: '{"text":"hello"}',
+      nowMs: bucketStart,
+    });
+    expect(before[0]).not.toBe(after[0]);
+    // Retry after the boundary looks up the previous bucket, which is the
+    // claim key from just before the boundary.
+    expect(after[1]).toBe(before[0]);
   });
 });
