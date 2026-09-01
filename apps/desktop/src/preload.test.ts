@@ -45,7 +45,14 @@ describe("desktop preload bridge", () => {
       "toggleMaximize",
     ]);
     expect(Object.keys(bridge.update).sort()).toEqual(["check", "download", "install", "state"]);
-    expect(Object.keys(bridge.hostDisk).sort()).toEqual(["list", "pickFolder", "read", "write"]);
+    expect(Object.keys(bridge.hostDisk).sort()).toEqual([
+      "list",
+      "listGrantedRoots",
+      "pickFolder",
+      "read",
+      "revokeRoot",
+      "write",
+    ]);
 
     await bridge.window.close();
     await bridge.window.minimize();
@@ -56,9 +63,11 @@ describe("desktop preload bridge", () => {
     await bridge.update.download();
     await bridge.update.install();
     await bridge.hostDisk.pickFolder();
-    await bridge.hostDisk.list("", []);
-    await bridge.hostDisk.read("/tmp/a", ["/tmp"], 1024);
-    await bridge.hostDisk.write("/tmp/a", "YQ==", ["/tmp"]);
+    await bridge.hostDisk.list("");
+    await bridge.hostDisk.read("/tmp/a", 1024);
+    await bridge.hostDisk.write("/tmp/a", "YQ==");
+    await bridge.hostDisk.revokeRoot("/tmp/a");
+    await bridge.hostDisk.listGrantedRoots();
     expect(invoke.mock.calls.map(([channel]) => channel)).toEqual([
       "desktop.window.close",
       "desktop.window.minimize",
@@ -72,6 +81,8 @@ describe("desktop preload bridge", () => {
       "desktop.hostDisk.list",
       "desktop.hostDisk.read",
       "desktop.hostDisk.write",
+      "desktop.hostDisk.revokeRoot",
+      "desktop.hostDisk.listGrantedRoots",
     ]);
   });
 

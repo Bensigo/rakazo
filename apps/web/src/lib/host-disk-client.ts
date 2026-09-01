@@ -44,7 +44,7 @@ export function startHostDiskClient(): () => void {
     if (!desktop?.hostDisk) return;
     try {
       if (operation.kind === "list") {
-        const entries = await desktop.hostDisk.list(operation.path, roots);
+        const entries = await desktop.hostDisk.list(operation.path);
         await rpc.hostDisk.complete({
           id: operation.id,
           status: "done",
@@ -53,11 +53,7 @@ export function startHostDiskClient(): () => void {
         return;
       }
       if (operation.kind === "read") {
-        const contentBase64 = await desktop.hostDisk.read(
-          operation.path,
-          roots,
-          operation.maxBytes,
-        );
+        const contentBase64 = await desktop.hostDisk.read(operation.path, operation.maxBytes);
         await rpc.hostDisk.complete({
           id: operation.id,
           status: "done",
@@ -66,7 +62,7 @@ export function startHostDiskClient(): () => void {
         return;
       }
       if (operation.kind === "write") {
-        await desktop.hostDisk.write(operation.path, operation.contentBase64 ?? "", roots);
+        await desktop.hostDisk.write(operation.path, operation.contentBase64 ?? "");
         await rpc.hostDisk.complete({ id: operation.id, status: "done" });
       }
     } catch (error) {

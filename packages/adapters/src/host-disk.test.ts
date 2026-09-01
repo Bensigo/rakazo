@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -166,5 +166,86 @@ describe("local host disk containment", () => {
     await expect(
       provider.readFile("user-1", path.join(documents, "tax.txt"), adapterContext()),
     ).rejects.toThrow(/Host disk access is off/i);
+  });
+});
+
+describe("host disk symlink containment", () => {
+  it("rejects reads and writes that follow a symlink outside granted roots", async () => {
+    const dataDir = await tempDir();
+    const grant = path.join(dataDir, "granted");
+    const outside = path.join(dataDir, "outside");
+    await mkdir(grant, { recursive: true });
+    await mkdir(outside, { recursive: true });
+    await writeFile(path.join(outside, "secret.txt"), "private\n", "utf8");
+    await symlink(path.join(outside, "secret.txt"), path.join(grant, "leak.txt"));
+
+    await saveHostDiskSettings(dataDir, "user-1", {
+      enabled: true,
+      roots: [grant],
+      clientSeenAt: new Date().toISOString(),
+    });
+
+    const provider = new LocalHostDiskProvider({
+      dataDir,
+      ignoreClientHeartbeat: true,
+    });
+
+    await expect(
+      provider.readFile("user-1", path.join(grant, "leak.txt"), adapterContext()),
+    ).rejects.toThrow(/outside the granted folders/i);
+
+    await expect(
+      provider.writeFile(
+        "user-1",
+        {
+          path: path.join(grant, "leak.txt"),
+          content: new TextEncoder().encode("overwrite"),
+        },
+        adapterContext(),
+      ),
+    ).rejects.toThrow(/outside the granted folders/i);
+
+    const listed = await provider.listFiles("user-1", grant, adapterContext());
+    expect(listed.map((entry) => path.basename(entry.path))).not.toContain("leak.txt");
+  });
+});
+
+describe("host disk exclusive claims", () => {
+  it("lets only one claim win for the same pending operation", async () => {
+    const dataDir = await tempDir();
+    const { BridgingHostDiskProvider, claimHostDiskOperation } = await import(
+      "./bridge-host-disk.js"
+    );
+    const provider = new BridgingHostDiskProvider({
+      dataDir,
+      timeoutMs: 1000,
+      pollIntervalMs: 20,
+    });
+    await saveHostDiskSettings(dataDir, "user-1", {
+      enabled: true,
+      roots: [path.join(dataDir, "granted")],
+      clientSeenAt: new Date().toISOString(),
+    });
+    await mkdir(path.join(dataDir, "granted"), { recursive: true });
+
+    // Enqueue one list operation through the private queue by calling listFiles with a short abort.
+    const controller = new AbortController();
+    const listing = provider.listFiles("user-1", "", {
+      ...adapterContext(),
+      signal: controller.signal,
+    });
+
+    let first: Awaited<ReturnType<typeof claimHostDiskOperation>> = null;
+    for (let attempt = 0; attempt < 50 && !first; attempt += 1) {
+      first = await claimHostDiskOperation(dataDir, "user-1");
+      if (!first) await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(first?.status).toBe("claimed");
+
+    const second = await claimHostDiskOperation(dataDir, "user-1");
+    expect(second).toBeNull();
+
+    controller.abort();
+    await expect(listing).rejects.toThrow();
   });
 });

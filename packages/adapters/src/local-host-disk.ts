@@ -6,7 +6,7 @@ import type {
   HostDiskProvider,
   PortableFile,
 } from "@rakazo/adapter-kit";
-import { isAllowedDesktopPath } from "./desktop-sandbox-paths.js";
+import { hostEntryEscapesRoots, resolveInsideHostRoots } from "./host-disk-path.js";
 import {
   type HostDiskSettings,
   hostDiskAccessAllowed,
@@ -60,12 +60,13 @@ export class LocalHostDiskProvider implements HostDiskProvider {
         size: 0,
       }));
     }
-    const target = this.resolveAllowed(trimmed, roots);
+    const target = await resolveInsideHostRoots(trimmed, roots);
     const entries = await readdir(target, { withFileTypes: true });
     const listed: ComputerFileEntry[] = [];
     for (const entry of entries) {
       const full = path.join(target, entry.name);
-      if (!isAllowedDesktopPath(full, roots)) continue;
+      if (await hostEntryEscapesRoots(full, roots)) continue;
+      if (entry.isSymbolicLink()) continue;
       if (entry.isDirectory()) {
         listed.push({ path: full, kind: "dir", size: 0 });
         continue;
@@ -85,7 +86,7 @@ export class LocalHostDiskProvider implements HostDiskProvider {
     options?: { maxBytes?: number },
   ): Promise<Uint8Array> {
     const roots = await this.requireRoots(userId);
-    const target = this.resolveAllowed(requestPath, roots);
+    const target = await resolveInsideHostRoots(requestPath, roots);
     const info = await stat(target);
     if (!info.isFile()) throw new Error("Host path is not a file");
     if (options?.maxBytes !== undefined && info.size > options.maxBytes) {
@@ -96,13 +97,11 @@ export class LocalHostDiskProvider implements HostDiskProvider {
 
   async writeFile(userId: string, file: PortableFile, _context: AdapterContext): Promise<void> {
     const roots = await this.requireRoots(userId);
-    const target = this.resolveAllowed(file.path, roots);
+    const target = await resolveInsideHostRoots(file.path, roots);
     await mkdir(path.dirname(target), { recursive: true });
-    // Re-check after resolving parent creation targets.
-    if (!isAllowedDesktopPath(target, roots)) {
-      throw new Error("Host path is outside the granted folders");
-    }
-    await writeFile(target, file.content);
+    // Re-resolve after creating parents so symlink races cannot escape.
+    const verified = await resolveInsideHostRoots(target, roots);
+    await writeFile(verified, file.content);
   }
 
   private async settingsFor(userId: string) {
@@ -121,13 +120,5 @@ export class LocalHostDiskProvider implements HostDiskProvider {
       );
     }
     return settings.roots.map((root) => path.resolve(root));
-  }
-
-  private resolveAllowed(requestPath: string, roots: string[]) {
-    const resolved = path.resolve(requestPath);
-    if (!isAllowedDesktopPath(resolved, roots)) {
-      throw new Error("Host path is outside the granted folders");
-    }
-    return resolved;
   }
 }

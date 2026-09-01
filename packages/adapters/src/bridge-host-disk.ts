@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type {
   AdapterContext,
@@ -20,7 +20,7 @@ export type HostDiskOperation = {
   /** Base64 payload for write requests and read results. */
   contentBase64?: string;
   maxBytes?: number;
-  status: "pending" | "done" | "error";
+  status: "pending" | "claimed" | "done" | "error";
   entries?: ComputerFileEntry[];
   error?: string;
   createdAt: string;
@@ -97,7 +97,7 @@ export class BridgingHostDiskProvider implements HostDiskProvider {
   }
 
   async claimNext(userId: string): Promise<HostDiskOperation | null> {
-    return claimHostDiskOperation(this.options.dataDir, userId);
+    return claimHostDiskOperation(this.options.dataDir, userId, this.options.now);
   }
 
   async complete(
@@ -153,13 +153,16 @@ export class BridgingHostDiskProvider implements HostDiskProvider {
 
     while ((this.options.now?.() ?? Date.now()) - started < timeoutMs) {
       if (context.signal.aborted) throw new Error("Host disk operation aborted");
-      const current = await readOperationFile(file);
-      if (current && current.status !== "pending") {
-        if (current.status === "error") {
-          throw new Error(current.error ?? "Host disk operation failed");
+      const current = await readOperationById(this.options.dataDir, userId, id);
+      if (
+        current &&
+        (current.operation.status === "done" || current.operation.status === "error")
+      ) {
+        if (current.operation.status === "error") {
+          throw new Error(current.operation.error ?? "Host disk operation failed");
         }
-        void unlink(file).catch(() => undefined);
-        return current;
+        void unlink(current.file).catch(() => undefined);
+        return current.operation;
       }
       await sleep(pollMs);
     }
@@ -180,6 +183,24 @@ function operationPath(dataDir: string, userId: string, id: string) {
   return path.join(operationsDir(dataDir, userId), `${id}.json`);
 }
 
+function claimedOperationPath(dataDir: string, userId: string, id: string) {
+  return path.join(operationsDir(dataDir, userId), `${id}.claimed.json`);
+}
+
+async function readOperationById(
+  dataDir: string,
+  userId: string,
+  id: string,
+): Promise<{ operation: HostDiskOperation; file: string } | null> {
+  const claimedPath = claimedOperationPath(dataDir, userId, id);
+  const pendingPath = operationPath(dataDir, userId, id);
+  const claimed = await readOperationFile(claimedPath);
+  if (claimed) return { operation: claimed, file: claimedPath };
+  const pending = await readOperationFile(pendingPath);
+  if (pending) return { operation: pending, file: pendingPath };
+  return null;
+}
+
 async function readOperationFile(file: string): Promise<HostDiskOperation | null> {
   try {
     return JSON.parse(await readFile(file, "utf8")) as HostDiskOperation;
@@ -191,13 +212,34 @@ async function readOperationFile(file: string): Promise<HostDiskOperation | null
 export async function claimHostDiskOperation(
   dataDir: string,
   userId: string,
+  now: () => number = Date.now,
 ): Promise<HostDiskOperation | null> {
   const dir = operationsDir(dataDir, userId);
   await mkdir(dir, { recursive: true });
-  const names = (await readdir(dir)).filter((name) => name.endsWith(".json")).sort();
+  const names = (await readdir(dir))
+    .filter((name) => name.endsWith(".json") && !name.endsWith(".claimed.json"))
+    .sort();
   for (const name of names) {
-    const operation = await readOperationFile(path.join(dir, name));
-    if (operation?.status === "pending") return operation;
+    const pendingPath = path.join(dir, name);
+    const claimedPath = path.join(dir, `${name.slice(0, -".json".length)}.claimed.json`);
+    try {
+      // Atomic take: only one client can rename the pending file.
+      await rename(pendingPath, claimedPath);
+    } catch {
+      continue;
+    }
+    const operation = await readOperationFile(claimedPath);
+    if (!operation || operation.userId !== userId) {
+      void unlink(claimedPath).catch(() => undefined);
+      continue;
+    }
+    const claimed: HostDiskOperation = {
+      ...operation,
+      status: "claimed",
+      updatedAt: new Date(now()).toISOString(),
+    };
+    await writeFile(claimedPath, `${JSON.stringify(claimed, null, 2)}\n`, "utf8");
+    return claimed;
   }
   return null;
 }
@@ -214,11 +256,16 @@ export async function completeHostDiskOperation(
   },
   now: () => number = Date.now,
 ): Promise<HostDiskOperation> {
-  const file = operationPath(dataDir, userId, input.id);
-  const existing = await readOperationFile(file);
+  const pendingPath = operationPath(dataDir, userId, input.id);
+  const claimedPath = claimedOperationPath(dataDir, userId, input.id);
+  const existing = (await readOperationFile(claimedPath)) ?? (await readOperationFile(pendingPath));
   if (!existing || existing.userId !== userId) {
     throw new Error("Host disk operation not found");
   }
+  if (existing.status === "done" || existing.status === "error") {
+    throw new Error("Host disk operation already completed");
+  }
+  const file = (await readOperationFile(claimedPath)) ? claimedPath : pendingPath;
   const updated: HostDiskOperation = {
     ...existing,
     status: input.status,

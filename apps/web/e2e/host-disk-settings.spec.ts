@@ -39,6 +39,8 @@ test("host disk settings open from account settings in the desktop bridge", asyn
           oauth: { onCallback: () => () => void };
           hostDisk: {
             pickFolder: () => Promise<string | null>;
+            revokeRoot: (root: string) => Promise<boolean>;
+            listGrantedRoots: () => Promise<string[]>;
             list: () => Promise<[]>;
             read: () => Promise<string>;
             write: () => Promise<boolean>;
@@ -69,6 +71,8 @@ test("host disk settings open from account settings in the desktop bridge", asyn
       oauth: { onCallback: () => () => undefined },
       hostDisk: {
         pickFolder: async () => "/tmp/rakazo-granted",
+        revokeRoot: async () => true,
+        listGrantedRoots: async () => ["/tmp/rakazo-granted"],
         list: async () => [],
         read: async () => "",
         write: async () => true,

@@ -24,10 +24,11 @@ contextBridge.exposeInMainWorld("rakazoDesktop", {
   },
   hostDisk: {
     pickFolder: () => ipcRenderer.invoke("desktop.hostDisk.pickFolder"),
-    list: (path, roots) => ipcRenderer.invoke("desktop.hostDisk.list", path, roots),
-    read: (path, roots, maxBytes) =>
-      ipcRenderer.invoke("desktop.hostDisk.read", path, roots, maxBytes),
-    write: (path, contentBase64, roots) =>
-      ipcRenderer.invoke("desktop.hostDisk.write", path, contentBase64, roots),
+    revokeRoot: (root) => ipcRenderer.invoke("desktop.hostDisk.revokeRoot", root),
+    listGrantedRoots: () => ipcRenderer.invoke("desktop.hostDisk.listGrantedRoots"),
+    list: (path) => ipcRenderer.invoke("desktop.hostDisk.list", path),
+    read: (path, maxBytes) => ipcRenderer.invoke("desktop.hostDisk.read", path, maxBytes),
+    write: (path, contentBase64) =>
+      ipcRenderer.invoke("desktop.hostDisk.write", path, contentBase64),
   },
 });

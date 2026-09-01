@@ -37,6 +37,8 @@ function desktop(platform: string): RakazoDesktop {
     oauth: { onCallback: () => () => undefined },
     hostDisk: {
       pickFolder: async () => null,
+      revokeRoot: async () => true,
+      listGrantedRoots: async () => [],
       list: async () => [],
       read: async () => "",
       write: async () => true,

@@ -38,6 +38,7 @@ export * from "./fake-web.js";
 export * from "./group-handoff.js";
 export * from "./home.js";
 export * from "./host-aware-sandbox.js";
+export * from "./host-disk-path.js";
 export * from "./host-disk-settings.js";
 export * from "./host-disk-tools.js";
 export * from "./installed-connectors.js";

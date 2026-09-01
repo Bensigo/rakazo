@@ -67,6 +67,7 @@ export function HostDiskSettingsSection() {
     setPending(true);
     setError(null);
     try {
+      await desktop!.hostDisk.revokeRoot(root);
       const roots = (settings?.roots ?? []).filter((item) => item !== root);
       const next = await rpc.hostDisk.setRoots({ roots });
       setSettings(next);
