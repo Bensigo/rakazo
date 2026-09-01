@@ -107,5 +107,14 @@ export function buildPlaywrightPrScreenshotComment(input: {
 }
 
 function escapeMarkdownLinkLabel(value: string): string {
-  return value.replaceAll("[", "\\[").replaceAll("]", "\\]");
+  const normalized = value.replaceAll(/\s+/g, " ").trim();
+  const label = normalized.length > 0 ? normalized : "screenshot";
+  return label
+    .replaceAll("\\", "\\\\")
+    .replaceAll("[", "\\[")
+    .replaceAll("]", "\\]")
+    .replaceAll("`", "\\`")
+    .replaceAll("*", "\\*")
+    .replaceAll("_", "\\_")
+    .replaceAll("#", "\\#");
 }

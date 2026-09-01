@@ -277,6 +277,27 @@ describe("buildPlaywrightPrScreenshotComment", () => {
     expect(body).not.toContain("frame 9");
     expect(body).toContain("- +2 more in the gallery");
   });
+
+  it("neutralizes Markdown syntax in contributor-controlled titles", () => {
+    const body = buildPlaywrightPrScreenshotComment({
+      ...urls,
+      changedPaths: [],
+      screenshots: [
+        screenshot({
+          comparison: "new",
+          fileName: "images/010-crafted.png",
+          source: "tool-activity-shell-x/crafted.png",
+          title: "evil]\n**bold** `code` _em_ #heading [link]",
+        }),
+      ],
+    });
+
+    expect(body).toContain(
+      "- [evil\\] \\*\\*bold\\*\\* \\`code\\` \\_em\\_ \\#heading \\[link\\]](https://example.com/playwright/runs/1-1/screenshots/images/010-crafted.png) (new)",
+    );
+    expect(body).not.toContain("\n**bold**");
+    expect(body).not.toContain("`code`");
+  });
 });
 
 function screenshot(
