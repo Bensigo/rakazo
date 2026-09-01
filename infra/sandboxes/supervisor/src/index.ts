@@ -11,7 +11,6 @@ import Docker from "dockerode";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
-  COMPUTER_CONTROL_PORT,
   COMPUTER_GID,
   COMPUTER_IMAGE,
   COMPUTER_UID,
@@ -23,6 +22,7 @@ import {
   containerPublishesControlPort,
   hostComputerUser,
   legacyNetworkOwnedSolelyBy,
+  publishedLoopbackControlHostPort,
   resolveComputerControlEndpoint,
   resolveScreenNetworkMode,
   resolveScreenPublishTarget,
@@ -723,7 +723,7 @@ function computerControlEndpoint(info: Docker.ContainerInspectInfo) {
     value.startsWith("RAKAZO_COMPUTER_CONTROL_TOKEN="),
   )?.slice("RAKAZO_COMPUTER_CONTROL_TOKEN=".length);
   const publishedHostPort = controlViaLoopback
-    ? info.NetworkSettings?.Ports?.[`${COMPUTER_CONTROL_PORT}/tcp`]?.[0]?.HostPort
+    ? publishedLoopbackControlHostPort(info.NetworkSettings?.Ports)
     : undefined;
   return resolveComputerControlEndpoint({
     token,

@@ -20,6 +20,7 @@ import {
   containerPublishesControlPort,
   hostComputerUser,
   legacyNetworkOwnedSolelyBy,
+  publishedLoopbackControlHostPort,
   resolveComputerControlEndpoint,
   resolveScreenNetworkMode,
   resolveScreenPublishTarget,
@@ -437,6 +438,36 @@ describe("graphical computer spec", () => {
         "7070/tcp": [{ HostIp: "127.0.0.1", HostPort: "55101" }],
       }),
     ).toBe(true);
+    expect(publishedLoopbackControlHostPort({ "7070/tcp": [{ HostIp: "127.0.0.1", HostPort: "55101" }] })).toBe(
+      "55101",
+    );
+  });
+
+  it("rejects external-only control publishes and finds loopback among mixed bindings", () => {
+    expect(
+      containerPublishesControlPort({
+        "7070/tcp": [{ HostIp: "0.0.0.0", HostPort: "55101" }],
+      }),
+    ).toBe(false);
+    expect(
+      containerPublishesControlPort({
+        "7070/tcp": [{ HostIp: "", HostPort: "55101" }],
+      }),
+    ).toBe(false);
+    expect(
+      publishedLoopbackControlHostPort({
+        "7070/tcp": [{ HostIp: "0.0.0.0", HostPort: "55101" }],
+      }),
+    ).toBeUndefined();
+
+    const mixed = {
+      "7070/tcp": [
+        { HostIp: "0.0.0.0", HostPort: "55100" },
+        { HostIp: "127.0.0.1", HostPort: "55101" },
+      ],
+    };
+    expect(containerPublishesControlPort(mixed)).toBe(true);
+    expect(publishedLoopbackControlHostPort(mixed)).toBe("55101");
   });
 
   it("does not fall back to the container IP when a published control port is required", () => {

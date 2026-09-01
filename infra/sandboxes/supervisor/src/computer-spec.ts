@@ -187,18 +187,40 @@ export function resolveScreenPublishTarget(input: {
   return undefined;
 }
 
+type PortBindingEntry = { HostIp?: string; HostPort?: string };
+
 /**
- * True when the container was created with a published mapping for 7070.
+ * HostPort from a loopback (127.0.0.1) publish of container 7070, if any.
+ * Accepts HostConfig.PortBindings or NetworkSettings.Ports-shaped maps.
+ * Scans all bindings so an external-first entry does not hide a loopback one.
+ */
+export function publishedLoopbackControlHostPort(
+  portBindings:
+    | Record<string, Array<PortBindingEntry> | null>
+    | null
+    | undefined,
+): string | undefined {
+  const bindings = portBindings?.[`${COMPUTER_CONTROL_PORT}/tcp`];
+  if (!bindings?.length) return undefined;
+  for (const binding of bindings) {
+    if (binding?.HostIp === "127.0.0.1" && binding.HostPort) {
+      return binding.HostPort;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * True when the container was created with a loopback publish of 7070.
  * Prefer HostConfig.PortBindings so stopped containers still report correctly.
  */
 export function containerPublishesControlPort(
   portBindings:
-    | Record<string, Array<{ HostIp?: string; HostPort?: string }> | null>
+    | Record<string, Array<PortBindingEntry> | null>
     | null
     | undefined,
 ): boolean {
-  const binding = portBindings?.[`${COMPUTER_CONTROL_PORT}/tcp`]?.[0];
-  return Boolean(binding?.HostPort);
+  return publishedLoopbackControlHostPort(portBindings) !== undefined;
 }
 
 /**
