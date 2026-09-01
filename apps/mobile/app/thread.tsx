@@ -1713,7 +1713,7 @@ function Thread() {
             <TextInput
               value={draft}
               onChangeText={updateDraft}
-              accessibilityLabel={working ? `Steer ${name ?? "bot"}` : "Message"}
+              accessibilityLabel={name ? `Message ${name}` : "Message"}
               onKeyPress={(event) => {
                 if (
                   event.nativeEvent.key === "Backspace" &&
@@ -1726,8 +1726,8 @@ function Thread() {
               placeholder={
                 selectedSkill || selectedMentions.length
                   ? undefined
-                  : working
-                    ? `Steer ${name ?? "bot"}`
+                  : name
+                    ? `Message ${name}`
                     : "Message…"
               }
               placeholderTextColor="#6C6C70"
@@ -1747,7 +1747,7 @@ function Thread() {
             />
           </View>
           <Pressable
-            accessibilityLabel={working ? "Send steering message" : "Send"}
+            accessibilityLabel="Send"
             disabled={sending || !canSend}
             onPress={() => void send()}
             style={{

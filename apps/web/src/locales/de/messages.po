@@ -3153,10 +3153,3 @@ msgstr "Link zum Zurücksetzen senden"
 msgid "This reset link is invalid or expired"
 msgstr "Dieser Link zum Zurücksetzen ist ungültig oder abgelaufen"
 
-#: src/pages/Shell.tsx
-msgid "Steer {activeName}"
-msgstr "{activeName} Anweisungen geben"
-
-#: src/pages/Shell.tsx
-msgid "Send steering message"
-msgstr "Zusätzliche Anweisung senden"

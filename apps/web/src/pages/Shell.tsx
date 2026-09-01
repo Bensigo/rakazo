@@ -4718,19 +4718,11 @@ const Composer = memo(function Composer({
             placeholder={
               showComposerPlaceholder
                 ? activeName
-                  ? running
-                    ? t`Steer ${activeName}`
-                    : t`Message ${activeName}`
+                  ? t`Message ${activeName}`
                   : t`Message…`
                 : undefined
             }
-            aria-label={
-              activeName
-                ? running
-                  ? t`Steer ${activeName}`
-                  : t`Message ${activeName}`
-                : t`Message`
-            }
+            aria-label={activeName ? t`Message ${activeName}` : t`Message`}
             role="combobox"
             aria-autocomplete="list"
             aria-haspopup="listbox"
@@ -4748,7 +4740,7 @@ const Composer = memo(function Composer({
           <>
             <button
               type="button"
-              aria-label={t`Send steering message`}
+              aria-label={t`Send`}
               disabled={sending || !canSend || disabled}
               onClick={send}
               className="grid h-10 w-10 place-items-center rounded-full bg-[#F1F1EF] text-[#17171A] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A6A6AD] disabled:opacity-50"
