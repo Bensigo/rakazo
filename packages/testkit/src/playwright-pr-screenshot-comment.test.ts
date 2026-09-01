@@ -278,7 +278,7 @@ describe("buildPlaywrightPrScreenshotComment", () => {
     expect(body).toContain("- +2 more in the gallery");
   });
 
-  it("neutralizes Markdown syntax in contributor-controlled titles", () => {
+  it("neutralizes Markdown and HTML syntax in contributor-controlled titles", () => {
     const body = buildPlaywrightPrScreenshotComment({
       ...urls,
       changedPaths: [],
@@ -287,16 +287,17 @@ describe("buildPlaywrightPrScreenshotComment", () => {
           comparison: "new",
           fileName: "images/010-crafted.png",
           source: "tool-activity-shell-x/crafted.png",
-          title: "evil]\n**bold** `code` _em_ #heading [link]",
+          title: "evil]\n**bold** `code` _em_ #heading [link] <details>&",
         }),
       ],
     });
 
     expect(body).toContain(
-      "- [evil\\] \\*\\*bold\\*\\* \\`code\\` \\_em\\_ \\#heading \\[link\\]](https://example.com/playwright/runs/1-1/screenshots/images/010-crafted.png) (new)",
+      "- [evil\\] \\*\\*bold\\*\\* \\`code\\` \\_em\\_ \\#heading \\[link\\] &lt;details&gt;&amp;](https://example.com/playwright/runs/1-1/screenshots/images/010-crafted.png) (new)",
     );
     expect(body).not.toContain("\n**bold**");
     expect(body).not.toContain("`code`");
+    expect(body).not.toContain("<details>");
   });
 });
 

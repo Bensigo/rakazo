@@ -110,6 +110,9 @@ function escapeMarkdownLinkLabel(value: string): string {
   const normalized = value.replaceAll(/\s+/g, " ").trim();
   const label = normalized.length > 0 ? normalized : "screenshot";
   return label
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
     .replaceAll("\\", "\\\\")
     .replaceAll("[", "\\[")
     .replaceAll("]", "\\]")

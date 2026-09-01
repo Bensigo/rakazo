@@ -137,7 +137,7 @@ async function collectScreenshots(
       hash: createHash("sha256").update(screenshot).digest("hex"),
       source,
       testId: testIdFromSource(source),
-      title: titleFromFileName(path.basename(file)),
+      title: titleFromFileName(fileName),
     });
   }
   return screenshots;
