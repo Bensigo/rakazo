@@ -33,7 +33,7 @@ describe("SmtpEmailProvider", () => {
       .mockRejectedValueOnce(new Error("temporary failure"))
       .mockRejectedValueOnce(new Error("temporary failure"))
       .mockResolvedValue({ messageId: "message-1" });
-    const sleep = vi.fn(async () => undefined);
+    const sleep = vi.fn(async (_delayMs: number, _signal: AbortSignal) => undefined);
     const provider = new SmtpEmailProvider(
       { url: "smtp://smtp.example.test", from: "a@example.test" },
       { transport: { sendMail } as never, sleep },
@@ -48,7 +48,7 @@ describe("SmtpEmailProvider", () => {
     await expect(delivery).resolves.toBeUndefined();
 
     expect(sendMail).toHaveBeenCalledTimes(3);
-    expect(sleep.mock.calls).toEqual([[250], [1_000]]);
+    expect(sleep.mock.calls.map(([delay]) => delay)).toEqual([250, 1_000]);
   });
 
   it("bounds graceful shutdown when delivery never settles", async () => {
@@ -73,6 +73,41 @@ describe("SmtpEmailProvider", () => {
 
       await expect(draining).resolves.toBeUndefined();
       expect(close).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels a pending retry when the drain deadline expires", async () => {
+    vi.useFakeTimers();
+    try {
+      const sendMail = vi.fn(async () => Promise.reject(new Error("temporary failure")));
+      const close = vi.fn();
+      const provider = new SmtpEmailProvider(
+        { url: "smtp://smtp.example.test", from: "a@example.test" },
+        {
+          transport: { sendMail, close } as never,
+          retryDelaysMs: [10_000],
+          drainTimeoutMs: 100,
+        },
+      );
+
+      const delivery = provider
+        .send({
+          to: "ada@example.test",
+          subject: "Reset password",
+          text: "Use this link",
+        })
+        .catch(() => undefined);
+      await vi.advanceTimersByTimeAsync(0);
+      const draining = provider.drain();
+      await vi.advanceTimersByTimeAsync(100);
+
+      await expect(draining).resolves.toBeUndefined();
+      await delivery;
+      expect(sendMail).toHaveBeenCalledOnce();
+      expect(close).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
     } finally {
       vi.useRealTimers();
     }

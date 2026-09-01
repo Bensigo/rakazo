@@ -11,7 +11,7 @@ interface SmtpEmailDependencies {
   createTransport?: (url: string) => Transporter;
   retryDelaysMs?: readonly number[];
   drainTimeoutMs?: number;
-  sleep?: (delayMs: number) => Promise<void>;
+  sleep?: (delayMs: number, signal: AbortSignal) => Promise<void>;
 }
 
 /** SMTP delivery works with SES, Resend, and self-hosted mail servers. */
@@ -19,8 +19,9 @@ export class SmtpEmailProvider implements TransactionalEmailProvider {
   private readonly transport: Transporter;
   private readonly retryDelaysMs: readonly number[];
   private readonly drainTimeoutMs: number;
-  private readonly sleep: (delayMs: number) => Promise<void>;
+  private readonly sleep: (delayMs: number, signal: AbortSignal) => Promise<void>;
   private readonly inFlight = new Set<Promise<void>>();
+  private readonly shutdown = new AbortController();
 
   constructor(
     private readonly config: SmtpEmailConfig,
@@ -64,6 +65,7 @@ export class SmtpEmailProvider implements TransactionalEmailProvider {
     while (this.inFlight.size > 0) {
       const completed = await settlesWithin(this.inFlight, Math.max(0, deadline - Date.now()));
       if (completed) continue;
+      this.shutdown.abort();
       this.inFlight.clear();
       try {
         this.transport.close();
@@ -76,6 +78,9 @@ export class SmtpEmailProvider implements TransactionalEmailProvider {
 
   private async deliver(message: TransactionalEmail): Promise<void> {
     for (let attempt = 0; ; attempt += 1) {
+      if (this.shutdown.signal.aborted) {
+        throw new Error("SMTP delivery stopped during shutdown");
+      }
       try {
         await this.transport.sendMail({
           from: this.config.from,
@@ -86,9 +91,10 @@ export class SmtpEmailProvider implements TransactionalEmailProvider {
         });
         return;
       } catch (error) {
+        if (this.shutdown.signal.aborted) throw error;
         const retryDelay = this.retryDelaysMs[attempt];
         if (retryDelay === undefined) throw error;
-        await this.sleep(retryDelay);
+        await this.sleep(retryDelay, this.shutdown.signal);
       }
     }
   }
@@ -116,8 +122,22 @@ function secureSmtpUrl(value: string): string {
   return parsed.href;
 }
 
-function wait(delayMs: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, delayMs));
+function wait(delayMs: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new Error("SMTP delivery stopped during shutdown"));
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new Error("SMTP delivery stopped during shutdown"));
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 async function settlesWithin(
