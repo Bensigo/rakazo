@@ -132,15 +132,13 @@ describe("routine event dispatch", () => {
     expect(wakeRoutineFromEvent).not.toHaveBeenCalled();
   });
 
-  it("window-hashes the raw body when no delivery id is present", () => {
+  it("body-hashes the raw body when no delivery id is present", () => {
     const headers = { get: () => null };
-    const nowMs = 1_700_000_000_000;
     const key = webhookDeliveryIdempotencyKey({
       botId: "bot-1",
       headers,
       payload: { text: "hello" },
       rawBody: '{"text":"hello"}',
-      nowMs,
     });
     expect(key).toMatch(/^webhook:bot-1:/);
     expect(
@@ -149,43 +147,26 @@ describe("routine event dispatch", () => {
         headers,
         payload: { text: "hello" },
         rawBody: '{"text":"hello"}',
-        nowMs,
       }),
     ).toBe(key);
-    expect(
-      webhookDeliveryIdempotencyKey({
-        botId: "bot-1",
-        headers,
-        payload: { text: "hello" },
-        rawBody: '{"text":"hello"}',
-        nowMs: nowMs + 5 * 60 * 1000,
-      }),
-    ).not.toBe(key);
   });
 
-  it("includes the previous body-hash bucket so boundary retries still match", () => {
+  it("uses one stable body-hash key across time so boundary retries cannot double-claim", () => {
     const headers = { get: () => null };
-    const windowMs = 5 * 60 * 1000;
-    const boundary = 1_700_000_000_000;
-    const bucketStart = Math.floor(boundary / windowMs) * windowMs;
-    const before = webhookDeliveryIdempotencyKeys({
+    const first = webhookDeliveryIdempotencyKeys({
       botId: "bot-1",
       headers,
       payload: { text: "hello" },
       rawBody: '{"text":"hello"}',
-      nowMs: bucketStart - 1,
     });
-    const after = webhookDeliveryIdempotencyKeys({
+    const second = webhookDeliveryIdempotencyKeys({
       botId: "bot-1",
       headers,
       payload: { text: "hello" },
       rawBody: '{"text":"hello"}',
-      nowMs: bucketStart,
     });
-    expect(before[0]).not.toBe(after[0]);
-    // Retry after the boundary looks up the previous bucket, which is the
-    // claim key from just before the boundary.
-    expect(after[1]).toBe(before[0]);
+    expect(first).toHaveLength(1);
+    expect(second).toEqual(first);
   });
 
   it("marks body-hash and explicit deliveries as strict durable claims", () => {
@@ -197,7 +178,7 @@ describe("routine event dispatch", () => {
       rawBody: '{"text":"hello"}',
     });
     expect(bodyHash.scope).toBe("strict");
-    expect(bodyHash.keys.length).toBe(2);
+    expect(bodyHash.keys).toHaveLength(1);
 
     const explicit = webhookDeliveryIdempotency({
       botId: "bot-1",
@@ -215,14 +196,12 @@ describe("routine event dispatch", () => {
       headers,
       payload: { id: "resource-1", text: "a" },
       rawBody: '{"id":"resource-1","text":"a"}',
-      nowMs: 1_700_000_000_000,
     });
     const other = webhookDeliveryIdempotency({
       botId: "bot-1",
       headers,
       payload: { id: "resource-1", text: "b" },
       rawBody: '{"id":"resource-1","text":"b"}',
-      nowMs: 1_700_000_000_000,
     });
     // Same resource id, different bodies => different body-hash keys.
     expect(withId.keys[0]).not.toBe(other.keys[0]);

@@ -43,7 +43,7 @@ export type RoutineEventDispatchDeps = {
     options?: {
       idempotencyKey?: string;
       alternateIdempotencyKeys?: string[];
-      /** strict = any status; inflight = only non-terminal runs (body-hash fallback). */
+      /** Accepted for callers; webhook claims are always durable (`strict`). */
       idempotencyScope?: "strict" | "inflight";
     },
   ): Promise<{ runId: string; threadId: string } | null>;
@@ -59,9 +59,9 @@ export async function dispatchRoutineEvents(input: {
   spaceId: string;
   events: NormalizedRoutineEvent[];
   idempotencyKey?: string;
-  /** Extra delivery keys that should resolve to the same wake (e.g. previous time bucket). */
+  /** Extra delivery keys that should resolve to the same wake. */
   alternateIdempotencyKeys?: string[];
-  /** strict for explicit delivery ids; inflight for body-hash fallback. */
+  /** Accepted for callers; webhook claims are always durable (`strict`). */
   idempotencyScope?: "strict" | "inflight";
 }): Promise<RoutineEventWakeResult[]> {
   const routines = await input.deps.prisma.routine.findMany({
@@ -136,8 +136,6 @@ export function eventsFromWebhookPayload(
   return events;
 }
 
-const WEBHOOK_BODY_HASH_WINDOW_MS = 5 * 60 * 1000;
-
 function webhookDeliveryExplicitId(input: {
   headers: Headers | { get(name: string): string | null };
   payload: Record<string, unknown>;
@@ -162,17 +160,17 @@ export type WebhookDeliveryIdempotency = {
   keys: string[];
   /**
    * Always strict for webhook deliveries: explicit ids and body-hash fallbacks
-   * both claim a durable clientNonce. Body-hash keys are windowed (current +
-   * previous bucket) so provider retries dedupe across the boundary without
-   * starting a second run after the first is terminal.
+   * both claim a durable clientNonce so a retry after a terminal run does not
+   * start again. Body-hash keys are stable (no time bucket) so concurrent
+   * id-less retries cannot create two claims across a clock boundary.
    */
   scope: "strict" | "inflight";
 };
 
 /**
  * Delivery keys for a webhook. Index 0 is the claim key for new wakes.
- * Body-hash fallbacks also include the previous time bucket so a retry that
- * crosses a five-minute boundary still resolves to the same claim.
+ * Without an explicit delivery header, the body hash itself is the claim key
+ * (stable across time) so provider retries always collide on one nonce.
  */
 export function webhookDeliveryIdempotency(input: {
   botId: string;
@@ -180,19 +178,14 @@ export function webhookDeliveryIdempotency(input: {
   payload: Record<string, unknown>;
   /** Exact request body when available; used when no explicit delivery id is present. */
   rawBody?: string;
-  nowMs?: number;
 }): WebhookDeliveryIdempotency {
   const explicit = webhookDeliveryExplicitId(input);
   if (explicit) {
     return { keys: [webhookHashedKey(input.botId, explicit)], scope: "strict" };
   }
   const body = input.rawBody?.trim() || JSON.stringify(input.payload);
-  const bucket = Math.floor((input.nowMs ?? Date.now()) / WEBHOOK_BODY_HASH_WINDOW_MS);
   return {
-    keys: [
-      webhookHashedKey(input.botId, `${bucket}:${body}`),
-      webhookHashedKey(input.botId, `${bucket - 1}:${body}`),
-    ],
+    keys: [webhookHashedKey(input.botId, body)],
     scope: "strict",
   };
 }
@@ -202,7 +195,6 @@ export function webhookDeliveryIdempotencyKeys(input: {
   headers: Headers | { get(name: string): string | null };
   payload: Record<string, unknown>;
   rawBody?: string;
-  nowMs?: number;
 }): string[] {
   return webhookDeliveryIdempotency(input).keys;
 }
@@ -212,7 +204,6 @@ export function webhookDeliveryIdempotencyKey(input: {
   headers: Headers | { get(name: string): string | null };
   payload: Record<string, unknown>;
   rawBody?: string;
-  nowMs?: number;
 }): string {
   return webhookDeliveryIdempotency(input).keys[0]!;
 }
