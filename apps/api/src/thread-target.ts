@@ -300,21 +300,44 @@ export async function threadSnapshot(
               trigger: { not: "bot_message" },
               status: { in: [...ACTIVE_RUN_STATUSES, "failed"] },
             },
-            orderBy: { createdAt: "desc" },
+            // The id tiebreak keeps ordering deterministic under equal
+            // timestamps, matching the supersession probe below.
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           }),
         ]);
+        // A failed run is only the thread's word while it is still the newest
+        // terminal run; otherwise a stale failure would resurface in the
+        // composer error strip on every load, forever. Instead of comparing
+        // timestamps (equal createdAt values reverse under gt/gte), ask for
+        // the newest terminal run under the same deterministic ordering and
+        // check whether it is this failure.
+        const newestTerminal =
+          run?.status === "failed"
+            ? await tx.run.findFirst({
+                where: {
+                  botId: target.botId,
+                  threadId: target.threadId,
+                  // Match the selection query — peer bot_message runs must not bury a user-visible failure.
+                  trigger: { not: "bot_message" },
+                  status: { in: ["failed", "completed", "cancelled"] },
+                },
+                orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+                select: { id: true },
+              })
+            : null;
+        const currentRun = run?.status === "failed" && newestTerminal?.id !== run.id ? null : run;
         const liveEvents =
-          run && isActive(run.status as RunStatus)
+          currentRun && isActive(currentRun.status as RunStatus)
             ? await tx.event.findMany({
                 where: {
                   threadId: target.threadId,
-                  runId: run.id,
+                  runId: currentRun.id,
                   type: { in: ["thread.progress", "thread.subagent", "agent.tool.called"] },
                 },
                 orderBy: { seq: "asc" },
               })
             : [];
-        return { messagePage, last, run, liveEvents };
+        return { messagePage, last, run: currentRun, liveEvents };
       }),
     ]);
     return {
