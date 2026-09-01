@@ -28,6 +28,7 @@ const payloadSchemas = {
     botId: z.string().min(1),
     userId: z.string().min(1),
     attempt: z.number().int().nonnegative().optional(),
+    errorAttempt: z.number().int().nonnegative().optional(),
   }),
 } satisfies { [Name in BackgroundJobName]: z.ZodType<BackgroundJobPayloads[Name]> };
 

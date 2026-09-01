@@ -14,9 +14,10 @@ import {
 } from "@rakazo/db";
 
 const TERMINAL = new Set(["finished", "failed", "cancelled"]);
-const POLL_DELAY_MS = 5_000;
-/** Cap retries so a stuck agent cannot poll forever. */
-const MAX_ATTEMPTS = 60;
+/** Consecutive provider get() failures before the card is marked failed and the bot is woken. */
+const MAX_ERROR_ATTEMPTS = 20;
+
+type CloudAgentBlock = Extract<MessageBlock, { kind: "cloud_agent" }>;
 
 export async function pollCloudAgent(
   deps: {
@@ -37,19 +38,22 @@ export async function pollCloudAgent(
   };
 
   const attempt = payload.attempt ?? 0;
+  const errorAttempt = payload.errorAttempt ?? 0;
   let snapshot: Awaited<ReturnType<CloudAgentProvider["get"]>>;
   try {
     snapshot = await deps.cloudAgent.get(payload.agentId, context);
   } catch (error) {
     console.error("cloud agent poll", error);
-    if (attempt < MAX_ATTEMPTS) {
-      await deps.jobs.enqueue(
-        cloudAgentPollJob(
-          { ...payload, attempt: attempt + 1 },
-          new Date(Date.now() + POLL_DELAY_MS),
-        ),
-      );
+    if (errorAttempt + 1 >= MAX_ERROR_ATTEMPTS) {
+      await failStuckCloudAgent(deps, payload, "Cloud agent polling failed repeatedly.");
+      return;
     }
+    await deps.jobs.enqueue(
+      cloudAgentPollJob(
+        { ...payload, attempt: attempt + 1, errorAttempt: errorAttempt + 1 },
+        new Date(Date.now() + pollDelayMs(attempt)),
+      ),
+    );
     return;
   }
 
@@ -60,11 +64,11 @@ export async function pollCloudAgent(
   if (!message || message.threadId !== payload.threadId) return;
 
   const previous = (message.blocks as MessageBlock[]).find(
-    (block): block is Extract<MessageBlock, { kind: "cloud_agent" }> =>
+    (block): block is CloudAgentBlock =>
       block.kind === "cloud_agent" && block.agentId === payload.agentId,
   );
-  const nextBlock = {
-    kind: "cloud_agent" as const,
+  const nextBlock: CloudAgentBlock = {
+    kind: "cloud_agent",
     agentId: payload.agentId,
     title: snapshot.title || previous?.title || "Cloud agent",
     status: snapshot.status,
@@ -74,7 +78,7 @@ export async function pollCloudAgent(
     ...(snapshot.latestRunId || previous?.latestRunId
       ? { latestRunId: snapshot.latestRunId || previous?.latestRunId }
       : {}),
-  } satisfies Extract<MessageBlock, { kind: "cloud_agent" }>;
+  };
 
   const changed =
     !previous ||
@@ -114,18 +118,72 @@ export async function pollCloudAgent(
   }
 
   if (!TERMINAL.has(snapshot.status)) {
-    if (attempt < MAX_ATTEMPTS) {
-      await deps.jobs.enqueue(
-        cloudAgentPollJob(
-          { ...payload, attempt: attempt + 1 },
-          new Date(Date.now() + POLL_DELAY_MS),
-        ),
-      );
-    }
+    // Still running: keep polling with backoff. Do not abandon long-lived agents.
+    await deps.jobs.enqueue(
+      cloudAgentPollJob(
+        { ...payload, attempt: attempt + 1, errorAttempt: 0 },
+        new Date(Date.now() + pollDelayMs(attempt)),
+      ),
+    );
     return;
   }
 
   await wakeBotForCloudAgent(deps, payload, snapshot);
+}
+
+function pollDelayMs(attempt: number): number {
+  if (attempt < 12) return 5_000;
+  if (attempt < 36) return 15_000;
+  return 60_000;
+}
+
+async function failStuckCloudAgent(
+  deps: {
+    prisma: PrismaClient;
+    jobs: JobPublisher;
+  },
+  payload: BackgroundJobPayloads["cloud_agent.poll"],
+  reason: string,
+): Promise<void> {
+  const message = await deps.prisma.message.findUnique({
+    where: { id: payload.messageId },
+    select: { id: true, blocks: true, threadId: true },
+  });
+  if (!message || message.threadId !== payload.threadId) return;
+
+  let title = "Cloud agent";
+  let url = "";
+  const blocks = (message.blocks as MessageBlock[]).map((block) => {
+    if (block.kind !== "cloud_agent" || block.agentId !== payload.agentId) return block;
+    title = block.title || title;
+    url = block.url || url;
+    return { ...block, status: "failed" as const };
+  });
+
+  await deps.prisma.$transaction(async (tx) => {
+    await tx.message.update({ where: { id: message.id }, data: { blocks } });
+    await appendEventInTransaction(tx, {
+      spaceId: payload.spaceId,
+      threadId: payload.threadId,
+      botId: payload.botId,
+      type: "thread.cloud_agent",
+      payload: {
+        messageId: message.id,
+        agentId: payload.agentId,
+        title,
+        status: "failed",
+        url,
+      },
+    });
+  });
+
+  await wakeBotForCloudAgent(deps, payload, {
+    id: payload.agentId,
+    title,
+    status: "failed",
+    url,
+  });
+  console.error("cloud agent poll abandoned", reason, payload.agentId);
 }
 
 async function wakeBotForCloudAgent(

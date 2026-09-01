@@ -450,8 +450,10 @@ export interface BackgroundJobPayloads {
     threadId: string;
     botId: string;
     userId: string;
-    /** 0-based poll attempt; omitted means 0. Caps unbounded retries. */
+    /** Successful or total poll count; used for backoff. */
     attempt?: number;
+    /** Consecutive provider get() failures; caps error retries only. */
+    errorAttempt?: number;
   };
 }
 

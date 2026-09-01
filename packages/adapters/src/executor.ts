@@ -2081,10 +2081,14 @@ export function createRunExecutor(deps: ExecutorDeps) {
           }
           if (name === "cloud_agent_status") {
             if (!cloudAgent) return finish({ error: "Cloud agents are not configured." });
+            const owned = await requireOwnedCloudAgent(deps, run.spaceId, String(args.id ?? ""));
+            if (owned) return finish(owned);
             return finish(await cloudAgentStatusFromTool(cloudAgent, context, args));
           }
           if (name === "cloud_agent_reply") {
             if (!cloudAgent) return finish({ error: "Cloud agents are not configured." });
+            const owned = await requireOwnedCloudAgent(deps, run.spaceId, String(args.id ?? ""));
+            if (owned) return finish(owned);
             const replied = await cloudAgentReplyFromTool(cloudAgent, context, args);
             if ("error" in replied) return finish(replied);
             try {
@@ -2099,6 +2103,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
           }
           if (name === "cloud_agent_cancel") {
             if (!cloudAgent) return finish({ error: "Cloud agents are not configured." });
+            const owned = await requireOwnedCloudAgent(deps, run.spaceId, String(args.id ?? ""));
+            if (owned) return finish(owned);
             const cancelled = await cloudAgentCancelFromTool(cloudAgent, context, args);
             if (!("error" in cancelled)) {
               try {
@@ -3664,6 +3670,27 @@ function redactBlocks(blocks: MessageBlock[], secrets: string[]): MessageBlock[]
   });
 }
 
+async function requireOwnedCloudAgent(
+  deps: ExecutorDeps,
+  spaceId: string,
+  agentId: string,
+): Promise<{ error: string } | null> {
+  const id = agentId.trim();
+  if (!id) return { error: "id is required" };
+  const messages = await deps.prisma.message.findMany({
+    where: { thread: { spaceId } },
+    orderBy: { createdAt: "desc" },
+    take: 400,
+    select: { blocks: true },
+  });
+  const owned = messages.some((message) =>
+    (message.blocks as MessageBlock[]).some(
+      (block) => block.kind === "cloud_agent" && block.agentId === id,
+    ),
+  );
+  return owned ? null : { error: "Unknown cloud agent." };
+}
+
 async function syncCloudAgentCard(
   deps: ExecutorDeps,
   run: { id: string; spaceId: string; threadId: string; botId: string },
@@ -3738,6 +3765,7 @@ async function syncCloudAgentCard(
         botId: run.botId,
         userId: options.userId,
         attempt: 0,
+        errorAttempt: 0,
       }),
     );
   }
