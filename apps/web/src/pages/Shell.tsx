@@ -4670,7 +4670,11 @@ const Composer = memo(function Composer({
                 : undefined
             }
             aria-label={
-              activeName ? (running ? t`Steer ${activeName}` : t`Message ${activeName}`) : t`Message`
+              activeName
+                ? running
+                  ? t`Steer ${activeName}`
+                  : t`Message ${activeName}`
+                : t`Message`
             }
             role="combobox"
             aria-autocomplete="list"

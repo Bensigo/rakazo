@@ -485,11 +485,7 @@ function stableToolNameHash(name: string): string {
   return (hash >>> 0).toString(36);
 }
 
-function toHistory(
-  history: AgentRunRequest["history"],
-  prompt: string,
-  promptMessageId?: string,
-) {
+function toHistory(history: AgentRunRequest["history"], prompt: string, promptMessageId?: string) {
   let duplicatePromptIndex = -1;
   for (let index = history.length - 1; index >= 0; index -= 1) {
     const message = history[index];
