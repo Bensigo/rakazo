@@ -2068,9 +2068,14 @@ export function createRunExecutor(deps: ExecutorDeps) {
               messageId = message.id;
             } catch (error) {
               console.error("cloud agent launch card", error);
+              try {
+                await cloudAgentCancelFromTool(cloudAgent, context, { id: launched.id });
+              } catch (cancelError) {
+                console.error("cloud agent launch cancel after card failure", cancelError);
+              }
               return finish({
-                ...launched,
-                error: "Cloud agent launched but the status card could not be posted.",
+                error:
+                  "Cloud agent launched but the status card could not be posted; the remote agent was cancelled.",
               });
             }
             const pollPayload = {

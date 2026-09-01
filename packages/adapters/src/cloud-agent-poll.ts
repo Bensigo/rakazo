@@ -224,7 +224,8 @@ async function wakeBotForCloudAgent(
   },
 ) {
   // Include latestRunId so a later follow-up that ends in the same status still wakes the bot.
-  let wakeNonce = `cloud-agent-wake:${payload.agentId}:${snapshot.status}:${snapshot.latestRunId ?? "na"}`;
+  // Same agentId+status+latestRunId is idempotent — do not remint on terminal retries.
+  const wakeNonce = `cloud-agent-wake:${payload.agentId}:${snapshot.status}:${snapshot.latestRunId ?? "na"}`;
   const existing = await deps.prisma.message.findFirst({
     where: { threadId: payload.threadId, clientNonce: wakeNonce },
     select: { id: true, runId: true },
@@ -239,8 +240,8 @@ async function wakeBotForCloudAgent(
       await deps.jobs.enqueue(runContinueJob(existing.runId));
       return;
     }
-    // Prior wake already finished; mint a fresh nonce for this completion.
-    wakeNonce = `${wakeNonce}:${Date.now()}`;
+    // Same completion already woke the bot.
+    return;
   }
 
   const summary = [
