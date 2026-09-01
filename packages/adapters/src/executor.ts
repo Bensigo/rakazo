@@ -940,6 +940,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
         const threadContext = threadContextForRun(run.trigger, {
           messages: [...messages].reverse().map((m) => ({
             seq: m.seq,
+            id: m.id,
             role: (m.role === "user" ? "user" : m.role === "system" ? "system" : "assistant") as
               | "user"
               | "assistant"
@@ -954,7 +955,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
           summary: threadContext.summary,
           historyCompactedUpToSeq: threadContext.historyCompactedUpToSeq,
         });
-        let history = compactedHistory.history.map(({ role, content }) => ({ role, content }));
+        let history = compactedHistory.history.map(({ role, content, id }) => ({
+          role,
+          content,
+          messageId: id,
+        }));
         const turnBlocks = userTurnBlocksForRun(
           run.trigger,
           runId,
@@ -2754,6 +2759,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               threadId: thread.id,
               runId,
               prompt,
+              promptMessageId: run.sourceMessageId ?? undefined,
               instructions: [
                 bot.instructions || `${bot.name}: ${bot.title}\n${bot.description}`,
                 groupContext,
@@ -2832,6 +2838,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                         const filesInstruction = currentTurnFilesInstruction(files);
                         return {
                           id: item.id,
+                          messageId: item.messageId,
                           historyText: item.text,
                           text: [item.text, filesInstruction].filter(Boolean).join("\n\n"),
                           images,

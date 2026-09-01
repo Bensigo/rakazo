@@ -1003,9 +1003,15 @@ function Thread() {
     setError(null);
     try {
       await rpc("threads/stop", groupId ? { groupId } : { botId: botId! });
-      await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to stop work");
+      setSending(false);
+      return;
+    }
+    try {
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to refresh after stop");
     } finally {
       setSending(false);
     }

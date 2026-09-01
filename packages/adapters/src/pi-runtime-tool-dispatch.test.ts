@@ -269,6 +269,64 @@ describe("Pi connector tool dispatch", () => {
     ]);
   });
 
+  it("strips prompt and claimed steering by messageId when texts collide", async () => {
+    fakeAgentState.mode = "empty";
+    const shared = "Same text for both bots.";
+    const steering = [
+      { id: "steering-keep", messageId: "msg-steer-keep", text: shared },
+      { id: "steering-drop", messageId: "msg-steer-drop", text: shared },
+    ];
+    const claimSteering = vi.fn(async (seenIds: string[]) =>
+      seenIds.length ? [] : [steering[1]!],
+    );
+    const runtime = new PiAgentRuntime();
+
+    for await (const _event of runtime.run(
+      {
+        botId: "b",
+        threadId: "t",
+        runId: "collision",
+        prompt: shared,
+        promptMessageId: "msg-prompt",
+        instructions: "Follow the user's instructions.",
+        history: [
+          { role: "user", content: shared, messageId: "msg-other-bot" },
+          { role: "user", content: shared, messageId: "msg-steer-drop" },
+          { role: "user", content: shared, messageId: "msg-prompt" },
+          { role: "assistant", content: "Earlier answer." },
+        ],
+        tools: [],
+        model: { provider: "test", id: "dispatch-test-model" },
+        claimSteering,
+      },
+      { signal: new AbortController().signal },
+    )) {
+      // Exhaust the runtime event stream.
+    }
+
+    expect(fakeAgentState.promptInputs).toHaveLength(1);
+    expect(fakeAgentState.promptInputs[0]).toContain(shared);
+    // Only the claimed steering message and the prompt were removed; the earlier
+    // identical user message for the other bot stays in history.
+    expect(fakeAgentState.initialMessages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ role: "user", content: shared }),
+        expect.objectContaining({ role: "user", content: "Assistant: Earlier answer." }),
+      ]),
+    );
+    expect(
+      fakeAgentState.initialMessages.filter(
+        (message) =>
+          typeof message === "object" &&
+          message !== null &&
+          "role" in message &&
+          "content" in message &&
+          message.role === "user" &&
+          message.content === shared,
+      ),
+    ).toHaveLength(1);
+  });
+
   it("consumes pending continuation steering once in the first prompt", async () => {
     fakeAgentState.mode = "empty";
     const steering = [

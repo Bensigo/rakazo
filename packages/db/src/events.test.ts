@@ -966,7 +966,7 @@ describe("sendUserMessage", () => {
       steeringMessage: { create: vi.fn() },
       task: { create: vi.fn() },
       run: {
-        findFirst: vi.fn().mockResolvedValue({ id: "run-0" }),
+        findFirst: vi.fn().mockResolvedValue({ id: "run-0", taskId: "task-0" }),
         findUnique: vi.fn().mockResolvedValue({ status: "running" }),
         create: vi.fn(),
       },
@@ -991,7 +991,7 @@ describe("sendUserMessage", () => {
         prompt: "hello",
         trigger: "follow_up",
       }),
-    ).resolves.toEqual({ messageId: "message-1", seq: 4, taskId: null, runId: null });
+    ).resolves.toEqual({ messageId: "message-1", seq: 4, taskId: "task-0", runId: "run-0" });
 
     expect(tx.task.create).not.toHaveBeenCalled();
     expect(tx.run.create).not.toHaveBeenCalled();
@@ -1015,6 +1015,7 @@ describe("claimSteering", () => {
           {
             id: "steer-1",
             message: {
+              id: "message-5",
               seq: 5,
               blocks: [
                 { kind: "text", text: "First" },
@@ -1027,7 +1028,10 @@ describe("claimSteering", () => {
               ],
             },
           },
-          { id: "steer-2", message: { seq: 6, blocks: [{ kind: "text", text: "Second" }] } },
+          {
+            id: "steer-2",
+            message: { id: "message-6", seq: 6, blocks: [{ kind: "text", text: "Second" }] },
+          },
         ]),
         updateMany: vi.fn().mockResolvedValue({ count: 2 }),
       },
@@ -1048,6 +1052,7 @@ describe("claimSteering", () => {
     ).resolves.toEqual([
       {
         id: "steer-1",
+        messageId: "message-5",
         text: "First\n[image: chart.png]",
         blocks: [
           { kind: "text", text: "First" },
@@ -1059,7 +1064,12 @@ describe("claimSteering", () => {
           },
         ],
       },
-      { id: "steer-2", text: "Second", blocks: [{ kind: "text", text: "Second" }] },
+      {
+        id: "steer-2",
+        messageId: "message-6",
+        text: "Second",
+        blocks: [{ kind: "text", text: "Second" }],
+      },
     ]);
     expect(tx.run.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({

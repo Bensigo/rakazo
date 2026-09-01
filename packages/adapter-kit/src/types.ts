@@ -308,6 +308,8 @@ export interface AgentInputImage {
 
 export interface AgentSteeringMessage {
   id: string;
+  /** Originating user message id when the steering came from a durable thread message. */
+  messageId?: string;
   text: string;
   /** Persisted history text before attachment paths are appended. */
   historyText?: string;
@@ -319,8 +321,10 @@ export interface AgentRunRequest {
   threadId: string;
   runId: string;
   prompt: string;
+  /** Source user message id for the prompt, used to strip duplicates from history. */
+  promptMessageId?: string;
   instructions: string;
-  history: Array<{ role: "user" | "assistant" | "system"; content: string }>;
+  history: Array<{ role: "user" | "assistant" | "system"; content: string; messageId?: string }>;
   currentTurnImages?: AgentInputImage[];
   tools: ConnectorTool[];
   model: {

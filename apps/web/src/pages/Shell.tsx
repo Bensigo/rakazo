@@ -248,6 +248,14 @@ type PendingBrowserNotification = {
 const ATTACHMENT_ACCEPT = ATTACHMENT_ALLOWED_MIME_TYPES.join(",");
 const THREAD_SNAPSHOT_TIMEOUT_MS = 2_000;
 
+function newClientNonce(): string {
+  const webCrypto = globalThis.crypto;
+  if (webCrypto && typeof webCrypto.randomUUID === "function") {
+    return webCrypto.randomUUID();
+  }
+  return `m-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function threadSnapshotSignal(parent: AbortSignal): AbortSignal {
   return AbortSignal.any([parent, AbortSignal.timeout(THREAD_SNAPSHOT_TIMEOUT_MS)]);
 }
@@ -1910,7 +1918,7 @@ export function ShellPage() {
       setSendError(null);
       try {
         if (plan.shouldRunRoutines) {
-          const sendNonce = crypto.randomUUID();
+          const sendNonce = newClientNonce();
           await Promise.all(
             plan.routineIds.map((routineId) =>
               rpc.routines.testRun({
@@ -1952,7 +1960,7 @@ export function ShellPage() {
           );
           artifactIds.push(artifact.id);
         }
-        const clientNonce = crypto.randomUUID();
+        const clientNonce = newClientNonce();
         if (groupTarget) {
           await rpc.threads.send({
             groupId: groupTarget,
@@ -2015,6 +2023,7 @@ export function ShellPage() {
     await refreshThreadRef.current(id);
   }, []);
   const stopRun = useCallback(async () => {
+    if (sending) return;
     const botTarget = activeBotId.current;
     const groupTarget = activeGroupId.current;
     if (groupTarget) {
@@ -2060,7 +2069,7 @@ export function ShellPage() {
       }
     }
     await refreshThreadRef.current(botTarget).catch(() => undefined);
-  }, [t]);
+  }, [sending, t]);
   const stopTeaching = useCallback(async () => {
     const id = activeBotId.current;
     if (!id || teachBusy) return;
@@ -3729,6 +3738,7 @@ export function ShellPage() {
                   size="sm"
                   aria-label={t`Stop`}
                   data-testid="computer-overlay-stop"
+                  disabled={sending}
                   onClick={() => void stopRun()}
                 >
                   <Trans>Stop</Trans>
@@ -4509,7 +4519,7 @@ const Composer = memo(function Composer({
           data-testid="composer-steering-status"
           aria-live="polite"
         >
-          Messages sent now guide the next turn.
+          <Trans>Messages sent now guide the next turn.</Trans>
         </p>
       ) : null}
       <div
@@ -4654,13 +4664,13 @@ const Composer = memo(function Composer({
               showComposerPlaceholder
                 ? activeName
                   ? running
-                    ? `Steer ${activeName}`
+                    ? t`Steer ${activeName}`
                     : t`Message ${activeName}`
                   : t`Message…`
                 : undefined
             }
             aria-label={
-              activeName ? (running ? `Steer ${activeName}` : t`Message ${activeName}`) : t`Message`
+              activeName ? (running ? t`Steer ${activeName}` : t`Message ${activeName}`) : t`Message`
             }
             role="combobox"
             aria-autocomplete="list"
@@ -4679,7 +4689,7 @@ const Composer = memo(function Composer({
           <>
             <button
               type="button"
-              aria-label="Send steering message"
+              aria-label={t`Send steering message`}
               disabled={sending || !canSend || disabled}
               onClick={send}
               className="grid h-10 w-10 place-items-center rounded-full bg-[#F1F1EF] text-[#17171A] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A6A6AD] disabled:opacity-50"
@@ -4689,8 +4699,9 @@ const Composer = memo(function Composer({
             <button
               type="button"
               aria-label={t`Stop`}
+              disabled={sending}
               onClick={() => void onStop()}
-              className="grid h-10 w-10 place-items-center rounded-full border border-[#34343A] text-[#C9C9CE] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A6A6AD]"
+              className="grid h-10 w-10 place-items-center rounded-full border border-[#34343A] text-[#C9C9CE] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A6A6AD] disabled:opacity-50"
             >
               <Square size={12} strokeWidth={0} fill="currentColor" />
             </button>

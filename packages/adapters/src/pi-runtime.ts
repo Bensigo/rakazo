@@ -150,9 +150,13 @@ export class PiAgentRuntime implements AgentRuntime {
         const history = toHistory(
           withoutSteeringMessages(
             request.history,
-            initialSteering.map((item) => item.historyText ?? item.text),
+            initialSteering.map((item) => ({
+              messageId: item.messageId,
+              text: item.historyText ?? item.text,
+            })),
           ),
           request.prompt,
+          request.promptMessageId,
         );
         const initialPrompt = initialSteering.length
           ? `${request.prompt}\n\nAdditional user context:\n${initialSteering
@@ -481,14 +485,21 @@ function stableToolNameHash(name: string): string {
   return (hash >>> 0).toString(36);
 }
 
-function toHistory(history: AgentRunRequest["history"], prompt: string) {
+function toHistory(
+  history: AgentRunRequest["history"],
+  prompt: string,
+  promptMessageId?: string,
+) {
   let duplicatePromptIndex = -1;
   for (let index = history.length - 1; index >= 0; index -= 1) {
     const message = history[index];
-    if (message?.role === "user" && message.content === prompt) {
-      duplicatePromptIndex = index;
-      break;
-    }
+    if (message?.role !== "user") continue;
+    const matches = promptMessageId
+      ? message.messageId === promptMessageId
+      : message.content === prompt;
+    if (!matches) continue;
+    duplicatePromptIndex = index;
+    break;
   }
   const prior =
     duplicatePromptIndex < 0
@@ -505,15 +516,20 @@ function toHistory(history: AgentRunRequest["history"], prompt: string) {
 
 function withoutSteeringMessages(
   history: AgentRunRequest["history"],
-  steering: string[],
+  steering: Array<{ messageId?: string; text: string }>,
 ): AgentRunRequest["history"] {
   if (steering.length === 0) return history;
   const result = [...history];
   let beforeIndex = result.length - 1;
   for (let steeringIndex = steering.length - 1; steeringIndex >= 0; steeringIndex -= 1) {
+    const item = steering[steeringIndex]!;
     for (let index = beforeIndex; index >= 0; index -= 1) {
       const message = result[index];
-      if (message?.role !== "user" || message.content !== steering[steeringIndex]) continue;
+      if (message?.role !== "user") continue;
+      const matches = item.messageId
+        ? message.messageId === item.messageId
+        : message.content === item.text;
+      if (!matches) continue;
       result.splice(index, 1);
       beforeIndex = index - 1;
       break;
