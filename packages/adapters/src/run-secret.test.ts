@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   commitConsumedRunSecret,
+  normalizeSecretAskPurpose,
   reconcileManagedConnection,
   resolveCompletedSecretLeftover,
   resolveMissingRunSecretAction,
   runSecretKind,
+  secretAskHelp,
   secretPausedToolResult,
   tryCompleteConnectionWithCode,
 } from "./run-secret.js";
@@ -12,6 +14,16 @@ import {
 describe("runSecretKind", () => {
   it("scopes secrets to a single run", () => {
     expect(runSecretKind("run-1")).toBe("run-secret:run-1");
+  });
+});
+
+describe("secretAskHelp", () => {
+  it("returns short purpose-aware help without secret values", () => {
+    expect(secretAskHelp("otp")).toBe("One-time code. Stays out of chat.");
+    expect(secretAskHelp("password")).toBe("Masked. Stays out of chat.");
+    expect(secretAskHelp("api_key")).toBe("API key. Stays out of chat.");
+    expect(normalizeSecretAskPurpose("api_key")).toBe("api_key");
+    expect(normalizeSecretAskPurpose("other")).toBe("otp");
   });
 });
 

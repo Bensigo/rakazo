@@ -2580,6 +2580,7 @@ function AskBlock({
     setError(null);
     try {
       await onAnswer(submitValue);
+      if (secretInput) setAnswer("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not send answer");
     } finally {
@@ -2601,18 +2602,38 @@ function AskBlock({
       }}
     >
       <Text style={{ color: "#ECECEE", fontSize: 15.5, fontWeight: "600" }}>{ask.text}</Text>
-      {ask.detail ? <Text style={{ color: "#85858A", fontSize: 13.5 }}>{ask.detail}</Text> : null}
+      {ask.detail ? (
+        <Text style={{ color: "#85858A", fontSize: 13.5 }}>{ask.detail}</Text>
+      ) : secretInput ? (
+        <Text style={{ color: "#85858A", fontSize: 13.5 }}>Masked. Stays out of chat.</Text>
+      ) : null}
       {answered ? (
         <Text style={{ color: "#4ECB71", fontSize: 14 }}>
-          {secretInput ? "Submitted" : `Answered: ${ask.answer ?? "Done"}`}
+          {secretInput ? "Saved" : `Answered: ${ask.answer ?? "Done"}`}
         </Text>
       ) : canAnswer ? (
         <>
           <TextInput
-            accessibilityLabel={secretInput ? "Code" : "Answer"}
+            accessibilityLabel={
+              secretInput
+                ? ask.purpose === "password"
+                  ? "Password"
+                  : ask.purpose === "api_key"
+                    ? "API key"
+                    : "Code"
+                : "Answer"
+            }
             value={answer}
             onChangeText={setAnswer}
-            placeholder={secretInput ? "Code" : "Type your answer"}
+            placeholder={
+              secretInput
+                ? ask.purpose === "password"
+                  ? "Password"
+                  : ask.purpose === "api_key"
+                    ? "API key"
+                    : "Code"
+                : "Type your answer"
+            }
             placeholderTextColor="#6C6C70"
             secureTextEntry={secretInput}
             autoComplete="off"
@@ -2629,7 +2650,7 @@ function AskBlock({
           />
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Send answer"
+            accessibilityLabel={secretInput ? "Save" : "Send answer"}
             disabled={(secretInput ? answer.length === 0 : !answer.trim()) || submitting}
             onPress={() => void submit()}
             style={{
@@ -2642,7 +2663,13 @@ function AskBlock({
             }}
           >
             <Text style={{ color: "#17171A", fontWeight: "600" }}>
-              {submitting ? "Sending…" : "Send answer"}
+              {submitting
+                ? secretInput
+                  ? "Saving…"
+                  : "Sending…"
+                : secretInput
+                  ? "Save"
+                  : "Send answer"}
             </Text>
           </Pressable>
         </>
