@@ -769,15 +769,17 @@ export function createRunExecutor(deps: ExecutorDeps) {
       const routinePrompt = expandSkillReferencesInPrompt(routine.prompt, skillRecords);
       const prompt = formatRoutineEventPrompt(routinePrompt, event);
       const trigger = event.source === "chat" ? ("messaging" as const) : ("webhook" as const);
-      // Event wakes only bump lastRunAt; they never touch nextRunAt. On enqueue
-      // failure, delete the orphaned run/task and leave lastRunAt alone so a
-      // concurrent claim cannot be rolled back to a stale value.
+      // Event wakes only bump lastRunAt; they never touch nextRunAt. Capture the
+      // claim timestamp so enqueue-failure cleanup can restore lastRunAt only
+      // when this wake still owns it and no sibling run is in flight.
+      const previousLastRunAt = routine.lastRunAt;
+      const claimedAt = new Date();
       let claimed: { id: string; taskId: string; threadId: string } | null = null;
       try {
         claimed = await deps.prisma.$transaction(async (tx) => {
           const updated = await tx.routine.updateMany({
             where: { id: routine.id, active: true },
-            data: { lastRunAt: new Date() },
+            data: { lastRunAt: claimedAt },
           });
           if (updated.count !== 1) return null;
           const task = await tx.task.create({
@@ -825,6 +827,19 @@ export function createRunExecutor(deps: ExecutorDeps) {
         await deps.prisma.$transaction(async (tx) => {
           await tx.run.deleteMany({ where: { id: claimed.id, status: "queued" } });
           await tx.task.deleteMany({ where: { id: claimed.taskId, status: "queued" } });
+          const sibling = await tx.run.count({
+            where: {
+              routineId: routine.id,
+              id: { not: claimed.id },
+              status: { in: ["queued", "running"] },
+            },
+          });
+          if (sibling === 0) {
+            await tx.routine.updateMany({
+              where: { id: routine.id, lastRunAt: claimedAt },
+              data: { lastRunAt: previousLastRunAt },
+            });
+          }
         });
         throw error;
       }

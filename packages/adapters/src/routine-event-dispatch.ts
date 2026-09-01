@@ -128,13 +128,22 @@ export function webhookDeliveryIdempotencyKey(input: {
   payload: Record<string, unknown>;
   /** Exact request body when available; used when no explicit delivery id is present. */
   rawBody?: string;
+  nowMs?: number;
 }): string {
   const explicit =
     input.headers.get("idempotency-key")?.trim() ||
     input.headers.get("x-idempotency-key")?.trim() ||
+    input.headers.get("x-github-delivery")?.trim() ||
+    input.headers.get("x-delivery-id")?.trim() ||
+    input.headers.get("x-request-id")?.trim() ||
     (typeof input.payload.id === "string" ? input.payload.id.trim() : "") ||
     (typeof input.payload.event_id === "string" ? input.payload.event_id.trim() : "") ||
     "";
-  const material = explicit || input.rawBody?.trim() || JSON.stringify(input.payload);
+  // Body-only fallback is windowed so provider retries dedupe, while a later
+  // intentional identical payload can still start a new wake.
+  const body = input.rawBody?.trim() || JSON.stringify(input.payload);
+  const windowMs = 5 * 60 * 1000;
+  const bucket = Math.floor((input.nowMs ?? Date.now()) / windowMs);
+  const material = explicit || `${bucket}:${body}`;
   return `webhook:${input.botId}:${createHash("sha256").update(material).digest("base64url")}`;
 }

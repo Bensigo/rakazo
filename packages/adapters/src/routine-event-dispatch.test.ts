@@ -130,21 +130,34 @@ describe("routine event dispatch", () => {
     expect(wakeRoutineFromEvent).not.toHaveBeenCalled();
   });
 
-  it("hashes the raw body when no delivery id is present", () => {
+  it("window-hashes the raw body when no delivery id is present", () => {
     const headers = { get: () => null };
+    const nowMs = 1_700_000_000_000;
     const key = webhookDeliveryIdempotencyKey({
       botId: "bot-1",
       headers,
       payload: { text: "hello" },
       rawBody: '{"text":"hello"}',
+      nowMs,
     });
     expect(key).toMatch(/^webhook:bot-1:/);
-    const again = webhookDeliveryIdempotencyKey({
-      botId: "bot-1",
-      headers,
-      payload: { text: "hello" },
-      rawBody: '{"text":"hello"}',
-    });
-    expect(again).toBe(key);
+    expect(
+      webhookDeliveryIdempotencyKey({
+        botId: "bot-1",
+        headers,
+        payload: { text: "hello" },
+        rawBody: '{"text":"hello"}',
+        nowMs,
+      }),
+    ).toBe(key);
+    expect(
+      webhookDeliveryIdempotencyKey({
+        botId: "bot-1",
+        headers,
+        payload: { text: "hello" },
+        rawBody: '{"text":"hello"}',
+        nowMs: nowMs + 5 * 60 * 1000,
+      }),
+    ).not.toBe(key);
   });
 });
