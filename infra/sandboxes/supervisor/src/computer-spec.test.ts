@@ -438,9 +438,11 @@ describe("graphical computer spec", () => {
         "7070/tcp": [{ HostIp: "127.0.0.1", HostPort: "55101" }],
       }),
     ).toBe(true);
-    expect(publishedLoopbackControlHostPort({ "7070/tcp": [{ HostIp: "127.0.0.1", HostPort: "55101" }] })).toBe(
-      "55101",
-    );
+    expect(
+      publishedLoopbackControlHostPort({
+        "7070/tcp": [{ HostIp: "127.0.0.1", HostPort: "55101" }],
+      }),
+    ).toBe("55101");
   });
 
   it("rejects external-only control publishes and finds loopback among mixed bindings", () => {

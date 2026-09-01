@@ -195,10 +195,7 @@ type PortBindingEntry = { HostIp?: string; HostPort?: string };
  * Scans all bindings so an external-first entry does not hide a loopback one.
  */
 export function publishedLoopbackControlHostPort(
-  portBindings:
-    | Record<string, Array<PortBindingEntry> | null>
-    | null
-    | undefined,
+  portBindings: Record<string, Array<PortBindingEntry> | null> | null | undefined,
 ): string | undefined {
   const bindings = portBindings?.[`${COMPUTER_CONTROL_PORT}/tcp`];
   if (!bindings?.length) return undefined;
@@ -215,10 +212,7 @@ export function publishedLoopbackControlHostPort(
  * Prefer HostConfig.PortBindings so stopped containers still report correctly.
  */
 export function containerPublishesControlPort(
-  portBindings:
-    | Record<string, Array<PortBindingEntry> | null>
-    | null
-    | undefined,
+  portBindings: Record<string, Array<PortBindingEntry> | null> | null | undefined,
 ): boolean {
   return publishedLoopbackControlHostPort(portBindings) !== undefined;
 }
