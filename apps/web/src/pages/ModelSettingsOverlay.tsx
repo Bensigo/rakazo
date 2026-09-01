@@ -506,7 +506,7 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
                     </>
                   )}
                 </div>
-                {!isOpenAiCompatible ? (
+                {!isOpenAiCompatible && selected.billing ? (
                   <p className="mt-2 text-[13px] leading-[1.5] text-[#85858A]">
                     {selected.billing}
                   </p>

@@ -545,7 +545,9 @@ export default function Models() {
                 ))}
               </View>
             )}
-            {!isOpenAiCompatible ? <Text style={styles.billing}>{selected.billing}</Text> : null}
+            {!isOpenAiCompatible && selected.billing ? (
+              <Text style={styles.billing}>{selected.billing}</Text>
+            ) : null}
 
             {!isOpenAiCompatible ? (
               <View style={styles.credentialCard}>

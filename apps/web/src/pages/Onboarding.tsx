@@ -361,8 +361,8 @@ export function OnboardingPage() {
                 </>
               )}
             </div>
-            {!isOpenAiCompatible ? (
-              <p className="mt-2 text-[13px] text-[#85858A]">{selected?.billing}</p>
+            {!isOpenAiCompatible && selected?.billing ? (
+              <p className="mt-2 text-[13px] text-[#85858A]">{selected.billing}</p>
             ) : null}
             {subscriptionSignIn ? (
               <div className="mt-4">
