@@ -152,7 +152,7 @@ msgstr "Aktionsbestätigungen"
 #: src/pages/Shell.tsx:5037
 #: src/pages/Shell.tsx:5147
 msgid "Actions"
-msgstr ""
+msgstr "Aktionen"
 
 #. placeholder {0}: bot.name
 #: src/pages/BotContextMenu.tsx:77
@@ -338,7 +338,7 @@ msgstr "Beantwortet"
 #. placeholder {0}: selectedAskActionLabel(answer, actions)
 #: src/components/AskCard.tsx:19
 msgid "Answered: {0}"
-msgstr ""
+msgstr "Beantwortet: {0}"
 
 #: src/components/AskCard.tsx:25
 msgid "Answered: {answer}"
@@ -743,7 +743,7 @@ msgstr "Cloud"
 
 #: src/components/AskCard.tsx:44
 msgid "Code"
-msgstr ""
+msgstr "Code"
 
 #. placeholder {0}: group.title
 #: src/pages/Shell.tsx:2461

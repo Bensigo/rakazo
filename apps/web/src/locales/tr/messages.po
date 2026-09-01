@@ -152,7 +152,7 @@ msgstr "İşlem onayları"
 #: src/pages/Shell.tsx:5037
 #: src/pages/Shell.tsx:5147
 msgid "Actions"
-msgstr ""
+msgstr "İşlemler"
 
 #. placeholder {0}: bot.name
 #: src/pages/BotContextMenu.tsx:77
@@ -338,7 +338,7 @@ msgstr "Yanıtlandı"
 #. placeholder {0}: selectedAskActionLabel(answer, actions)
 #: src/components/AskCard.tsx:19
 msgid "Answered: {0}"
-msgstr ""
+msgstr "Yanıtlandı: {0}"
 
 #: src/components/AskCard.tsx:25
 msgid "Answered: {answer}"
@@ -743,7 +743,7 @@ msgstr "Bulut"
 
 #: src/components/AskCard.tsx:44
 msgid "Code"
-msgstr ""
+msgstr "Kod"
 
 #. placeholder {0}: group.title
 #: src/pages/Shell.tsx:2461
