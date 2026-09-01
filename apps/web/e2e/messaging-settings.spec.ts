@@ -45,7 +45,9 @@ test("messaging settings show linked chat apps, channels, and connections", asyn
       body: JSON.stringify({
         json: [
           {
+            id: "cm1",
             channelId: "ch1",
+            identityId: "mi-1",
             provider: "sendblue",
             name: "Family",
             status: "invited",

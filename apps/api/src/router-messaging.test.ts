@@ -4,6 +4,9 @@ import type { PrismaClient } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
 import { createRouter, type RouterDeps } from "./router.js";
 
+/** Prisma filters the handlers use when scoping memberships to the caller. */
+type MembershipWhere = { id?: string; identityId?: { in: string[] } };
+
 const identity = {
   id: "mi-1",
   provider: "sendblue",
@@ -18,6 +21,8 @@ function messagingDeps(
   overrides: {
     enabled?: boolean;
     identity?: unknown;
+    /** Every chat app the caller has linked; defaults to the single identity. */
+    identities?: Array<Record<string, unknown>>;
     membership?: Record<string, unknown> | null;
     memberships?: Array<Record<string, unknown>>;
     connection?: Record<string, unknown> | null;
@@ -50,12 +55,28 @@ function messagingDeps(
           status: "pending",
         }
       : overrides.connection;
-  const membershipState = membership ? { ...membership } : null;
+  // One user can hold several memberships in the same channel (one per linked
+  // chat app), so the mock resolves them by id the way the handlers do.
+  const membershipPool = (overrides.memberships ?? (membership ? [membership] : [])).map(
+    (row) => ({ ...row }) as Record<string, unknown>,
+  );
+  const ownedBy = (where: { identityId?: { in: string[] } } | undefined, row: unknown) =>
+    !where?.identityId ||
+    where.identityId.in.includes(String((row as { identityId?: string })?.identityId));
+  const visibleMemberships = (where: { identityId?: { in: string[] } } | undefined) =>
+    membershipPool.filter((row) => ownedBy(where, row));
+  const findMembership = (where: { id?: string; identityId?: { in: string[] } } | undefined) => {
+    const pool = visibleMemberships(where);
+    return where?.id ? (pool.find((row) => row.id === where.id) ?? null) : (pool[0] ?? null);
+  };
+  const defaultChannel = { id: "ch-1", provider: "sendblue", name: "Family", members: [] };
   const connectionState = connection ? { ...connection } : null;
   const prisma = {
     messagingIdentity: {
       findFirst: vi.fn(async () => resolvedIdentity),
-      findMany: vi.fn(async () => (resolvedIdentity ? [resolvedIdentity] : [])),
+      findMany: vi.fn(
+        async () => overrides.identities ?? (resolvedIdentity ? [resolvedIdentity] : []),
+      ),
       update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
         ...(resolvedIdentity as Record<string, unknown>),
         ...data,
@@ -76,34 +97,35 @@ function messagingDeps(
       ),
     },
     messagingChannelMember: {
-      findMany: vi.fn(async () => overrides.memberships ?? (membership ? [membership] : [])),
-      findFirst: vi.fn(async () => membership),
-      update: vi.fn(async ({ data }: { data: unknown }) => ({
-        ...membership,
-        ...(data as object),
-        channel: membership?.channel ?? {
-          id: "ch-1",
-          provider: "sendblue",
-          name: "Family",
-          members: [],
-        },
-      })),
+      findMany: vi.fn(async ({ where }: { where?: MembershipWhere } = {}) =>
+        visibleMemberships(where),
+      ),
+      findFirst: vi.fn(async ({ where }: { where?: MembershipWhere } = {}) =>
+        findMembership(where),
+      ),
+      update: vi.fn(async ({ where, data }: { where?: MembershipWhere; data: unknown }) => {
+        const row = findMembership(where);
+        if (row) Object.assign(row, data as object);
+        return { ...row, channel: row?.channel ?? defaultChannel };
+      }),
       updateMany: vi.fn(
         async ({
           where,
           data,
         }: {
-          where: { id?: string; status?: string };
+          where: MembershipWhere & { status?: string };
           data: Record<string, unknown>;
         }) => {
-          if (!membershipState) return { count: 0 };
-          if (where.id && membershipState.id !== where.id) return { count: 0 };
-          if (where.status && membershipState.status !== where.status) return { count: 0 };
-          Object.assign(membershipState, data);
+          const row = findMembership(where);
+          if (!row) return { count: 0 };
+          if (where.status && row.status !== where.status) return { count: 0 };
+          Object.assign(row, data);
           return { count: 1 };
         },
       ),
-      findUniqueOrThrow: vi.fn(async () => membershipState),
+      findUniqueOrThrow: vi.fn(async ({ where }: { where?: MembershipWhere } = {}) =>
+        findMembership(where),
+      ),
     },
     agentConnection: {
       findMany: vi.fn(async () => overrides.connections ?? (connection ? [connection] : [])),
@@ -384,7 +406,9 @@ describe("messaging.channels", () => {
     await expect(response.json()).resolves.toEqual({
       json: [
         {
+          id: "cm-1",
           channelId: "ch-1",
+          identityId: "mi-1",
           provider: "sendblue",
           name: "Family",
           status: "invited",
@@ -397,7 +421,7 @@ describe("messaging.channels", () => {
   it("approves an invited membership", async () => {
     const { handler, actor, prisma } = messagingDeps();
     const approved = await call(handler, actor, "messaging/channels/respond", {
-      channelId: "ch-1",
+      membershipId: "cm-1",
       accept: true,
     });
     expect(prisma.messagingChannelMember.updateMany).toHaveBeenCalledWith(
@@ -414,7 +438,7 @@ describe("messaging.channels", () => {
   it("declines an invited membership on accept=false", async () => {
     const { handler, actor, prisma } = messagingDeps();
     const declined = await call(handler, actor, "messaging/channels/respond", {
-      channelId: "ch-1",
+      membershipId: "cm-1",
       accept: false,
     });
     expect(prisma.messagingChannelMember.updateMany).toHaveBeenCalledWith(
@@ -431,7 +455,7 @@ describe("messaging.channels", () => {
   it("rejects respond on another user's membership or a non-invited one", async () => {
     const foreign = messagingDeps({ membership: null });
     const response = await call(foreign.handler, foreign.actor, "messaging/channels/respond", {
-      channelId: "ch-1",
+      membershipId: "cm-1",
       accept: true,
     });
     expect(response.status).toBeGreaterThanOrEqual(400);
@@ -446,7 +470,7 @@ describe("messaging.channels", () => {
       },
     });
     const second = await call(already.handler, already.actor, "messaging/channels/respond", {
-      channelId: "ch-1",
+      membershipId: "cm-1",
       accept: true,
     });
     expect(second.status).toBeGreaterThanOrEqual(400);
@@ -462,11 +486,47 @@ describe("messaging.channels", () => {
         channel: { id: "ch-1", provider: "sendblue", name: "Family", members: [] },
       },
     });
-    const response = await call(handler, actor, "messaging/channels/leave", { channelId: "ch-1" });
+    const response = await call(handler, actor, "messaging/channels/leave", {
+      membershipId: "cm-1",
+    });
     expect(prisma.messagingChannelMember.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { status: "left" } }),
     );
     await expect(response.json()).resolves.toEqual({ json: { ok: true } });
+  });
+
+  it("answers the named membership when one user has two chat apps in a group", async () => {
+    const channel = {
+      id: "ch-1",
+      provider: "sendblue",
+      name: "Family",
+      members: [{ id: "cm-1" }, { id: "cm-2" }],
+    };
+    const { handler, actor, prisma } = messagingDeps({
+      identities: [identity, { ...identity, id: "mi-2", address: "+15552222222", botId: "bot-2" }],
+      memberships: [
+        // Same user, same group, one membership per linked chat app. Answering
+        // by channel would pick an arbitrary one and leave the other live.
+        { id: "cm-work", channelId: "ch-1", identityId: "mi-1", status: "approved", channel },
+        { id: "cm-home", channelId: "ch-1", identityId: "mi-2", status: "invited", channel },
+      ],
+    });
+
+    const approved = await call(handler, actor, "messaging/channels/respond", {
+      membershipId: "cm-home",
+      accept: true,
+    });
+    expect(prisma.messagingChannelMember.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "cm-home", status: "invited" } }),
+    );
+    await expect(approved.json()).resolves.toEqual({
+      json: expect.objectContaining({ id: "cm-home", identityId: "mi-2", status: "approved" }),
+    });
+
+    const listed = await call(handler, actor, "messaging/channels/list");
+    const rows = (await listed.json()).json as Array<{ id: string; channelId: string }>;
+    expect(rows.map((row) => row.id)).toEqual(["cm-work", "cm-home"]);
+    expect(new Set(rows.map((row) => row.channelId))).toEqual(new Set(["ch-1"]));
   });
 });
 
@@ -819,7 +879,7 @@ describe("messaging status-write races", () => {
       },
     );
     const response = await call(handler, actor, "messaging/channels/respond", {
-      channelId: "ch-1",
+      membershipId: "cm-1",
       accept: true,
     });
 

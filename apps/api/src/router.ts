@@ -3008,7 +3008,7 @@ export function createRouter(deps: RouterDeps) {
           const membership = identities.length
             ? await deps.prisma.messagingChannelMember.findFirst({
                 where: {
-                  channelId: input.channelId,
+                  id: input.membershipId,
                   identityId: { in: identities.map((identity) => identity.id) },
                 },
                 include: { channel: { include: { members: ACTIVE_CHANNEL_MEMBERS } } },
@@ -3037,7 +3037,7 @@ export function createRouter(deps: RouterDeps) {
           const membership = identities.length
             ? await deps.prisma.messagingChannelMember.findFirst({
                 where: {
-                  channelId: input.channelId,
+                  id: input.membershipId,
                   identityId: { in: identities.map((identity) => identity.id) },
                 },
               })
@@ -4071,12 +4071,18 @@ function isUniqueViolation(error: unknown): boolean {
 }
 
 function messagingChannelDto(membership: {
+  id: string;
   channelId: string;
+  // Never null here: every membership reaching this DTO was matched by one of
+  // the caller's identity ids.
+  identityId: string | null;
   status: string;
   channel: { provider: string; name: string | null; members: Array<{ id: string }> };
 }) {
   return {
+    id: membership.id,
     channelId: membership.channelId,
+    identityId: membership.identityId!,
     provider: membership.channel.provider,
     name: membership.channel.name,
     status: membership.status as "invited" | "approved" | "declined" | "left",

@@ -63,6 +63,20 @@ export function MessagingSettingsOverlay({ onClose }: { onClose: () => void }) {
     }
   }
 
+  const agentByIdentity = new Map(status?.identities.map((i) => [i.id, i.botName]) ?? []);
+  function channelMeta(channel: MessagingChannelMembership): string {
+    return [
+      providerLabel(channel.provider),
+      // Only meaningful once a second chat app is linked: the same group can
+      // then hold two of the caller's memberships, one per agent.
+      agentByIdentity.size > 1 ? agentByIdentity.get(channel.identityId) : undefined,
+      channel.status,
+      String(channel.memberCount),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center bg-[rgba(4,4,5,.62)] p-4 sm:p-10">
       <div
@@ -177,14 +191,12 @@ export function MessagingSettingsOverlay({ onClose }: { onClose: () => void }) {
             <ul className="mt-3 space-y-3">
               {channels.map((channel) => (
                 <li
-                  key={channel.channelId}
+                  key={channel.id}
                   className="flex items-center justify-between gap-3 text-[14px] text-[#C9C9CE]"
                 >
                   <span>
                     {channel.name ?? t`Group`}{" "}
-                    <span className="text-[12px] text-[#7A7A80]">
-                      {providerLabel(channel.provider)} · {channel.status} · {channel.memberCount}
-                    </span>
+                    <span className="text-[12px] text-[#7A7A80]">{channelMeta(channel)}</span>
                   </span>
                   <span className="flex gap-2">
                     {channel.status === "invited" ? (
@@ -194,7 +206,7 @@ export function MessagingSettingsOverlay({ onClose }: { onClose: () => void }) {
                           onClick={() =>
                             void act(() =>
                               rpc.messaging.channels.respond({
-                                channelId: channel.channelId,
+                                membershipId: channel.id,
                                 accept: true,
                               }),
                             )
@@ -206,7 +218,7 @@ export function MessagingSettingsOverlay({ onClose }: { onClose: () => void }) {
                           onClick={() =>
                             void act(() =>
                               rpc.messaging.channels.respond({
-                                channelId: channel.channelId,
+                                membershipId: channel.id,
                                 accept: false,
                               }),
                             )
@@ -219,9 +231,7 @@ export function MessagingSettingsOverlay({ onClose }: { onClose: () => void }) {
                     {channel.status === "approved" ? (
                       <BuiButton
                         onClick={() =>
-                          void act(() =>
-                            rpc.messaging.channels.leave({ channelId: channel.channelId }),
-                          )
+                          void act(() => rpc.messaging.channels.leave({ membershipId: channel.id }))
                         }
                       >
                         <Trans>Leave</Trans>

@@ -574,10 +574,12 @@ export const appContract = {
     },
     channels: {
       list: oc.output(z.array(MessagingChannelMembershipSchema)),
+      // Addressed by membership, not channel: one user can have two linked
+      // chat apps in the same group, and each answers for its own agent.
       respond: oc
-        .input(z.object({ channelId: Id, accept: z.boolean() }))
+        .input(z.object({ membershipId: Id, accept: z.boolean() }))
         .output(MessagingChannelMembershipSchema),
-      leave: oc.input(z.object({ channelId: Id })).output(z.object({ ok: z.literal(true) })),
+      leave: oc.input(z.object({ membershipId: Id })).output(z.object({ ok: z.literal(true) })),
     },
     connections: {
       list: oc.output(z.array(MessagingAgentConnectionSchema)),

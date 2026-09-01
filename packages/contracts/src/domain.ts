@@ -631,7 +631,11 @@ export const MessagingStatusSchema = z.object({
 export type MessagingStatus = z.infer<typeof MessagingStatusSchema>;
 
 export const MessagingChannelMembershipSchema = z.object({
+  /** One row per linked identity: the same group can hold two of the caller's. */
+  id: Id,
   channelId: Id,
+  /** Which of the caller's linked chat apps this membership belongs to. */
+  identityId: Id,
   provider: z.string(),
   name: z.string().nullable(),
   status: z.enum(["invited", "approved", "declined", "left"]),
