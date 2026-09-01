@@ -519,11 +519,22 @@ export function prependMobileMessagePage(
   return prependThreadHistoryPage(prev, page);
 }
 
+const MESSAGING_PROVIDER_LABELS: Record<string, string> = {
+  sendblue: "iMessage",
+  slack: "Slack",
+  whatsapp: "WhatsApp",
+  telegram: "Telegram",
+};
+
+export function messagingProviderLabel(provider: string): string {
+  return MESSAGING_PROVIDER_LABELS[provider] ?? provider;
+}
+
 export function blockText(message: MobileMessage) {
   return message.blocks
     .map((block) => {
-      if (block.kind === "phone_channel_message") {
-        return `iMessage · ${block.fromLabel}: ${block.text}`;
+      if (block.kind === "channel_message") {
+        return `${messagingProviderLabel(block.provider)} · ${block.fromLabel}: ${block.text}`;
       }
       if (block.kind === "subagent") {
         return `${block.name ?? "subagent"}: ${block.result || block.progress || block.task || ""}`;

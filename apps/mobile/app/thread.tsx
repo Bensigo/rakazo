@@ -20,6 +20,7 @@ import {
   resolveComposerSendPlan,
   SLASH_ACTIONS,
   type SlashActionId,
+  selectedAskActionLabel,
   serializeComposerPrompt,
   truncateSlashDescription,
   userVisibleMessages,
@@ -63,6 +64,7 @@ import {
   type MobileMessagePage,
   type MobileSnapshot,
   mergeMobileSnapshot,
+  messagingProviderLabel,
   prependMobileMessagePage,
   rpc,
   selectedSpaceId,
@@ -109,15 +111,20 @@ function newClientNonce(): string {
   return `m-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function formatApprovalAnswer(answer: string | undefined, actions?: AskAction[]): string {
+function formatApprovalAnswer(
+  answer: string | undefined,
+  actions: AskAction[] | undefined,
+  approval: boolean,
+): string {
   if (!answer) return "Answered";
-  const outcome = actions?.find((action) => action.id === answer)?.outcome;
-  if (outcome === "created") return "Created";
-  if (outcome === "cancelled") return "Cancelled";
-  if (answer === "allow") return "Allowed once";
-  if (answer === "always") return "Always allowed";
-  if (answer === "deny") return "Denied";
-  return `Answered: ${answer}`;
+  const selectedAction = actions?.find((action) => action.id === answer);
+  const outcome = selectedAction?.outcome;
+  if (approval && outcome === "created") return "Created";
+  if (approval && outcome === "cancelled") return "Cancelled";
+  if (approval && answer === "allow") return "Allowed once";
+  if (approval && answer === "always") return "Always allowed";
+  if (approval && answer === "deny") return "Denied";
+  return `Answered: ${selectedAskActionLabel(answer, actions)}`;
 }
 
 function isWorkingStatus(status: string | undefined): boolean {
@@ -1839,8 +1846,8 @@ function MentionChipIcon({ mention }: { mention: ComposerMention }) {
 function previewMessageText(message: MobileMessage): string {
   const text = message.blocks
     .flatMap((block) => {
-      if (block.kind === "phone_channel_message" && block.text) {
-        return [`iMessage · ${block.fromLabel}: ${block.text}`];
+      if (block.kind === "channel_message" && block.text) {
+        return [`${messagingProviderLabel(block.provider)} · ${block.fromLabel}: ${block.text}`];
       }
       return block.kind === "text" && block.text ? [block.text] : [];
     })
@@ -1905,7 +1912,7 @@ const MessageBubble = memo(function MessageBubble({
   );
   const ask = message.blocks.find(
     (block): block is Extract<MessageBlock, { kind: "ask" }> =>
-      block.kind === "ask" && !isApprovalAskBlock(block),
+      block.kind === "ask" && !isApprovalAskBlock(block) && !block.actions?.length,
   );
   if (ask) {
     return (
@@ -1971,15 +1978,16 @@ const MessageBubble = memo(function MessageBubble({
       </View>
     );
   }
-  const phoneChannel = message.blocks.find(
-    (block): block is Extract<MessageBlock, { kind: "phone_channel_message" }> =>
-      block.kind === "phone_channel_message",
+  const channelMessage = message.blocks.find(
+    (block): block is Extract<MessageBlock, { kind: "channel_message" }> =>
+      block.kind === "channel_message",
   );
-  if (phoneChannel) {
+  if (channelMessage) {
     return (
       <View style={{ width: "100%", paddingVertical: 4, alignItems: "center" }}>
         <Text style={{ color: "#85858A", fontSize: 13.5, textAlign: "center" }}>
-          iMessage · {phoneChannel.fromLabel}: {phoneChannel.text}
+          {messagingProviderLabel(channelMessage.provider)} · {channelMessage.fromLabel}:{" "}
+          {channelMessage.text}
         </Text>
       </View>
     );
@@ -2095,7 +2103,9 @@ const MessageBubble = memo(function MessageBubble({
       </View>
     );
   }
-  const askBlock = message.blocks.find(isApprovalAskBlock);
+  const askBlock = message.blocks.find(
+    (block) => block.kind === "ask" && Boolean(block.actions?.length),
+  );
   if (askBlock?.kind === "ask" && askBlock.actions?.length) {
     return (
       <View style={{ gap: 8, width: "100%" }}>
@@ -2137,7 +2147,11 @@ const MessageBubble = memo(function MessageBubble({
                 fontWeight: "600",
               }}
             >
-              {formatApprovalAnswer(askBlock.answer, askBlock.actions)}
+              {formatApprovalAnswer(
+                askBlock.answer,
+                askBlock.actions,
+                isApprovalAskBlock(askBlock),
+              )}
             </Text>
           ) : canAnswer && onAnswer ? (
             <AskActions
@@ -2161,8 +2175,8 @@ const MessageBubble = memo(function MessageBubble({
   );
   const caption = message.blocks
     .flatMap((block) => {
-      if (block.kind === "phone_channel_message" && block.text) {
-        return [`iMessage · ${block.fromLabel}: ${block.text}`];
+      if (block.kind === "channel_message" && block.text) {
+        return [`${messagingProviderLabel(block.provider)} · ${block.fromLabel}: ${block.text}`];
       }
       return block.kind === "text" && block.text ? [block.text] : [];
     })
@@ -2289,7 +2303,11 @@ const MessageBubble = memo(function MessageBubble({
     <View style={{ gap: 8, width: "100%" }}>
       {segments.map((segment, index) =>
         segment.kind === "tool" ? (
-          <ExpandableToolBlock key={`${message.id}-tools-${index}`} block={segment.block} />
+          <ExpandableToolBlock
+            key={`${message.id}-${message.id.startsWith("progress:") ? "working" : "actions"}-${index}`}
+            block={segment.block}
+            live={message.id.startsWith("progress:")}
+          />
         ) : (
           <MessageTextCard
             key={`${message.id}-content-${index}`}
@@ -2404,8 +2422,10 @@ function AgentEventLabel({
 
 function ExpandableToolBlock({
   block,
+  live,
 }: {
   block: Extract<MessageBlock, { kind: "progress" | "steps" }>;
+  live: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const provider =
@@ -2419,7 +2439,7 @@ function ExpandableToolBlock({
             : []),
           ...(block.pendingToolNames ?? []),
         ].filter(Boolean);
-  const title = provider ? `Using ${provider}` : "Tools";
+  const title = live ? "Working…" : "Actions";
 
   return (
     <View
@@ -2430,7 +2450,9 @@ function ExpandableToolBlock({
     >
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={expanded ? "Hide tool details" : "Show tool details"}
+        accessibilityLabel={`${expanded ? "Hide" : "Show"} ${title}`}
+        accessibilityState={{ expanded }}
+        hitSlop={10}
         onPress={() => setExpanded((current) => !current)}
         style={{
           flexDirection: "row",
@@ -2439,7 +2461,9 @@ function ExpandableToolBlock({
           paddingVertical: 2,
         }}
       >
-        <Text style={{ color: "#85858A", fontSize: 12.5, fontWeight: "600" }}>{title}</Text>
+        <Text style={{ color: live ? "#C9C9CE" : "#85858A", fontSize: 12.5, fontWeight: "600" }}>
+          {title}
+        </Text>
         <Text style={{ color: "#6C6C70", fontSize: 12 }}>{expanded ? "⌃" : "⌄"}</Text>
       </Pressable>
       {expanded ? (

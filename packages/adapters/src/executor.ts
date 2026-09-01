@@ -43,13 +43,13 @@ import {
   formatSkillsCatalogInstruction,
   humanizeToolName,
   inferAttachmentMimeType,
+  isMessagingChannelRun,
   isOneShotRoutineCrons,
-  isPhoneChannelRun,
   isTerminal,
+  messagingChannelPrivacyBlock,
+  messagingDmSurfaceNote,
   nextCronDateAcross,
   nextFence,
-  phoneChannelPrivacyBlock,
-  phoneDmSurfaceNote,
   planActionGate,
   promptInvokesSkill,
   redactSecrets,
@@ -387,8 +387,8 @@ export interface ExecutorDeps {
   dataDir?: string;
   notifications?: NotificationProvider;
   jobs: JobPublisher;
-  /** Phone surface; absent means zero phone queries and no phone prompts. */
-  phone?: { hasIdentity(botId: string): Promise<boolean> };
+  /** Messaging surface; absent means zero identity queries and no chat prompts. */
+  messaging?: { hasIdentity(botId: string): Promise<boolean> };
   listConnectedPluginSlugs?: (userId: string) => Promise<string[]>;
   /** Builtin web_search / web_fetch. Defaults to keyless HTTP when omitted. */
   web?: WebProvider;
@@ -1076,9 +1076,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
         const groupContext = thread.groupId
           ? await loadGroupContext(deps.prisma, thread.groupId, { id: bot.id, name: bot.name })
           : undefined;
-        // Phone runs are rare; the source lookup only happens for them.
-        const phoneSourceBlocks =
-          run.trigger === "phone" && run.sourceMessageId
+        // Messaging runs are rare; the source lookup only happens for them.
+        const messagingSourceBlocks =
+          run.trigger === "messaging" && run.sourceMessageId
             ? ((
                 await deps.prisma.message.findUnique({
                   where: { id: run.sourceMessageId },
@@ -1086,10 +1086,12 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 })
               )?.blocks as MessageBlock[] | undefined)
             : undefined;
-        const phoneChannelRun = isPhoneChannelRun(run.trigger, phoneSourceBlocks);
-        const hasPhoneIdentity = deps.phone ? await deps.phone.hasIdentity(bot.id) : false;
-        const phoneContext = hasPhoneIdentity
-          ? [phoneDmSurfaceNote(), phoneChannelRun ? phoneChannelPrivacyBlock() : null]
+        const messagingChannelRun = isMessagingChannelRun(run.trigger, messagingSourceBlocks);
+        const hasMessagingIdentity = deps.messaging
+          ? await deps.messaging.hasIdentity(bot.id)
+          : false;
+        const messagingContext = hasMessagingIdentity
+          ? [messagingDmSurfaceNote(), messagingChannelRun ? messagingChannelPrivacyBlock() : null]
               .filter(Boolean)
               .join("\n\n")
           : undefined;
@@ -1101,8 +1103,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
             trigger: run.trigger,
             semanticMemoryEnabled,
           }),
-          // Cross-owner agent connections only exist for phone-linked bots.
-          ...(hasPhoneIdentity ? agentConnectionTools : []),
+          // Cross-owner agent connections only exist for chat-linked bots.
+          ...(hasMessagingIdentity ? agentConnectionTools : []),
         ];
         const exposedConnectorTools = discovered.filter(
           (tool) => !builtinAgentTools.some((builtin) => builtin.name === tool.name),
@@ -2558,7 +2560,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               deps,
               { ...run, sourceMessageId: run.sourceMessageId },
               { id: bot.id, name: bot.name },
-              { phone: args.phone ? String(args.phone) : undefined },
+              { address: args.address ? String(args.address) : undefined },
             );
             if (!result.ok) return finish({ error: result.error });
             return finish(result);
@@ -2579,7 +2581,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               { ...run, sourceMessageId: run.sourceMessageId },
               { id: bot.id, name: bot.name },
               {
-                phone: args.phone ? String(args.phone) : undefined,
+                address: args.address ? String(args.address) : undefined,
                 message: redactSecrets(String(args.message ?? ""), runSecrets),
                 deliveryKey: executionId,
               },
@@ -2755,7 +2757,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               instructions: [
                 bot.instructions || `${bot.name}: ${bot.title}\n${bot.description}`,
                 groupContext,
-                phoneContext,
+                messagingContext,
                 memoryContext ? redactSecrets(memoryContext, runSecrets) : undefined,
                 scratchpadContext ? redactSecrets(scratchpadContext, runSecrets) : undefined,
                 historicalContext.length > 0
@@ -2797,7 +2799,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               },
               resumeFromCheckpoint: takeoverResume?.checkpoint,
               script,
-              allowSilentEmpty: allowSilentPeerMessage || phoneChannelRun,
+              allowSilentEmpty: allowSilentPeerMessage || messagingChannelRun,
               emptyResponseText,
               executeTool: scripted ? undefined : applyTool,
             },
@@ -2863,6 +2865,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
               const safeDetail = event.detail
                 ? redactSecrets(event.detail, runSecrets)
                 : event.detail;
+              const safeActions = event.actions?.map((action) => ({
+                id: action.id,
+                label: redactSecrets(action.label, runSecrets),
+              }));
               await checkpointAndRecordComputerWorkspace(deps, storedComputer, computer, context);
               const paused = await deps.events.pauseRunForInput({
                 spaceId: run.spaceId,
@@ -2872,7 +2878,17 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 attemptId: attempt.id,
                 leaseOwner: workerId,
                 leaseFence: fence,
-                blocks: [{ kind: "ask", text: safeText, detail: safeDetail, status: "pending" }],
+                blocks: [
+                  {
+                    kind: "ask",
+                    text: safeText,
+                    detail: safeDetail,
+                    status: "pending",
+                    actions: safeActions,
+                  },
+                ],
+                // Keep unredacted labels on the run for resume; message blocks stay redacted.
+                offeredActions: event.actions,
               });
               if (!paused) return;
               await notifyRun(deps, run, {
@@ -3090,7 +3106,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           flushPendingTools();
           if (!assembled) {
             messageSegments = completionMessageSegments(messageSegments, {
-              allowSilentEmpty: allowSilentPeerMessage || phoneChannelRun,
+              allowSilentEmpty: allowSilentPeerMessage || messagingChannelRun,
               emptyResponseText,
               suppressOutput: handedOff,
               skipEmptyFallback: publishedTerminalSubagent,

@@ -29,8 +29,8 @@ export function AccountSettingsOverlay({
   onAvatarStyleChange,
   isDeploymentOwner = false,
   sandboxProvider,
-  phoneEnabled = false,
-  onOpenPhone,
+  messagingEnabled = false,
+  onOpenMessaging,
   onClose,
 }: {
   email?: string | null;
@@ -41,8 +41,8 @@ export function AccountSettingsOverlay({
   onAvatarStyleChange: (style: AvatarStyle) => Promise<void>;
   isDeploymentOwner?: boolean;
   sandboxProvider?: string | null;
-  phoneEnabled?: boolean;
-  onOpenPhone?: () => void;
+  messagingEnabled?: boolean;
+  onOpenMessaging?: () => void;
   onClose: () => void;
 }) {
   const { t } = useLingui();
@@ -135,20 +135,20 @@ export function AccountSettingsOverlay({
 
         <ChangePasswordSection />
 
-        {phoneEnabled && onOpenPhone ? (
+        {messagingEnabled && onOpenMessaging ? (
           <section className="mt-5 rounded-[14px] border border-[#26262A] bg-[#101012] px-4 py-4">
             <h3 className="text-[15px] font-medium text-[#ECECEE]">
-              <Trans>Phone</Trans>
+              <Trans>Messaging</Trans>
             </h3>
             <p className="mt-3 text-[13px] text-[#7A7A80]">
-              <Trans>iMessage channels and agent connections.</Trans>
+              <Trans>Chat apps, group channels, and agent connections.</Trans>
             </p>
             <button
               type="button"
-              onClick={onOpenPhone}
+              onClick={onOpenMessaging}
               className="mt-3 rounded-full bg-[#26262A] px-4 py-2 text-[13.5px] font-medium text-[#ECECEE]"
             >
-              <Trans>Manage phone settings</Trans>
+              <Trans>Manage messaging settings</Trans>
             </button>
           </section>
         ) : null}

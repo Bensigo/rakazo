@@ -476,6 +476,15 @@ function toAgentTool(tool: ConnectorTool, host: ToolHost, exposedName: string): 
       if (tool.name === "request_takeover") {
         return { reason: String(raw.reason ?? "I need you on the screen.") };
       }
+      if (tool.name === "ask_user") {
+        const options = Array.isArray(raw.options) ? raw.options.map(String) : raw.options;
+        return {
+          question: String(raw.question ?? "What should I use?"),
+          // Keep a missing/invalid options value as-is so schema minItems can reject it;
+          // do not coerce to [] (that used to look like a valid empty list upstream).
+          options,
+        };
+      }
       if (tool.name === "request_secret") {
         return {
           label: String(raw.label ?? "Code"),
@@ -550,6 +559,30 @@ function toAgentTool(tool: ConnectorTool, host: ToolHost, exposedName: string): 
         });
         return {
           content: [{ type: "text", text: "Takeover requested." }],
+          details: args,
+          terminate: true,
+        };
+      }
+      if (tool.name === "ask_user") {
+        const options = Array.isArray(args.options)
+          ? args.options.map((option) => String(option).trim())
+          : [];
+        if (
+          options.length < 2 ||
+          options.length > 4 ||
+          options.some((option) => option.length === 0 || option.length > 80) ||
+          new Set(options).size !== options.length
+        ) {
+          throw new Error("ask_user requires two to four unique, non-empty options");
+        }
+        host.pausePending = true;
+        host.queue.push({
+          type: "ask",
+          text: String(args.question ?? "What should I use?"),
+          actions: options.map((label, index) => ({ id: `choice-${index + 1}`, label })),
+        });
+        return {
+          content: [{ type: "text", text: "Waiting for the user's choice." }],
           details: args,
           terminate: true,
         };
@@ -748,6 +781,21 @@ async function executeSubagent(host: ToolHost, executionId: string, args: Record
 }
 
 function parametersFor(tool: ConnectorTool) {
+  return builtinParameters(tool) ?? safeJsonSchemaParameters(tool);
+}
+
+/** A remote MCP server controls its own schemas, so a shape TypeBox cannot express must
+ * degrade to a permissive object instead of failing every turn for the whole bot. */
+function safeJsonSchemaParameters(tool: ConnectorTool) {
+  try {
+    return jsonSchemaParameters(tool.inputSchema);
+  } catch (error) {
+    console.error(`unsupported input schema for tool ${tool.name}`, error);
+    return Type.Object({});
+  }
+}
+
+function builtinParameters(tool: ConnectorTool) {
   if (tool.name === "write_file") {
     return Type.Object({ path: Type.String(), content: Type.String() });
   }
@@ -766,6 +814,16 @@ function parametersFor(tool: ConnectorTool) {
       label: Type.String(),
       purpose: Type.Union([Type.Literal("otp"), Type.Literal("password"), Type.Literal("api_key")]),
       connectionId: Type.Optional(Type.String()),
+    });
+  }
+  if (tool.name === "ask_user") {
+    return Type.Object({
+      question: Type.String({ maxLength: 240 }),
+      options: Type.Array(Type.String({ minLength: 1, maxLength: 80 }), {
+        minItems: 2,
+        maxItems: 4,
+        uniqueItems: true,
+      }),
     });
   }
   if (tool.name === "remember") {
@@ -801,7 +859,7 @@ function parametersFor(tool: ConnectorTool) {
       bot_id: Type.Optional(Type.String()),
     });
   }
-  return jsonSchemaParameters(tool.inputSchema);
+  return undefined;
 }
 
 /** Keep recent visual state without repeatedly resending every earlier full screenshot. */
@@ -864,7 +922,7 @@ function isAgentToolExecutionResult(result: unknown): result is AgentToolExecuti
   );
 }
 
-function jsonSchemaParameters(schema: Record<string, unknown>) {
+export function jsonSchemaParameters(schema: Record<string, unknown>) {
   const properties = (schema.properties ?? {}) as Record<string, unknown>;
   const required = new Set(Array.isArray(schema.required) ? schema.required.map(String) : []);
   const fields: Record<string, ReturnType<typeof Type.Optional>> = {};
@@ -877,15 +935,39 @@ function jsonSchemaParameters(schema: Record<string, unknown>) {
   return Type.Object(fields);
 }
 
+/** TypeBox only builds literals from primitives; anything else throws while the tool list is
+ * being assembled, which would take down the whole turn. */
+function enumUnion(values: readonly unknown[]) {
+  const members = values.map((value) =>
+    value === null
+      ? Type.Null()
+      : typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+        ? Type.Literal(value)
+        : undefined,
+  );
+  return members.every((member) => member !== undefined) ? Type.Union(members) : undefined;
+}
+
 function jsonField(spec: unknown): ReturnType<typeof Type.String> {
   const definition = spec && typeof spec === "object" ? (spec as Record<string, unknown>) : {};
   if (Array.isArray(definition.enum) && definition.enum.length > 0) {
-    return Type.Union(definition.enum.map((value) => Type.Literal(value))) as never;
+    const union = enumUnion(definition.enum);
+    if (union) return union as never;
   }
   const type = "type" in definition ? String(definition.type) : "string";
   if (type === "number" || type === "integer") return Type.Number() as never;
   if (type === "boolean") return Type.Boolean() as never;
-  if (type === "array") return Type.Array(jsonField(definition.items)) as never;
+  if (type === "array") {
+    const options: {
+      minItems?: number;
+      maxItems?: number;
+      uniqueItems?: boolean;
+    } = {};
+    if (typeof definition.minItems === "number") options.minItems = definition.minItems;
+    if (typeof definition.maxItems === "number") options.maxItems = definition.maxItems;
+    if (definition.uniqueItems === true) options.uniqueItems = true;
+    return Type.Array(jsonField(definition.items), options) as never;
+  }
   if (type === "object") return jsonSchemaParameters(definition) as never;
   return Type.String();
 }

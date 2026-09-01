@@ -94,6 +94,39 @@ export interface PauseRunForInput {
   leaseOwner: string;
   leaseFence: number;
   blocks: MessageBlock[];
+  /**
+   * Unredacted choice actions for resume. Persisted only on the run checkpoint
+   * (not in message blocks) so clients still see redacted labels.
+   */
+  offeredActions?: Array<{ id: string; label: string }>;
+}
+
+const CHOICE_ASK_CHECKPOINT_KIND = "choice_ask_v1";
+
+function choiceAskCheckpoint(actions: Array<{ id: string; label: string }>): string {
+  return JSON.stringify({ kind: CHOICE_ASK_CHECKPOINT_KIND, actions });
+}
+
+function resumeChoiceLabel(
+  selected: { id: string; label: string },
+  checkpoint: string | null | undefined,
+): string {
+  if (!checkpoint) return selected.label;
+  try {
+    const parsed = JSON.parse(checkpoint) as {
+      kind?: string;
+      actions?: Array<{ id?: unknown; label?: unknown }>;
+    };
+    if (parsed.kind !== CHOICE_ASK_CHECKPOINT_KIND || !Array.isArray(parsed.actions)) {
+      return selected.label;
+    }
+    const offered = parsed.actions.find((action) => action.id === selected.id);
+    return typeof offered?.label === "string" && offered.label.length > 0
+      ? offered.label
+      : selected.label;
+  } catch {
+    return selected.label;
+  }
 }
 
 export interface PauseRunForTakeover {
@@ -123,7 +156,7 @@ export interface SendUserMessageInput {
   userId: string;
   blocks: MessageBlock[];
   prompt: string;
-  trigger: "user" | "follow_up" | "webhook" | "phone";
+  trigger: "user" | "follow_up" | "webhook" | "messaging";
   clientNonce?: string;
   /** Skip task/run creation when the bot already has active work (follow-up behavior). */
   onlyIfIdle?: boolean;
@@ -397,7 +430,7 @@ export async function answerRunInput(
         threadId: input.threadId,
         status: "waiting_input",
       },
-      select: { botId: true, userId: true },
+      select: { botId: true, userId: true, checkpoint: true },
     });
     if (!run) return null;
     const message = await tx.message.findFirst({
@@ -416,6 +449,11 @@ export async function answerRunInput(
     if (pendingAsk?.kind !== "ask") return null;
     const approvalAsk = isApprovalAskBlock(pendingAsk);
     const secretAsk = isSecretAskBlock(pendingAsk);
+    const choiceAsk = !approvalAsk && !secretAsk && Boolean(pendingAsk.actions?.length);
+    const selectedChoice = choiceAsk
+      ? pendingAsk.actions?.find((action) => action.id === input.answer)
+      : undefined;
+    if (choiceAsk && !selectedChoice) return null;
     if (secretAsk && !runSecretWriter) return null;
     let approvalEffect: { id: string; kind: string } | null = null;
     let approvalUserId: string | null = null;
@@ -444,7 +482,10 @@ export async function answerRunInput(
         threadId: input.threadId,
         status: "waiting_input",
       },
-      data: { status: "queued" },
+      data: {
+        status: "queued",
+        ...(choiceAsk ? { checkpoint: null } : {}),
+      },
     });
     if (queued.count !== 1) return null;
 
@@ -493,9 +534,16 @@ export async function answerRunInput(
         data: { status: "approved" },
       });
     } else {
+      const resumeLabel = selectedChoice
+        ? resumeChoiceLabel(selectedChoice, run.checkpoint)
+        : undefined;
       const task = await tx.task.updateMany({
         where: { runs: { some: { id: input.runId } } },
-        data: { prompt: input.answer },
+        data: {
+          prompt: selectedChoice
+            ? `Selected choice ${selectedChoice.id}: ${resumeLabel}`
+            : input.answer,
+        },
       });
       if (task.count !== 1) throw new Error("Run task was not available to answer");
     }
@@ -545,7 +593,14 @@ export async function pauseRunForInput(
         leaseOwner: input.leaseOwner,
         leaseFence: input.leaseFence,
       },
-      data: { status: "waiting_input", leaseOwner: null, leaseExpiresAt: null },
+      data: {
+        status: "waiting_input",
+        leaseOwner: null,
+        leaseExpiresAt: null,
+        ...(input.offeredActions?.length
+          ? { checkpoint: choiceAskCheckpoint(input.offeredActions) }
+          : {}),
+      },
     });
     if (paused.count !== 1) return null;
 

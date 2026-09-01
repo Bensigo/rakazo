@@ -941,20 +941,35 @@ describe("mobile thread event reduction", () => {
     );
   });
 
-  it("formats phone channel messages with iMessage attribution", () => {
+  it("formats channel messages with their platform attribution", () => {
     expect(
       blockText(
-        mobileMessage("phone-1", [
+        mobileMessage("channel-1", [
           {
-            kind: "phone_channel_message",
+            kind: "channel_message",
+            provider: "sendblue",
             channelId: "ch-1",
-            fromNumber: "+15551234567",
+            fromAddress: "+15551234567",
             fromLabel: "Alex",
             text: "Hello from the group",
           },
         ]),
       ),
     ).toBe("iMessage · Alex: Hello from the group");
+    expect(
+      blockText(
+        mobileMessage("channel-2", [
+          {
+            kind: "channel_message",
+            provider: "slack",
+            channelId: "ch-2",
+            fromAddress: "U123456",
+            fromLabel: "Alex",
+            text: "Hello from the group",
+          },
+        ]),
+      ),
+    ).toBe("Slack · Alex: Hello from the group");
   });
 
   it("deduplicates durable messages and replaces matching transient subagent state", () => {

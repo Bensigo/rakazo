@@ -5,19 +5,20 @@ import { RPCHandler } from "@orpc/server/fetch";
 import type {
   JobPublisher,
   ManagedConnectorProvider,
-  MessagingProvider,
+  MessagingSurface,
   RealtimeFanout,
   SandboxProvider,
   TransactionalEmailProvider,
 } from "@rakazo/adapter-kit";
 import {
-  applyPhoneOutboundStatus,
+  applyMessagingOutboundStatus,
+  ChatSdkMessagingSurface,
   type ComposioProvider,
   type ConnectorRegistry,
   createBackgroundJobHandlers,
   createConnectorStack,
   createJobReconciler,
-  createPhoneContextLoader,
+  createMessagingContextLoader,
   createRunExecutor,
   createRunSandbox,
   createRunSecretWriter,
@@ -32,25 +33,23 @@ import {
   InMemoryRealtimeFanout,
   InstalledConnectorProvider,
   isComposioEnabled,
-  isPhoneSurfaceEnabled,
+  isMessagingSurfaceEnabled,
   isPipedreamEnabled,
   LocalAgentHomeStore,
   LocalArtifactStore,
   McpConnector,
   McpOAuthBroker,
+  messagingPlatformsFromEnv,
   PiAgentRuntime,
   PiOAuthLogins,
   PipedreamConnector,
   PostgresRealtimeFanout,
-  parseSendBlueInbound,
   pipedreamConfigFromEnv,
   pushTokenPath,
   type RemoteConnectorDependencies,
   ScriptedAgentRuntime,
-  SendBlueMessagingProvider,
   SmtpEmailProvider,
   SpaceMemoryProviderResolver,
-  sendBlueConfigFromEnv,
 } from "@rakazo/adapters";
 import { blockedAuthPaths, createAuth } from "@rakazo/auth";
 import { signupPolicyFromEnv } from "@rakazo/core";
@@ -58,15 +57,15 @@ import {
   createDb,
   createThreadEvents,
   type PrismaClient,
-  provisionPhoneIdentity,
+  provisionMessagingIdentity,
   requireMembership,
 } from "@rakazo/db";
 import { MarkdownMemoryStore } from "@rakazo/memory";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { type AppEnv, loadEnv } from "./env.js";
-import { createPhoneInboundHandler } from "./phone-inbound.js";
-import { mountPhoneWebhookRoutes } from "./phone-webhook.js";
+import { createMessagingInboundHandler } from "./messaging-inbound.js";
+import { mountMessagingWebhookRoutes } from "./messaging-webhook.js";
 import { createRouter } from "./router.js";
 import { mountVoiceHttpRoutes } from "./voice.js";
 import { mountWebhookHttpRoutes } from "./webhook.js";
@@ -79,7 +78,7 @@ export interface AppHandles {
   connector: DestinationEmulator;
   composio?: ComposioProvider;
   connectors: ConnectorRegistry;
-  messaging?: MessagingProvider;
+  messaging?: MessagingSurface;
   email?: TransactionalEmailProvider;
   executor: ReturnType<typeof createRunExecutor>;
   stop: () => Promise<void>;
@@ -91,7 +90,7 @@ export async function createApp(
     realtime?: RealtimeFanout;
     composio?: ComposioProvider;
     pipedream?: ManagedConnectorProvider;
-    messaging?: MessagingProvider;
+    messaging?: MessagingSurface;
     email?: TransactionalEmailProvider;
     remoteConnectors?: RemoteConnectorDependencies;
   } = {},
@@ -184,11 +183,14 @@ export async function createApp(
   const pipedream =
     pipedreamOverride ??
     (isPipedreamEnabled(pipedreamConfig) ? new PipedreamConnector(pipedreamConfig) : undefined);
-  const sendBlueConfig = sendBlueConfigFromEnv(env);
+  const messagingPlatforms = messagingPlatformsFromEnv(env);
   const messaging =
     messagingOverride ??
-    (isPhoneSurfaceEnabled(sendBlueConfig, env.deploymentModelKey)
-      ? new SendBlueMessagingProvider(sendBlueConfig)
+    (isMessagingSurfaceEnabled(messagingPlatforms, {
+      deploymentModelKey: env.deploymentModelKey,
+      openSignup: env.messagingOpenSignup,
+    })
+      ? new ChatSdkMessagingSurface(messagingPlatforms)
       : undefined);
   const localEmailEmulator =
     !emailOverride && !env.smtpUrl && env.emailEmulator
@@ -277,7 +279,7 @@ export async function createApp(
     notifications,
     jobs,
     events,
-    phone: messaging ? createPhoneContextLoader(prisma) : undefined,
+    messaging: messaging ? createMessagingContextLoader(prisma) : undefined,
     web: createWebProvider(),
   });
 
@@ -318,7 +320,11 @@ export async function createApp(
     remoteConnectors,
     artifacts,
     dataDir: env.dataDir,
-    phone: { enabled: Boolean(messaging) },
+    messaging: {
+      enabled: Boolean(messaging),
+      providers: messaging?.platforms().map((platform) => platform.provider) ?? [],
+      openSignup: env.messagingOpenSignup,
+    },
     env: {
       defaultProvider: env.defaultProvider,
       defaultModel: env.defaultModel,
@@ -389,44 +395,39 @@ export async function createApp(
     );
   });
   mountWebhookHttpRoutes(app, { prisma, secrets, events, jobs });
-  // The phone webhook only exists when the messaging surface is enabled.
-  if (messaging && env.sendblueSigningSecret) {
-    mountPhoneWebhookRoutes(app, {
-      signingSecret: env.sendblueSigningSecret,
-      signingHeader: "sb-signing-secret",
-      parseInbound: parseSendBlueInbound,
-      handleStatus: (event) => applyPhoneOutboundStatus(prisma, event),
-      handle: createPhoneInboundHandler({
-        prisma,
-        events,
-        jobs,
-        provision: (phoneE164, policyEnv) => provisionPhoneIdentity(prisma, phoneE164, policyEnv),
-        signupPolicy: {
-          signupsEnabled: env.signupsEnabled,
-          signupAllowlist: env.signupAllowlist,
-        },
-        lineNumber: env.sendbluePhoneNumber ?? "",
-        typing: (toNumber) => {
-          // Keep the raw phone number out of trace ids — those reach logs
-          // and telemetry, a different trust boundary than the database.
-          const operationId = `phone.typing:${randomUUID()}`;
-          return (
-            messaging.sendTypingIndicator?.(
-              { to: toNumber },
-              {
-                operationId,
-                traceId: operationId,
-                spaceId: "",
-                userId: "",
-                // Cosmetic side call: bound it so a stalled vendor response
-                // can never pin the webhook handler's event loop slot.
-                signal: AbortSignal.timeout(2000),
-              },
-            ) ?? Promise.resolve()
-          );
-        },
-      }),
+  // Messaging webhooks only exist when the surface is enabled.
+  if (messaging) {
+    const inbound = createMessagingInboundHandler({
+      prisma,
+      events,
+      jobs,
+      provision: (request, policyEnv) => provisionMessagingIdentity(prisma, request, policyEnv),
+      openSignup: env.messagingOpenSignup,
+      signupPolicy: {
+        signupsEnabled: env.signupsEnabled,
+        signupAllowlist: env.signupAllowlist,
+      },
+      typing: (threadId) => {
+        // Keep conversation addresses out of trace ids — those reach logs
+        // and telemetry, a different trust boundary than the database.
+        const operationId = `messaging.typing:${randomUUID()}`;
+        return messaging.sendTyping(threadId, {
+          operationId,
+          traceId: operationId,
+          spaceId: "",
+          userId: "",
+          // Cosmetic side call: the wait is bounded so a stalled vendor
+          // response never holds our callback chain (the Chat SDK adapter
+          // API cannot cancel the underlying request itself).
+          signal: AbortSignal.timeout(2000),
+        });
+      },
     });
+    messaging.onInbound(async (event) => {
+      if (event.type === "message") await inbound(event);
+      else await applyMessagingOutboundStatus(prisma, event);
+    });
+    mountMessagingWebhookRoutes(app, { messaging });
   }
 
   app.get("/health", (c) =>
@@ -436,7 +437,7 @@ export async function createApp(
       sandbox: env.sandboxProvider,
       composio: Boolean(stack.composio),
       pipedream: Boolean(pipedream),
-      phone: Boolean(messaging),
+      messaging: Boolean(messaging),
       email: email?.describe().id ?? null,
       jobs: jobKind,
       realtime: realtime.describe().id,

@@ -2,7 +2,12 @@ import { randomInt } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { SendBlueEmulator, SendBlueMessagingProvider } from "@rakazo/adapters";
+import {
+  ChatSdkMessagingSurface,
+  createEmulatedSendbluePlatform,
+  SendBlueEmulator,
+} from "@rakazo/adapters";
+import { formatMessagingLinkCode, issueMessagingLinkCode } from "@rakazo/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 process.env.WAKEUP_DRIVER = "memory";
@@ -10,17 +15,18 @@ process.env.SANDBOX_PROVIDER = "fake";
 process.env.AGENT_RUNTIME = "scripted";
 
 const hasDb = process.env.VERIFY_DATABASE === "1" && Boolean(process.env.DATABASE_URL);
-const describePhone = hasDb ? describe.sequential : describe.skip;
+const describeMessaging = hasDb ? describe.sequential : describe.skip;
 
 type App = { request: (input: string | Request, init?: RequestInit) => Promise<Response> };
 
 // Offline journeys: injected SendBlueEmulator fetch, no live vendor or paid line.
-describePhone("phone surface journeys", () => {
+describeMessaging("messaging surface journeys", () => {
   let app: App;
   let stop: () => Promise<void>;
   let prisma: any;
   const emulator = new SendBlueEmulator();
-  const dataDir = mkdtempSync(path.join(tmpdir(), "rakazo-phone-"));
+  const platform = createEmulatedSendbluePlatform(emulator);
+  const dataDir = mkdtempSync(path.join(tmpdir(), "rakazo-messaging-"));
   // Unique per run: identities, threads, and outbox rows persist in the dev
   // database. Random E.164 fixtures — a timestamp suffix repeats within
   // hours and collides with earlier runs.
@@ -28,6 +34,15 @@ describePhone("phone surface journeys", () => {
   const uniqueNumber = () => `+1555${String(randomInt(10_000_000)).padStart(7, "0")}`;
   const sender = uniqueNumber();
   const dmHandle = `journey-dm-${stamp}`;
+  // Channels key on the opaque Chat SDK thread id, not the raw vendor group
+  // id; derive expectations exactly as the production adapter encodes them.
+  const groupThreadId = (groupId: string) =>
+    platform.adapter.encodeThreadId({ fromNumber: emulator.phoneNumber, groupId });
+  const dmThreadId = (address: string) => platform.directThreadId!(address);
+  const findIdentity = (address: string) =>
+    prisma.messagingIdentity.findUnique({
+      where: { provider_address: { provider: "sendblue", address } },
+    });
 
   beforeAll(async () => {
     const { createApp } = await import("../../../apps/api/src/app.ts");
@@ -36,17 +51,10 @@ describePhone("phone surface journeys", () => {
       dataDir,
       sandboxProvider: "fake",
       agentRuntime: "scripted",
-      messaging: new SendBlueMessagingProvider(
-        {
-          apiKeyId: "emulated",
-          apiSecret: "emulated",
-          signingSecret: emulator.signingSecret,
-          phoneNumber: emulator.phoneNumber,
-        },
-        { fetch: emulator.fetch },
-      ),
-      sendblueSigningSecret: emulator.signingSecret,
-      sendbluePhoneNumber: emulator.phoneNumber,
+      // These journeys exercise the Poke-style open line; the linking journey
+      // below covers the default (linking-only) posture explicitly.
+      messagingOpenSignup: true,
+      messaging: new ChatSdkMessagingSurface([platform]),
     });
     app = handles.app;
     stop = handles.stop;
@@ -67,24 +75,36 @@ describePhone("phone surface journeys", () => {
     );
     expect(res.status).toBe(200);
 
-    await waitForDatabase(async () =>
-      Boolean(await prisma.phoneIdentity.findUnique({ where: { phoneE164: sender } })),
-    );
+    // The Chat SDK adapter dispatches inbound processing without awaiting it,
+    // so all effects behind the 200 are eventually consistent.
+    const identity = await waitForDatabase(async () => findIdentity(sender));
     // A non-null provider handle is the last durable signal of the whole
     // mirror loop (the claim flips status before the provider call lands).
     await waitForDatabase(async () =>
       Boolean(
-        await prisma.phoneOutbound.findFirst({
-          where: { toNumber: sender, kind: "dm", status: "sent", providerHandle: { not: null } },
+        await prisma.messagingOutbound.findFirst({
+          where: {
+            identityId: identity.id,
+            kind: "dm",
+            status: "sent",
+            providerHandle: { not: null },
+          },
         }),
       ),
     );
     expect(emulator.sent.some((send) => send.kind === "dm" && send.to === sender)).toBe(true);
 
-    const identity = await prisma.phoneIdentity.findUnique({ where: { phoneE164: sender } });
-    expect(identity.outboundSinceInbound).toBe(1);
-    const outbound = await prisma.phoneOutbound.findMany({
-      where: { toNumber: sender, kind: "dm" },
+    // The counter increments one statement after providerHandle lands, so
+    // poll rather than racing the drain's last write.
+    const refreshed = await waitForDatabase(async () => {
+      const row = await findIdentity(sender);
+      return row?.outboundSinceInbound === 1 ? row : null;
+    });
+    // The 1:1 conversation id is learned from the inbound webhook; outbound
+    // DMs resolve through it instead of a provider lookup.
+    expect(refreshed.dmThreadId).toBe(dmThreadId(sender));
+    const outbound = await prisma.messagingOutbound.findMany({
+      where: { identityId: identity.id, kind: "dm" },
     });
     expect(outbound).toHaveLength(1);
     expect(outbound[0].providerHandle).toBeTruthy();
@@ -95,7 +115,7 @@ describePhone("phone surface journeys", () => {
         role: "user",
       },
     });
-    expect(userMessage.clientNonce).toMatch(/^phone:/);
+    expect(userMessage.clientNonce).toBe(`messaging:sendblue:${dmHandle}`);
   });
 
   it("replays the same handle without a duplicate message or send", async () => {
@@ -111,14 +131,14 @@ describePhone("phone surface journeys", () => {
     // Give any erroneous duplicate work a chance to appear.
     await new Promise((resolve) => setTimeout(resolve, 500));
 
-    const identity = await prisma.phoneIdentity.findUnique({ where: { phoneE164: sender } });
+    const identity = await findIdentity(sender);
     const thread = await prisma.thread.findFirst({ where: { botId: identity.botId } });
     const userMessages = await prisma.message.findMany({
       where: { threadId: thread.id, role: "user" },
     });
     expect(userMessages).toHaveLength(1);
-    const outbound = await prisma.phoneOutbound.findMany({
-      where: { toNumber: sender, kind: "dm" },
+    const outbound = await prisma.messagingOutbound.findMany({
+      where: { identityId: identity.id, kind: "dm" },
     });
     expect(outbound).toHaveLength(1);
     expect(emulator.sent.filter((send) => send.kind === "dm" && send.to === sender)).toHaveLength(
@@ -129,6 +149,7 @@ describePhone("phone surface journeys", () => {
   it("runs the channel loop: discovery, invite, intro, YES, fan-out, attributed post", async () => {
     const stranger = uniqueNumber();
     const groupId = `grp-${stamp}`;
+    const threadId = groupThreadId(groupId);
 
     // 1. Discovery: first group message creates the channel, invites the
     // linked sender, and posts one intro for the unlinked stranger.
@@ -145,34 +166,30 @@ describePhone("phone surface journeys", () => {
 
     await waitForDatabase(async () =>
       Boolean(
-        await prisma.phoneOutbound.findFirst({
-          where: {
-            providerGroupId: groupId,
-            kind: "intro",
-            status: "sent",
-            providerHandle: { not: null },
-          },
+        await prisma.messagingOutbound.findFirst({
+          where: { threadId, kind: "intro", status: "sent", providerHandle: { not: null } },
         }),
       ),
     );
-    const channel = await prisma.phoneChannel.findUnique({ where: { providerGroupId: groupId } });
+    const channel = await prisma.messagingChannel.findUnique({ where: { threadId } });
     expect(channel).toBeTruthy();
-    const members = await prisma.phoneChannelMember.findMany({
+    expect(channel.provider).toBe("sendblue");
+    const members = await prisma.messagingChannelMember.findMany({
       where: { channelId: channel.id },
-      orderBy: { phoneE164: "asc" },
+      orderBy: { address: "asc" },
     });
     expect(members).toHaveLength(2);
-    const senderMember = members.find((m: any) => m.phoneE164 === sender);
+    const senderMember = members.find((m: any) => m.address === sender);
     expect(senderMember.status).toBe("invited");
     expect(senderMember.identityId).toBeTruthy();
-    const strangerMember = members.find((m: any) => m.phoneE164 === stranger);
+    const strangerMember = members.find((m: any) => m.address === stranger);
     expect(strangerMember.identityId).toBeNull();
     // invite DM went out to the sender, intro went to the group, both once
     expect(
       emulator.sent.filter((send) => send.kind === "group" && send.groupId === groupId),
     ).toHaveLength(1);
     // the invited-only sender's message was not fanned out to any bot
-    const identity = await prisma.phoneIdentity.findUnique({ where: { phoneE164: sender } });
+    const identity = await findIdentity(sender);
     const runsBefore = await prisma.run.count({ where: { botId: identity.botId } });
 
     // 2. The owner approves by text command.
@@ -185,8 +202,8 @@ describePhone("phone surface journeys", () => {
     );
     expect(yes.status).toBe(200);
     await waitForDatabase(async () => {
-      const member = await prisma.phoneChannelMember.findUnique({
-        where: { channelId_phoneE164: { channelId: channel.id, phoneE164: sender } },
+      const member = await prisma.messagingChannelMember.findUnique({
+        where: { channelId_address: { channelId: channel.id, address: sender } },
       });
       return member?.status === "approved";
     });
@@ -206,21 +223,17 @@ describePhone("phone surface journeys", () => {
 
     await waitForDatabase(async () =>
       Boolean(
-        await prisma.phoneOutbound.findFirst({
-          where: {
-            providerGroupId: groupId,
-            kind: "group",
-            status: "sent",
-            providerHandle: { not: null },
-          },
+        await prisma.messagingOutbound.findFirst({
+          where: { threadId, kind: "group", status: "sent", providerHandle: { not: null } },
         }),
       ),
     );
-    const posts = await prisma.phoneOutbound.findMany({
-      where: { providerGroupId: groupId, kind: "group", status: "sent" },
+    const posts = await prisma.messagingOutbound.findMany({
+      where: { threadId, kind: "group", status: "sent" },
     });
     expect(posts).toHaveLength(1);
-    expect(posts[0].body).toMatch(/^Phone's agent: /);
+    // Messaging-provisioned users default to "<Provider> <last4>".
+    expect(posts[0].body).toMatch(/^Sendblue's agent: /);
     expect(await prisma.run.count({ where: { botId: identity.botId } })).toBeGreaterThan(
       runsBefore,
     );
@@ -238,7 +251,7 @@ describePhone("phone surface journeys", () => {
       body: await request.text(),
     });
     expect(res.status).toBe(401);
-    expect(await prisma.phoneIdentity.findUnique({ where: { phoneE164: intruder } })).toBeNull();
+    expect(await findIdentity(intruder)).toBeNull();
   });
 
   it("declines a channel invite on NO without waking the bot", async () => {
@@ -254,10 +267,7 @@ describePhone("phone surface journeys", () => {
       }),
     );
     expect(provision.status).toBe(200);
-    await waitForDatabase(async () =>
-      Boolean(await prisma.phoneIdentity.findUnique({ where: { phoneE164: owner } })),
-    );
-    const identity = await prisma.phoneIdentity.findUnique({ where: { phoneE164: owner } });
+    const identity = await waitForDatabase(async () => findIdentity(owner));
     const runsBefore = await prisma.run.count({ where: { botId: identity.botId } });
 
     const discovery = await app.request(
@@ -271,7 +281,7 @@ describePhone("phone surface journeys", () => {
     );
     expect(discovery.status).toBe(200);
     const channel = await waitForDatabase(async () =>
-      prisma.phoneChannel.findUnique({ where: { providerGroupId: groupId } }),
+      prisma.messagingChannel.findUnique({ where: { threadId: groupThreadId(groupId) } }),
     );
 
     const no = await app.request(
@@ -283,8 +293,8 @@ describePhone("phone surface journeys", () => {
     );
     expect(no.status).toBe(200);
     await waitForDatabase(async () => {
-      const member = await prisma.phoneChannelMember.findUnique({
-        where: { channelId_phoneE164: { channelId: channel.id, phoneE164: owner } },
+      const member = await prisma.messagingChannelMember.findUnique({
+        where: { channelId_address: { channelId: channel.id, address: owner } },
       });
       return member?.status === "declined";
     });
@@ -316,9 +326,7 @@ describePhone("phone surface journeys", () => {
       }),
     );
     expect(provision.status).toBe(200);
-    await waitForDatabase(async () =>
-      Boolean(await prisma.phoneIdentity.findUnique({ where: { phoneE164: owner } })),
-    );
+    await waitForDatabase(async () => findIdentity(owner));
 
     const discovery = await app.request(
       emulator.buildInboundRequest({
@@ -331,7 +339,7 @@ describePhone("phone surface journeys", () => {
     );
     expect(discovery.status).toBe(200);
     const channel = await waitForDatabase(async () =>
-      prisma.phoneChannel.findUnique({ where: { providerGroupId: groupId } }),
+      prisma.messagingChannel.findUnique({ where: { threadId: groupThreadId(groupId) } }),
     );
 
     const yes = await app.request(
@@ -343,8 +351,8 @@ describePhone("phone surface journeys", () => {
     );
     expect(yes.status).toBe(200);
     await waitForDatabase(async () => {
-      const member = await prisma.phoneChannelMember.findUnique({
-        where: { channelId_phoneE164: { channelId: channel.id, phoneE164: owner } },
+      const member = await prisma.messagingChannelMember.findUnique({
+        where: { channelId_address: { channelId: channel.id, address: owner } },
       });
       return member?.status === "approved";
     });
@@ -358,8 +366,8 @@ describePhone("phone surface journeys", () => {
     );
     expect(leave.status).toBe(200);
     await waitForDatabase(async () => {
-      const member = await prisma.phoneChannelMember.findUnique({
-        where: { channelId_phoneE164: { channelId: channel.id, phoneE164: owner } },
+      const member = await prisma.messagingChannelMember.findUnique({
+        where: { channelId_address: { channelId: channel.id, address: owner } },
       });
       return member?.status === "left";
     });
@@ -375,8 +383,8 @@ describePhone("phone surface journeys", () => {
     );
     expect(rejoin.status).toBe(200);
     await waitForDatabase(async () => {
-      const member = await prisma.phoneChannelMember.findUnique({
-        where: { channelId_phoneE164: { channelId: channel.id, phoneE164: owner } },
+      const member = await prisma.messagingChannelMember.findUnique({
+        where: { channelId_address: { channelId: channel.id, address: owner } },
       });
       return member?.status === "invited";
     });
@@ -394,9 +402,15 @@ describePhone("phone surface journeys", () => {
     );
     expect(res.status).toBe(200);
 
+    const identity = await waitForDatabase(async () => findIdentity(texter));
     const outbound = await waitForDatabase(async () =>
-      prisma.phoneOutbound.findFirst({
-        where: { toNumber: texter, kind: "dm", status: "sent", providerHandle: { not: null } },
+      prisma.messagingOutbound.findFirst({
+        where: {
+          identityId: identity.id,
+          kind: "dm",
+          status: "sent",
+          providerHandle: { not: null },
+        },
       }),
     );
     expect(outbound.providerHandle).toBeTruthy();
@@ -406,9 +420,29 @@ describePhone("phone surface journeys", () => {
     );
     expect(status.status).toBe(200);
     await waitForDatabase(async () => {
-      const row = await prisma.phoneOutbound.findUnique({ where: { id: outbound.id } });
+      const row = await prisma.messagingOutbound.findUnique({ where: { id: outbound.id } });
       return row?.status === "failed";
     });
+  });
+
+  it("still accepts sendblue inbound on the legacy phone webhook path", async () => {
+    const texter = uniqueNumber();
+    const source = emulator.buildInboundRequest({
+      fromNumber: texter,
+      content: "legacy path",
+      handle: `legacy-dm-${stamp}`,
+    });
+    const res = await app.request("https://rakazo.test/api/v1/phone/webhook", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "sb-signing-secret": emulator.signingSecret,
+      },
+      body: await source.text(),
+    });
+    expect(res.status).toBe(200);
+    // Provisioning proves the legacy route reached the sendblue platform.
+    await waitForDatabase(async () => findIdentity(texter));
   });
 
   it("ignores a nested vendor envelope that is not a flat inbound message", async () => {
@@ -426,8 +460,10 @@ describePhone("phone surface journeys", () => {
           content: "should not provision",
           is_outbound: false,
           status: "RECEIVED",
+          service: "iMessage",
           message_handle: `envelope-trap-${stamp}`,
           from_number: stranger,
+          to_number: emulator.phoneNumber,
           sendblue_number: emulator.phoneNumber,
           participants: [stranger, emulator.phoneNumber],
         },
@@ -435,37 +471,51 @@ describePhone("phone surface journeys", () => {
     });
     expect(res.status).toBe(200);
     await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(await prisma.phoneIdentity.findUnique({ where: { phoneE164: stranger } })).toBeNull();
+    expect(await findIdentity(stranger)).toBeNull();
   });
 
-  it("reads registered groups through the nested vendor getGroup envelope", async () => {
-    const groupId = `grp-envelope-${stamp}`;
-    emulator.registerGroup(groupId, {
-      name: "Envelope Check",
-      participants: ["+15551110001", "+15551110002"],
+  // Runs last: it unlinks the first journey's identity to free its bot.
+  it("links a new address to an existing account via a web-issued code", async () => {
+    const owner = await findIdentity(sender);
+    expect(owner).toBeTruthy();
+    // Unlink (as the web UI would) so the bot is free to link again.
+    await prisma.messagingIdentity.delete({ where: { id: owner.id } });
+    const issued = await issueMessagingLinkCode(prisma, {
+      userId: owner.userId,
+      spaceId: owner.spaceId,
+      botId: owner.botId,
     });
-    const { SendBlueMessagingProvider } = await import("@rakazo/adapters");
-    const provider = new SendBlueMessagingProvider(
-      {
-        apiKeyId: "emulated",
-        apiSecret: "emulated",
-        signingSecret: emulator.signingSecret,
-        phoneNumber: emulator.phoneNumber,
-      },
-      { fetch: emulator.fetch },
+    const newAddress = uniqueNumber();
+    const response = await app.request(
+      emulator.buildInboundRequest({
+        fromNumber: newAddress,
+        content: formatMessagingLinkCode(issued.code),
+      }),
     );
-    const group = await provider.getGroup(groupId, {
-      operationId: "journey-get-group",
-      traceId: "journey-get-group",
-      spaceId: "ws",
-      userId: "user",
-      signal: AbortSignal.timeout(5_000),
-    });
-    expect(group).toEqual({
-      id: groupId,
-      name: "Envelope Check",
-      participants: ["+15551110001", "+15551110002"],
-    });
+    expect(response.status).toBe(200);
+    const linked = await waitForDatabase(() => findIdentity(newAddress));
+    expect(linked.userId).toBe(owner.userId);
+    expect(linked.botId).toBe(owner.botId);
+    // The confirmation DM drains through the vendor to the new address.
+    await waitForDatabase(async () =>
+      emulator.sent.find(
+        (message) => message.to === newAddress && message.body.startsWith("Linked"),
+      ),
+    );
+    // The code is single-use: a replay never binds another address to the
+    // issuer's account. (This suite runs the open line, so the replayer
+    // auto-provisions a fresh account of their own instead.)
+    const replayAddress = uniqueNumber();
+    const replay = await app.request(
+      emulator.buildInboundRequest({
+        fromNumber: replayAddress,
+        content: formatMessagingLinkCode(issued.code),
+      }),
+    );
+    expect(replay.status).toBe(200);
+    const replayIdentity = await waitForDatabase(() => findIdentity(replayAddress));
+    expect(replayIdentity.userId).not.toBe(owner.userId);
+    expect(replayIdentity.botId).not.toBe(owner.botId);
   });
 });
 

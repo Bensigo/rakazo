@@ -124,6 +124,7 @@ import {
   computersAreUnavailable,
 } from "../components/ComputersUnavailableHint";
 import { MessageHoverMetadata } from "../components/MessageHoverMetadata";
+import { ToolActivityDisclosure, ToolSteps } from "../components/ToolActivityDisclosure";
 import { SkillDraftCard } from "../components/teach/SkillDraftCard";
 import { TeachCaptureOverlay } from "../components/teach/TeachCaptureOverlay";
 import { TeachComputerSection } from "../components/teach/TeachComputerSection";
@@ -142,6 +143,7 @@ import { dictation } from "../lib/dictation";
 import { localTimezone } from "../lib/local-timezone";
 import { connectMcpOauth } from "../lib/mcp-connect";
 import { copyableMessageText } from "../lib/message-text";
+import { providerLabel } from "../lib/messaging";
 import { isFileDrag, revokePendingAttachmentPreviews } from "../lib/pending-attachments";
 import { markAfterPaint, markOnce } from "../lib/performance";
 import { clearSpaceSelection, rpc, selectedSpaceId, selectSpace } from "../lib/rpc";
@@ -190,8 +192,10 @@ const AccountSettingsOverlay = lazy(() =>
     default: module.AccountSettingsOverlay,
   })),
 );
-const PhoneSettingsOverlay = lazy(() =>
-  import("./PhoneSettingsOverlay").then((module) => ({ default: module.PhoneSettingsOverlay })),
+const MessagingSettingsOverlay = lazy(() =>
+  import("./MessagingSettingsOverlay").then((module) => ({
+    default: module.MessagingSettingsOverlay,
+  })),
 );
 const ModelSettingsOverlay = lazy(() =>
   import("./ModelSettingsOverlay").then((module) => ({ default: module.ModelSettingsOverlay })),
@@ -377,8 +381,8 @@ export function ShellPage() {
   const [pluginsOpen, setPluginsOpen] = useState(false);
   const [mcpOpen, setMcpOpen] = useState(false);
   const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
-  const [phoneSettingsOpen, setPhoneSettingsOpen] = useState(false);
-  const [phoneSurfaceEnabled, setPhoneSurfaceEnabled] = useState(false);
+  const [messagingSettingsOpen, setMessagingSettingsOpen] = useState(false);
+  const [messagingSurfaceEnabled, setMessagingSurfaceEnabled] = useState(false);
   const [accountSettingsFocusUsage, setAccountSettingsFocusUsage] = useState(false);
   const [modelsOpen, setModelsOpen] = useState(false);
   const [memorySettingsOpen, setMemorySettingsOpen] = useState(false);
@@ -438,10 +442,10 @@ export function ShellPage() {
   useEffect(() => {
     if (!session.data?.user) return;
     let cancelled = false;
-    void rpc.phone
+    void rpc.messaging
       .status()
       .then((status) => {
-        if (!cancelled) setPhoneSurfaceEnabled(status.enabled);
+        if (!cancelled) setMessagingSurfaceEnabled(status.enabled);
       })
       .catch(() => undefined);
     return () => {
@@ -3597,8 +3601,8 @@ export function ShellPage() {
           />
         ) : null}
         {mcpOpen ? <McpServersOverlay onClose={() => setMcpOpen(false)} /> : null}
-        {phoneSettingsOpen ? (
-          <PhoneSettingsOverlay onClose={() => setPhoneSettingsOpen(false)} />
+        {messagingSettingsOpen ? (
+          <MessagingSettingsOverlay onClose={() => setMessagingSettingsOpen(false)} />
         ) : null}
       </Suspense>
 
@@ -3612,10 +3616,10 @@ export function ShellPage() {
             avatarStyle={bootstrapMe?.avatarStyle ?? "robot"}
             isDeploymentOwner={bootstrapMe?.isDeploymentOwner === true}
             sandboxProvider={bootstrapMe?.sandboxProvider}
-            phoneEnabled={phoneSurfaceEnabled}
-            onOpenPhone={() => {
+            messagingEnabled={messagingSurfaceEnabled}
+            onOpenMessaging={() => {
               setAccountSettingsOpen(false);
-              setPhoneSettingsOpen(true);
+              setMessagingSettingsOpen(true);
             }}
             onAvatarStyleChange={async (avatarStyle) => {
               const nextMe = await rpc.preferences.update({ avatarStyle });
@@ -4734,9 +4738,7 @@ function MentionChipIcon({ mention }: { mention: ComposerMention }) {
 
 function previewMessageText(message: ThreadMessage): string {
   const text = message.blocks
-    .map((block) =>
-      block.kind === "text" || block.kind === "phone_channel_message" ? block.text : "",
-    )
+    .map((block) => (block.kind === "text" || block.kind === "channel_message" ? block.text : ""))
     .filter(Boolean)
     .join(" ")
     .trim();
@@ -4858,42 +4860,6 @@ function ComputerReleaseActions({
   );
 }
 
-function ToolSteps({
-  steps,
-  currentIndex,
-}: {
-  steps: Extract<ThreadMessage["blocks"][number], { kind: "steps" }>["steps"];
-  currentIndex?: number;
-}) {
-  return (
-    <div className="space-y-1.5">
-      {steps.map((step, index) => {
-        const isCurrent = index === currentIndex;
-        return (
-          <div key={index} className="flex items-center gap-2">
-            <span
-              className="text-[13px]"
-              style={{
-                color: isCurrent ? "#F5A03C" : "#4ECB71",
-                animation: isCurrent ? "rkPulse 1.2s ease-in-out infinite" : undefined,
-              }}
-            >
-              {isCurrent ? "◷" : "✓"}
-            </span>
-            <span
-              className="truncate text-[14px]"
-              style={{ color: isCurrent ? "#DFDFE2" : "#85858A" }}
-            >
-              {step.label}
-              {step.count > 1 ? ` ×${step.count}` : ""}
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 const MessageView = memo(function MessageView({
   artifactTarget,
   canAnswer,
@@ -4976,12 +4942,16 @@ const MessageView = memo(function MessageView({
               if (block.kind === "steps") {
                 const isCurrentBlock = isLive && i === message.blocks.length - 1;
                 return (
-                  <div key={i} dir="ltr">
+                  <ToolActivityDisclosure
+                    key={i}
+                    live={isLive}
+                    label={isLive ? t`Working…` : t`Actions`}
+                  >
                     <ToolSteps
                       steps={block.steps}
                       currentIndex={isCurrentBlock ? block.steps.length - 1 : undefined}
                     />
-                  </div>
+                  </ToolActivityDisclosure>
                 );
               }
               if (block.kind === "text" || block.kind === "progress") {
@@ -5043,14 +5013,14 @@ const MessageView = memo(function MessageView({
             />
           );
         }
-        if (block.kind === "phone_channel_message") {
+        if (block.kind === "channel_message") {
           return (
             <div
               key={i}
               className="flex items-center justify-center gap-2 py-1 text-[13.5px] text-[#85858A]"
             >
               <span>
-                iMessage · {block.fromLabel}: {block.text}
+                {providerLabel(block.provider)} · {block.fromLabel}: {block.text}
               </span>
             </div>
           );
@@ -5085,10 +5055,12 @@ const MessageView = memo(function MessageView({
                 className="max-w-[74%] space-y-1.5 rounded-[20px] bg-[#1A1A1D] px-[18px] py-3"
                 dir="ltr"
               >
-                <ToolSteps
-                  steps={block.steps}
-                  currentIndex={isLive ? block.steps.length - 1 : undefined}
-                />
+                <ToolActivityDisclosure live={isLive} label={isLive ? t`Working…` : t`Actions`}>
+                  <ToolSteps
+                    steps={block.steps}
+                    currentIndex={isLive ? block.steps.length - 1 : undefined}
+                  />
+                </ToolActivityDisclosure>
               </div>
             </div>
           );
