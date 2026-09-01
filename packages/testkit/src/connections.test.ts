@@ -445,7 +445,7 @@ describeWithDatabase("Composio catalog reconciliation", () => {
     });
     expect(install.secretConfigured).toBe(false);
     expect(Array.isArray((install.config as { operations?: unknown[] }).operations)).toBe(true);
-    expect(((install.config as { operations: unknown[] }).operations).length).toBeGreaterThan(0);
+    expect((install.config as { operations: unknown[] }).operations.length).toBeGreaterThan(0);
 
     const provider = new InstalledConnectorProvider(
       handles.prisma,
