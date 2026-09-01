@@ -31,7 +31,9 @@ describe("run tool selection", () => {
       graphicalToolsAllowed: false,
       pageBrowserAllowed: true,
     });
-    expect(withPage).toEqual(expect.arrayContaining(["browser_navigate", "browser_snapshot", "browser_act"]));
+    expect(withPage).toEqual(
+      expect.arrayContaining(["browser_navigate", "browser_snapshot", "browser_act"]),
+    );
     expect(withPage).not.toEqual(expect.arrayContaining(["computer_observe", "computer_act"]));
 
     const withoutPage = toolNames("message", null, {
@@ -43,7 +45,6 @@ describe("run tool selection", () => {
     );
     expect(withoutPage).toEqual(expect.arrayContaining(["computer_observe", "computer_act"]));
   });
-
 
   it("withholds schedule creation only from routine-triggered runs", () => {
     expect(toolNames("routine")).not.toContain("schedule_create");
