@@ -77,9 +77,6 @@ export default function RoutineDetail() {
               {` · ${routine.timezone}`}
             </Text>
           </View>
-          <Text style={{ color: "#85858A", fontSize: 13 }}>
-            Edit triggers on web. Mobile is read-only.
-          </Text>
           <View style={{ gap: 8 }}>
             <Text style={{ color: "#85858A", fontSize: 13, textTransform: "uppercase" }}>
               Prompt
