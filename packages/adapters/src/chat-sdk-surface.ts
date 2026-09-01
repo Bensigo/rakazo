@@ -264,7 +264,7 @@ export class ChatSdkMessagingSurface implements MessagingSurface {
     return {
       type: "message",
       provider,
-      handle: `reaction:${reaction.messageId}:${emojiKey}`,
+      handle: `reaction:${reaction.messageId}:${from}:${emojiKey}`,
       threadId: thread.id,
       isDirect,
       from,

@@ -264,5 +264,7 @@ describe("routine event triggers", () => {
     expect(textMentionsBot("ping <@B123>", ["Scout", "B123"])).toBe(true);
     expect(textMentionsBot("hey @someone else", ["Scout", "B123"])).toBe(false);
     expect(textMentionsBot("no mention here", ["Scout"])).toBe(false);
+    expect(textMentionsBot("hey @ScoutTeam please look", ["Scout"])).toBe(false);
+    expect(textMentionsBot("notes for @Chiefly", ["Chief"])).toBe(false);
   });
 });

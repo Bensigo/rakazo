@@ -100,15 +100,12 @@ export function textMentionsBot(text: string, mentionTokens: string[]): boolean 
   for (const raw of mentionTokens) {
     const token = raw.trim();
     if (!token) continue;
-    const lowered = token.toLowerCase();
     const bare = normalizeTarget(token);
     if (!bare) continue;
     if (haystack.includes(`<@${bare}>`)) return true;
     if (new RegExp(`(^|\\s)@${escapeRegExp(bare)}(?=$|\\s|[.,!?])`, "i").test(text)) {
       return true;
     }
-    // Display-name mentions without @ when the platform already flagged this bot.
-    if (lowered.length >= 2 && haystack.includes(`@${bare}`)) return true;
   }
   return false;
 }
