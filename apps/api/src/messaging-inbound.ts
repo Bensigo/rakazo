@@ -1,6 +1,8 @@
 import type { JobPublisher, MessagingInboundMessage } from "@rakazo/adapter-kit";
 import { messagingDeliverJob, runContinueJob } from "@rakazo/adapter-kit";
+import { dispatchRoutineEvents } from "@rakazo/adapters";
 import type { MessageBlock } from "@rakazo/contracts";
+import type { NormalizedRoutineEvent } from "@rakazo/core";
 import { parseMessagingCommand, sanitizeMessagingLabel } from "@rakazo/core";
 import type {
   MessagingIdentityRequest,
@@ -35,6 +37,11 @@ export interface MessagingInboundDeps {
    * Cosmetic only — callers must catch failures; groups never get it.
    */
   typing?: (threadId: string) => Promise<void>;
+  /** Optional chat-trigger wake for routines on this bot. */
+  wakeRoutineFromEvent?: (
+    routineId: string,
+    event: NormalizedRoutineEvent,
+  ) => Promise<{ runId: string; threadId: string } | null>;
 }
 
 type IdentityRow = {
@@ -146,6 +153,13 @@ async function handleDirectEvent(
       console.error("messaging inbound run enqueue error", error);
     });
   }
+
+  await wakeChatRoutineTriggers(deps, {
+    botId: ids.botId,
+    spaceId: ids.spaceId,
+    event,
+    text,
+  });
 }
 
 /**
@@ -475,6 +489,13 @@ async function handleChannelEvent(
         console.error("messaging channel fan-out enqueue error", error);
       });
     }
+
+    await wakeChatRoutineTriggers(deps, {
+      botId: identity.botId,
+      spaceId: identity.spaceId,
+      event,
+      text: prompt,
+    });
   }
 }
 
@@ -527,4 +548,51 @@ async function ownerFirstName(
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { name: true } });
   const first = user?.name.trim().split(/\s+/)[0];
   return first ? sanitizeMessagingLabel(first) : fallback;
+}
+
+async function wakeChatRoutineTriggers(
+  deps: MessagingInboundDeps,
+  input: {
+    botId: string;
+    spaceId: string;
+    event: MessagingInboundMessage;
+    text: string;
+  },
+): Promise<void> {
+  if (!deps.wakeRoutineFromEvent) return;
+  const chatEvent: NormalizedRoutineEvent = {
+    source: "chat",
+    provider: input.event.provider,
+    scope: input.event.isDirect ? "dm" : "channel",
+    targets: [
+      ...(input.event.isDirect
+        ? [input.event.from, input.event.fromLabel ?? ""]
+        : [input.event.channelName ?? "", input.event.threadId]),
+    ].filter(Boolean),
+    text: input.text,
+    mentioned: /(^|\s)@\w+/.test(input.text) || /<@[^>]+>/.test(input.text),
+    reaction: !input.text.trim() && !input.event.mediaUrl,
+    payload: {
+      provider: input.event.provider,
+      from: input.event.from,
+      fromLabel: input.event.fromLabel,
+      channelName: input.event.channelName,
+      threadId: input.event.threadId,
+      handle: input.event.handle,
+      content: input.event.content,
+    },
+  };
+  try {
+    await dispatchRoutineEvents({
+      deps: {
+        prisma: deps.prisma,
+        wakeRoutineFromEvent: deps.wakeRoutineFromEvent,
+      },
+      botId: input.botId,
+      spaceId: input.spaceId,
+      events: [chatEvent],
+    });
+  } catch (error) {
+    console.error("messaging chat trigger wake error", error);
+  }
 }

@@ -394,7 +394,13 @@ export async function createApp(
       () => null,
     );
   });
-  mountWebhookHttpRoutes(app, { prisma, secrets, events, jobs });
+  mountWebhookHttpRoutes(app, {
+    prisma,
+    secrets,
+    events,
+    jobs,
+    wakeRoutineFromEvent: (routineId, event) => executor.wakeRoutineFromEvent(routineId, event),
+  });
   // Messaging webhooks only exist when the surface is enabled.
   if (messaging) {
     const inbound = createMessagingInboundHandler({
@@ -422,6 +428,7 @@ export async function createApp(
           signal: AbortSignal.timeout(2000),
         });
       },
+      wakeRoutineFromEvent: (routineId, event) => executor.wakeRoutineFromEvent(routineId, event),
     });
     messaging.onInbound(async (event) => {
       if (event.type === "message") await inbound(event);

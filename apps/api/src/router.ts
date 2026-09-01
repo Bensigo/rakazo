@@ -82,11 +82,13 @@ import {
 import {
   ACTIVE_RUN_STATUSES,
   AttachmentValidationError,
+  coalesceRoutineEventTriggers,
   containsSecret,
   expandSkillReferencesInPrompt,
   hasMixedOneShotSchedule,
   isOneShotRoutineCrons,
   nextCronDateAcrossStrict,
+  webhookEnabledFromTriggers,
 } from "@rakazo/core";
 import {
   appendEventInTransaction,
@@ -1862,6 +1864,16 @@ export function createRouter(deps: RouterDeps) {
           const computedNextRunAt = nextRoutineDate(input.crons, input.timezone);
           nextRunAt = input.active ? computedNextRunAt : null;
         }
+        const eventTriggers = coalesceRoutineEventTriggers(
+          input.eventTriggers,
+          input.webhookEnabled,
+        );
+        const webhookEnabled = input.webhookEnabled || webhookEnabledFromTriggers(eventTriggers);
+        if (input.crons.length === 0 && eventTriggers.length === 0) {
+          throw new ORPCError("BAD_REQUEST", {
+            message: "Add a schedule or event trigger",
+          });
+        }
         const row = await deps.prisma.routine.create({
           data: {
             spaceId: context.actor.spaceId,
@@ -1873,7 +1885,8 @@ export function createRouter(deps: RouterDeps) {
             timezone: input.timezone,
             notify: input.notify,
             active: input.active,
-            webhookEnabled: input.webhookEnabled,
+            webhookEnabled,
+            eventTriggers,
             nextRunAt,
           },
         });
@@ -1903,10 +1916,16 @@ export function createRouter(deps: RouterDeps) {
         const active = input.active ?? existing.active;
         const crons = input.crons ?? existing.crons;
         const timezone = input.timezone ?? existing.timezone;
-        const webhookEnabled = input.webhookEnabled ?? existing.webhookEnabled;
-        if (crons.length === 0 && !webhookEnabled) {
+        const eventTriggers = coalesceRoutineEventTriggers(
+          input.eventTriggers ?? existing.eventTriggers,
+          input.webhookEnabled ?? existing.webhookEnabled,
+        );
+        const webhookEnabled =
+          (input.webhookEnabled ?? existing.webhookEnabled) ||
+          webhookEnabledFromTriggers(eventTriggers);
+        if (crons.length === 0 && eventTriggers.length === 0) {
           throw new ORPCError("BAD_REQUEST", {
-            message: "Add a schedule or webhook trigger",
+            message: "Add a schedule or event trigger",
           });
         }
         if (hasMixedOneShotSchedule(crons)) {
@@ -1972,7 +1991,8 @@ export function createRouter(deps: RouterDeps) {
             timezone: input.timezone,
             active: input.active,
             notify: input.notify,
-            webhookEnabled: input.webhookEnabled,
+            webhookEnabled,
+            eventTriggers,
             nextRunAt,
           },
         });
@@ -3995,10 +4015,12 @@ function mapRoutine(row: {
   active: boolean;
   notify: boolean;
   webhookEnabled: boolean;
+  eventTriggers: unknown;
   lastRunAt: Date | null;
   nextRunAt: Date | null;
   createdAt: Date;
 }) {
+  const eventTriggers = coalesceRoutineEventTriggers(row.eventTriggers, row.webhookEnabled);
   return {
     id: row.id,
     botId: row.botId,
@@ -4008,7 +4030,8 @@ function mapRoutine(row: {
     timezone: row.timezone,
     active: row.active,
     notify: row.notify,
-    webhookEnabled: row.webhookEnabled,
+    webhookEnabled: webhookEnabledFromTriggers(eventTriggers) || row.webhookEnabled,
+    eventTriggers,
     lastRunAt: row.lastRunAt?.toISOString() ?? null,
     nextRunAt: row.nextRunAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),

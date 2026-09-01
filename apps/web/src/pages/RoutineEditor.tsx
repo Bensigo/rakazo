@@ -1,14 +1,28 @@
 import { t } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
-import type { Routine } from "@rakazo/contracts";
+import type {
+  ChatMatchKind,
+  ChatTriggerScope,
+  RepoEventKind,
+  Routine,
+  RoutineEventTrigger,
+} from "@rakazo/contracts";
+import {
+  ChatMatchKindSchema,
+  ChatTriggerScopeSchema,
+  REPO_EVENT_KIND_VALUES,
+} from "@rakazo/contracts";
 import {
   type CronFreq,
   type CronPreset,
+  chatMatchLabel,
   cronFromPreset,
   defaultCronPreset,
   formatCron,
   isOneShotRoutineCrons,
+  newRoutineEventTriggerId,
   presetFromCron,
+  repoEventLabel,
 } from "@rakazo/core";
 import { ChevronLeft, ChevronRight, Pause, Plus, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
@@ -41,19 +55,22 @@ const SCHEDULE_PRESETS: CronFreq[] = [
 ];
 
 const COMING_SOON = [
-  { id: "slack", label: () => t`Slack message` },
-  { id: "git", label: () => t`Git event` },
   { id: "teams", label: () => t`Teams message` },
   { id: "linear", label: () => t`Linear issue` },
   { id: "sentry", label: () => t`Sentry alert` },
   { id: "pagerduty", label: () => t`PagerDuty incident` },
 ] as const;
 
+const REPO_EVENT_OPTIONS: RepoEventKind[] = [...REPO_EVENT_KIND_VALUES];
+const CHAT_MATCH_OPTIONS: ChatMatchKind[] = [...ChatMatchKindSchema.options];
+const CHAT_SCOPE_OPTIONS: ChatTriggerScope[] = [...ChatTriggerScopeSchema.options];
+
 export type RoutineDraftState = {
   name: string;
   prompt: string;
   schedules: CronPreset[];
   webhookEnabled: boolean;
+  eventTriggers: RoutineEventTrigger[];
   active: boolean;
   runAtLocal: string;
 };
@@ -64,26 +81,55 @@ export function emptyRoutineDraft(): RoutineDraftState {
     prompt: "",
     schedules: [],
     webhookEnabled: false,
+    eventTriggers: [],
     active: true,
     runAtLocal: "",
   };
 }
 
 export function draftFromRoutine(routine: Routine): RoutineDraftState {
+  const eventTriggers = routine.eventTriggers ?? [];
+  const webhookEnabled =
+    routine.webhookEnabled || eventTriggers.some((trigger) => trigger.kind === "webhook");
   return {
     name: routine.name,
     prompt: routine.prompt,
     schedules: routine.crons.map(presetFromCron),
-    webhookEnabled: routine.webhookEnabled,
+    webhookEnabled,
+    eventTriggers:
+      eventTriggers.length > 0
+        ? eventTriggers
+        : webhookEnabled
+          ? [{ id: "legacy-webhook", kind: "webhook" }]
+          : [],
     active: routine.active,
     runAtLocal: routineNeedsOneShotArm(routine, routine.crons) ? defaultArmRunAtLocal() : "",
   };
 }
 
+function eventTriggerSummary(trigger: RoutineEventTrigger): string {
+  if (trigger.kind === "webhook") return t`When a webhook fires`;
+  if (trigger.kind === "repo") {
+    const events = trigger.events.map(repoEventLabel).join(", ");
+    return t`Git: ${trigger.repo} (${events})`;
+  }
+  const match =
+    trigger.match === "keyword" && trigger.keyword
+      ? t`keyword "${trigger.keyword}"`
+      : chatMatchLabel(trigger.match);
+  const where = trigger.scope === "dm" ? t`DM ${trigger.target}` : t`#${trigger.target}`;
+  return t`Slack: ${where} · ${match}`;
+}
+
 export function routineTriggerSummary(routine: Routine): string {
   if (!routine.active) return t`Paused`;
   const parts: string[] = [];
-  if (routine.webhookEnabled) parts.push(t`When a webhook fires`);
+  const triggers = routine.eventTriggers?.length
+    ? routine.eventTriggers
+    : routine.webhookEnabled
+      ? [{ id: "legacy-webhook", kind: "webhook" as const }]
+      : [];
+  for (const trigger of triggers) parts.push(eventTriggerSummary(trigger));
   for (const cron of routine.crons) parts.push(formatCron(cron));
   return parts.length > 0 ? parts.join(" · ") : t`No trigger`;
 }
@@ -192,7 +238,7 @@ export function RoutineEditor({
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const addTriggerId = useId();
-  const hasTriggers = draft.schedules.length > 0 || draft.webhookEnabled;
+  const hasTriggers = draft.schedules.length > 0 || draft.eventTriggers.length > 0;
   const canTest = Boolean(editing) && !saving && !running;
   const needsOneShotArm =
     editing != null && routineNeedsOneShotArm(editing, draft.schedules.map(cronFromPreset));
@@ -228,13 +274,57 @@ export function RoutineEditor({
     setScheduleOpen(false);
   }
 
+  function upsertTriggers(next: RoutineEventTrigger[]) {
+    onChange({
+      ...draft,
+      eventTriggers: next,
+      webhookEnabled: next.some((trigger) => trigger.kind === "webhook"),
+    });
+  }
+
   async function addWebhook() {
-    onChange({ ...draft, webhookEnabled: true });
+    if (draft.eventTriggers.some((trigger) => trigger.kind === "webhook")) {
+      setMenuOpen(false);
+      return;
+    }
+    upsertTriggers([
+      ...draft.eventTriggers,
+      { id: newRoutineEventTriggerId("webhook"), kind: "webhook" },
+    ]);
     setMenuOpen(false);
     setScheduleOpen(false);
     if (!webhook.configured) {
       await onEnsureWebhook().catch(() => undefined);
     }
+  }
+
+  function addRepoTrigger() {
+    upsertTriggers([
+      ...draft.eventTriggers,
+      {
+        id: newRoutineEventTriggerId("repo"),
+        kind: "repo",
+        repo: "",
+        events: ["pr_opened", "push"],
+      },
+    ]);
+    setMenuOpen(false);
+    setScheduleOpen(false);
+  }
+
+  function addChatTrigger() {
+    upsertTriggers([
+      ...draft.eventTriggers,
+      {
+        id: newRoutineEventTriggerId("chat"),
+        kind: "chat",
+        scope: "channel",
+        target: "",
+        match: "mention",
+      },
+    ]);
+    setMenuOpen(false);
+    setScheduleOpen(false);
   }
 
   return (
@@ -345,16 +435,53 @@ export function RoutineEditor({
             </div>
           ))}
 
-          {draft.webhookEnabled ? (
-            <WebhookTriggerCard
-              saved={Boolean(editing)}
-              path={webhook.path}
-              secret={webhook.secret}
-              configured={webhook.configured}
-              onRemove={() => onChange({ ...draft, webhookEnabled: false })}
-              onRotate={() => void onEnsureWebhook()}
-            />
-          ) : null}
+          {draft.eventTriggers.map((trigger) => {
+            if (trigger.kind === "webhook") {
+              return (
+                <WebhookTriggerCard
+                  key={trigger.id}
+                  saved={Boolean(editing)}
+                  path={webhook.path}
+                  secret={webhook.secret}
+                  configured={webhook.configured}
+                  onRemove={() =>
+                    upsertTriggers(draft.eventTriggers.filter((item) => item.id !== trigger.id))
+                  }
+                  onRotate={() => void onEnsureWebhook()}
+                />
+              );
+            }
+            if (trigger.kind === "repo") {
+              return (
+                <RepoTriggerCard
+                  key={trigger.id}
+                  value={trigger}
+                  onChange={(next) =>
+                    upsertTriggers(
+                      draft.eventTriggers.map((item) => (item.id === trigger.id ? next : item)),
+                    )
+                  }
+                  onRemove={() =>
+                    upsertTriggers(draft.eventTriggers.filter((item) => item.id !== trigger.id))
+                  }
+                />
+              );
+            }
+            return (
+              <ChatTriggerCard
+                key={trigger.id}
+                value={trigger}
+                onChange={(next) =>
+                  upsertTriggers(
+                    draft.eventTriggers.map((item) => (item.id === trigger.id ? next : item)),
+                  )
+                }
+                onRemove={() =>
+                  upsertTriggers(draft.eventTriggers.filter((item) => item.id !== trigger.id))
+                }
+              />
+            );
+          })}
 
           {needsOneShotArm ? (
             <label className="block text-[14px] text-[#85858A]">
@@ -430,6 +557,26 @@ export function RoutineEditor({
                 ) : null}
               </div>
 
+              <button
+                type="button"
+                role="menuitem"
+                onClick={addRepoTrigger}
+                className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-start text-[14px] text-[#ECECEE] hover:bg-[#1E1E22]"
+              >
+                <span aria-hidden className="inline-block h-3.5 w-3.5 rounded-[4px] bg-[#F97316]" />
+                <Trans>Git event</Trans>
+              </button>
+
+              <button
+                type="button"
+                role="menuitem"
+                onClick={addChatTrigger}
+                className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-start text-[14px] text-[#ECECEE] hover:bg-[#1E1E22]"
+              >
+                <span aria-hidden className="inline-block h-3.5 w-3.5 rounded-[4px] bg-[#E11D48]" />
+                <Trans>Slack message</Trans>
+              </button>
+
               {COMING_SOON.map((item) => (
                 <button
                   key={item.id}
@@ -451,7 +598,7 @@ export function RoutineEditor({
               <button
                 type="button"
                 role="menuitem"
-                disabled={draft.webhookEnabled}
+                disabled={draft.eventTriggers.some((trigger) => trigger.kind === "webhook")}
                 onClick={() => void addWebhook()}
                 className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-start text-[14px] text-[#ECECEE] hover:bg-[#1E1E22] disabled:text-[#6C6C70]"
               >
@@ -464,7 +611,7 @@ export function RoutineEditor({
 
         {!hasTriggers ? (
           <p className="mt-2 text-[12.5px] text-[#6E6E74]">
-            <Trans>Add a schedule or webhook to run this routine.</Trans>
+            <Trans>Add a schedule or event trigger to run this routine.</Trans>
           </p>
         ) : null}
       </div>
@@ -572,6 +719,158 @@ function WebhookTriggerCard({
           </button>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+function RepoTriggerCard({
+  value,
+  onChange,
+  onRemove,
+}: {
+  value: Extract<RoutineEventTrigger, { kind: "repo" }>;
+  onChange: (next: Extract<RoutineEventTrigger, { kind: "repo" }>) => void;
+  onRemove: () => void;
+}) {
+  const { t } = useLingui();
+  return (
+    <div className="rounded-[13px] border border-[#26262A] p-3">
+      <div className="flex items-center gap-2.5 px-0.5">
+        <span aria-hidden className="inline-block h-3.5 w-3.5 rounded-[4px] bg-[#F97316]" />
+        <span className="flex-1 text-[14.5px] text-[#ECECEE]">
+          <Trans>Git event</Trans>
+        </span>
+        <button
+          type="button"
+          aria-label={t`Remove git trigger`}
+          onClick={onRemove}
+          className="text-[#85858A] hover:text-[#ECECEE]"
+        >
+          <X size={14} strokeWidth={1.8} />
+        </button>
+      </div>
+      <label className="mt-2.5 block text-[13.5px] text-[#7A7A80]">
+        <Trans>Repository</Trans>
+        <input
+          value={value.repo}
+          placeholder={t`owner/repo`}
+          onChange={(event) => onChange({ ...value, repo: event.target.value })}
+          className="mt-1 w-full rounded-[11px] border border-[#26262A] bg-[#16161A] px-2.5 py-2 font-mono text-[12.5px] text-[#C9C9CE]"
+        />
+      </label>
+      <div className="mt-2.5 text-[13.5px] text-[#7A7A80]">
+        <Trans>Events</Trans>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {REPO_EVENT_OPTIONS.map((event) => {
+            const checked = value.events.includes(event);
+            return (
+              <button
+                key={event}
+                type="button"
+                aria-pressed={checked}
+                onClick={() => {
+                  const events = checked
+                    ? value.events.filter((item) => item !== event)
+                    : [...value.events, event];
+                  onChange({
+                    ...value,
+                    events: events.length > 0 ? events : [event],
+                  });
+                }}
+                className={`rounded-lg px-2 py-1 text-[12.5px] ${
+                  checked
+                    ? "bg-[#2A2A2E] text-[#ECECEE]"
+                    : "bg-transparent text-[#6C6C70] hover:text-[#C9C9CE]"
+                }`}
+              >
+                {repoEventLabel(event)}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChatTriggerCard({
+  value,
+  onChange,
+  onRemove,
+}: {
+  value: Extract<RoutineEventTrigger, { kind: "chat" }>;
+  onChange: (next: Extract<RoutineEventTrigger, { kind: "chat" }>) => void;
+  onRemove: () => void;
+}) {
+  const { t } = useLingui();
+  return (
+    <div className="rounded-[13px] border border-[#26262A] p-3">
+      <div className="flex items-center gap-2.5 px-0.5">
+        <span aria-hidden className="inline-block h-3.5 w-3.5 rounded-[4px] bg-[#E11D48]" />
+        <span className="flex-1 text-[14.5px] text-[#ECECEE]">
+          <Trans>Slack message</Trans>
+        </span>
+        <button
+          type="button"
+          aria-label={t`Remove slack trigger`}
+          onClick={onRemove}
+          className="text-[#85858A] hover:text-[#ECECEE]"
+        >
+          <X size={14} strokeWidth={1.8} />
+        </button>
+      </div>
+      <div className="mt-2.5 grid grid-cols-2 gap-2">
+        <label className="block text-[13.5px] text-[#7A7A80]">
+          <Trans>Where</Trans>
+          <select
+            value={value.scope}
+            onChange={(event) =>
+              onChange({ ...value, scope: event.target.value as ChatTriggerScope })
+            }
+            className="mt-1 w-full rounded-[11px] border border-[#26262A] bg-[#16161A] px-2.5 py-2 text-[12.5px] text-[#C9C9CE]"
+          >
+            {CHAT_SCOPE_OPTIONS.map((scope) => (
+              <option key={scope} value={scope}>
+                {scope === "dm" ? t`DM` : t`Channel`}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-[13.5px] text-[#7A7A80]">
+          <Trans>Match</Trans>
+          <select
+            value={value.match}
+            onChange={(event) => onChange({ ...value, match: event.target.value as ChatMatchKind })}
+            className="mt-1 w-full rounded-[11px] border border-[#26262A] bg-[#16161A] px-2.5 py-2 text-[12.5px] text-[#C9C9CE]"
+          >
+            {CHAT_MATCH_OPTIONS.map((match) => (
+              <option key={match} value={match}>
+                {chatMatchLabel(match)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <label className="mt-2 block text-[13.5px] text-[#7A7A80]">
+        {value.scope === "dm" ? <Trans>Handle</Trans> : <Trans>Channel</Trans>}
+        <input
+          value={value.target}
+          placeholder={value.scope === "dm" ? t`@user or id` : t`#channel or id`}
+          onChange={(event) => onChange({ ...value, target: event.target.value })}
+          className="mt-1 w-full rounded-[11px] border border-[#26262A] bg-[#16161A] px-2.5 py-2 text-[12.5px] text-[#C9C9CE]"
+        />
+      </label>
+      {value.match === "keyword" ? (
+        <label className="mt-2 block text-[13.5px] text-[#7A7A80]">
+          <Trans>Keyword</Trans>
+          <input
+            value={value.keyword ?? ""}
+            placeholder={t`keyword`}
+            onChange={(event) => onChange({ ...value, keyword: event.target.value })}
+            className="mt-1 w-full rounded-[11px] border border-[#26262A] bg-[#16161A] px-2.5 py-2 text-[12.5px] text-[#C9C9CE]"
+          />
+        </label>
+      ) : null}
     </div>
   );
 }

@@ -39,6 +39,7 @@ import {
   createStreamingRedactor,
   endsSentence,
   expandSkillReferencesInPrompt,
+  formatRoutineEventPrompt,
   formatSkillRunPrompt,
   formatSkillsCatalogInstruction,
   humanizeToolName,
@@ -48,6 +49,7 @@ import {
   isTerminal,
   messagingChannelPrivacyBlock,
   messagingDmSurfaceNote,
+  type NormalizedRoutineEvent,
   nextCronDateAcross,
   nextFence,
   planActionGate,
@@ -713,6 +715,111 @@ export function createRunExecutor(deps: ExecutorDeps) {
       } else if (nextRunAt) {
         await deps.jobs.enqueue(routineWakeupJob(routine.id, nextRunAt));
       }
+    },
+
+    /**
+     * Event-driven wake (webhook / repo / chat). Reuses the cron wake path's
+     * task+run+continue enqueue without claiming or advancing nextRunAt.
+     */
+    async wakeRoutineFromEvent(routineId: string, event: NormalizedRoutineEvent) {
+      const routine = await deps.prisma.routine.findUnique({ where: { id: routineId } });
+      if (!routine?.active) return null;
+      const bot = await deps.prisma.bot.findUnique({
+        where: { id: routine.botId },
+        include: { thread: true },
+      });
+      if (!bot?.thread) return null;
+      const targetThread = routine.threadId
+        ? await deps.prisma.thread.findFirst({
+            where: {
+              id: routine.threadId,
+              spaceId: routine.spaceId,
+              OR: [
+                { botId: bot.id },
+                {
+                  group: {
+                    archivedAt: null,
+                    members: { some: { botId: bot.id } },
+                  },
+                },
+              ],
+            },
+            select: { id: true },
+          })
+        : null;
+      const thread = targetThread ?? bot.thread;
+      const skillRecords = await listAgentSkillRecords(deps.prisma, {
+        spaceId: routine.spaceId,
+        userId: routine.userId,
+      });
+      const routinePrompt = expandSkillReferencesInPrompt(routine.prompt, skillRecords);
+      const prompt = formatRoutineEventPrompt(routinePrompt, event);
+      const trigger = event.source === "chat" ? ("messaging" as const) : ("webhook" as const);
+      const previousLastRunAt = routine.lastRunAt;
+      const claimed = await deps.prisma.$transaction(async (tx) => {
+        const updated = await tx.routine.updateMany({
+          where: { id: routine.id, active: true },
+          data: { lastRunAt: new Date() },
+        });
+        if (updated.count !== 1) return null;
+        const task = await tx.task.create({
+          data: {
+            spaceId: routine.spaceId,
+            botId: bot.id,
+            threadId: thread.id,
+            userId: routine.userId,
+            prompt,
+            status: "queued",
+          },
+        });
+        return tx.run.create({
+          data: {
+            spaceId: routine.spaceId,
+            botId: bot.id,
+            threadId: thread.id,
+            taskId: task.id,
+            userId: routine.userId,
+            status: "queued",
+            trigger,
+            routineId: routine.id,
+          },
+        });
+      });
+      if (!claimed) return null;
+      try {
+        await deps.jobs.enqueue(runContinueJob(claimed.id));
+      } catch (error) {
+        await deps.prisma.$transaction(async (tx) => {
+          await tx.run.deleteMany({ where: { id: claimed.id, status: "queued" } });
+          await tx.task.deleteMany({ where: { id: claimed.taskId, status: "queued" } });
+          await tx.routine.updateMany({
+            where: { id: routine.id },
+            data: { lastRunAt: previousLastRunAt },
+          });
+        });
+        throw error;
+      }
+      try {
+        await deps.events.append({
+          spaceId: routine.spaceId,
+          threadId: thread.id,
+          botId: bot.id,
+          type: "routine.fired",
+          runId: claimed.id,
+          payload: {
+            routineId: routine.id,
+            eventSource: event.source,
+            ...(event.source === "repo"
+              ? { repo: event.repo, event: event.event }
+              : event.source === "chat"
+                ? { provider: event.provider, scope: event.scope }
+                : {}),
+          },
+        });
+      } catch {
+        // Best effort: the run is already queued.
+      }
+      return { runId: claimed.id, threadId: thread.id };
     },
 
     async continueRun(runId: string, workerId: string) {
