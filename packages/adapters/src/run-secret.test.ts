@@ -6,7 +6,6 @@ import {
   resolveCompletedSecretLeftover,
   resolveMissingRunSecretAction,
   runSecretKind,
-  secretAskHelp,
   secretPausedToolResult,
   tryCompleteConnectionWithCode,
 } from "./run-secret.js";
@@ -17,12 +16,10 @@ describe("runSecretKind", () => {
   });
 });
 
-describe("secretAskHelp", () => {
-  it("returns short purpose-aware help without secret values", () => {
-    expect(secretAskHelp("otp")).toBe("One-time code. Stays out of chat.");
-    expect(secretAskHelp("password")).toBe("Masked. Stays out of chat.");
-    expect(secretAskHelp("api_key")).toBe("API key. Stays out of chat.");
+describe("normalizeSecretAskPurpose", () => {
+  it("keeps known purposes and defaults unknown ones to otp", () => {
     expect(normalizeSecretAskPurpose("api_key")).toBe("api_key");
+    expect(normalizeSecretAskPurpose("password")).toBe("password");
     expect(normalizeSecretAskPurpose("other")).toBe("otp");
   });
 });

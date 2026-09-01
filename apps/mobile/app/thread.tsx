@@ -2602,10 +2602,8 @@ function AskBlock({
       }}
     >
       <Text style={{ color: "#ECECEE", fontSize: 15.5, fontWeight: "600" }}>{ask.text}</Text>
-      {ask.detail ? (
+      {ask.detail && !secretInput ? (
         <Text style={{ color: "#85858A", fontSize: 13.5 }}>{ask.detail}</Text>
-      ) : secretInput ? (
-        <Text style={{ color: "#85858A", fontSize: 13.5 }}>Masked. Stays out of chat.</Text>
       ) : null}
       {answered ? (
         <Text style={{ color: "#4ECB71", fontSize: 14 }}>

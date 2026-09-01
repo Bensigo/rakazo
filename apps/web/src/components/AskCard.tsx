@@ -88,18 +88,10 @@ export function AskCard({
       <div className="text-[15.5px] leading-[1.5] text-[#ECECEE]">
         <ChatMarkdown>{block.text}</ChatMarkdown>
       </div>
-      {block.detail ? (
-        secretInput ? (
-          <p className="mt-2 text-[13.5px] leading-[1.45] text-[#85858A]">{block.detail}</p>
-        ) : (
-          <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-[#0E0E10] px-3.5 py-3 font-mono text-[12.5px] leading-[1.7] text-[#85858A]">
-            {block.detail}
-          </pre>
-        )
-      ) : secretInput ? (
-        <p className="mt-2 text-[13.5px] leading-[1.45] text-[#85858A]">
-          <Trans>Masked. Stays out of chat.</Trans>
-        </p>
+      {block.detail && !secretInput ? (
+        <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-[#0E0E10] px-3.5 py-3 font-mono text-[12.5px] leading-[1.7] text-[#85858A]">
+          {block.detail}
+        </pre>
       ) : null}
       {block.status === "answered" ? (
         <div className="mt-3.5 text-[13.5px] font-medium text-[#4ECB71]">

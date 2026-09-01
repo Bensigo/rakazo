@@ -9,18 +9,6 @@ export function runSecretKind(runId: string): string {
 
 export type SecretAskPurpose = "otp" | "password" | "api_key";
 
-/** Short help under the secret card label. Never includes the value. */
-export function secretAskHelp(purpose: string | undefined): string {
-  switch (purpose) {
-    case "password":
-      return "Masked. Stays out of chat.";
-    case "api_key":
-      return "API key. Stays out of chat.";
-    default:
-      return "One-time code. Stays out of chat.";
-  }
-}
-
 export function normalizeSecretAskPurpose(purpose: string | undefined): SecretAskPurpose {
   if (purpose === "password" || purpose === "api_key") return purpose;
   return "otp";

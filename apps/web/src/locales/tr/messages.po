@@ -327,7 +327,7 @@ msgstr "Bu araca her zaman izin ver"
 msgid "Always allowed"
 msgstr "Her zaman izinli"
 
-#: src/components/AskCard.tsx:176
+#: src/components/AskCard.tsx:168
 msgid "Answer"
 msgstr "Yanıtla"
 
@@ -348,6 +348,7 @@ msgstr "Yanıtlandı: {answer}"
 msgid "API is back, but the update did not finish. Check the host logs."
 msgstr ""
 
+#: src/components/AskCard.tsx:43
 #: src/lib/localized-provider-hint.ts:9
 #: src/pages/ModelSettingsOverlay.tsx:630
 #: src/pages/ModelSettingsOverlay.tsx:633
@@ -514,14 +515,14 @@ msgstr "{0} adlı botun bilgisayarı başlatılıyor"
 msgid "bot"
 msgstr "bot"
 
+#: src/pages/Shell.tsx:1664
+msgid "Bot"
+msgstr "Bot"
+
 #. js-lingui-explicit-id
 #: src/lib/browser-notifications.ts:71
 msgid "Bot"
 msgstr ""
-
-#: src/pages/Shell.tsx:1664
-msgid "Bot"
-msgstr "Bot"
 
 #: src/pages/Shell.tsx:3817
 msgid "Bot screen"
@@ -558,7 +559,7 @@ msgid "Can't reach the server."
 msgstr "Sunucuya ulaşılamıyor."
 
 #: src/components/AskCard.tsx:34
-#: src/components/AskCard.tsx:199
+#: src/components/AskCard.tsx:191
 #: src/components/ComputerMaintenanceActions.tsx:108
 #: src/components/teach/TeachComputerSection.tsx:122
 #: src/pages/PluginsOverlay.tsx:536
@@ -739,6 +740,10 @@ msgstr "Ses ayarlarını kapat"
 #: src/pages/memory-providers/SupermemorySettingsForm.tsx:41
 msgid "Cloud"
 msgstr "Bulut"
+
+#: src/components/AskCard.tsx:44
+msgid "Code"
+msgstr ""
 
 #. placeholder {0}: group.title
 #: src/pages/Shell.tsx:2461
@@ -1395,7 +1400,7 @@ msgstr "Çoğalt"
 msgid "Earlier message"
 msgstr ""
 
-#: src/components/AskCard.tsx:219
+#: src/components/AskCard.tsx:211
 msgid "Edit first"
 msgstr "Önce düzenle"
 
@@ -1794,10 +1799,6 @@ msgstr "Okundu olarak işaretle"
 msgid "Mark as Unread"
 msgstr "Okunmadı olarak işaretle"
 
-#: src/components/AskCard.tsx:101
-msgid "Masked. Stays out of chat."
-msgstr ""
-
 #: src/pages/Shell.tsx:5846
 msgid "Max"
 msgstr "Maksimum"
@@ -1833,15 +1834,15 @@ msgstr "Hafıza kapsamı"
 msgid "Mentions"
 msgstr ""
 
-#. js-lingui-explicit-id
-#: src/lib/browser-notifications.ts:83
-msgid "Message"
-msgstr ""
-
 #: src/pages/Shell.tsx:4725
 #: src/pages/Shell.tsx:4838
 msgid "Message"
 msgstr "Mesaj"
+
+#. js-lingui-explicit-id
+#: src/lib/browser-notifications.ts:83
+msgid "Message"
+msgstr ""
 
 #: src/pages/Shell.tsx:4721
 #: src/pages/Shell.tsx:4725
@@ -2047,7 +2048,7 @@ msgstr "İstisna yok. İşlemler otomatik çalışır."
 msgid "No group chats yet."
 msgstr ""
 
-#: src/components/AskCard.tsx:116
+#: src/components/AskCard.tsx:108
 msgid "No longer active"
 msgstr "Artık etkin değil"
 
@@ -2231,6 +2232,7 @@ msgstr ""
 msgid "Park"
 msgstr "Beklet"
 
+#: src/components/AskCard.tsx:42
 #: src/pages/AccountSettingsOverlay.tsx:304
 #: src/pages/Auth.tsx:143
 #: src/pages/Auth.tsx:152
@@ -2518,7 +2520,7 @@ msgstr "Çalışıyor · Durdur"
 msgid "Running…"
 msgstr "Çalışıyor…"
 
-#: src/components/AskCard.tsx:164
+#: src/components/AskCard.tsx:156
 #: src/components/teach/SkillDraftCard.tsx:162
 #: src/components/teach/TeachComputerSection.tsx:183
 #: src/pages/GroupPanel.tsx:224
@@ -2550,7 +2552,7 @@ msgstr "Kaydedildi."
 msgid "Saved. Rotate to reveal."
 msgstr ""
 
-#: src/components/AskCard.tsx:164
+#: src/components/AskCard.tsx:156
 #: src/components/teach/SkillDraftCard.tsx:162
 #: src/pages/GroupPanel.tsx:224
 #: src/pages/ModelSettingsOverlay.tsx:673
@@ -2608,11 +2610,11 @@ msgstr "Gönder"
 msgid "Send <0>{linkCode}</0> to the line from your chat app within 10 minutes. You'll get a confirmation reply once linked."
 msgstr ""
 
-#: src/components/AskCard.tsx:188
+#: src/components/AskCard.tsx:180
 msgid "Send answer"
 msgstr "Yanıtı gönder"
 
-#: src/components/AskCard.tsx:211
+#: src/components/AskCard.tsx:203
 msgid "Send it"
 msgstr "Gönder"
 
@@ -2620,9 +2622,9 @@ msgstr "Gönder"
 msgid "Send reset link"
 msgstr "Sıfırlama bağlantısı gönder"
 
-#: src/components/AskCard.tsx:133
-#: src/components/AskCard.tsx:188
-#: src/components/AskCard.tsx:211
+#: src/components/AskCard.tsx:125
+#: src/components/AskCard.tsx:180
+#: src/components/AskCard.tsx:203
 msgid "Sending…"
 msgstr "Gönderiliyor…"
 
@@ -2966,7 +2968,7 @@ msgstr "Araç kaynakları"
 msgid "Treg token"
 msgstr "Treg token'ı"
 
-#: src/components/AskCard.tsx:179
+#: src/components/AskCard.tsx:171
 msgid "Type your answer"
 msgstr "Yanıtını yaz"
 

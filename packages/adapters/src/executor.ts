@@ -206,7 +206,6 @@ import {
   resolveCompletedSecretLeftover,
   resolveMissingRunSecretAction,
   runSecretKind,
-  secretAskHelp,
   secretPausedToolResult,
   tryCompleteConnectionWithCode,
 } from "./run-secret.js";
@@ -2464,7 +2463,6 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 {
                   kind: "ask",
                   text: String(args.label ?? "Code"),
-                  detail: secretAskHelp(String(args.purpose ?? "otp")),
                   input: "secret",
                   purpose: normalizeSecretAskPurpose(
                     args.purpose ? String(args.purpose) : undefined,

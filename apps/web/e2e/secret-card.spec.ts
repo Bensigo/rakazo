@@ -33,9 +33,9 @@ test("renders masked secret card and saves without putting the value in chat", a
   }
   await expect(card).toBeVisible({ timeout: 15_000 });
   await expect(card.getByText("API key", { exact: true }).first()).toBeVisible();
-  await expect(card.getByText(/Stays out of chat/)).toBeVisible();
   const secretField = card.getByLabel("API key");
   await expect(secretField).toHaveAttribute("type", "password");
+  await expect(card.getByRole("button", { name: "Save", exact: true })).toBeVisible();
   await captureScreenshot(page, testInfo, "secret-card");
 
   await page.setViewportSize({ width: 390, height: 844 });
