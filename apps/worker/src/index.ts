@@ -12,6 +12,7 @@ import {
   createPostgresReconciliationLeadership,
   createRunExecutor,
   createRunSandbox,
+  createHostDiskProvider,
   createRunSecretWriter,
   createWebProvider,
   EncryptedSecretStore,
@@ -135,6 +136,7 @@ async function main() {
     events,
     messaging: messaging ? createMessagingContextLoader(prisma) : undefined,
     web: createWebProvider(),
+    hostDisk: createHostDiskProvider(dataDir),
   });
 
   const jobHandlers = createBackgroundJobHandlers({

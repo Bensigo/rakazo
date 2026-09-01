@@ -21,6 +21,7 @@ import {
   createMessagingContextLoader,
   createRunExecutor,
   createRunSandbox,
+  createHostDiskProvider,
   createRunSecretWriter,
   createWebProvider,
   type DestinationEmulator,
@@ -281,6 +282,7 @@ export async function createApp(
     events,
     messaging: messaging ? createMessagingContextLoader(prisma) : undefined,
     web: createWebProvider(),
+    hostDisk: createHostDiskProvider(env.dataDir),
   });
 
   const jobHandlers = createBackgroundJobHandlers({

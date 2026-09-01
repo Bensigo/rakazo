@@ -35,6 +35,12 @@ function desktop(platform: string): RakazoDesktop {
       install: async () => updateState,
     },
     oauth: { onCallback: () => () => undefined },
+    hostDisk: {
+      pickFolder: async () => null,
+      list: async () => [],
+      read: async () => "",
+      write: async () => true,
+    },
   };
 }
 

@@ -58,6 +58,11 @@ import {
   resolveBotWorkspacePath,
   sanitizeComposioError,
   savePushToken,
+  claimHostDiskOperation,
+  completeHostDiskOperation,
+  hostDiskAccessAllowed,
+  loadHostDiskSettings,
+  saveHostDiskSettings,
   scheduleComputerControlExpiry,
   scheduleComputerSleep,
   screenLeaseIdForRun,
@@ -3406,6 +3411,73 @@ export function createRouter(deps: RouterDeps) {
         return { ok: true as const };
       }),
     },
+    hostDisk: {
+      get: authed.hostDisk.get.handler(async ({ context }) =>
+        hostDiskSettingsDto(deps.dataDir, context.actor.userId),
+      ),
+      setEnabled: authed.hostDisk.setEnabled.handler(async ({ context, input }) => {
+        const current = await loadHostDiskSettings(deps.dataDir, context.actor.userId);
+        const next = await saveHostDiskSettings(deps.dataDir, context.actor.userId, {
+          ...current,
+          enabled: input.enabled,
+          // Turning off clears the client heartbeat so tools disappear immediately.
+          clientSeenAt: input.enabled ? current.clientSeenAt : null,
+          // Never keep roots when disabled.
+          roots: input.enabled ? current.roots : [],
+        });
+        return hostDiskSettingsDtoFrom(next);
+      }),
+      setRoots: authed.hostDisk.setRoots.handler(async ({ context, input }) => {
+        const current = await loadHostDiskSettings(deps.dataDir, context.actor.userId);
+        if (!current.enabled) {
+          throw new ORPCError("BAD_REQUEST", {
+            message: "Turn on host disk access before granting folders.",
+          });
+        }
+        const roots = [
+          ...new Set(input.roots.map((root) => root.trim()).filter((root) => root.length > 0)),
+        ];
+        const next = await saveHostDiskSettings(deps.dataDir, context.actor.userId, {
+          ...current,
+          roots,
+        });
+        return hostDiskSettingsDtoFrom(next);
+      }),
+      heartbeat: authed.hostDisk.heartbeat.handler(async ({ context }) => {
+        const current = await loadHostDiskSettings(deps.dataDir, context.actor.userId);
+        if (!current.enabled || current.roots.length === 0) {
+          return hostDiskSettingsDtoFrom(current);
+        }
+        const next = await saveHostDiskSettings(deps.dataDir, context.actor.userId, {
+          ...current,
+          clientSeenAt: new Date().toISOString(),
+        });
+        return hostDiskSettingsDtoFrom(next);
+      }),
+      claim: authed.hostDisk.claim.handler(async ({ context }) => {
+        const settings = await loadHostDiskSettings(deps.dataDir, context.actor.userId);
+        if (!hostDiskAccessAllowed(settings)) return null;
+        const operation = await claimHostDiskOperation(deps.dataDir, context.actor.userId);
+        if (!operation) return null;
+        return {
+          id: operation.id,
+          kind: operation.kind,
+          path: operation.path,
+          contentBase64: operation.contentBase64,
+          maxBytes: operation.maxBytes,
+        };
+      }),
+      complete: authed.hostDisk.complete.handler(async ({ context, input }) => {
+        await completeHostDiskOperation(deps.dataDir, context.actor.userId, {
+          id: input.id,
+          status: input.status,
+          entries: input.entries,
+          contentBase64: input.contentBase64,
+          error: input.error,
+        });
+        return { ok: true as const };
+      }),
+    },
     search: {
       query: authed.search.query.handler(async ({ context, input }) => ({
         hits: await querySpaceSearch(deps.prisma, context.actor, input.q),
@@ -3669,6 +3741,19 @@ async function meDto(deps: RouterDeps, actor: Actor): Promise<Me> {
     canChooseHostComputer: actor.isDeploymentOwner && deps.env.sandboxProvider === "docker",
     sandboxProvider: deps.env.sandboxProvider,
     avatarStyle: user.avatarStyle === "organic" ? "organic" : "robot",
+  };
+}
+
+async function hostDiskSettingsDto(dataDir: string, userId: string) {
+  return hostDiskSettingsDtoFrom(await loadHostDiskSettings(dataDir, userId));
+}
+
+function hostDiskSettingsDtoFrom(settings: Awaited<ReturnType<typeof loadHostDiskSettings>>) {
+  return {
+    enabled: settings.enabled,
+    roots: settings.roots,
+    clientSeenAt: settings.clientSeenAt,
+    available: hostDiskAccessAllowed(settings),
   };
 }
 
