@@ -147,6 +147,7 @@ import { providerLabel } from "../lib/messaging";
 import { isFileDrag, revokePendingAttachmentPreviews } from "../lib/pending-attachments";
 import { markAfterPaint, markOnce } from "../lib/performance";
 import { clearSpaceSelection, rpc, selectedSpaceId, selectSpace } from "../lib/rpc";
+import { readSeenRunErrorIds, rememberSeenRunErrorId } from "../lib/run-error-storage";
 import {
   activeThreadRuns,
   clearActiveThreadRuns,
@@ -396,14 +397,23 @@ export function ShellPage() {
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const [dictating, setDictating] = useState(false);
   const [dictationError, setDictationError] = useState<string | null>(null);
-  const [dismissedRunErrorIds, setDismissedRunErrorIds] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
+  const [dismissedRunErrorIds, setDismissedRunErrorIds] =
+    useState<ReadonlySet<string>>(readSeenRunErrorIds);
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [draggedBotId, setDraggedBotId] = useState<string | null>(null);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [newSpaceOpen, setNewSpaceOpen] = useState(false);
+
+  useEffect(() => {
+    const desktop = window.matchMedia("(min-width: 768px)");
+    function closeMobileSidebar() {
+      if (desktop.matches) setMobileSidebarOpen(false);
+    }
+    closeMobileSidebar();
+    desktop.addEventListener("change", closeMobileSidebar);
+    return () => desktop.removeEventListener("change", closeMobileSidebar);
+  }, []);
   const [activityMode, setActivityMode] = useState(readActivityMode);
   const toggleActivityMode = useCallback(() => {
     setActivityMode((on) => {
@@ -1613,6 +1623,11 @@ export function ShellPage() {
   const transcriptRunning = workingRuns.length > 0;
   const composerRunning = currentRuns.some((run) => isActive(run.status));
   const runError = threadRunError(activeSnapshot, dismissedRunErrorIds);
+  const displayedRunError = !sendError && !dictationError ? runError : null;
+  const displayedRunErrorId = displayedRunError ? (activeSnapshot?.run?.id ?? null) : null;
+  const handleRunErrorPresented = useCallback((runId: string) => {
+    rememberSeenRunErrorId(runId);
+  }, []);
   const transcriptMessages = useMemo(
     () => userVisibleMessages(activeSnapshot?.messages ?? [], { includePeerReceipts: true }),
     [activeSnapshot?.messages],
@@ -2273,10 +2288,13 @@ export function ShellPage() {
   function dismissComposerError() {
     // The strip shows one message at a time, so only dismiss the run failure when it is the
     // one on screen; otherwise a live run would be silenced before it has even failed.
-    const failedRunId = !sendError && !dictationError && runError ? activeSnapshot?.run?.id : null;
+    const failedRunId = displayedRunErrorId;
     setSendError(null);
     setDictationError(null);
-    if (failedRunId) setDismissedRunErrorIds((current) => new Set(current).add(failedRunId));
+    if (failedRunId) {
+      rememberSeenRunErrorId(failedRunId);
+      setDismissedRunErrorIds((current) => new Set(current).add(failedRunId));
+    }
   }
 
   const embeddedScreenUrl = embeddableScreenUrl(screenUrl);
@@ -2818,7 +2836,11 @@ export function ShellPage() {
         </div>
       </aside>
 
-      <main className="flex min-w-0 flex-1 flex-col bg-[#0D0D0E]">
+      <main
+        aria-hidden={mobileSidebarOpen || undefined}
+        inert={mobileSidebarOpen}
+        className="flex min-w-0 flex-1 flex-col bg-[#0D0D0E]"
+      >
         <div className="app-drag flex items-center justify-between border-b border-[#141416] px-3 py-[17px] md:px-[22px]">
           <div className="flex min-w-0 items-center gap-2">
             <button
@@ -2938,7 +2960,9 @@ export function ShellPage() {
           attachmentNotice={attachmentNotice}
           sendError={sendError}
           dictationError={dictationError}
-          runError={runError}
+          runError={displayedRunError}
+          runErrorId={displayedRunErrorId}
+          onRunErrorPresented={handleRunErrorPresented}
           onDismissError={dismissComposerError}
           sending={sending}
           fileInputRef={fileInputRef}
@@ -4090,6 +4114,8 @@ const Composer = memo(function Composer({
   sendError,
   dictationError,
   runError,
+  runErrorId,
+  onRunErrorPresented,
   onDismissError,
   sending,
   fileInputRef,
@@ -4117,6 +4143,8 @@ const Composer = memo(function Composer({
   sendError: string | null;
   dictationError: string | null;
   runError: string | null;
+  runErrorId: string | null;
+  onRunErrorPresented: (runId: string) => void;
   onDismissError: () => void;
   sending: boolean;
   fileInputRef: RefObject<HTMLInputElement | null>;
@@ -4144,6 +4172,8 @@ const Composer = memo(function Composer({
   const [selectedSkill, setSelectedSkill] = useState<AgentSkillCatalogEntry | null>(null);
   const [selectedMentions, setSelectedMentions] = useState<ComposerMention[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const runErrorRef = useRef<HTMLDivElement>(null);
+  const presentedRunErrorIdRef = useRef<string | null>(null);
   const mentionListboxId = useId();
   const dragDepth = useRef(0);
   const [draggingFiles, setDraggingFiles] = useState(false);
@@ -4152,6 +4182,40 @@ const Composer = memo(function Composer({
     selectedSkill !== null ||
     selectedMentions.length > 0 ||
     pendingAttachments.length > 0;
+
+  useEffect(() => {
+    if (!runError || !runErrorId) return;
+    const currentRunErrorId = runErrorId;
+    let frame = 0;
+    function recordIfPresented() {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const element = runErrorRef.current;
+        if (!element || document.visibilityState !== "visible") return;
+        const rect = element.getBoundingClientRect();
+        const topElement = document.elementFromPoint(
+          rect.left + rect.width / 2,
+          rect.top + rect.height / 2,
+        );
+        if (topElement && (topElement === element || element.contains(topElement))) {
+          if (presentedRunErrorIdRef.current === currentRunErrorId) return;
+          presentedRunErrorIdRef.current = currentRunErrorId;
+          onRunErrorPresented(currentRunErrorId);
+        }
+      });
+    }
+    recordIfPresented();
+    const observer = new MutationObserver(recordIfPresented);
+    observer.observe(document.body, { childList: true, subtree: true });
+    document.addEventListener("transitionend", recordIfPresented);
+    document.addEventListener("visibilitychange", recordIfPresented);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      document.removeEventListener("transitionend", recordIfPresented);
+      document.removeEventListener("visibilitychange", recordIfPresented);
+    };
+  }, [onRunErrorPresented, runError, runErrorId]);
 
   useLayoutEffect(() => {
     const el = textareaRef.current;
@@ -4349,6 +4413,7 @@ const Composer = memo(function Composer({
     >
       {sendError || dictationError || runError ? (
         <div
+          ref={runErrorRef}
           role="alert"
           data-testid="composer-error"
           className="mb-3 flex items-center gap-2 rounded-[14px] border border-[#5A2A2A] bg-[#2A1717] px-4 py-2 text-[13px] text-[#F1A8A8]"
@@ -4358,7 +4423,10 @@ const Composer = memo(function Composer({
             type="button"
             aria-label={t`Dismiss error`}
             data-testid="composer-error-dismiss"
-            onClick={onDismissError}
+            onClick={() => {
+              onDismissError();
+              window.requestAnimationFrame(() => textareaRef.current?.focus());
+            }}
             className="shrink-0 text-[#F1A8A8] hover:text-[#ECECEE]"
           >
             <X size={13} strokeWidth={2} />
