@@ -143,6 +143,7 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
   await expect(page.getByRole("button", { name: "Add Treg", exact: true })).toBeHidden();
   await expect(page.getByRole("button", { name: "Add MCP server", exact: true })).toBeHidden();
   await expect(page.getByRole("button", { name: "Add OpenAPI", exact: true })).toBeHidden();
+  await expect(page.getByRole("button", { name: "Add GraphQL", exact: true })).toBeHidden();
   await expect(page.getByText("Tool sources", { exact: true })).toBeHidden();
   await expect(
     page.getByText("Connect apps or add Treg, MCP, and OpenAPI tool sources.", { exact: true }),
@@ -179,14 +180,16 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
   await expect(page.getByRole("button", { name: "MCP servers", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Add MCP server", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Add OpenAPI", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add GraphQL", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Add Treg", exact: true })).toBeVisible();
   await expect(page.getByText("Tool sources", { exact: true })).toBeVisible();
-  // MCP → OpenAPI → Treg order inside Advanced.
+  // MCP → OpenAPI → GraphQL → Treg order inside Advanced.
   const advancedActions = advanced.locator("button");
   await expect(advancedActions.nth(0)).toHaveText("MCP servers");
   await expect(advancedActions.nth(1)).toHaveText("Add MCP server");
   await expect(advancedActions.nth(2)).toHaveText("Add OpenAPI");
-  await expect(advancedActions.nth(3)).toHaveText("Add Treg");
+  await expect(advancedActions.nth(3)).toHaveText("Add GraphQL");
+  await expect(advancedActions.nth(4)).toHaveText("Add Treg");
 
   await page.getByRole("button", { name: "Add Treg", exact: true }).click();
   await page.getByPlaceholder("Treg token").fill("fake-treg-browser-credential");
@@ -209,6 +212,14 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
   await page.getByRole("button", { name: "Verify and add", exact: true }).click();
   await expect(
     page.getByText(/API · https:\/\/api\.example\.test\/v1 · credential saved/),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Add GraphQL", exact: true }).click();
+  await page.getByPlaceholder("Display name").fill("Browser GraphQL");
+  await page.getByPlaceholder("https://example.com/graphql").fill("https://graphql.example.test/graphql");
+  await page.getByRole("button", { name: "Verify and add", exact: true }).click();
+  await expect(
+    page.getByText(/GRAPHQL · https:\/\/graphql\.example\.test\/graphql · no auth/),
   ).toBeVisible();
   await captureScreenshot(page, testInfo, "11c-provider-emulators");
 
