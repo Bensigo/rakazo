@@ -28,13 +28,13 @@ import {
   ExportManifestSchema,
   GroupDetailSchema,
   GroupSchema,
+  HostDiskOperationSchema,
+  HostDiskSettingsSchema,
   McpServerConfigInput,
   McpServerSchema,
   MemoryDocumentSchema,
   MemoryScopeSchema,
   MeSchema,
-  HostDiskOperationSchema,
-  HostDiskSettingsSchema,
   MessagingAgentConnectionSchema,
   MessagingChannelMembershipSchema,
   MessagingLinkedIdentitySchema,
@@ -648,9 +648,7 @@ export const appContract = {
    */
   hostDisk: {
     get: oc.output(HostDiskSettingsSchema),
-    setEnabled: oc
-      .input(z.object({ enabled: z.boolean() }))
-      .output(HostDiskSettingsSchema),
+    setEnabled: oc.input(z.object({ enabled: z.boolean() })).output(HostDiskSettingsSchema),
     setRoots: oc
       .input(z.object({ roots: z.array(z.string().min(1)).max(32) }))
       .output(HostDiskSettingsSchema),

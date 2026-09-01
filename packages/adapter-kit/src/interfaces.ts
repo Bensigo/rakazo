@@ -365,11 +365,7 @@ export interface HostDiskProvider {
   describe(): AdapterDescriptor<HostDiskCapabilities>;
   /** Opt-in + granted roots + a reachable client (when bridged). */
   isAvailable(userId: string): Promise<boolean>;
-  listFiles(
-    userId: string,
-    path: string,
-    context: AdapterContext,
-  ): Promise<ComputerFileEntry[]>;
+  listFiles(userId: string, path: string, context: AdapterContext): Promise<ComputerFileEntry[]>;
   readFile(
     userId: string,
     path: string,

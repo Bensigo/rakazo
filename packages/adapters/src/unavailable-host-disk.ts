@@ -39,11 +39,7 @@ export class UnavailableHostDiskProvider implements HostDiskProvider {
     throw new Error(UNAVAILABLE);
   }
 
-  async writeFile(
-    _userId: string,
-    _file: PortableFile,
-    _context: AdapterContext,
-  ): Promise<void> {
+  async writeFile(_userId: string, _file: PortableFile, _context: AdapterContext): Promise<void> {
     throw new Error(UNAVAILABLE);
   }
 }

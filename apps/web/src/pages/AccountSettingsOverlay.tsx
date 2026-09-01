@@ -15,8 +15,8 @@ import {
   ComputersUnavailableHint,
   computersAreUnavailable,
 } from "../components/ComputersUnavailableHint";
-import { SoftwareUpdateSection } from "../components/SoftwareUpdateSection";
 import { HostDiskSettingsSection } from "../components/HostDiskSettingsSection";
+import { SoftwareUpdateSection } from "../components/SoftwareUpdateSection";
 import { authClient } from "../lib/auth";
 import { getActiveUiLocale, setUiLocale } from "../lib/i18n";
 import { UI_LOCALE_LABELS, UI_LOCALES, type UiLocale } from "../lib/ui-locale";

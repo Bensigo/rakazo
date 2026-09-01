@@ -1,15 +1,15 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { builtinAgentTools } from "./builtin-tools.js";
-import { LocalHostDiskProvider } from "./local-host-disk.js";
 import {
   hostDiskAccessAllowed,
   loadHostDiskSettings,
   saveHostDiskSettings,
 } from "./host-disk-settings.js";
 import { HOST_DISK_TOOL_NAMES, selectHostDiskTools } from "./host-disk-tools.js";
+import { LocalHostDiskProvider } from "./local-host-disk.js";
 import { UnavailableHostDiskProvider } from "./unavailable-host-disk.js";
 
 const dirs: string[] = [];

@@ -1,6 +1,6 @@
-import { BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent } from "electron";
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { BrowserWindow, dialog, type IpcMainInvokeEvent, ipcMain } from "electron";
 
 function isInsideRoots(target: string, roots: string[]) {
   const resolved = path.resolve(target);
@@ -13,12 +13,13 @@ function isInsideRoots(target: string, roots: string[]) {
   });
 }
 
-function assertInside(target: string, roots: unknown) {
+function assertInside(target: unknown, roots: unknown) {
   const allowed = Array.isArray(roots)
     ? roots.filter((item): item is string => typeof item === "string" && item.length > 0)
     : [];
   if (allowed.length === 0) throw new Error("No host folders are granted");
-  const resolved = path.resolve(String(target ?? ""));
+  const pathText = typeof target === "string" ? target : "";
+  const resolved = path.resolve(pathText);
   if (!isInsideRoots(resolved, allowed)) {
     throw new Error("Host path is outside the granted folders");
   }
@@ -28,9 +29,12 @@ function assertInside(target: string, roots: unknown) {
 export function registerHostDiskIpc() {
   ipcMain.handle("desktop.hostDisk.pickFolder", async (event: IpcMainInvokeEvent) => {
     const win = BrowserWindow.fromWebContents(event.sender);
-    const result = await dialog.showOpenDialog(win ?? undefined, {
+    const options: Electron.OpenDialogOptions = {
       properties: ["openDirectory", "createDirectory"],
-    });
+    };
+    const result = win
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options);
     if (result.canceled || result.filePaths.length === 0) return null;
     return result.filePaths[0] ?? null;
   });
@@ -53,10 +57,12 @@ export function registerHostDiskIpc() {
     const listed: Array<{ path: string; kind: "file" | "dir"; size: number }> = [];
     for (const entry of entries) {
       const full = path.join(resolved, entry.name);
-      if (!isInsideRoots(
-        full,
-        allowedRoots.map((root) => path.resolve(root)),
-      )) {
+      if (
+        !isInsideRoots(
+          full,
+          allowedRoots.map((root) => path.resolve(root)),
+        )
+      ) {
         continue;
       }
       if (entry.isDirectory()) {

@@ -8,9 +8,9 @@ import type {
 } from "@rakazo/adapter-kit";
 import { isAllowedDesktopPath } from "./desktop-sandbox-paths.js";
 import {
+  type HostDiskSettings,
   hostDiskAccessAllowed,
   loadHostDiskSettings,
-  type HostDiskSettings,
 } from "./host-disk-settings.js";
 
 export type LocalHostDiskOptions = {
@@ -116,7 +116,9 @@ export class LocalHostDiskProvider implements HostDiskProvider {
       ? settings.enabled && settings.roots.length > 0
       : hostDiskAccessAllowed(settings);
     if (!allowed) {
-      throw new Error("Host disk access is off. Opt in from the Mac or phone app and grant a folder.");
+      throw new Error(
+        "Host disk access is off. Opt in from the Mac or phone app and grant a folder.",
+      );
     }
     return settings.roots.map((root) => path.resolve(root));
   }

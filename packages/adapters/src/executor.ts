@@ -123,7 +123,6 @@ import {
 } from "./auto-review.js";
 import { loadBotMessageContext, messageBot, returnBotMessageOutcome } from "./bot-messages.js";
 import { agentConnectionTools, builtinAgentTools } from "./builtin-tools.js";
-import { HOST_DISK_TOOL_NAMES, selectHostDiskTools } from "./host-disk-tools.js";
 import { archiveSpawnedBot, spawnBot } from "./child-bots.js";
 import {
   collectLogIds,
@@ -166,6 +165,7 @@ import {
   selectCompactedHistory,
   shouldEnqueueCompaction,
 } from "./history-compaction.js";
+import { HOST_DISK_TOOL_NAMES, selectHostDiskTools } from "./host-disk-tools.js";
 import {
   assertConnectorToolArgs,
   CATALOG_EXECUTE,
@@ -1879,11 +1879,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               context,
               { maxBytes: MAX_MODEL_FILE_BYTES },
             );
-            await deps.hostDisk.writeFile(
-              run.userId,
-              { path: hostPath, content: bytes },
-              context,
-            );
+            await deps.hostDisk.writeFile(run.userId, { path: hostPath, content: bytes }, context);
             return finish({
               ok: true,
               bot_path: botPath,

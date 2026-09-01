@@ -27,7 +27,9 @@ export async function loadHostDiskSettings(
   userId: string,
 ): Promise<HostDiskSettings> {
   try {
-    const raw = JSON.parse(await readFile(hostDiskSettingsPath(dataDir, userId), "utf8")) as unknown;
+    const raw = JSON.parse(
+      await readFile(hostDiskSettingsPath(dataDir, userId), "utf8"),
+    ) as unknown;
     return normalizeHostDiskSettings(raw);
   } catch {
     return { ...DEFAULT_SETTINGS };
@@ -50,7 +52,13 @@ export function normalizeHostDiskSettings(value: unknown): HostDiskSettings {
   if (!value || typeof value !== "object") return { ...DEFAULT_SETTINGS };
   const record = value as Record<string, unknown>;
   const roots = Array.isArray(record.roots)
-    ? [...new Set(record.roots.filter((item): item is string => typeof item === "string" && item.length > 0))]
+    ? [
+        ...new Set(
+          record.roots.filter(
+            (item): item is string => typeof item === "string" && item.length > 0,
+          ),
+        ),
+      ]
     : [];
   return {
     enabled: record.enabled === true,
