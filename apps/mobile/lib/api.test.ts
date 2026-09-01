@@ -146,6 +146,30 @@ describe("mobile API authentication", () => {
     );
   });
 
+  it("does not send a password or bearer token to a persisted public HTTP server", async () => {
+    vi.mocked(SecureStore.getItemAsync).mockImplementation(async (key) => {
+      if (key === "rakazo.api_base") return "http://app.example.test";
+      if (key === "rakazo.session_token") return "session-token";
+      return null;
+    });
+    const fetchMock = vi.fn(async () => jsonResponse({ status: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await loadApiBase();
+    await changePassword("old-password", "new-password");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:3100/api/auth/change-password",
+      expect.objectContaining({
+        headers: expect.objectContaining({ authorization: "Bearer session-token" }),
+      }),
+    );
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringMatching(/^http:\/\/app\.example\.test/),
+      expect.anything(),
+    );
+  });
+
   it("starts notifications only after the inbox selects the default space", async () => {
     vi.mocked(SecureStore.getItemAsync).mockImplementation(async (key) =>
       key === "rakazo.session_token" ? "session-token" : null,

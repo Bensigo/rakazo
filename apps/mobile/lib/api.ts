@@ -47,7 +47,9 @@ function responseErrorMessage(body: unknown, fallback: string): string {
 }
 
 export function currentApiBase() {
-  return cachedApiBase ?? defaultApiBase();
+  const parsed = normalizeApiBase(cachedApiBase ?? defaultApiBase());
+  if (!parsed.ok) throw new Error(parsed.error);
+  return parsed.url;
 }
 
 export async function loadApiBase() {

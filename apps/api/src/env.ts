@@ -9,6 +9,7 @@ import {
 export { resolveSandboxProvider } from "@rakazo/adapters";
 
 export interface AppEnv {
+  nodeEnv: string;
   databaseUrl: string;
   realtimeDatabaseUrl: string;
   authSecret: string;
@@ -66,6 +67,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
   const updaterUrl = optional(source.RAKAZO_UPDATER_URL);
   const updaterToken = optional(source.RAKAZO_UPDATER_TOKEN);
   return {
+    nodeEnv: source.NODE_ENV ?? "",
     databaseUrl: required(source, "DATABASE_URL"),
     realtimeDatabaseUrl: source.REALTIME_DATABASE_URL ?? required(source, "DATABASE_URL"),
     authSecret,

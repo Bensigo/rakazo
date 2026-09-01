@@ -13,6 +13,7 @@ describe("loadEnv", () => {
     expect(env.sandboxProvider).toBe("docker");
     expect(env.wakeupDriver).toBe("graphile");
     expect(env.apiHost).toBe("127.0.0.1");
+    expect(env.nodeEnv).toBe("test");
   });
 
   it("keeps explicit emulator settings for pnpm test", () => {
@@ -186,5 +187,6 @@ describe("loadEnv", () => {
         EMAIL_EMULATOR: "true",
       }).emailEmulator,
     ).toBe(false);
+    expect(loadEnv({ ...base, NODE_ENV: "development" }).nodeEnv).toBe("development");
   });
 });

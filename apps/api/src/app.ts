@@ -352,7 +352,7 @@ export async function createApp(
       resetUrl: email ? new URL("/reset-password", env.webOrigin).href : null,
     }),
   );
-  if (localEmailEmulator) {
+  if (localEmailEmulator && env.nodeEnv === "development") {
     app.get(
       "/api/dev/emails",
       () =>
@@ -482,7 +482,7 @@ function isTrustedOrigin(origin: string, env: AppEnv) {
 }
 
 function isLoopbackHost(host: string): boolean {
-  return host === "localhost" || host === "127.0.0.1" || host === "::1";
+  return host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
 }
 
 function sessionHeaders(request: Request) {

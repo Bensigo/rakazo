@@ -100,8 +100,9 @@ EMAIL_EMULATOR=true
 ```
 
 The emulator is forcibly disabled when `NODE_ENV=production` and requires the API to bind to a
-loopback host. Captured messages are available from `http://127.0.0.1:3100/api/dev/emails` with
-cache disabled; the API console logs only delivery metadata, never reset tokens.
+loopback host. In `NODE_ENV=development`, captured messages are available from
+`http://127.0.0.1:3100/api/dev/emails` with cache disabled; the API console logs only delivery
+metadata, never reset tokens. The inbox route is not registered in test, staging, or production.
 
 Optional:
 
