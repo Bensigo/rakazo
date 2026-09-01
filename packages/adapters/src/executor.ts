@@ -3677,17 +3677,14 @@ async function requireOwnedCloudAgent(
 ): Promise<{ error: string } | null> {
   const id = agentId.trim();
   if (!id) return { error: "id is required" };
-  const messages = await deps.prisma.message.findMany({
-    where: { thread: { spaceId } },
-    orderBy: { createdAt: "desc" },
-    take: 400,
-    select: { blocks: true },
+  // JSON containment: match a cloud_agent block by agentId without a recency window.
+  const owned = await deps.prisma.message.findFirst({
+    where: {
+      thread: { spaceId },
+      blocks: { array_contains: [{ kind: "cloud_agent", agentId: id }] },
+    },
+    select: { id: true },
   });
-  const owned = messages.some((message) =>
-    (message.blocks as MessageBlock[]).some(
-      (block) => block.kind === "cloud_agent" && block.agentId === id,
-    ),
-  );
   return owned ? null : { error: "Unknown cloud agent." };
 }
 
@@ -3705,17 +3702,13 @@ async function syncCloudAgentCard(
   },
   options: { requeuePoll?: boolean; userId: string },
 ) {
-  const messages = await deps.prisma.message.findMany({
-    where: { threadId: run.threadId },
-    orderBy: { createdAt: "desc" },
-    take: 100,
+  const target = await deps.prisma.message.findFirst({
+    where: {
+      threadId: run.threadId,
+      blocks: { array_contains: [{ kind: "cloud_agent", agentId: snapshot.id }] },
+    },
     select: { id: true, blocks: true },
   });
-  const target = messages.find((message) =>
-    (message.blocks as MessageBlock[]).some(
-      (block) => block.kind === "cloud_agent" && block.agentId === snapshot.id,
-    ),
-  );
   if (!target) return;
 
   const blocks = (target.blocks as MessageBlock[]).map((block) => {
