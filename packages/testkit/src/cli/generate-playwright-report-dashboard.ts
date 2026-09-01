@@ -95,6 +95,10 @@ await writeFile(
     sha,
   }),
 );
+await writeFile(
+  path.join(galleryPath, "review.json"),
+  `${JSON.stringify({ screenshots, screenshotsUrl }, null, 2)}\n`,
+);
 
 console.log(
   `Playwright dashboard generated with ${history.length} runs and ${screenshots.length} screenshots.`,
@@ -125,7 +129,8 @@ async function collectScreenshots(
     const captureType = classifyPlaywrightScreenshot(file);
     if (captureType === undefined) continue;
     const source = path.relative(resultsPath, file);
-    const fileName = `${String(index + 1).padStart(3, "0")}-${sanitizeFileName(path.basename(file))}`;
+    const baseName = sanitizeFileName(path.basename(file));
+    const fileName = `${String(index + 1).padStart(3, "0")}-${baseName}`;
     await copyFile(file, path.join(imagePath, fileName));
     screenshots.push({
       captureType,
@@ -133,7 +138,7 @@ async function collectScreenshots(
       hash: createHash("sha256").update(screenshot).digest("hex"),
       source,
       testId: testIdFromSource(source),
-      title: titleFromFileName(path.basename(file)),
+      title: titleFromFileName(baseName),
     });
   }
   return screenshots;
