@@ -157,6 +157,14 @@ describe("Android mobile platform contract", () => {
     expect(thread).toContain("agents working");
   });
 
+  it("keeps send and stop separate while steering active work", () => {
+    const thread = readFileSync(resolve(mobileRoot, "app/thread.tsx"), "utf8");
+    expect(thread).toContain('accessibilityLabel={working ? "Send steering message" : "Send"}');
+    expect(thread).toContain('accessibilityLabel="Stop"');
+    expect(thread).toContain("Messages sent now guide the next turn.");
+    expect(thread).toContain("const clientNonce = newClientNonce()");
+  });
+
   it("shows agent notification silence in the menu, inbox avatar, and DM header only", () => {
     const index = readFileSync(resolve(mobileRoot, "app/index.tsx"), "utf8");
     const thread = readFileSync(resolve(mobileRoot, "app/thread.tsx"), "utf8");

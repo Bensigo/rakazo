@@ -242,12 +242,23 @@ test("takeover, routine, plugins, and export are reachable", async ({ page }, te
 });
 
 test("sign-in, spawn, and stop work in the shell", async ({ page }, testInfo) => {
+  const browserErrors: string[] = [];
+  const failedRequests: string[] = [];
+  page.on("pageerror", (error) => browserErrors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") browserErrors.push(message.text());
+  });
+  page.on("requestfailed", (request) => {
+    failedRequests.push(
+      `${request.method()} ${request.url()} ${request.failure()?.errorText ?? ""}`,
+    );
+  });
   const stamp = Date.now();
   const email = `shell-${stamp}@rakazo.test`;
   await signup(page, email, "password12", "Shell");
   await completeOnboarding(page);
 
-  const composer = page.getByPlaceholder(/Message/);
+  const composer = page.locator('textarea[name="chat-message"]');
   await composer.fill("spawn a bot named Scout to research venues");
   await page.keyboard.press("Enter");
   await expect(sidebarBotButton(page, /Scout/)).toBeVisible({
@@ -262,7 +273,26 @@ test("sign-in, spawn, and stop work in the shell", async ({ page }, testInfo) =>
   await composer.fill("keep working until I stop you");
   await page.keyboard.press("Enter");
   await expect(page.getByText("still working").first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("composer-steering-status")).toHaveText(
+    "Messages sent now guide the next turn.",
+  );
+  await expect(page.getByRole("button", { name: "Send steering message" })).toBeVisible();
+  await composer.fill("Use the newer report and keep the answer short.");
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Send steering message" })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByTestId("transcript").getByText("Use the newer report and keep the answer short."),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
   await captureScreenshot(page, testInfo, "14-active-bot-work");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("button", { name: "Send steering message" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
+  await captureScreenshot(page, testInfo, "14-active-bot-work-mobile");
+  await page.setViewportSize({ width: 1280, height: 720 });
+  expect(browserErrors).toEqual([]);
+  expect(failedRequests).toEqual([]);
   await page.getByRole("button", { name: "Stop", exact: true }).click();
   await expect(page.getByRole("button", { name: "Send" })).toBeVisible({ timeout: 30_000 });
 

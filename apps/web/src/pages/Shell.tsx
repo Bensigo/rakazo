@@ -1952,9 +1952,11 @@ export function ShellPage() {
           );
           artifactIds.push(artifact.id);
         }
+        const clientNonce = crypto.randomUUID();
         if (groupTarget) {
           await rpc.threads.send({
             groupId: groupTarget,
+            clientNonce,
             text: trimmed || undefined,
             mentions: plan.mentionPayload.length ? plan.mentionPayload : undefined,
             artifactIds: artifactIds.length ? artifactIds : undefined,
@@ -1963,6 +1965,7 @@ export function ShellPage() {
         } else if (botTarget) {
           await rpc.threads.send({
             botId: botTarget,
+            clientNonce,
             text: trimmed || undefined,
             mentions: plan.mentionPayload.length ? plan.mentionPayload : undefined,
             artifactIds: artifactIds.length ? artifactIds : undefined,
@@ -4500,6 +4503,15 @@ const Composer = memo(function Composer({
           })}
         </div>
       ) : null}
+      {running ? (
+        <p
+          className="mb-2 px-3 text-[12px] text-[#85858A]"
+          data-testid="composer-steering-status"
+          aria-live="polite"
+        >
+          Messages sent now guide the next turn.
+        </p>
+      ) : null}
       <div
         data-testid="composer-bar"
         className="flex items-center gap-3.5 rounded-full border border-[#202023] bg-[#131315] py-[9px] pe-2.5 ps-3"
@@ -4641,11 +4653,15 @@ const Composer = memo(function Composer({
             placeholder={
               showComposerPlaceholder
                 ? activeName
-                  ? t`Message ${activeName}`
+                  ? running
+                    ? `Steer ${activeName}`
+                    : t`Message ${activeName}`
                   : t`Message…`
                 : undefined
             }
-            aria-label={activeName ? t`Message ${activeName}` : t`Message`}
+            aria-label={
+              activeName ? (running ? `Steer ${activeName}` : t`Message ${activeName}`) : t`Message`
+            }
             role="combobox"
             aria-autocomplete="list"
             aria-haspopup="listbox"
@@ -4660,14 +4676,25 @@ const Composer = memo(function Composer({
           />
         </div>
         {running ? (
-          <button
-            type="button"
-            aria-label={t`Stop`}
-            onClick={() => void onStop()}
-            className="grid h-9 w-9 place-items-center rounded-full bg-[#F1F1EF] text-[#17171A]"
-          >
-            <Square size={12} strokeWidth={0} fill="currentColor" />
-          </button>
+          <>
+            <button
+              type="button"
+              aria-label="Send steering message"
+              disabled={sending || !canSend || disabled}
+              onClick={send}
+              className="grid h-10 w-10 place-items-center rounded-full bg-[#F1F1EF] text-[#17171A] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A6A6AD] disabled:opacity-50"
+            >
+              <ArrowUp size={18} strokeWidth={2} />
+            </button>
+            <button
+              type="button"
+              aria-label={t`Stop`}
+              onClick={() => void onStop()}
+              className="grid h-10 w-10 place-items-center rounded-full border border-[#34343A] text-[#C9C9CE] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A6A6AD]"
+            >
+              <Square size={12} strokeWidth={0} fill="currentColor" />
+            </button>
+          </>
         ) : (
           <button
             type="button"

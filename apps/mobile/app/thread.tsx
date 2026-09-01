@@ -122,7 +122,13 @@ function formatApprovalAnswer(answer: string | undefined, actions?: AskAction[])
 }
 
 function isWorkingStatus(status: string | undefined): boolean {
-  return status === "queued" || status === "leased" || status === "running";
+  return (
+    status === "queued" ||
+    status === "leased" ||
+    status === "running" ||
+    status === "waiting_input" ||
+    status === "waiting_takeover"
+  );
 }
 
 type NotificationRouteState = "loading" | "ready" | "failed";
@@ -337,6 +343,7 @@ function Thread() {
       return [{ ...member, status: run.status }];
     });
   }, [inGroup, snap?.activeRuns, snap?.members, snap?.run]);
+  const working = inGroup ? workingGroupBots.length > 0 : isWorkingStatus(currentBotStatus);
 
   useEffect(() => {
     void rpc<AgentSkillCatalogEntry[]>("agentSkills/list")
@@ -941,11 +948,13 @@ function Thread() {
         });
         artifactIds.push(artifact.id);
       }
+      const clientNonce = newClientNonce();
       await rpc(
         "threads/send",
         groupTarget
           ? {
               groupId: groupTarget,
+              clientNonce,
               text: trimmed || undefined,
               mentions: plan.mentionPayload.length ? plan.mentionPayload : undefined,
               artifactIds: artifactIds.length ? artifactIds : undefined,
@@ -953,6 +962,7 @@ function Thread() {
             }
           : {
               botId: botTarget!,
+              clientNonce,
               text: trimmed || undefined,
               mentions: plan.mentionPayload.length ? plan.mentionPayload : undefined,
               artifactIds: artifactIds.length ? artifactIds : undefined,
@@ -982,6 +992,20 @@ function Thread() {
       } else if (isCurrentTarget(botTarget, groupTarget)) {
         setError(err instanceof Error ? err.message : "Failed to send message");
       }
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function stop() {
+    if ((!botId && !groupId) || sending) return;
+    setSending(true);
+    setError(null);
+    try {
+      await rpc("threads/stop", groupId ? { groupId } : { botId: botId! });
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to stop work");
     } finally {
       setSending(false);
     }
@@ -1566,11 +1590,19 @@ function Thread() {
             ))}
           </View>
         ) : null}
+        {working ? (
+          <Text
+            accessibilityLiveRegion="polite"
+            style={{ color: "#85858A", fontSize: 12, marginTop: 12, marginHorizontal: 8 }}
+          >
+            Messages sent now guide the next turn.
+          </Text>
+        ) : null}
         <View
           style={{
             flexDirection: "row",
             gap: 8,
-            marginTop: 16,
+            marginTop: working ? 8 : 16,
             alignItems: "flex-end",
           }}
         >
@@ -1667,7 +1699,7 @@ function Thread() {
             <TextInput
               value={draft}
               onChangeText={updateDraft}
-              accessibilityLabel="Message"
+              accessibilityLabel={working ? `Steer ${name ?? "bot"}` : "Message"}
               onKeyPress={(event) => {
                 if (
                   event.nativeEvent.key === "Backspace" &&
@@ -1677,7 +1709,13 @@ function Thread() {
                   removeLastChip();
                 }
               }}
-              placeholder={selectedSkill || selectedMentions.length ? undefined : "Message…"}
+              placeholder={
+                selectedSkill || selectedMentions.length
+                  ? undefined
+                  : working
+                    ? `Steer ${name ?? "bot"}`
+                    : "Message…"
+              }
               placeholderTextColor="#6C6C70"
               keyboardAppearance="dark"
               multiline
@@ -1695,6 +1733,7 @@ function Thread() {
             />
           </View>
           <Pressable
+            accessibilityLabel={working ? "Send steering message" : "Send"}
             disabled={sending || !canSend}
             onPress={() => void send()}
             style={{
@@ -1709,6 +1748,25 @@ function Thread() {
           >
             <NativeSymbol ios="arrow.up" android="arrow-up" size={18} color="#17171A" />
           </Pressable>
+          {working ? (
+            <Pressable
+              accessibilityLabel="Stop"
+              disabled={sending}
+              onPress={() => void stop()}
+              style={{
+                borderColor: "#34343A",
+                borderWidth: 1,
+                borderRadius: 22,
+                width: 44,
+                height: 44,
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: sending ? 0.5 : 1,
+              }}
+            >
+              <NativeSymbol ios="stop.fill" android="stop" size={15} color="#C9C9CE" />
+            </Pressable>
+          ) : null}
         </View>
         {!inGroup ? (
           <Link
