@@ -1692,8 +1692,7 @@ describeJourneys("required product journeys", () => {
         userId: adaMe.userId,
         status: "running",
         trigger: "user",
-        createdAt: new Date(Date.now() + 1_000),
-      },
+                createdAt: new Date(Date.now() + 60_000),,
     });
     const askSnapshot = await rpc<Snap>(app, ada, "threads/get", { groupId: group.id });
     expect(askSnapshot.run?.id).toBe(concurrentRun.id);
