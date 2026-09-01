@@ -346,7 +346,7 @@ export interface AgentRunRequest {
 export interface ScriptedTurn {
   assistant?: string;
   toolCalls?: Array<{ name: string; args: Record<string, unknown> }>;
-  ask?: { text: string; detail?: string };
+  ask?: { text: string; detail?: string; actions?: Array<{ id: string; label: string }> };
   takeover?: { reason: string };
   files?: Array<{ path: string; content: string }>;
   memory?: Array<{ scope: "bot" | "user"; path: string; content: string }>;
@@ -357,7 +357,12 @@ export type AgentRuntimeEvent =
   | { type: "text"; text: string }
   | { type: "progress"; text: string }
   | { type: "tool"; name: string; args: Record<string, unknown>; executionId: string }
-  | { type: "ask"; text: string; detail?: string }
+  | {
+      type: "ask";
+      text: string;
+      detail?: string;
+      actions?: Array<{ id: string; label: string }>;
+    }
   | { type: "takeover"; reason: string }
   | { type: "usage"; inputTokens: number; outputTokens: number; provider: string; model: string }
   | { type: "checkpoint"; blob: string }

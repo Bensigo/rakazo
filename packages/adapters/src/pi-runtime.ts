@@ -476,6 +476,15 @@ function toAgentTool(tool: ConnectorTool, host: ToolHost, exposedName: string): 
       if (tool.name === "request_takeover") {
         return { reason: String(raw.reason ?? "I need you on the screen.") };
       }
+      if (tool.name === "ask_user") {
+        const options = Array.isArray(raw.options) ? raw.options.map(String) : raw.options;
+        return {
+          question: String(raw.question ?? "What should I use?"),
+          // Keep a missing/invalid options value as-is so schema minItems can reject it;
+          // do not coerce to [] (that used to look like a valid empty list upstream).
+          options,
+        };
+      }
       if (tool.name === "request_secret") {
         return {
           label: String(raw.label ?? "Code"),
@@ -550,6 +559,30 @@ function toAgentTool(tool: ConnectorTool, host: ToolHost, exposedName: string): 
         });
         return {
           content: [{ type: "text", text: "Takeover requested." }],
+          details: args,
+          terminate: true,
+        };
+      }
+      if (tool.name === "ask_user") {
+        const options = Array.isArray(args.options)
+          ? args.options.map((option) => String(option).trim())
+          : [];
+        if (
+          options.length < 2 ||
+          options.length > 4 ||
+          options.some((option) => option.length === 0 || option.length > 80) ||
+          new Set(options).size !== options.length
+        ) {
+          throw new Error("ask_user requires two to four unique, non-empty options");
+        }
+        host.pausePending = true;
+        host.queue.push({
+          type: "ask",
+          text: String(args.question ?? "What should I use?"),
+          actions: options.map((label, index) => ({ id: `choice-${index + 1}`, label })),
+        });
+        return {
+          content: [{ type: "text", text: "Waiting for the user's choice." }],
           details: args,
           terminate: true,
         };
@@ -768,6 +801,16 @@ function parametersFor(tool: ConnectorTool) {
       connectionId: Type.Optional(Type.String()),
     });
   }
+  if (tool.name === "ask_user") {
+    return Type.Object({
+      question: Type.String({ maxLength: 240 }),
+      options: Type.Array(Type.String({ minLength: 1, maxLength: 80 }), {
+        minItems: 2,
+        maxItems: 4,
+        uniqueItems: true,
+      }),
+    });
+  }
   if (tool.name === "remember") {
     return Type.Object({ content: Type.String(), path: Type.String() });
   }
@@ -885,7 +928,17 @@ function jsonField(spec: unknown): ReturnType<typeof Type.String> {
   const type = "type" in definition ? String(definition.type) : "string";
   if (type === "number" || type === "integer") return Type.Number() as never;
   if (type === "boolean") return Type.Boolean() as never;
-  if (type === "array") return Type.Array(jsonField(definition.items)) as never;
+  if (type === "array") {
+    const options: {
+      minItems?: number;
+      maxItems?: number;
+      uniqueItems?: boolean;
+    } = {};
+    if (typeof definition.minItems === "number") options.minItems = definition.minItems;
+    if (typeof definition.maxItems === "number") options.maxItems = definition.maxItems;
+    if (definition.uniqueItems === true) options.uniqueItems = true;
+    return Type.Array(jsonField(definition.items), options) as never;
+  }
   if (type === "object") return jsonSchemaParameters(definition) as never;
   return Type.String();
 }

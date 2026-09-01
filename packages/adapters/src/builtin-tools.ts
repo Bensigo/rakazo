@@ -141,6 +141,25 @@ export const builtinAgentTools: ConnectorTool[] = [
     },
   },
   {
+    name: "ask_user",
+    description:
+      "Ask the user one short multiple-choice question with tappable options, then wait for their selection. Use this instead of asking them to type when two to four concise choices are enough.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        question: { type: "string", maxLength: 240 },
+        options: {
+          type: "array",
+          items: { type: "string", minLength: 1, maxLength: 80 },
+          minItems: 2,
+          maxItems: 4,
+          uniqueItems: true,
+        },
+      },
+      required: ["question", "options"],
+    },
+  },
+  {
     name: "request_secret",
     description:
       "Collect a one-shot OTP, password, or API key in a masked field that never reaches the chat transcript or model. For website logins, CAPTCHA, passkeys, or anything that needs the live desktop, call request_takeover instead.",
