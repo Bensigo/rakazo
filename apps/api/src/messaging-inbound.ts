@@ -355,7 +355,11 @@ async function handleChannelEvent(
       where: { channelId_address: { channelId: channel.id, address } },
     });
     if (member) {
-      if (identity && !member.identityId) {
+      // Compare against the current identity, not just null: unlinking
+      // deletes the identity row but leaves this FK-free column pointing at
+      // the dead id, so a re-link would otherwise never reattach and the
+      // member would sit in the channel unreachable by every lookup.
+      if (identity && member.identityId !== identity.id) {
         await deps.prisma.messagingChannelMember.update({
           where: { id: member.id },
           data: { identityId: identity.id },

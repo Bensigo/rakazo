@@ -42,3 +42,15 @@ describe("messaging_surface outbound close-out", () => {
     expect(after.map((row) => row.status)).toEqual(["pending", "failed", "pending", "sent"]);
   });
 });
+
+describe("messaging_surface channel close-out", () => {
+  it("retires memberships of the legacy-prefixed channels", () => {
+    // The prefixed channels can never receive traffic again; leaving their
+    // members active would let a stale row answer the owner's next LEAVE.
+    expect(migrationSql).toMatch(
+      /UPDATE "messaging_channel_members" m\s+SET "status" = 'left'\s+FROM "messaging_channels" c\s+WHERE m\."channelId" = c\."id"\s+AND c\."threadId" LIKE 'legacy:%'\s+AND m\."status" IN \('invited', 'approved'\)/,
+    );
+    // Declined and already-left members keep their answer.
+    expect(migrationSql).not.toMatch(/UPDATE "messaging_channel_members" SET "status" = 'left';/);
+  });
+});

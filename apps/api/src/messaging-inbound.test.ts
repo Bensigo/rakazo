@@ -733,6 +733,24 @@ describe("createMessagingInboundHandler channel routing", () => {
     );
   });
 
+  it("reattaches a member whose address was unlinked and re-linked under a new identity", async () => {
+    const stale = {
+      id: "cm-6",
+      channelId: "ch-1",
+      address: "+15551111111",
+      // Unlinking deletes the identity row but leaves this FK-free column
+      // pointing at the dead id; re-linking mints a new one.
+      identityId: "mi-unlinked",
+      status: "invited",
+    };
+    const deps = createDeps({ members: [stale] });
+    const handle = createMessagingInboundHandler(deps);
+    await handle(groupEvent);
+
+    expect(stale.identityId).toBe("mi-1");
+    expect(deps.outboundRows.some((row) => row.idempotencyKey === "invite:ch-1:mi-1")).toBe(true);
+  });
+
   it("re-invites a member who is back in the group, and skips the sweep on empty participants", async () => {
     const returning = {
       id: "cm-4",

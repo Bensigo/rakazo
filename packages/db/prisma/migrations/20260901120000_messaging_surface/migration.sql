@@ -40,6 +40,17 @@ ALTER INDEX "phone_channel_members_identityId_idx"
 ALTER TABLE "messaging_channel_members"
     RENAME CONSTRAINT "phone_channel_members_channelId_fkey"
     TO "messaging_channel_members_channelId_fkey";
+-- Close out the retired channels' memberships too. A prefixed channel can
+-- never receive traffic again, so a lingering 'approved' row would answer the
+-- owner's next LEAVE command instead of their real group, and a lingering
+-- 'invited' row would sit unanswerable in the web list. The next inbound group
+-- message rebuilds membership under the real thread id.
+UPDATE "messaging_channel_members" m
+    SET "status" = 'left'
+    FROM "messaging_channels" c
+    WHERE m."channelId" = c."id"
+      AND c."threadId" LIKE 'legacy:%'
+      AND m."status" IN ('invited', 'approved');
 
 -- Outbox: DM rows resolve threads through the identity; group rows carry the
 -- provider thread id. Map pending DMs onto identities, then fail only rows

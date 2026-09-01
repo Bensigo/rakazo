@@ -62,6 +62,14 @@ export class ChatSdkMessagingSurface implements MessagingSurface {
       userName: options.userName ?? "rakazo",
       adapters: Object.fromEntries(platforms.map((p) => [p.provider, p.adapter])),
       state: createMemoryState(),
+      // The SDK default ("drop") takes a per-conversation lock and discards
+      // any message that arrives while it is held — and the LockError is
+      // swallowed into waitUntil, so the webhook still ACKs 200 and the
+      // vendor never retries. Two texts in quick succession would lose the
+      // second. Each inbound message already runs inside its own webhook's
+      // waitUntil task, so process them independently and let the per-message
+      // client nonce downstream handle replay.
+      concurrency: "concurrent",
     });
     const deliver = async (thread: Thread, message: Message) => {
       const event = this.toInbound(thread, message);

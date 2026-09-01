@@ -165,6 +165,33 @@ describe("ChatSdkMessagingSurface inbound", () => {
     expect(response?.status).toBe(200);
     expect(events).toHaveLength(0);
   });
+
+  it("delivers overlapping messages on one conversation instead of dropping them", async () => {
+    const { platform } = createPlatform();
+    const surface = new ChatSdkMessagingSurface([platform]);
+    const delivered: string[] = [];
+    surface.onInbound(async (event) => {
+      delivered.push(event.handle);
+      // The real sink writes to the database and enqueues a run, so the
+      // second webhook lands while the first is still in flight.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    const [first, second] = await Promise.all([
+      surface.handleWebhook(
+        "mock",
+        webhookRequest({ threadId: "mock:Duser:1", id: "m-4", text: "one" }),
+      ),
+      surface.handleWebhook(
+        "mock",
+        webhookRequest({ threadId: "mock:Duser:1", id: "m-5", text: "two" }),
+      ),
+    ]);
+
+    expect([first?.status, second?.status]).toEqual([200, 200]);
+    // A dropped message would ACK 200 with no vendor retry, losing it for good.
+    expect(delivered.sort()).toEqual(["m-4", "m-5"]);
+  });
 });
 
 describe("ChatSdkMessagingSurface webhook waitUntil drain", () => {
