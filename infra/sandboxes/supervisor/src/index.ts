@@ -20,6 +20,7 @@ import {
   computerNetworkNamesForCleanup,
   containerCreateOptions,
   containerNameFor,
+  containerPublishesControlPort,
   hostComputerUser,
   legacyNetworkOwnedSolelyBy,
   resolveComputerControlEndpoint,
@@ -138,10 +139,15 @@ app.post("/computers", async (c) => {
       if (existing) {
         const info = await existing.inspect();
         const desired = await docker.getImage(COMPUTER_IMAGE).inspect();
+        // When loopback control is opted in, only resume containers that already
+        // publish 7070; otherwise replace so create gets publishControlPort.
+        const controlPublishOk =
+          !controlViaLoopback || containerPublishesControlPort(info.HostConfig.PortBindings);
         if (
           info.Image === desired.Id &&
           (!networkMode || info.HostConfig.NetworkMode === networkMode) &&
-          info.Config.User === computerUser
+          info.Config.User === computerUser &&
+          controlPublishOk
         ) {
           if (!info.State.Running) await existing.start();
           const screenUrl = await publishedScreenUrl(
@@ -724,6 +730,7 @@ function computerControlEndpoint(info: Docker.ContainerInspectInfo) {
     networkMode: info.HostConfig.NetworkMode,
     networks: info.NetworkSettings?.Networks,
     publishedHostPort,
+    requirePublishedHostPort: controlViaLoopback,
   });
 }
 

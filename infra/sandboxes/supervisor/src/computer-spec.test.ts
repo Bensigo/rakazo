@@ -17,6 +17,7 @@ import {
   computerNetworkNamesForCleanup,
   containerCreateOptions,
   containerNameFor,
+  containerPublishesControlPort,
   hostComputerUser,
   legacyNetworkOwnedSolelyBy,
   resolveComputerControlEndpoint,
@@ -416,6 +417,47 @@ describe("graphical computer spec", () => {
         publishedHostPort: "55101",
       }),
     ).toBeUndefined();
+  });
+
+  it("detects whether a container publishes the control port for resume", () => {
+    expect(containerPublishesControlPort(undefined)).toBe(false);
+    expect(containerPublishesControlPort({})).toBe(false);
+    expect(
+      containerPublishesControlPort({
+        "6080/tcp": [{ HostIp: "127.0.0.1", HostPort: "0" }],
+      }),
+    ).toBe(false);
+    expect(
+      containerPublishesControlPort({
+        "7070/tcp": [{ HostIp: "127.0.0.1", HostPort: "0" }],
+      }),
+    ).toBe(true);
+    expect(
+      containerPublishesControlPort({
+        "7070/tcp": [{ HostIp: "127.0.0.1", HostPort: "55101" }],
+      }),
+    ).toBe(true);
+  });
+
+  it("does not fall back to the container IP when a published control port is required", () => {
+    const networkMode = "rakazo_default";
+    expect(
+      resolveComputerControlEndpoint({
+        token: "secret",
+        networkMode,
+        networks: { [networkMode]: { IPAddress: "172.18.0.4" } },
+        requirePublishedHostPort: true,
+      }),
+    ).toBeUndefined();
+    expect(
+      resolveComputerControlEndpoint({
+        token: "secret",
+        networkMode,
+        networks: { [networkMode]: { IPAddress: "172.18.0.4" } },
+        publishedHostPort: "55101",
+        requirePublishedHostPort: true,
+      }),
+    ).toEqual({ url: "http://127.0.0.1:55101/v1/desktop", token: "secret" });
   });
 
   it("restricts computer control argv to supervisor shapes", () => {

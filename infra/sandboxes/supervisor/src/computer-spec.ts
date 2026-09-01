@@ -188,15 +188,30 @@ export function resolveScreenPublishTarget(input: {
 }
 
 /**
- * Resolve the in-container control service via its Docker network IP.
- * Control is never host-published; the supervisor reaches 7070 on the
- * container network while the process binds 0.0.0.0 inside the sandbox.
+ * True when the container was created with a published mapping for 7070.
+ * Prefer HostConfig.PortBindings so stopped containers still report correctly.
+ */
+export function containerPublishesControlPort(
+  portBindings:
+    | Record<string, Array<{ HostIp?: string; HostPort?: string }> | null>
+    | null
+    | undefined,
+): boolean {
+  const binding = portBindings?.[`${COMPUTER_CONTROL_PORT}/tcp`]?.[0];
+  return Boolean(binding?.HostPort);
+}
+
+/**
+ * Resolve the computer control service. Prefer a published loopback HostPort
+ * when provided; otherwise use the Docker network IP. When requirePublishedHostPort
+ * is set, never fall back to the container IP (unreachable from Docker Desktop hosts).
  */
 export function resolveComputerControlEndpoint(input: {
   token: string | undefined;
   networkMode: string | null | undefined;
   networks: Record<string, { IPAddress?: string } | undefined> | null | undefined;
   publishedHostPort?: string;
+  requirePublishedHostPort?: boolean;
 }): { url: string; token: string } | undefined {
   if (!input.token) return undefined;
   if (input.publishedHostPort) {
@@ -205,6 +220,7 @@ export function resolveComputerControlEndpoint(input: {
       token: input.token,
     };
   }
+  if (input.requirePublishedHostPort) return undefined;
   const address =
     (input.networkMode ? input.networks?.[input.networkMode]?.IPAddress : undefined) ||
     Object.values(input.networks ?? {}).find((network) => network?.IPAddress)?.IPAddress;
