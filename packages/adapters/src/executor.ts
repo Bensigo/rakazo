@@ -770,13 +770,16 @@ export function createRunExecutor(deps: ExecutorDeps) {
       const prompt = formatRoutineEventPrompt(routinePrompt, event);
       const trigger = event.source === "chat" ? ("messaging" as const) : ("webhook" as const);
       const previousLastRunAt = routine.lastRunAt;
-      const preservedNextRunAt = routine.nextRunAt;
+      // Event wakes must not touch nextRunAt. Capture the claim timestamp so
+      // enqueue-failure rollback only restores lastRunAt when this wake still
+      // owns it (a concurrent cron/event wake may have moved schedule state).
+      const claimedAt = new Date();
       let claimed: { id: string; taskId: string; threadId: string } | null = null;
       try {
         claimed = await deps.prisma.$transaction(async (tx) => {
           const updated = await tx.routine.updateMany({
             where: { id: routine.id, active: true },
-            data: { lastRunAt: new Date() },
+            data: { lastRunAt: claimedAt },
           });
           if (updated.count !== 1) return null;
           const task = await tx.task.create({
@@ -802,13 +805,6 @@ export function createRunExecutor(deps: ExecutorDeps) {
               clientNonce: options?.idempotencyKey,
             },
           });
-          // Cron schedule must stay put for event wakes.
-          if (preservedNextRunAt) {
-            await tx.routine.updateMany({
-              where: { id: routine.id },
-              data: { nextRunAt: preservedNextRunAt },
-            });
-          }
           return { id: run.id, taskId: task.id, threadId: thread.id };
         });
       } catch (error) {
@@ -832,11 +828,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
           await tx.run.deleteMany({ where: { id: claimed.id, status: "queued" } });
           await tx.task.deleteMany({ where: { id: claimed.taskId, status: "queued" } });
           await tx.routine.updateMany({
-            where: { id: routine.id },
-            data: {
-              lastRunAt: previousLastRunAt,
-              nextRunAt: preservedNextRunAt,
-            },
+            where: { id: routine.id, lastRunAt: claimedAt },
+            data: { lastRunAt: previousLastRunAt },
           });
         });
         throw error;
