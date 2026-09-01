@@ -1558,7 +1558,7 @@ msgstr "Fullscreen"
 msgid "Git event"
 msgstr "Git event"
 
-#: src/components/HostDiskSettingsSection.tsx:113
+#: src/components/HostDiskSettingsSection.tsx:106
 msgid "Grant folder"
 msgstr "Grant folder"
 
@@ -1734,10 +1734,6 @@ msgstr "Language"
 #: src/pages/MessagingSettingsOverlay.tsx:237
 msgid "Leave"
 msgstr "Leave"
-
-#: src/components/HostDiskSettingsSection.tsx:89
-msgid "Let bots read and write folders you grant on this computer, and copy files to or from the bot computer. Off by default. Nothing reaches Documents or Desktop until you grant a folder."
-msgstr "Let bots read and write folders you grant on this computer, and copy files to or from the bot computer. Off by default. Nothing reaches Documents or Desktop until you grant a folder."
 
 #: src/pages/RoutineEditor.tsx:47
 msgid "Linear issue"
@@ -2375,7 +2371,7 @@ msgid "Release"
 msgstr "Release"
 
 #: src/components/ApprovalRulesSettings.tsx:178
-#: src/components/HostDiskSettingsSection.tsx:133
+#: src/components/HostDiskSettingsSection.tsx:126
 #: src/pages/PluginsOverlay.tsx:323
 #: src/pages/PluginsOverlay.tsx:386
 #: src/pages/PluginsOverlay.tsx:577
@@ -2995,11 +2991,11 @@ msgstr "Tool sources"
 msgid "Treg token"
 msgstr "Treg token"
 
-#: src/components/HostDiskSettingsSection.tsx:103
+#: src/components/HostDiskSettingsSection.tsx:96
 msgid "Turn off"
 msgstr "Turn off"
 
-#: src/components/HostDiskSettingsSection.tsx:103
+#: src/components/HostDiskSettingsSection.tsx:96
 msgid "Turn on"
 msgstr "Turn on"
 

@@ -85,13 +85,6 @@ export function HostDiskSettingsSection() {
       <h3 className="text-[15px] font-medium text-[#ECECEE]">
         <Trans>This computer</Trans>
       </h3>
-      <p className="mt-3 text-[13px] leading-relaxed text-[#7A7A80]">
-        <Trans>
-          Let bots read and write folders you grant on this computer, and copy files to or from the
-          bot computer. Off by default. Nothing reaches Documents or Desktop until you grant a
-          folder.
-        </Trans>
-      </p>
       <div className="mt-3 flex flex-wrap gap-2">
         <button
           type="button"

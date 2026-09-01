@@ -1558,7 +1558,7 @@ msgstr "Tam ekran"
 msgid "Git event"
 msgstr ""
 
-#: src/components/HostDiskSettingsSection.tsx:113
+#: src/components/HostDiskSettingsSection.tsx:106
 msgid "Grant folder"
 msgstr ""
 
@@ -1733,10 +1733,6 @@ msgstr "Dil"
 
 #: src/pages/MessagingSettingsOverlay.tsx:237
 msgid "Leave"
-msgstr ""
-
-#: src/components/HostDiskSettingsSection.tsx:89
-msgid "Let bots read and write folders you grant on this computer, and copy files to or from the bot computer. Off by default. Nothing reaches Documents or Desktop until you grant a folder."
 msgstr ""
 
 #: src/pages/RoutineEditor.tsx:47
@@ -2375,7 +2371,7 @@ msgid "Release"
 msgstr "Bırak"
 
 #: src/components/ApprovalRulesSettings.tsx:178
-#: src/components/HostDiskSettingsSection.tsx:133
+#: src/components/HostDiskSettingsSection.tsx:126
 #: src/pages/PluginsOverlay.tsx:323
 #: src/pages/PluginsOverlay.tsx:386
 #: src/pages/PluginsOverlay.tsx:577
@@ -2995,11 +2991,11 @@ msgstr "Araç kaynakları"
 msgid "Treg token"
 msgstr "Treg token'ı"
 
-#: src/components/HostDiskSettingsSection.tsx:103
+#: src/components/HostDiskSettingsSection.tsx:96
 msgid "Turn off"
 msgstr ""
 
-#: src/components/HostDiskSettingsSection.tsx:103
+#: src/components/HostDiskSettingsSection.tsx:96
 msgid "Turn on"
 msgstr ""
 
