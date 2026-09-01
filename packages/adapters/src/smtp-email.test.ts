@@ -51,6 +51,25 @@ describe("SmtpEmailProvider", () => {
     expect(sleep.mock.calls.map(([delay]) => delay)).toEqual([250, 1_000]);
   });
 
+  it("rejects deliveries after draining begins", async () => {
+    const sendMail = vi.fn(async () => ({ messageId: "message-1" }));
+    const provider = new SmtpEmailProvider(
+      { url: "smtp://smtp.example.test", from: "a@example.test" },
+      { transport: { sendMail } as never },
+    );
+
+    await provider.drain();
+
+    await expect(
+      provider.send({
+        to: "ada@example.test",
+        subject: "Reset password",
+        text: "Use this link",
+      }),
+    ).rejects.toThrow("SMTP provider is shutting down");
+    expect(sendMail).not.toHaveBeenCalled();
+  });
+
   it("bounds graceful shutdown when delivery never settles", async () => {
     vi.useFakeTimers();
     try {

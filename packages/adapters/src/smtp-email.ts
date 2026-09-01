@@ -22,6 +22,7 @@ export class SmtpEmailProvider implements TransactionalEmailProvider {
   private readonly sleep: (delayMs: number, signal: AbortSignal) => Promise<void>;
   private readonly inFlight = new Set<Promise<void>>();
   private readonly shutdown = new AbortController();
+  private accepting = true;
 
   constructor(
     private readonly config: SmtpEmailConfig,
@@ -51,6 +52,7 @@ export class SmtpEmailProvider implements TransactionalEmailProvider {
   }
 
   send(message: TransactionalEmail): Promise<void> {
+    if (!this.accepting) return Promise.reject(new Error("SMTP provider is shutting down"));
     const delivery = this.deliver(message);
     this.inFlight.add(delivery);
     void delivery.then(
@@ -61,6 +63,7 @@ export class SmtpEmailProvider implements TransactionalEmailProvider {
   }
 
   async drain(): Promise<void> {
+    this.accepting = false;
     const deadline = Date.now() + this.drainTimeoutMs;
     while (this.inFlight.size > 0) {
       const completed = await settlesWithin(this.inFlight, Math.max(0, deadline - Date.now()));
