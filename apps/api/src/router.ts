@@ -85,9 +85,13 @@ import {
   coalesceRoutineEventTriggers,
   containsSecret,
   expandSkillReferencesInPrompt,
+  hasChatChannelTriggers,
+  withoutChatChannelTriggers,
   hasMixedOneShotSchedule,
   isOneShotRoutineCrons,
   nextCronDateAcrossStrict,
+  parseRoutineEventTriggers,
+  UNSUPPORTED_CHAT_CHANNEL_TRIGGER_MESSAGE,
   webhookEnabledFromTriggers,
 } from "@rakazo/core";
 import {
@@ -1864,6 +1868,11 @@ export function createRouter(deps: RouterDeps) {
           const computedNextRunAt = nextRoutineDate(input.crons, input.timezone);
           nextRunAt = input.active ? computedNextRunAt : null;
         }
+        if (hasChatChannelTriggers(parseRoutineEventTriggers(input.eventTriggers))) {
+          throw new ORPCError("BAD_REQUEST", {
+            message: UNSUPPORTED_CHAT_CHANNEL_TRIGGER_MESSAGE,
+          });
+        }
         const eventTriggers = coalesceRoutineEventTriggers(
           input.eventTriggers,
           input.webhookEnabled,
@@ -1916,6 +1925,14 @@ export function createRouter(deps: RouterDeps) {
         const active = input.active ?? existing.active;
         const crons = input.crons ?? existing.crons;
         const timezone = input.timezone ?? existing.timezone;
+        if (
+          input.eventTriggers !== undefined &&
+          hasChatChannelTriggers(parseRoutineEventTriggers(input.eventTriggers))
+        ) {
+          throw new ORPCError("BAD_REQUEST", {
+            message: UNSUPPORTED_CHAT_CHANNEL_TRIGGER_MESSAGE,
+          });
+        }
         const eventTriggers = coalesceRoutineEventTriggers(
           input.eventTriggers ?? existing.eventTriggers,
           input.webhookEnabled ?? existing.webhookEnabled,
@@ -4020,7 +4037,9 @@ function mapRoutine(row: {
   nextRunAt: Date | null;
   createdAt: Date;
 }) {
-  const eventTriggers = coalesceRoutineEventTriggers(row.eventTriggers, row.webhookEnabled);
+  const eventTriggers = withoutChatChannelTriggers(
+    coalesceRoutineEventTriggers(row.eventTriggers, row.webhookEnabled),
+  );
   return {
     id: row.id,
     botId: row.botId,

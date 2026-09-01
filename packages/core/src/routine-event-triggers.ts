@@ -67,6 +67,25 @@ export function coalesceRoutineEventTriggers(
   return [];
 }
 
+/**
+ * Slack, Telegram, and WhatsApp inbound is DM-only. Groups are iMessage-only.
+ * Chat triggers in the product UI are Slack-branded, so channel scope never
+ * fires for the providers those triggers target.
+ */
+export const UNSUPPORTED_CHAT_CHANNEL_TRIGGER_MESSAGE =
+  "Chat channel triggers are not supported. Slack, Telegram, and WhatsApp only deliver DMs.";
+
+export function hasChatChannelTriggers(triggers: RoutineEventTriggers): boolean {
+  return triggers.some((trigger) => trigger.kind === "chat" && trigger.scope === "channel");
+}
+
+/** Drop channel-scoped chat triggers that cannot receive Slack/Telegram/WhatsApp events. */
+export function withoutChatChannelTriggers(
+  triggers: RoutineEventTriggers,
+): RoutineEventTriggers {
+  return triggers.filter((trigger) => !(trigger.kind === "chat" && trigger.scope === "channel"));
+}
+
 export function newRoutineEventTriggerId(kind: RoutineEventTrigger["kind"]): string {
   return `${kind}-${Math.random().toString(36).slice(2, 10)}`;
 }

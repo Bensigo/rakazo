@@ -7,6 +7,9 @@ import {
   textMentionsBot,
   triggerMatchesEvent,
   webhookEnabledFromTriggers,
+  hasChatChannelTriggers,
+  withoutChatChannelTriggers,
+  UNSUPPORTED_CHAT_CHANNEL_TRIGGER_MESSAGE,
 } from "./routine-event-triggers.js";
 
 describe("routine event triggers", () => {
@@ -267,4 +270,31 @@ describe("routine event triggers", () => {
     expect(textMentionsBot("hey @ScoutTeam please look", ["Scout"])).toBe(false);
     expect(textMentionsBot("notes for @Chiefly", ["Chief"])).toBe(false);
   });
+
+  it("withoutChatChannelTriggers drops channel-scoped chat triggers", () => {
+    const triggers = [
+      {
+        id: "c1",
+        kind: "chat" as const,
+        scope: "channel" as const,
+        target: "general",
+        match: "message" as const,
+      },
+      {
+        id: "c2",
+        kind: "chat" as const,
+        scope: "dm" as const,
+        target: "U1",
+        match: "mention" as const,
+      },
+      { id: "w1", kind: "webhook" as const },
+    ];
+    expect(hasChatChannelTriggers(triggers)).toBe(true);
+    expect(withoutChatChannelTriggers(triggers)).toEqual([
+      { id: "c2", kind: "chat", scope: "dm", target: "U1", match: "mention" },
+      { id: "w1", kind: "webhook" },
+    ]);
+    expect(UNSUPPORTED_CHAT_CHANNEL_TRIGGER_MESSAGE.toLowerCase()).toContain("dm");
+  });
+
 });

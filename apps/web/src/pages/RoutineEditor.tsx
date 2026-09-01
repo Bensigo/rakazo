@@ -2,14 +2,12 @@ import { t } from "@lingui/core/macro";
 import { Trans, useLingui } from "@lingui/react/macro";
 import type {
   ChatMatchKind,
-  ChatTriggerScope,
   RepoEventKind,
   Routine,
   RoutineEventTrigger,
 } from "@rakazo/contracts";
 import {
   ChatMatchKindSchema,
-  ChatTriggerScopeSchema,
   REPO_EVENT_KIND_VALUES,
 } from "@rakazo/contracts";
 import {
@@ -23,6 +21,7 @@ import {
   newRoutineEventTriggerId,
   presetFromCron,
   repoEventLabel,
+  withoutChatChannelTriggers,
 } from "@rakazo/core";
 import { ChevronLeft, ChevronRight, Pause, Plus, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
@@ -56,7 +55,6 @@ const SCHEDULE_PRESETS: CronFreq[] = [
 
 const REPO_EVENT_OPTIONS: RepoEventKind[] = [...REPO_EVENT_KIND_VALUES];
 const CHAT_MATCH_OPTIONS: ChatMatchKind[] = [...ChatMatchKindSchema.options];
-const CHAT_SCOPE_OPTIONS: ChatTriggerScope[] = [...ChatTriggerScopeSchema.options];
 
 export type RoutineDraftState = {
   name: string;
@@ -89,12 +87,15 @@ export function draftFromRoutine(routine: Routine): RoutineDraftState {
     prompt: routine.prompt,
     schedules: routine.crons.map(presetFromCron),
     webhookEnabled,
-    eventTriggers:
-      eventTriggers.length > 0
-        ? eventTriggers
-        : webhookEnabled
-          ? [{ id: "legacy-webhook", kind: "webhook" }]
-          : [],
+    eventTriggers: (() => {
+      const cleaned =
+        eventTriggers.length > 0
+          ? withoutChatChannelTriggers(eventTriggers)
+          : webhookEnabled
+            ? [{ id: "legacy-webhook", kind: "webhook" as const }]
+            : [];
+      return cleaned;
+    })(),
     active: routine.active,
     runAtLocal: routineNeedsOneShotArm(routine, routine.crons) ? defaultArmRunAtLocal() : "",
   };
@@ -860,44 +861,26 @@ function ChatTriggerCard({
           <X size={14} strokeWidth={1.8} />
         </button>
       </div>
-      <div className="mt-2.5 grid grid-cols-2 gap-2">
-        <label className="block text-[13.5px] text-[#7A7A80]">
-          <Trans>Where</Trans>
-          <select
-            value={value.scope}
-            onChange={(event) =>
-              onChange({ ...value, scope: event.target.value as ChatTriggerScope })
-            }
-            className="mt-1 w-full rounded-[11px] border border-[#26262A] bg-[#16161A] px-2.5 py-2 text-[12.5px] text-[#C9C9CE]"
-          >
-            {CHAT_SCOPE_OPTIONS.map((scope) => (
-              <option key={scope} value={scope}>
-                {scope === "dm" ? t`DM` : t`Channel`}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="block text-[13.5px] text-[#7A7A80]">
-          <Trans>Match</Trans>
-          <select
-            value={value.match}
-            onChange={(event) => onChange({ ...value, match: event.target.value as ChatMatchKind })}
-            className="mt-1 w-full rounded-[11px] border border-[#26262A] bg-[#16161A] px-2.5 py-2 text-[12.5px] text-[#C9C9CE]"
-          >
-            {CHAT_MATCH_OPTIONS.map((match) => (
-              <option key={match} value={match}>
-                {chatMatchLabel(match)}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+      <label className="mt-2.5 block text-[13.5px] text-[#7A7A80]">
+        <Trans>Match</Trans>
+        <select
+          value={value.match}
+          onChange={(event) => onChange({ ...value, match: event.target.value as ChatMatchKind })}
+          className="mt-1 w-full rounded-[11px] border border-[#26262A] bg-[#16161A] px-2.5 py-2 text-[12.5px] text-[#C9C9CE]"
+        >
+          {CHAT_MATCH_OPTIONS.map((match) => (
+            <option key={match} value={match}>
+              {chatMatchLabel(match)}
+            </option>
+          ))}
+        </select>
+      </label>
       <label className="mt-2 block text-[13.5px] text-[#7A7A80]">
-        {value.scope === "dm" ? <Trans>Handle</Trans> : <Trans>Channel</Trans>}
+        <Trans>Handle</Trans>
         <input
           value={value.target}
-          placeholder={value.scope === "dm" ? t`@user or id` : t`#channel or id`}
-          onChange={(event) => onChange({ ...value, target: event.target.value })}
+          placeholder={t`@user or id`}
+          onChange={(event) => onChange({ ...value, scope: "dm", target: event.target.value })}
           className="mt-1 w-full rounded-[11px] border border-[#26262A] bg-[#16161A] px-2.5 py-2 text-[12.5px] text-[#C9C9CE]"
         />
       </label>
