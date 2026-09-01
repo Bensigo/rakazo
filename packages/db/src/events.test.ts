@@ -961,6 +961,7 @@ describe("sendUserMessage", () => {
         create: vi.fn().mockResolvedValue({ id: "message-1", seq: 4 }),
         update: vi.fn(),
       },
+      steeringMessage: { create: vi.fn() },
       task: { create: vi.fn() },
       run: {
         findFirst: vi.fn().mockResolvedValue({ id: "run-0" }),
@@ -993,6 +994,9 @@ describe("sendUserMessage", () => {
     expect(tx.task.create).not.toHaveBeenCalled();
     expect(tx.run.create).not.toHaveBeenCalled();
     expect(tx.message.update).not.toHaveBeenCalled();
+    expect(tx.steeringMessage.create).toHaveBeenCalledWith({
+      data: { messageId: "message-1", botId: "bot-1" },
+    });
   });
 });
 

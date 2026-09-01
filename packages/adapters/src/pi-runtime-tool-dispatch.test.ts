@@ -13,6 +13,7 @@ const fakeAgentState = vi.hoisted(() => ({
     name: "destination_write",
     args: { collection: "notes", title: "Result", body: "Done" } as Record<string, unknown>,
   },
+  preparedMessages: [] as unknown[],
 }));
 
 vi.mock("@earendil-works/pi-agent-core", () => ({
@@ -20,10 +21,19 @@ vi.mock("@earendil-works/pi-agent-core", () => ({
     state = { errorMessage: undefined as string | undefined, messages: [] as unknown[] };
     private readonly tools: typeof fakeAgentState.tools;
     private readonly listeners: Array<(event: Record<string, unknown>) => void> = [];
+    private readonly prepareNextTurnWithContext?: (input: {
+      context: { messages: unknown[] };
+    }) => Promise<{ context?: { messages: unknown[] } } | undefined>;
     private aborted = false;
 
-    constructor(options: { initialState: { tools: typeof fakeAgentState.tools } }) {
+    constructor(options: {
+      initialState: { tools: typeof fakeAgentState.tools };
+      prepareNextTurnWithContext?: (input: {
+        context: { messages: unknown[] };
+      }) => Promise<{ context?: { messages: unknown[] } } | undefined>;
+    }) {
       this.tools = options.initialState.tools;
+      this.prepareNextTurnWithContext = options.prepareNextTurnWithContext;
       fakeAgentState.tools = this.tools;
     }
 
@@ -33,6 +43,8 @@ vi.mock("@earendil-works/pi-agent-core", () => ({
 
     async prompt() {
       if (fakeAgentState.mode === "empty") {
+        const prepared = await this.prepareNextTurnWithContext?.({ context: { messages: [] } });
+        fakeAgentState.preparedMessages = prepared?.context?.messages ?? [];
         return;
       }
 
@@ -154,11 +166,44 @@ describe("Pi connector tool dispatch", () => {
     fakeAgentState.mode = "dispatch";
     fakeAgentState.abortCount = 0;
     fakeAgentState.tools = [];
+    fakeAgentState.preparedMessages = [];
     fakeAgentState.invoke = {
       name: "destination_write",
       args: { collection: "notes", title: "Result", body: "Done" },
     };
     delete process.env.MAX_TOOL_CALLS_PER_TURN;
+  });
+
+  it("injects durable steering at Pi's next safe turn boundary", async () => {
+    fakeAgentState.mode = "empty";
+    const claimSteering = vi.fn(async () => [
+      { id: "steering-1", text: "Use the newer customer totals." },
+      { id: "steering-2", text: "Keep the original date range." },
+    ]);
+    const runtime = new PiAgentRuntime();
+
+    for await (const _event of runtime.run(
+      {
+        botId: "b",
+        threadId: "t",
+        runId: "r",
+        prompt: "prepare the report",
+        instructions: "Follow the user's instructions.",
+        history: [],
+        tools: [],
+        model: { provider: "test", id: "dispatch-test-model" },
+        claimSteering,
+      },
+      { signal: new AbortController().signal },
+    )) {
+      // Exhaust the runtime event stream.
+    }
+
+    expect(claimSteering).toHaveBeenCalledWith([]);
+    expect(fakeAgentState.preparedMessages).toEqual([
+      expect.objectContaining({ role: "user", content: "Use the newer customer totals." }),
+      expect.objectContaining({ role: "user", content: "Keep the original date range." }),
+    ]);
   });
 
   afterEach(() => {
