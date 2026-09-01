@@ -105,6 +105,8 @@ export function matchRepoTrigger(trigger: RoutineRepoTrigger, event: NormalizedR
 function normalizeTarget(value: string): string {
   return value
     .trim()
+    .replace(/^<@/, "")
+    .replace(/>$/, "")
     .replace(/^[#@]+/, "")
     .toLowerCase();
 }

@@ -265,6 +265,7 @@ describe("routine event triggers", () => {
   it("detects this-bot mentions, not arbitrary @words", () => {
     expect(textMentionsBot("hey @Scout please look", ["Scout", "B123"])).toBe(true);
     expect(textMentionsBot("ping <@B123>", ["Scout", "B123"])).toBe(true);
+    expect(textMentionsBot("ping <@B123>", ["Scout", "<@B123>"])).toBe(true);
     expect(textMentionsBot("hey @someone else", ["Scout", "B123"])).toBe(false);
     expect(textMentionsBot("no mention here", ["Scout"])).toBe(false);
     expect(textMentionsBot("hey @ScoutTeam please look", ["Scout"])).toBe(false);
