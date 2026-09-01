@@ -207,4 +207,25 @@ describe("routine event dispatch", () => {
     expect(explicit.scope).toBe("strict");
     expect(explicit.keys).toHaveLength(1);
   });
+
+  it("does not treat payload id as a strict delivery key", () => {
+    const headers = { get: () => null };
+    const withId = webhookDeliveryIdempotency({
+      botId: "bot-1",
+      headers,
+      payload: { id: "resource-1", text: "a" },
+      rawBody: '{"id":"resource-1","text":"a"}',
+      nowMs: 1_700_000_000_000,
+    });
+    const other = webhookDeliveryIdempotency({
+      botId: "bot-1",
+      headers,
+      payload: { id: "resource-1", text: "b" },
+      rawBody: '{"id":"resource-1","text":"b"}',
+      nowMs: 1_700_000_000_000,
+    });
+    // Same resource id, different bodies => different body-hash keys.
+    expect(withId.keys[0]).not.toBe(other.keys[0]);
+    expect(withId.scope).toBe("strict");
+  });
 });

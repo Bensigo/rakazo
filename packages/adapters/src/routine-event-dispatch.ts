@@ -142,14 +142,14 @@ function webhookDeliveryExplicitId(input: {
   headers: Headers | { get(name: string): string | null };
   payload: Record<string, unknown>;
 }): string {
+  // Only dedicated delivery headers. Payload `id` / `event_id` are often resource
+  // ids reused across distinct changes, so they must not become strict keys.
   return (
     input.headers.get("idempotency-key")?.trim() ||
     input.headers.get("x-idempotency-key")?.trim() ||
     input.headers.get("x-github-delivery")?.trim() ||
     input.headers.get("x-delivery-id")?.trim() ||
     input.headers.get("x-request-id")?.trim() ||
-    (typeof input.payload.id === "string" ? input.payload.id.trim() : "") ||
-    (typeof input.payload.event_id === "string" ? input.payload.event_id.trim() : "") ||
     ""
   );
 }
