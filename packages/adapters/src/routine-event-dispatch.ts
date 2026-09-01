@@ -161,9 +161,10 @@ function webhookHashedKey(botId: string, material: string): string {
 export type WebhookDeliveryIdempotency = {
   keys: string[];
   /**
-   * strict — explicit delivery ids; recover any prior run.
-   * inflight — body-hash fallback; only dedupe while a run is still non-terminal,
-   * so a later intentional identical payload can wake again after completion.
+   * Always strict for webhook deliveries: explicit ids and body-hash fallbacks
+   * both claim a durable clientNonce. Body-hash keys are windowed (current +
+   * previous bucket) so provider retries dedupe across the boundary without
+   * starting a second run after the first is terminal.
    */
   scope: "strict" | "inflight";
 };
@@ -171,7 +172,7 @@ export type WebhookDeliveryIdempotency = {
 /**
  * Delivery keys for a webhook. Index 0 is the claim key for new wakes.
  * Body-hash fallbacks also include the previous time bucket so a retry that
- * crosses a five-minute boundary still resolves to an in-flight wake.
+ * crosses a five-minute boundary still resolves to the same claim.
  */
 export function webhookDeliveryIdempotency(input: {
   botId: string;
@@ -192,7 +193,7 @@ export function webhookDeliveryIdempotency(input: {
       webhookHashedKey(input.botId, `${bucket}:${body}`),
       webhookHashedKey(input.botId, `${bucket - 1}:${body}`),
     ],
-    scope: "inflight",
+    scope: "strict",
   };
 }
 

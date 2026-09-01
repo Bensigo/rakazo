@@ -727,6 +727,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
       options?: {
         idempotencyKey?: string;
         alternateIdempotencyKeys?: string[];
+        /** Accepted for callers; webhook claims are always durable across terminal runs. */
         idempotencyScope?: "strict" | "inflight";
       },
     ) {
@@ -736,22 +737,13 @@ export function createRunExecutor(deps: ExecutorDeps) {
         options?.idempotencyKey,
         ...(options?.alternateIdempotencyKeys ?? []),
       ].filter((key): key is string => Boolean(key));
-      const idempotencyScope = options?.idempotencyScope ?? "strict";
-      const inflightStatuses = [
-        "queued",
-        "leased",
-        "running",
-        "waiting_input",
-        "waiting_takeover",
-      ] as const;
 
-      const findExistingByNonce = async (inflightOnly: boolean) => {
+      const findExistingByNonce = async () => {
         if (idempotencyKeys.length === 0) return null;
         return deps.prisma.run.findFirst({
           where: {
             spaceId: routine.spaceId,
             clientNonce: { in: idempotencyKeys },
-            ...(inflightOnly ? { status: { in: [...inflightStatuses] } } : {}),
           },
           select: { id: true, threadId: true, status: true },
         });
@@ -773,7 +765,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
         return { runId: existing.id, threadId: existing.threadId };
       };
 
-      const existingEarly = await findExistingByNonce(idempotencyScope === "inflight");
+      // Durable claim: recover any prior run for these keys, including terminal.
+      const existingEarly = await findExistingByNonce();
       if (existingEarly) return recoverExisting(existingEarly);
 
       const bot = await deps.prisma.bot.findUnique({
@@ -848,37 +841,12 @@ export function createRunExecutor(deps: ExecutorDeps) {
         claimed = await claimRun();
       } catch (error) {
         if (idempotencyKeys.length > 0 && isUniqueConstraintError(error)) {
-          const existing = await findExistingByNonce(false);
-          if (existing) {
-            const terminal =
-              existing.status === "completed" ||
-              existing.status === "failed" ||
-              existing.status === "cancelled";
-            if (idempotencyScope === "inflight" && terminal) {
-              // Free the body-hash nonce so a later intentional identical
-              // payload can claim a new run after the prior one finished.
-              await deps.prisma.run.updateMany({
-                where: { id: existing.id, clientNonce: { in: idempotencyKeys } },
-                data: { clientNonce: null },
-              });
-              try {
-                claimed = await claimRun();
-              } catch (retryError) {
-                if (isUniqueConstraintError(retryError)) {
-                  const again = await findExistingByNonce(idempotencyScope === "inflight");
-                  if (again) return recoverExisting(again);
-                }
-                throw retryError;
-              }
-            } else {
-              return recoverExisting(existing);
-            }
-          } else {
-            throw error;
-          }
-        } else {
-          throw error;
+          // Durable claim: recover any prior run for this key (including terminal)
+          // so an id-less body-hash retry after completion does not start again.
+          const existing = await findExistingByNonce();
+          if (existing) return recoverExisting(existing);
         }
+        throw error;
       }
       if (!claimed) return null;
       // Keep the run queued even if enqueue throws so concurrent recoveries

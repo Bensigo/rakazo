@@ -188,7 +188,7 @@ describe("routine event dispatch", () => {
     expect(after[1]).toBe(before[0]);
   });
 
-  it("marks body-hash deliveries as inflight and explicit ids as strict", () => {
+  it("marks body-hash and explicit deliveries as strict durable claims", () => {
     const headers = { get: () => null };
     const bodyHash = webhookDeliveryIdempotency({
       botId: "bot-1",
@@ -196,7 +196,7 @@ describe("routine event dispatch", () => {
       payload: { text: "hello" },
       rawBody: '{"text":"hello"}',
     });
-    expect(bodyHash.scope).toBe("inflight");
+    expect(bodyHash.scope).toBe("strict");
     expect(bodyHash.keys.length).toBe(2);
 
     const explicit = webhookDeliveryIdempotency({
