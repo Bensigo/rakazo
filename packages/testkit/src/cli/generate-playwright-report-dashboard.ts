@@ -95,6 +95,10 @@ await writeFile(
     sha,
   }),
 );
+await writeFile(
+  path.join(galleryPath, "review.json"),
+  `${JSON.stringify({ screenshots, screenshotsUrl }, null, 2)}\n`,
+);
 
 console.log(
   `Playwright dashboard generated with ${history.length} runs and ${screenshots.length} screenshots.`,
