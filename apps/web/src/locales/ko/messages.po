@@ -734,7 +734,7 @@ msgstr "클라우드"
 #: src/components/AskCard.tsx:132
 #: src/components/AskCard.tsx:137
 msgid "Code"
-msgstr "코드"
+msgstr "Code"
 
 #. placeholder {0}: group.title
 #: src/pages/Shell.tsx:2474
@@ -1583,7 +1583,7 @@ msgstr "전화를 끊은 다음 화면에 표시된 코드를 입력하세요."
 
 #: src/pages/RoutineEditor.tsx:562
 msgid "header"
-msgstr "헤더"
+msgstr "header"
 
 #: src/pages/McpServersOverlay.tsx:342
 #: src/pages/PluginsOverlay.tsx:496
@@ -1715,7 +1715,7 @@ msgstr "기억은 유지"
 
 #: src/pages/RoutineEditor.tsx:555
 msgid "key"
-msgstr "키"
+msgstr "key"
 
 #: src/pages/VoiceSettingsOverlay.tsx:229
 msgid "Keys stay on the server. The app only learns whether a provider is configured."
@@ -2514,7 +2514,7 @@ msgstr "로봇"
 
 #: src/pages/RoutineEditor.tsx:573
 msgid "Rotate key"
-msgstr "키 교체"
+msgstr "key 교체"
 
 #: src/pages/RoutineEditor.tsx:249
 #: src/pages/Shell.tsx:3309
@@ -2574,7 +2574,7 @@ msgstr "저장되었습니다."
 
 #: src/pages/RoutineEditor.tsx:521
 msgid "Saved. Rotate to reveal."
-msgstr "저장되었습니다. 키를 교체하면 표시됩니다."
+msgstr "저장되었습니다. key를 교체하면 표시됩니다."
 
 #: src/components/teach/SkillDraftCard.tsx:162
 #: src/pages/GroupPanel.tsx:224
