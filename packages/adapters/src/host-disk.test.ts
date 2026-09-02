@@ -929,6 +929,10 @@ describe("host disk posix *at pinning", () => {
     expect(ipcSource).toMatch(/IDENTITY_OPEN/);
     expect(pathSource).toMatch(/O_NONBLOCK/);
     expect(pathSource).toMatch(/IDENTITY_OPEN/);
+    expect(pathSource).toMatch(/AT_REMOVEDIR/);
+    expect(pathSource).toMatch(/unlinkOwnedEscapedDir\(/);
+    expect(pathSource).toMatch(/createdSegment/);
+    expect(pathSource).toMatch(/assertFdStillInsideRoots\(/);
     expect(pathSource).toMatch(/Do not rename trash back onto/);
     expect(pathSource).toMatch(/pathFromOpenFd\(tempHandle\.fd\)/);
     // mkdir: async assert + sync gate immediately before mkdirat; owned AT_REMOVEDIR.

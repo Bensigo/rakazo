@@ -1,4 +1,4 @@
-import { constants } from "node:fs";
+import { constants, realpathSync } from "node:fs";
 import { lstat, open, realpath } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -16,6 +16,12 @@ type PathOperations = Pick<typeof path, "isAbsolute" | "relative" | "resolve" | 
 const NOFOLLOW = constants.O_NOFOLLOW ?? 0;
 /** Identity-check opens must not block forever on a FIFO in a granted dir. */
 const IDENTITY_OPEN = constants.O_RDONLY | NOFOLLOW | (constants.O_NONBLOCK ?? 0);
+/**
+ * unlinkat flag to remove directories (AT_REMOVEDIR).
+ * Darwin sys/fcntl.h uses 0x80; Linux uses 0x200. A Linux-only constant makes
+ * macOS mkdir rollback a no-op and can leave grant-escaping directories behind.
+ */
+const AT_REMOVEDIR = process.platform === "darwin" ? 0x80 : 0x200;
 
 /** Lexical containment (no symlink resolution). */
 export function isLexicallyInsideRoots(
@@ -256,69 +262,6 @@ export async function listInsideHostRoots(
  * Create directories under granted roots by walking pinned directory fds so a
  * swapped symlink component cannot divert recursive mkdir outside the jail.
  */
-export async function mkdirInsideHostRoots(target: string, roots: string[]) {
-  const realRoots = await realRootsOf(roots);
-  const resolved = await resolveInsideHostRoots(target, roots);
-  if (realRoots.some((root) => root === resolved)) return resolved;
-
-  const containingRoot = realRoots.find((root) => isLexicallyInsideRoots(resolved, [root]));
-  if (!containingRoot) throw new Error("Host path is outside the granted folders");
-
-  const relative = path.relative(containingRoot, resolved);
-  if (
-    relative === "" ||
-    relative === ".." ||
-    relative.startsWith(`..${path.sep}`) ||
-    path.isAbsolute(relative)
-  ) {
-    throw new Error("Host path is outside the granted folders");
-  }
-
-  const dirFlags = constants.O_RDONLY | (constants.O_DIRECTORY ?? 0);
-  let parentHandle: { fd: number; close: () => Promise<void> } = await openInsideHostRoots(
-    containingRoot,
-    roots,
-    dirFlags,
-  );
-  try {
-    for (const segment of relative.split(path.sep)) {
-      if (!segment || segment === "." || segment === "..") {
-        throw new Error("Host path is outside the granted folders");
-      }
-      let next: PosixAtFileHandle;
-      try {
-        next = openatChild(parentHandle.fd, segment, dirFlags | NOFOLLOW);
-      } catch (error) {
-        const code =
-          error && typeof error === "object" && "code" in error
-            ? String((error as { code: unknown }).code)
-            : "";
-        if (code !== "ENOENT") throw error;
-        try {
-          mkdiratChild(parentHandle.fd, segment);
-        } catch (mkdirError) {
-          const mkdirCode =
-            mkdirError && typeof mkdirError === "object" && "code" in mkdirError
-              ? String((mkdirError as { code: unknown }).code)
-              : "";
-          // Concurrent creator won the race — reopen the existing segment.
-          if (mkdirCode !== "EEXIST") throw mkdirError;
-        }
-        next = openatChild(parentHandle.fd, segment, dirFlags | NOFOLLOW);
-      }
-      await parentHandle.close().catch(() => undefined);
-      parentHandle = next;
-      const fdReal = await realpathOfFd(parentHandle.fd);
-      if (!isLexicallyInsideRoots(fdReal, realRoots)) {
-        throw new Error("Host path is outside the granted folders");
-      }
-    }
-    return await realpathOfFd(parentHandle.fd);
-  } finally {
-    await parentHandle.close().catch(() => undefined);
-  }
-}
-
 type FdIdentity = { dev: unknown; ino: unknown };
 
 function sameFdIdentity(left: FdIdentity, right: FdIdentity) {
@@ -361,6 +304,202 @@ async function unlinkIfOwnedChild(dirFd: number, name: string, owned: FdIdentity
     unlinkatChild(dirFd, trash, flags);
   } catch {
     // Best-effort attributable cleanup only.
+  }
+}
+
+/** Last-mile sync containment check (no await) before mkdirat/renameat. */
+function assertFdStillInsideRoots(fd: number, roots: string[]) {
+  let fdReal: string;
+  try {
+    fdReal = realpathSync(pathFromOpenFd(fd));
+  } catch {
+    throw new Error("Host path is outside the granted folders");
+  }
+  if (!isLexicallyInsideRoots(fdReal, roots)) {
+    throw new Error("Host path is outside the granted folders");
+  }
+}
+
+/**
+ * Empty a directory through an open dirfd (NOFOLLOW). Used before AT_REMOVEDIR so
+ * a same-user populate during mkdir validation cannot block rollback of an
+ * escaped segment we still hold open.
+ */
+async function emptyDirAt(dirFd: number) {
+  let names: string[];
+  try {
+    names = readdirNamesAt(dirFd);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    if (name === "." || name === "..") continue;
+    try {
+      let child: PosixAtFileHandle | null = null;
+      try {
+        child = openatChild(
+          dirFd,
+          name,
+          constants.O_RDONLY | (constants.O_DIRECTORY ?? 0) | NOFOLLOW,
+        );
+      } catch {
+        try {
+          unlinkatChild(dirFd, name, 0);
+        } catch {
+          // Best-effort.
+        }
+        continue;
+      }
+      try {
+        await emptyDirAt(child.fd);
+      } finally {
+        await child.close().catch(() => undefined);
+      }
+      try {
+        unlinkatChild(dirFd, name, AT_REMOVEDIR);
+      } catch {
+        // Best-effort.
+      }
+    } catch {
+      // Skip vanished / raced entries.
+    }
+  }
+}
+
+/**
+ * Roll back a mkdir segment we still hold open after it escaped the grant.
+ * Empty via the open fd, remove under the pinned parent, then recover the
+ * current parent from the fd path if renamed away.
+ */
+async function unlinkOwnedEscapedDir(
+  parentFd: number,
+  owned: FdIdentity,
+  preferredName: string,
+  dirHandle: PosixAtFileHandle,
+) {
+  try {
+    await emptyDirAt(dirHandle.fd);
+  } catch {
+    // Best-effort emptying.
+  }
+  try {
+    await unlinkIfOwnedChild(parentFd, preferredName, owned, AT_REMOVEDIR);
+  } catch {
+    // Try recovery below.
+  }
+  try {
+    await dirHandle.stat();
+  } catch {
+    return;
+  }
+  try {
+    const currentPath = pathFromOpenFd(dirHandle.fd);
+    const altParent = await open(
+      path.dirname(currentPath),
+      constants.O_RDONLY | (constants.O_DIRECTORY ?? 0) | NOFOLLOW,
+    );
+    try {
+      await unlinkIfOwnedChild(altParent.fd, path.basename(currentPath), owned, AT_REMOVEDIR);
+    } finally {
+      await altParent.close().catch(() => undefined);
+    }
+  } catch {
+    // Best-effort attributable cleanup only.
+  }
+}
+
+export async function mkdirInsideHostRoots(target: string, roots: string[]) {
+  const realRoots = await realRootsOf(roots);
+  const resolved = await resolveInsideHostRoots(target, roots);
+  if (realRoots.some((root) => root === resolved)) return resolved;
+
+  const containingRoot = realRoots.find((root) => isLexicallyInsideRoots(resolved, [root]));
+  if (!containingRoot) throw new Error("Host path is outside the granted folders");
+
+  const relative = path.relative(containingRoot, resolved);
+  if (
+    relative === "" ||
+    relative === ".." ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  ) {
+    throw new Error("Host path is outside the granted folders");
+  }
+
+  const dirFlags = constants.O_RDONLY | (constants.O_DIRECTORY ?? 0);
+  let parentHandle: { fd: number; close: () => Promise<void> } = await openInsideHostRoots(
+    containingRoot,
+    roots,
+    dirFlags,
+  );
+  try {
+    for (const segment of relative.split(path.sep)) {
+      if (!segment || segment === "." || segment === "..") {
+        throw new Error("Host path is outside the granted folders");
+      }
+      let next: PosixAtFileHandle;
+      let createdSegment = false;
+      try {
+        next = openatChild(parentHandle.fd, segment, dirFlags | NOFOLLOW);
+      } catch (error) {
+        const code =
+          error && typeof error === "object" && "code" in error
+            ? String((error as { code: unknown }).code)
+            : "";
+        if (code !== "ENOENT") throw error;
+        // Prove parent is still inside the grant, then mkdirat with no await in
+        // between. If a move races after this and mkdir lands outside, the
+        // post-open assert below removes the empty segment we created
+        // (AT_REMOVEDIR) — undoing our mkdir, not deleting outside write dests.
+        if (!isLexicallyInsideRoots(await realpathOfFd(parentHandle.fd), realRoots)) {
+          throw new Error("Host path is outside the granted folders");
+        }
+        assertFdStillInsideRoots(parentHandle.fd, realRoots);
+        try {
+          mkdiratChild(parentHandle.fd, segment);
+          createdSegment = true;
+        } catch (mkdirError) {
+          const mkdirCode =
+            mkdirError && typeof mkdirError === "object" && "code" in mkdirError
+              ? String((mkdirError as { code: unknown }).code)
+              : "";
+          // Concurrent creator won the race — reopen the existing segment.
+          if (mkdirCode !== "EEXIST") throw mkdirError;
+        }
+        // Without a successful open we cannot confirm the mkdir inode — do
+        // not unlink by basename (a replacement could be an unrelated dir).
+        next = openatChild(parentHandle.fd, segment, dirFlags | NOFOLLOW);
+      }
+      try {
+        const fdReal = await realpathOfFd(next.fd);
+        if (!isLexicallyInsideRoots(fdReal, realRoots)) {
+          throw new Error("Host path is outside the granted folders");
+        }
+      } catch (error) {
+        let owned: FdIdentity | null = null;
+        if (createdSegment) {
+          try {
+            owned = await next.stat();
+          } catch {
+            owned = null;
+          }
+        }
+        if (owned) {
+          try {
+            await unlinkOwnedEscapedDir(parentHandle.fd, owned, segment, next);
+          } catch {
+            // Best-effort cleanup.
+          }
+        }
+        await next.close().catch(() => undefined);
+        throw error;
+      }
+      await parentHandle.close().catch(() => undefined);
+      parentHandle = next;
+    }
+    return await realpathOfFd(parentHandle.fd);
+  } finally {
+    await parentHandle.close().catch(() => undefined);
   }
 }
 
@@ -416,6 +555,12 @@ export async function writeFileInsideHostRoots(
       }
       await tempHandle.writeFile(typeof content === "string" ? content : Buffer.from(content));
 
+      // Sync containment on the pinned parent fd immediately before renameat
+      // (no await): if the parent escaped the grant during the async write,
+      // abort without publishing. Keep using the pinned fd — reopening by path
+      // would break in-grant parent renames and outside path-swap races that
+      // the openat pin is meant to survive.
+      assertFdStillInsideRoots(parentHandle.fd, realRoots);
       renameatChild(parentHandle.fd, tempName, baseName);
 
       const finalHandle = openatChild(parentHandle.fd, baseName, constants.O_RDONLY | NOFOLLOW);
