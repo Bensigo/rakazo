@@ -186,7 +186,8 @@ export async function detectDocker(
     if (compose.code !== 0) {
       return {
         ok: false,
-        error: "Docker Compose is required for This computer. Update Docker Desktop, then try again.",
+        error:
+          "Docker Compose is required for This computer. Update Docker Desktop, then try again.",
       };
     }
     return { ok: true };
@@ -272,7 +273,10 @@ export async function ensureLocalStack(deps: LocalStackDeps): Promise<LocalStack
     if (pull.code !== 0) {
       return {
         ok: false,
-        error: summarizeDockerFailure("Could not download Rakazo images.", pull.stderr || pull.stdout),
+        error: summarizeDockerFailure(
+          "Could not download Rakazo images.",
+          pull.stderr || pull.stdout,
+        ),
       };
     }
   }
@@ -300,7 +304,10 @@ export async function ensureLocalStack(deps: LocalStackDeps): Promise<LocalStack
   if (up.code !== 0) {
     return {
       ok: false,
-      error: summarizeDockerFailure("Could not start the local Rakazo server.", up.stderr || up.stdout),
+      error: summarizeDockerFailure(
+        "Could not start the local Rakazo server.",
+        up.stderr || up.stdout,
+      ),
     };
   }
 

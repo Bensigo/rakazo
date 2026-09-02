@@ -8,6 +8,7 @@ import {
   type ElectronAutoUpdater,
   LAUNCH_CHECK_DELAY_MS,
 } from "./auto-update.js";
+import { ensureLocalStack, isDefaultLocalStackUrl } from "./local-stack.js";
 import { oauthCallbackFrom } from "./oauth-callback.js";
 import {
   bundledRendererCandidates,
@@ -28,7 +29,6 @@ import {
   sessionPartitionForServerUrl,
 } from "./setup-config.js";
 import { clearSetup, readSetup, writeSetup } from "./setup-store.js";
-import { ensureLocalStack, isDefaultLocalStackUrl } from "./local-stack.js";
 import { shouldOpenInAppPopup } from "./window-open.js";
 import { browserWindowOptions, setupWindowOptions, warmWindowTtlMs } from "./window-options.js";
 
@@ -600,16 +600,13 @@ function fromSetupWindow(event: Electron.IpcMainInvokeEvent) {
   );
 }
 
-
 function emitSetupProgress(message: string) {
   if (setupWindow !== null && !setupWindow.isDestroyed()) {
     setupWindow.webContents.send("desktop.setup.progress", message);
   }
 }
 
-async function ensureReachableServer(
-  setup: DesktopSetup,
-): Promise<DesktopReachability> {
+async function ensureReachableServer(setup: DesktopSetup): Promise<DesktopReachability> {
   let reachability = await probeServer(setup.serverUrl);
   if (reachability.ok) return reachability;
   if (setup.mode !== "new" || !isDefaultLocalStackUrl(setup.serverUrl)) {
@@ -627,7 +624,9 @@ async function ensureReachableServer(
   }
 
   emitSetupProgress(
-    started.attached ? "Local server is running. Connecting…" : "Local server is ready. Connecting…",
+    started.attached
+      ? "Local server is running. Connecting…"
+      : "Local server is ready. Connecting…",
   );
   reachability = await probeServer(setup.serverUrl);
   return reachability;

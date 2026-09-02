@@ -2,7 +2,6 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { DEFAULT_LOCAL_WEB_URL } from "./setup-config.js";
 import {
   detectDocker,
   ensureLocalStack,
@@ -14,6 +13,7 @@ import {
   LOCAL_STACK_ENV_FILE,
   type LocalStackRunner,
 } from "./local-stack.js";
+import { DEFAULT_LOCAL_WEB_URL } from "./setup-config.js";
 
 const EXAMPLE = `# example
 POSTGRES_PASSWORD=
@@ -64,7 +64,9 @@ describe("ensureLocalStackFiles", () => {
     await ensureLocalStackFiles({ dataDir: dir, templateDir });
     const env = await readFile(path.join(dir, LOCAL_STACK_ENV_FILE), "utf8");
     expect(env).toMatch(/BETTER_AUTH_SECRET=[0-9a-f]{64}/);
-    expect(await readFile(path.join(dir, LOCAL_STACK_COMPOSE_FILE), "utf8")).toContain("name: rakazo");
+    expect(await readFile(path.join(dir, LOCAL_STACK_COMPOSE_FILE), "utf8")).toContain(
+      "name: rakazo",
+    );
 
     const password = /^POSTGRES_PASSWORD=(.*)$/m.exec(env)?.[1];
     await ensureLocalStackFiles({ dataDir: dir, templateDir });
