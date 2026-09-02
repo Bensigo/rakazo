@@ -252,6 +252,90 @@ async function unlinkOwnedChildAnywhere(
   }
 }
 
+/**
+ * Empty a directory through an open dirfd (NOFOLLOW). Used before AT_REMOVEDIR so
+ * a same-user populate during mkdir validation cannot block rollback of an
+ * escaped segment we still hold open.
+ */
+async function emptyDirAt(dirFd: number) {
+  let names: string[];
+  try {
+    names = readdirNamesAt(dirFd);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    if (name === "." || name === "..") continue;
+    try {
+      let child: PosixAtFileHandle | null = null;
+      try {
+        child = openatChild(dirFd, name, constants.O_RDONLY | DIRECTORY | NOFOLLOW);
+      } catch {
+        try {
+          unlinkatChild(dirFd, name, 0);
+        } catch {
+          // Best-effort.
+        }
+        continue;
+      }
+      try {
+        await emptyDirAt(child.fd);
+      } finally {
+        await child.close().catch(() => undefined);
+      }
+      try {
+        unlinkatChild(dirFd, name, AT_REMOVEDIR);
+      } catch {
+        // Best-effort.
+      }
+    } catch {
+      // Skip vanished / raced entries.
+    }
+  }
+}
+
+/**
+ * Roll back a mkdir segment we still hold open after it escaped the grant.
+ * Empty via the open fd (defeats ENOTEMPTY), remove under the pinned parent
+ * (basename + inode scan), then if still present recover the current parent
+ * from the fd path (covers rename into another directory).
+ */
+async function unlinkOwnedEscapedDir(
+  parentFd: number,
+  owned: FdIdentity,
+  preferredName: string,
+  dirHandle: PosixAtFileHandle,
+) {
+  try {
+    await emptyDirAt(dirHandle.fd);
+  } catch {
+    // Best-effort emptying.
+  }
+  try {
+    await unlinkOwnedChildAnywhere(parentFd, owned, [preferredName], AT_REMOVEDIR);
+  } catch {
+    // Try recovery below.
+  }
+  try {
+    await dirHandle.stat();
+  } catch {
+    return; // Already gone.
+  }
+  try {
+    const currentPath = pathFromOpenFd(dirHandle.fd);
+    const parentPath = path.dirname(currentPath);
+    const baseName = path.basename(currentPath);
+    const altParent = await open(parentPath, constants.O_RDONLY | DIRECTORY | NOFOLLOW);
+    try {
+      await unlinkOwnedChildAnywhere(altParent.fd, owned, [baseName], AT_REMOVEDIR);
+    } finally {
+      await altParent.close().catch(() => undefined);
+    }
+  } catch {
+    // Best-effort attributable cleanup only.
+  }
+}
+
 /** Last-mile sync containment check (no await) before mkdirat/renameat. */
 function assertFdStillInsideRoots(fd: number, roots: HostDiskAuthorizedRoot[]) {
   let fdReal: string;
@@ -353,16 +437,17 @@ async function mkdirInsideGrants(target: string) {
             owned = null;
           }
         }
-        await next.close().catch(() => undefined);
         if (owned) {
           try {
-            // Preferred basename first, then inode scan — a same-user rename of
-            // our mkdir segment must not leave a grant-escaping directory behind.
-            await unlinkOwnedChildAnywhere(parentHandle.fd, owned, [segment], AT_REMOVEDIR);
+            // Keep `next` open: empty through the fd, then owned unlink under the
+            // pinned parent (and current parent if renamed away) so populate /
+            // rename races cannot leave a grant-escaping directory behind.
+            await unlinkOwnedEscapedDir(parentHandle.fd, owned, segment, next);
           } catch {
             // Best-effort cleanup.
           }
         }
+        await next.close().catch(() => undefined);
         throw error;
       }
       await parentHandle.close().catch(() => undefined);
