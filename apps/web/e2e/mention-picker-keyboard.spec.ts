@@ -25,7 +25,7 @@ test("mention picker completes with Enter and Tab", async ({ page }, testInfo) =
   expect(researcherId).toBeTruthy();
   expect(writerId).toBeTruthy();
 
-  await page.getByTitle("Create").click();
+  await page.getByTitle("Create", { exact: true }).click();
   await page.getByRole("button", { name: "New group" }).click();
   await page.locator("label:has-text('Name') input").fill("Mention keys team");
   const panel = page.getByTestId("side-panel");

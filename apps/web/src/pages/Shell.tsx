@@ -82,6 +82,7 @@ import {
   Gauge,
   Lock,
   LogOut,
+  Maximize2,
   Menu,
   Mic,
   Monitor,
@@ -128,7 +129,7 @@ import { MessageHoverMetadata } from "../components/MessageHoverMetadata";
 import { ToolActivityDisclosure, ToolSteps } from "../components/ToolActivityDisclosure";
 import { SkillDraftCard } from "../components/teach/SkillDraftCard";
 import { TeachCaptureOverlay } from "../components/teach/TeachCaptureOverlay";
-import { TeachComputerSection } from "../components/teach/TeachComputerSection";
+import { TeachComputerOverlayControl } from "../components/teach/TeachComputerOverlay";
 import { TeachRecordingChrome, TeachStopButton } from "../components/teach/TeachRecordingChrome";
 import { readActivityMode, writeActivityMode } from "../lib/activity-mode";
 import { type ArtifactTarget, decodeArtifactBase64 } from "../lib/artifact-open";
@@ -449,7 +450,7 @@ export function ShellPage() {
   const [routineError, setRoutineError] = useState<string | null>(null);
   const [screenUrl, setScreenUrl] = useState<string | null>(null);
   const [computerOpen, setComputerOpen] = useState(false);
-  const [computerError, setComputerError] = useState<string | null>(null);
+  const [, setComputerError] = useState<string | null>(null);
   useEffect(() => {
     if (!session.data?.user) return;
     let cancelled = false;
@@ -2110,6 +2111,18 @@ export function ShellPage() {
     if (!id) return;
     await refreshThreadRef.current(id);
   }, []);
+  // Teach chrome needs skills applied before this resolves — refreshThread only
+  // kicks skills.list off in the background, so Stop teaching would never mount
+  // if that background call failed or lagged behind local recovery.
+  const refreshActiveTeaching = useCallback(async () => {
+    const id = activeBotId.current;
+    if (!id) return;
+    await refreshThreadRef.current(id);
+    const skills = await rpc.skills.list({ botId: id });
+    if (activeBotId.current !== id) return;
+    setTaughtSkills(skills);
+    setTaughtSkillsBotId(id);
+  }, []);
   const addSkillRoutine = useCallback((name: string, prompt: string) => {
     setRoutineDraft({ ...emptyRoutineDraft(), name, prompt });
     setRoutineWebhookSecret(null);
@@ -2308,7 +2321,6 @@ export function ShellPage() {
 
   const embeddedScreenUrl = embeddableScreenUrl(screenUrl);
   const hasControl = userHoldsComputerControl(computer, active?.id);
-  const takeoverBlocked = computerTakeoverBlocked(computer, snapshot?.run?.status);
 
   const userName = session.data?.user.name ?? t`You`;
   const initials = userName
@@ -3065,7 +3077,10 @@ export function ShellPage() {
             ) : null}
             {panel === "computer" && active ? (
               <div>
-                <div className="relative aspect-[16/10] overflow-hidden rounded-[14px] bg-[#0E0E10]">
+                <div
+                  data-testid="computer-preview"
+                  className="group relative aspect-[16/10] overflow-hidden rounded-[14px] bg-[#0E0E10]"
+                >
                   {computerOpen ? (
                     <div className="grid h-full place-items-center text-sm text-[#6C6C70]">
                       <Trans>Open in full window</Trans>
@@ -3101,53 +3116,20 @@ export function ShellPage() {
                   )}
                   <button
                     type="button"
-                    className="absolute inset-0 cursor-pointer"
-                    aria-label={t`Open computer`}
+                    data-testid="computer-preview-open"
+                    className="absolute inset-0 flex cursor-pointer items-center justify-center bg-[rgba(4,4,5,.28)] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                    aria-label={t`Open`}
                     onClick={() => void openComputer()}
-                  />
+                  >
+                    <span className="inline-flex items-center gap-2 rounded-full bg-[rgba(12,12,14,.82)] px-3.5 py-2 text-[14px] text-[#F1F1F2] shadow-[0_8px_24px_rgba(0,0,0,.45)]">
+                      <Maximize2 size={15} strokeWidth={1.9} aria-hidden />
+                      <Trans>Open</Trans>
+                    </span>
+                  </button>
                 </div>
-                <div className="mt-3 flex items-center justify-between gap-3">
-                  <span className="min-w-0 text-[13.5px] text-[#85858A]">
-                    {hasControl
-                      ? t`You have control`
-                      : computerError
-                        ? computerError
-                        : computer?.busyBotName
-                          ? t`${computer.busyBotName} is using it`
-                          : computer?.state === "suspended"
-                            ? t`Asleep`
-                            : computerLabel(computer?.mode, active.name)}
-                  </span>
-                  {hasControl ? (
-                    <ComputerReleaseActions
-                      takeoverRequested={computer?.takeoverRequested ?? false}
-                      onRelease={releaseComputer}
-                    />
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={takeoverBlocked}
-                      title={takeoverBlocked ? t`Stop the bot first` : undefined}
-                      onClick={() => void openComputer()}
-                    >
-                      <Trans>Take control</Trans>
-                    </Button>
-                  )}
-                </div>
-                {computer?.state === "error" ||
-                computer?.state === "stopped" ||
-                (computer?.state === "running" && !embeddedScreenUrl) ? (
-                  <ComputerMaintenanceActions
-                    botId={active.id}
-                    computer={computer}
-                    compact
-                    onChanged={async () => {
-                      await refreshThread(active.id);
-                    }}
-                  />
-                ) : null}
+                <p className="mt-2 truncate text-[13.5px] text-[#85858A]" dir="auto">
+                  {t`${active.name}'s screen`}
+                </p>
                 <RoutineListHeader
                   onCreate={() => {
                     setRoutineDraft(emptyRoutineDraft());
@@ -3176,27 +3158,6 @@ export function ShellPage() {
                     />
                   );
                 })}
-                {active ? (
-                  <TeachComputerSection
-                    botId={active.id}
-                    computer={computer}
-                    skills={activeTaughtSkills}
-                    busy={teachBusy}
-                    onRefresh={refreshActiveThread}
-                    onOpenComputer={openComputer}
-                    onStopTeaching={stopTeaching}
-                    onAddRoutine={(skill) => {
-                      setRoutineDraft({
-                        ...emptyRoutineDraft(),
-                        name: skill.name || skill.goal.slice(0, 80),
-                        prompt: `Run taught skill: ${skill.name || skill.goal}\n${skill.playbook.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")}`,
-                      });
-                      setRoutineWebhookSecret(null);
-                      setEditingRoutine(null);
-                      setPanel("routine");
-                    }}
-                  />
-                ) : null}
               </div>
             ) : null}
             {panel === "create-group" ? (
@@ -3725,7 +3686,10 @@ export function ShellPage() {
         </div>
       ) : computerOpen && active ? (
         <div className="absolute inset-0 z-30 flex flex-col bg-[#050506]">
-          <div className="flex items-center justify-between gap-4 border-b border-[#171719] px-[18px] py-3.5">
+          <div
+            data-testid="computer-chrome"
+            className="flex items-center justify-between gap-4 border-b border-[#171719] px-[18px] py-3.5"
+          >
             <div className="flex min-w-0 flex-1 items-center gap-3">
               <BotAvatar
                 color={active.color}
@@ -3767,25 +3731,28 @@ export function ShellPage() {
               ) : null}
               {recordingSkill ? (
                 <TeachStopButton busy={teachBusy} onStop={stopTeaching} />
-              ) : hasControl ? (
-                <ComputerReleaseActions
-                  takeoverRequested={computer?.takeoverRequested ?? false}
-                  onRelease={releaseComputer}
+              ) : hasControl && computer?.takeoverRequested ? (
+                <ComputerReleaseActions takeoverRequested onRelease={releaseComputer} />
+              ) : null}
+              {active && !recordingSkill ? (
+                <TeachComputerOverlayControl
+                  key={active.id}
+                  botId={active.id}
+                  computer={computer}
+                  busy={teachBusy}
+                  onRefresh={refreshActiveTeaching}
                 />
-              ) : (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={takeoverBlocked}
-                  title={takeoverBlocked ? t`Stop the bot first` : undefined}
-                  onClick={() =>
-                    void bootComputer({ takeControl: true, overlay: false }).catch(() => undefined)
-                  }
-                >
-                  <Trans>Take control</Trans>
-                </Button>
-              )}
+              ) : null}
+              {active && !recordingSkill ? (
+                <ComputerMaintenanceActions
+                  botId={active.id}
+                  computer={computer}
+                  variant="menu"
+                  onChanged={async () => {
+                    await refreshThread(active.id);
+                  }}
+                />
+              ) : null}
               <button
                 type="button"
                 className="text-[16px] text-[#85858A] hover:text-[#ECECEE]"
@@ -6343,7 +6310,7 @@ function computerPlaceholder(
 ) {
   if (state === "booting" || booting) return t`Booting live desktop…`;
   if (state === "running") return label;
-  if (state === "suspended") return t`Computer is asleep. Take control to wake it.`;
+  if (state === "suspended") return t`Computer is asleep. Open it to wake.`;
   if (state === "error") return t`Computer failed to boot`;
   return t`Computer is stopped`;
 }

@@ -30,7 +30,7 @@ test("create group from + and see two bots in one transcript", async ({ page }, 
   const researcherId = await createBot(page, "Researcher");
   const writerId = await createBot(page, "Research Writer");
 
-  await page.getByTitle("Create").click();
+  await page.getByTitle("Create", { exact: true }).click();
   await page.getByRole("button", { name: "New group" }).click();
   await page.locator("label:has-text('Name') input").fill("Draft team");
   const panel = page.getByTestId("side-panel");
