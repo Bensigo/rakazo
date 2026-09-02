@@ -31,10 +31,7 @@ test.describe("marketing homepage", () => {
     await selfHost.scrollIntoViewIfNeeded();
     await captureScreenshot(page, testInfo, "01-marketing-homepage-selfhost");
 
-    await page
-      .getByRole("button", { name: /Get started/i })
-      .first()
-      .click();
+    await selfHost.getByRole("button", { name: /Get started/i }).click();
     const dialog = page.locator("[data-get-started-dialog]");
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole("heading")).toBeVisible();
