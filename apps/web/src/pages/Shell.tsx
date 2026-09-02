@@ -2421,13 +2421,13 @@ export function ShellPage() {
             ) : null}
           </div>
         </div>
-        <div className="mx-3.5 mb-3 flex items-center gap-2.5 rounded-xl border border-[var(--rk-hairline-strong)] bg-[var(--rk-surface)] px-3 py-2 text-[14px] text-[var(--rk-muted-2)]">
-          <span>⌕</span>
+        <div className="mx-3.5 mb-3 flex items-center gap-2.5 rounded-xl border border-[var(--rk-hairline-strong)] bg-[var(--rk-surface)] px-3 py-2 text-[14px] text-[var(--rk-soft)]">
+          <span aria-hidden="true">⌕</span>
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t`Search`}
-            className="w-full bg-transparent outline-none"
+            className="w-full bg-transparent text-[var(--rk-ink)] outline-none placeholder:text-[var(--rk-soft)]"
           />
         </div>
         <div className="rk-scroll flex flex-1 flex-col gap-0.5 overflow-y-auto px-2.5 pb-2.5">
@@ -2562,15 +2562,15 @@ export function ShellPage() {
                           }}
                           className={`flex w-full gap-3 rounded-xl px-2.5 py-[11px] text-start ${
                             item.kind === "bot" ? "cursor-grab active:cursor-grabbing" : ""
+                          } ${
+                            (item.kind === "bot" && !inGroup && active?.id === item.chat.id) ||
+                            (item.kind === "group" && inGroup && activeGroup?.id === item.chat.id)
+                              ? "bg-[var(--rk-elevated)]"
+                              : "hover:bg-[var(--rk-page)]"
                           }`}
                           style={{
                             opacity:
                               item.kind === "bot" && draggedBotId === item.chat.id ? 0.55 : 1,
-                            background:
-                              (item.kind === "bot" && !inGroup && active?.id === item.chat.id) ||
-                              (item.kind === "group" && inGroup && activeGroup?.id === item.chat.id)
-                                ? "#161618"
-                                : "transparent",
                           }}
                         >
                           {item.kind === "bot" ? (
@@ -2696,7 +2696,7 @@ export function ShellPage() {
                         onClick={() =>
                           void rpc.bots.restore({ botId: bot.id }).then(() => refreshBots(true))
                         }
-                        className="text-[12.5px] text-[var(--rk-soft)] hover:text-white"
+                        className="text-[12.5px] text-[var(--rk-soft)] hover:text-[var(--rk-ink)]"
                       >
                         <Trans>Restore</Trans>
                       </button>
@@ -2726,7 +2726,7 @@ export function ShellPage() {
                             .restore({ groupId: group.id })
                             .then(() => refreshBots(true))
                         }
-                        className="text-[12.5px] text-[var(--rk-soft)] hover:text-white"
+                        className="text-[12.5px] text-[var(--rk-soft)] hover:text-[var(--rk-ink)]"
                       >
                         <Trans>Restore</Trans>
                       </button>
@@ -2750,10 +2750,10 @@ export function ShellPage() {
           onClick={() => setPluginsOpen(true)}
           className="mx-3 mb-1 flex items-center gap-3 rounded-[11px] px-2.5 py-2 hover:bg-[var(--rk-page)]"
         >
-          <span className="grid h-[30px] w-[30px] place-items-center rounded-full bg-[var(--rk-hairline)] text-[var(--rk-muted)]">
+          <span className="grid h-[30px] w-[30px] place-items-center rounded-full bg-[var(--rk-hairline)] text-[var(--rk-soft)]">
             <Puzzle size={15} strokeWidth={1.7} />
           </span>
-          <span className="text-[14.5px] text-[var(--rk-soft)]">
+          <span className="text-[14.5px] text-[var(--rk-body)]">
             <Trans>Integrations</Trans>
           </span>
         </button>
@@ -2859,7 +2859,7 @@ export function ShellPage() {
             <span className="grid h-8 w-8 place-items-center rounded-full bg-[var(--rk-hairline-strong)] text-[12px] text-[var(--rk-soft)]">
               {initials}
             </span>
-            <span className="text-[14.5px] text-[var(--rk-soft)]">{userName}</span>
+            <span className="text-[14.5px] text-[var(--rk-body)]">{userName}</span>
           </button>
         </div>
       </aside>
@@ -2924,7 +2924,7 @@ export function ShellPage() {
                   setCallOpen(true);
                 }}
                 className="app-no-drag grid h-[30px] w-[34px] place-items-center rounded-[9px] hover:bg-[var(--rk-elevated)]"
-                style={{ background: callOpen ? "#1B1B1E" : "transparent" }}
+                style={{ background: callOpen ? "var(--rk-elevated)" : "transparent" }}
               >
                 <Phone size={16} strokeWidth={1.6} className="text-[var(--rk-soft)]" />
               </button>
@@ -2942,7 +2942,7 @@ export function ShellPage() {
                   }
                 }}
                 className="app-no-drag grid h-[30px] w-[34px] place-items-center rounded-[9px] hover:bg-[var(--rk-elevated)]"
-                style={{ background: panel ? "#1B1B1E" : "transparent" }}
+                style={{ background: panel ? "var(--rk-elevated)" : "transparent" }}
               >
                 <Monitor size={18} strokeWidth={1.6} className="text-[var(--rk-soft)]" />
               </button>
@@ -4578,7 +4578,7 @@ const Composer = memo(function Composer({
           aria-label={t`Attach file`}
           disabled={disabled}
           onClick={() => fileInputRef.current?.click()}
-          className="grid h-[34px] w-[34px] shrink-0 place-items-center rounded-full border border-[var(--rk-border)] text-[var(--rk-muted)] disabled:opacity-40"
+          className="grid h-[34px] w-[34px] shrink-0 place-items-center rounded-full border border-[var(--rk-border)] text-[var(--rk-soft)] disabled:opacity-40"
         >
           <Plus size={17} strokeWidth={1.8} />
         </button>
@@ -4601,7 +4601,7 @@ const Composer = memo(function Composer({
           className={`grid h-[34px] w-[34px] shrink-0 place-items-center rounded-full border ${
             dictating
               ? "border-[var(--rk-success-soft)] bg-[rgba(48,162,75,.16)] text-[var(--rk-success-soft)]"
-              : "border-[var(--rk-border)] text-[var(--rk-muted)]"
+              : "border-[var(--rk-border)] text-[var(--rk-soft)]"
           }`}
           title={transcribe ? t`Hold to talk` : t`Hold to talk (on-device dictation)`}
         >
@@ -4717,7 +4717,7 @@ const Composer = memo(function Composer({
             autoComplete="off"
             dir="auto"
             rows={1}
-            className="max-h-32 min-h-[24px] min-w-[8rem] flex-1 resize-none overflow-y-auto bg-transparent py-0.5 text-[15.5px] leading-6 text-[var(--rk-ink)] outline-none disabled:opacity-40"
+            className="max-h-32 min-h-[24px] min-w-[8rem] flex-1 resize-none overflow-y-auto bg-transparent py-0.5 text-[15.5px] leading-6 text-[var(--rk-ink)] outline-none placeholder:text-[var(--rk-soft)] disabled:opacity-40"
           />
         </div>
         {running ? (
@@ -6380,10 +6380,10 @@ function ChoiceCard({
 
   return (
     <div className="flex justify-start">
-      <div className="w-[min(420px,80%)] rounded-[20px] bg-[var(--rk-surface-2)] px-[18px] py-[14px]">
+      <div className="w-[min(420px,80%)] rounded-[20px] border border-[var(--rk-border)] bg-[var(--rk-surface)] px-[18px] py-[14px]">
         <div className="text-[15.5px] text-[var(--rk-body)]">{block.question}</div>
         {block.subtitle ? (
-          <div className="mt-0.5 text-[13px] text-[var(--rk-muted)]">{block.subtitle}</div>
+          <div className="mt-0.5 text-[13px] text-[var(--rk-soft)]">{block.subtitle}</div>
         ) : null}
         <div className="mt-3 space-y-1.5">
           {block.options
@@ -6394,13 +6394,13 @@ function ChoiceCard({
                 type="button"
                 disabled={Boolean(block.answerId) || pending}
                 onClick={() => void choose(option.id)}
-                className={`flex w-full items-center gap-3 rounded-[12px] border border-[var(--rk-scroll)] px-3.5 py-3 text-start disabled:opacity-60 ${block.answerId ? "bg-[var(--rk-elevated)]" : "bg-[var(--rk-inset)] hover:bg-[var(--rk-scroll)]"}`}
+                className={`flex w-full items-center gap-3 rounded-[12px] border border-[var(--rk-border)] px-3.5 py-3 text-start text-[var(--rk-ink)] disabled:opacity-60 ${block.answerId ? "bg-[var(--rk-elevated)]" : "bg-[var(--rk-surface-2)] hover:bg-[var(--rk-elevated)]"}`}
               >
-                <span className="grid h-[24px] w-[24px] place-items-center rounded-[7px] bg-[var(--rk-hairline-strong)] text-[12.5px] text-[var(--rk-muted)]">
+                <span className="grid h-[24px] w-[24px] place-items-center rounded-[7px] bg-[var(--rk-elevated)] text-[12.5px] font-medium text-[var(--rk-soft)]">
                   {option.letter}
                 </span>
                 <span
-                  className={`flex-1 text-[15px] ${block.answerId ? "text-[var(--rk-muted)]" : "text-[var(--rk-ink)]"}`}
+                  className={`flex-1 text-[15px] ${block.answerId ? "text-[var(--rk-soft)]" : "text-[var(--rk-ink)]"}`}
                 >
                   {option.label}
                 </span>
