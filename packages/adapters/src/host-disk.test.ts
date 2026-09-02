@@ -376,8 +376,8 @@ describe("host disk exclusive claims", () => {
       await import("./bridge-host-disk.js");
     const provider = new BridgingHostDiskProvider({
       dataDir,
-      timeoutMs: 50,
-      pollIntervalMs: 10,
+      timeoutMs: 5_000,
+      pollIntervalMs: 20,
     });
     await saveHostDiskSettings(dataDir, "user-1", {
       enabled: true,
@@ -386,59 +386,55 @@ describe("host disk exclusive claims", () => {
     });
     await mkdir(path.join(dataDir, "granted"), { recursive: true });
 
-    const listing = provider.listFiles("user-1", "", adapterContext());
-    let claimed = null;
+    const controller = new AbortController();
+    const listing = provider.listFiles("user-1", "", {
+      ...adapterContext(),
+      signal: controller.signal,
+    });
+
+    let claimed: Awaited<ReturnType<typeof claimHostDiskOperation>> = null;
     for (let attempt = 0; attempt < 50 && !claimed; attempt += 1) {
       claimed = await claimHostDiskOperation(dataDir, "user-1");
-      if (!claimed) await new Promise((resolve) => setTimeout(resolve, 5));
+      if (!claimed) await new Promise((resolve) => setTimeout(resolve, 20));
     }
     expect(claimed?.status).toBe("claimed");
     if (!claimed) throw new Error("expected claim");
 
-    const clientComplete = completeHostDiskOperation(dataDir, "user-1", {
-      id: claimed.id,
-      status: "done",
-      entries: [],
-    });
-    // Overlap with server timeout completion inside listFiles.
-    const results = await Promise.allSettled([listing, clientComplete]);
-    const clientResult = results[1];
-    expect(clientResult.status === "fulfilled" || clientResult.status === "rejected").toBe(true);
+    // Direct race: timeout error vs client done. Only one exclusive rename to a
+    // terminal .done.json / .error.json may succeed.
+    const results = await Promise.allSettled([
+      completeHostDiskOperation(dataDir, "user-1", {
+        id: claimed.id,
+        status: "error",
+        error: "Timed out waiting for the Mac or phone app to handle host disk access",
+      }),
+      completeHostDiskOperation(dataDir, "user-1", {
+        id: claimed.id,
+        status: "done",
+        entries: [],
+      }),
+    ]);
 
-    // Terminal status must be consistent: not done then overwritten by timeout error
-    // (or vice versa) on the same file.
-    const { readFile: readOp } = await import("node:fs/promises");
-    const claimedPath = path.join(
-      dataDir,
-      "host-disk",
-      "operations",
-      "user-1",
-      `${claimed.id}.claimed.json`,
+    const fulfilled = results.filter((result) => result.status === "fulfilled");
+    const rejected = results.filter((result) => result.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+
+    const { readdir, readFile: readOp } = await import("node:fs/promises");
+    const dir = path.join(dataDir, "host-disk", "operations", "user-1");
+    const names = await readdir(dir);
+    const terminals = names.filter(
+      (name) => name === `${claimed.id}.done.json` || name === `${claimed.id}.error.json`,
     );
-    const pendingPath = path.join(
-      dataDir,
-      "host-disk",
-      "operations",
-      "user-1",
-      `${claimed.id}.json`,
-    );
-    let raw = null;
-    try {
-      raw = await readOp(claimedPath, "utf8");
-    } catch {
-      try {
-        raw = await readOp(pendingPath, "utf8");
-      } catch {
-        raw = null;
-      }
-    }
-    if (raw) {
-      const op = JSON.parse(raw);
-      expect(["done", "error"]).toContain(op.status);
-      // If the client won, listFiles should have returned entries (or timeout honored done).
-      if (op.status === "done") {
-        expect(results[0].status).toBe("fulfilled");
-      }
-    }
+    expect(terminals).toHaveLength(1);
+    expect(names.some((name) => name === `${claimed.id}.claimed.json`)).toBe(false);
+
+    const raw = await readOp(path.join(dir, terminals[0]!), "utf8");
+    const op = JSON.parse(raw) as { status: string };
+    expect(["done", "error"]).toContain(op.status);
+    expect(op.status).toBe(terminals[0]!.endsWith(".done.json") ? "done" : "error");
+
+    controller.abort();
+    await expect(listing).rejects.toThrow();
   });
 });

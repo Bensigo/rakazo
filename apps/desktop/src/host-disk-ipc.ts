@@ -6,6 +6,9 @@ import { app, BrowserWindow, dialog, type IpcMainInvokeEvent, ipcMain } from "el
 /** Roots granted via the native folder picker. Renderer-supplied roots are ignored. */
 const grantedRoots = new Set<string>();
 
+/** Resolves after the first grants file load; all handlers await this. */
+let grantsReady: Promise<void> = Promise.resolve();
+
 const NOFOLLOW = constants.O_NOFOLLOW ?? 0;
 
 function grantsFilePath() {
@@ -138,9 +141,10 @@ async function openInsideGrants(target: string, flags: number) {
 }
 
 export function registerHostDiskIpc() {
-  void loadGrantedRoots();
+  grantsReady = loadGrantedRoots();
 
   ipcMain.handle("desktop.hostDisk.pickFolder", async (event: IpcMainInvokeEvent) => {
+    await grantsReady;
     const win = BrowserWindow.fromWebContents(event.sender);
     const options: Electron.OpenDialogOptions = {
       properties: ["openDirectory", "createDirectory"],
@@ -158,6 +162,7 @@ export function registerHostDiskIpc() {
   });
 
   ipcMain.handle("desktop.hostDisk.revokeRoot", async (_event, root: unknown) => {
+    await grantsReady;
     if (typeof root !== "string" || root.length === 0) return false;
     const resolved = path.resolve(root);
     let removed = grantedRoots.delete(resolved);
@@ -171,10 +176,12 @@ export function registerHostDiskIpc() {
   });
 
   ipcMain.handle("desktop.hostDisk.listGrantedRoots", async () => {
+    await grantsReady;
     return [...grantedRoots].sort((left, right) => left.localeCompare(right));
   });
 
   ipcMain.handle("desktop.hostDisk.list", async (_event, requestPath: unknown) => {
+    await grantsReady;
     const roots = [...grantedRoots];
     if (roots.length === 0) throw new Error("No host folders are granted");
     const trimmed = typeof requestPath === "string" ? requestPath.trim() : "";
@@ -225,6 +232,7 @@ export function registerHostDiskIpc() {
   ipcMain.handle(
     "desktop.hostDisk.read",
     async (_event, requestPath: unknown, maxBytes: unknown) => {
+      await grantsReady;
       const handle = await openInsideGrants(String(requestPath ?? ""), constants.O_RDONLY);
       try {
         const info = await handle.stat();
@@ -243,6 +251,7 @@ export function registerHostDiskIpc() {
   ipcMain.handle(
     "desktop.hostDisk.write",
     async (_event, requestPath: unknown, contentBase64: unknown) => {
+      await grantsReady;
       if (typeof contentBase64 !== "string") throw new Error("Missing file content");
       const target = await resolveInsideGrants(String(requestPath ?? ""));
       await mkdir(path.dirname(target), { recursive: true });

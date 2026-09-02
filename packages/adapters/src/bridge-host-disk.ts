@@ -196,11 +196,30 @@ function claimedOperationPath(dataDir: string, userId: string, id: string) {
   return path.join(operationsDir(dataDir, userId), `${id}.claimed.json`);
 }
 
+function completingOperationPath(dataDir: string, userId: string, id: string) {
+  return path.join(operationsDir(dataDir, userId), `${id}.completing.json`);
+}
+
+function terminalOperationPath(
+  dataDir: string,
+  userId: string,
+  id: string,
+  status: "done" | "error",
+) {
+  return path.join(operationsDir(dataDir, userId), `${id}.${status}.json`);
+}
+
 async function readOperationById(
   dataDir: string,
   userId: string,
   id: string,
 ): Promise<{ operation: HostDiskOperation; file: string } | null> {
+  // Prefer immutable terminal files so a late completer cannot revive claimed.
+  for (const status of ["done", "error"] as const) {
+    const terminalPath = terminalOperationPath(dataDir, userId, id, status);
+    const terminal = await readOperationFile(terminalPath);
+    if (terminal) return { operation: terminal, file: terminalPath };
+  }
   const claimedPath = claimedOperationPath(dataDir, userId, id);
   const pendingPath = operationPath(dataDir, userId, id);
   const claimed = await readOperationFile(claimedPath);
@@ -230,7 +249,9 @@ export async function claimHostDiskOperation(
       (name) =>
         name.endsWith(".json") &&
         !name.endsWith(".claimed.json") &&
-        !name.endsWith(".completing.json"),
+        !name.endsWith(".completing.json") &&
+        !name.endsWith(".done.json") &&
+        !name.endsWith(".error.json"),
     )
     .sort();
   for (const name of names) {
@@ -272,10 +293,20 @@ export async function completeHostDiskOperation(
 ): Promise<HostDiskOperation> {
   const pendingPath = operationPath(dataDir, userId, input.id);
   const claimedPath = claimedOperationPath(dataDir, userId, input.id);
-  const completingPath = path.join(operationsDir(dataDir, userId), `${input.id}.completing.json`);
+  const completingPath = completingOperationPath(dataDir, userId, input.id);
+  const terminalPath = terminalOperationPath(dataDir, userId, input.id, input.status);
 
-  // Exclusive take: only one completer (client or server timeout) can rename
-  // the live operation file into the completing slot.
+  // Already terminal? Reject without touching live files.
+  for (const status of ["done", "error"] as const) {
+    const existingTerminal = await readOperationFile(
+      terminalOperationPath(dataDir, userId, input.id, status),
+    );
+    if (existingTerminal) {
+      throw new Error("Host disk operation already completed");
+    }
+  }
+
+  // Exclusive take of the live op (claimed preferred, then pending).
   let takenFrom: string | null = null;
   for (const candidate of [claimedPath, pendingPath]) {
     try {
@@ -288,10 +319,14 @@ export async function completeHostDiskOperation(
   }
 
   if (!takenFrom) {
-    const existing =
-      (await readOperationFile(claimedPath)) ?? (await readOperationFile(pendingPath));
-    if (existing && (existing.status === "done" || existing.status === "error")) {
-      throw new Error("Host disk operation already completed");
+    // Another completer may have just published a terminal file.
+    for (const status of ["done", "error"] as const) {
+      const existingTerminal = await readOperationFile(
+        terminalOperationPath(dataDir, userId, input.id, status),
+      );
+      if (existingTerminal) {
+        throw new Error("Host disk operation already completed");
+      }
     }
     throw new Error("Host disk operation not found");
   }
@@ -313,8 +348,9 @@ export async function completeHostDiskOperation(
       updatedAt: new Date(now()).toISOString(),
     };
     await writeFile(completingPath, `${JSON.stringify(updated, null, 2)}\n`, "utf8");
-    // Canonical terminal record lives at the claimed path for readers.
-    await rename(completingPath, claimedPath);
+    // Publish an immutable terminal name (done|error). A late completer cannot
+    // rename claimed again because claimed is gone and terminal rename is exclusive.
+    await rename(completingPath, terminalPath);
     return updated;
   } catch (error) {
     // If we fail after taking the file, try to put it back so a retry can finish.
