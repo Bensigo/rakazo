@@ -852,6 +852,11 @@ describe("host disk posix *at pinning", () => {
     expect(ipcSource).toMatch(/unlinkOwnedChildAnywhere\(/);
     expect(ipcSource).toMatch(/readdirNamesAt\(/);
     expect(ipcSource).toMatch(/tempOwned/);
+    // Identity opens use O_NONBLOCK so a FIFO in a grant cannot hang cleanup.
+    expect(ipcSource).toMatch(/O_NONBLOCK/);
+    expect(ipcSource).toMatch(/IDENTITY_OPEN/);
+    expect(pathSource).toMatch(/O_NONBLOCK/);
+    expect(pathSource).toMatch(/IDENTITY_OPEN/);
     // mkdir: async assert + sync gate immediately before mkdirat; owned AT_REMOVEDIR.
     expect(ipcSource).toMatch(/assertFdStillInsideRoots\(parentHandle\.fd, realRoots\)/);
     expect(ipcSource).toMatch(

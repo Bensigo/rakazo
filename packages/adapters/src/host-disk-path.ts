@@ -14,6 +14,8 @@ import {
 type PathOperations = Pick<typeof path, "isAbsolute" | "relative" | "resolve" | "sep">;
 
 const NOFOLLOW = constants.O_NOFOLLOW ?? 0;
+/** Identity-check opens must not block forever on a FIFO in a granted dir. */
+const IDENTITY_OPEN = constants.O_RDONLY | NOFOLLOW | (constants.O_NONBLOCK ?? 0);
 
 /** Lexical containment (no symlink resolution). */
 export function isLexicallyInsideRoots(
@@ -328,7 +330,7 @@ function sameFdIdentity(left: FdIdentity, right: FdIdentity) {
  * Never delete a replacement that raced in under the same basename.
  */
 async function unlinkIfOwnedChild(dirFd: number, name: string, owned: FdIdentity, flags = 0) {
-  const check = openatChild(dirFd, name, constants.O_RDONLY | NOFOLLOW);
+  const check = openatChild(dirFd, name, IDENTITY_OPEN);
   try {
     const st = await check.stat();
     if (!sameFdIdentity(st, owned)) return;
@@ -345,7 +347,7 @@ async function unlinkIfOwnedChild(dirFd: number, name: string, owned: FdIdentity
     return;
   }
   try {
-    const verify = openatChild(dirFd, trash, constants.O_RDONLY | NOFOLLOW);
+    const verify = openatChild(dirFd, trash, IDENTITY_OPEN);
     try {
       const st = await verify.stat();
       if (!sameFdIdentity(st, owned)) {
