@@ -1,6 +1,6 @@
 import type { AvatarStyle } from "@rakazo/contracts";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -37,6 +37,12 @@ import {
   openPromotedNotificationSettings,
   setLiveNotificationSettings,
 } from "../lib/live-notifications";
+import {
+  type AppearancePreference,
+  getCachedAppearancePreference,
+  setAppearancePreference,
+  subscribeAppearance,
+} from "../lib/appearance";
 import { native } from "../lib/native";
 import { registerPushToken } from "../lib/push";
 
@@ -67,6 +73,11 @@ export default function Account() {
     outputTokens: number;
   } | null>(null);
   const { avatarStyle, updateAvatarStyle } = useAvatarStyle();
+  const appearance = useSyncExternalStore(
+    subscribeAppearance,
+    getCachedAppearancePreference,
+    () => "system" as const,
+  );
 
   useEffect(() => {
     void rpc<MobileMe>("me")
@@ -259,6 +270,37 @@ export default function Account() {
               <Text style={styles.changePasswordLabel}>Change password</Text>
             )}
           </Pressable>
+        </View>
+
+        <View accessibilityLabel="Appearance" style={styles.avatarSection}>
+          <Text style={styles.settingsTitle}>Appearance</Text>
+          <View style={styles.appearanceOptions}>
+            {(
+              [
+                ["system", "System"],
+                ["light", "Light"],
+                ["dark", "Dark"],
+              ] as const
+            ).map(([value, label]) => {
+              const selected = appearance === value;
+              return (
+                <Pressable
+                  key={value}
+                  accessibilityLabel={label}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  onPress={() => void setAppearancePreference(value)}
+                  style={({ pressed }) => [
+                    styles.appearanceOption,
+                    selected && styles.appearanceOptionSelected,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text style={styles.appearanceLabel}>{label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
 
         <View accessibilityLabel="Avatar style" style={styles.avatarSection}>
@@ -616,6 +658,28 @@ const styles = StyleSheet.create({
     backgroundColor: native.fill,
     padding: 18,
     gap: 14,
+  },
+  appearanceOptions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  appearanceOption: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: native.tertiaryLabel,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  appearanceOptionSelected: {
+    borderColor: native.label,
+    backgroundColor: native.fillPressed,
+  },
+  appearanceLabel: {
+    color: native.label,
+    fontSize: 14,
+    fontWeight: "600",
   },
   avatarOptions: {
     flexDirection: "row",

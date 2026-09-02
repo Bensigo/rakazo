@@ -12,8 +12,8 @@ export function WelcomePage() {
       <div className="flex flex-1 flex-col items-center justify-center gap-11 pb-[90px]">
         <div className="flex items-center gap-[26px]">
           <div className="flex h-[88px] w-[88px] items-center justify-center gap-[13px] rounded-full bg-[#F2F2F0]">
-            <span className="h-6 w-[11px] rounded-full bg-[#101012]" />
-            <span className="h-6 w-[11px] rounded-full bg-[#101012]" />
+            <span className="h-6 w-[11px] rounded-full bg-[var(--rk-inset)]" />
+            <span className="h-6 w-[11px] rounded-full bg-[var(--rk-inset)]" />
           </div>
           <div className="text-[76px] leading-none tracking-[-0.03em] text-white">Rakazo</div>
         </div>
