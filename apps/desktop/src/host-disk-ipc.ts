@@ -2,7 +2,11 @@ import { constants } from "node:fs";
 import { open, realpath } from "node:fs/promises";
 import path from "node:path";
 import { app, BrowserWindow, dialog, type IpcMainInvokeEvent, ipcMain } from "electron";
-import { createHostDiskGrantStore, type HostDiskGrantStore } from "./host-disk-grants.js";
+import {
+  createHostDiskGrantStore,
+  type HostDiskAuthorizedRoot,
+  type HostDiskGrantStore,
+} from "./host-disk-grants.js";
 import {
   mkdiratChild,
   openatChild,
@@ -17,6 +21,7 @@ import {
 let grantStore: HostDiskGrantStore | null = null;
 
 const NOFOLLOW = constants.O_NOFOLLOW ?? 0;
+const DIRECTORY = constants.O_DIRECTORY ?? 0;
 
 function grants(): HostDiskGrantStore {
   if (!grantStore) throw new Error("Host disk IPC is not registered");
@@ -34,12 +39,50 @@ function isLexicallyInside(target: string, roots: string[]) {
   });
 }
 
+function rootPaths(roots: HostDiskAuthorizedRoot[]): string[] {
+  return roots.map((root) => root.path);
+}
+
 async function realGrantedRoots() {
   // Authorize via grant-time device+inode, not a live realpath() of a mutable
   // pathname (which a symlink/dir replacement would redefine).
   const realRoots = await grants().authorizedRealRoots();
   if (realRoots.length === 0) throw new Error("No host folders are granted");
   return realRoots;
+}
+
+/**
+ * Re-open a grant root and confirm grant-time (dev,ino). Pathnames returned by
+ * authorizedRealRoots are mutable after those fds close — a same-user directory
+ * swap must not keep authorizing the replacement.
+ */
+async function openVerifiedGrantRoot(root: HostDiskAuthorizedRoot, flags: number) {
+  const handle = await open(root.path, flags | NOFOLLOW);
+  try {
+    const info = await handle.stat();
+    if (!info.isDirectory() || String(info.dev) !== root.dev || String(info.ino) !== root.ino) {
+      throw new Error("Host path is outside the granted folders");
+    }
+    return handle;
+  } catch (error) {
+    await handle.close().catch(() => undefined);
+    throw error;
+  }
+}
+
+/** Lexical containment plus live (dev,ino) re-check of the covering grant root. */
+async function assertInsideAuthorizedRoots(fdReal: string, roots: HostDiskAuthorizedRoot[]) {
+  const covering = roots.find((root) => isLexicallyInside(fdReal, [root.path]));
+  if (!covering) throw new Error("Host path is outside the granted folders");
+  const rootHandle = await openVerifiedGrantRoot(covering, constants.O_RDONLY | DIRECTORY);
+  try {
+    const liveRoot = await realpathOfFd(rootHandle.fd);
+    if (!isLexicallyInside(fdReal, [liveRoot])) {
+      throw new Error("Host path is outside the granted folders");
+    }
+  } finally {
+    await rootHandle.close().catch(() => undefined);
+  }
 }
 
 async function resolveInsideGrants(target: string) {
@@ -51,12 +94,13 @@ async function resolveInsideGrants(target: string) {
   }
 
   const realRoots = await realGrantedRoots();
+  const paths = rootPaths(realRoots);
 
   let probe = lexicalTarget;
   for (;;) {
     try {
       const real = await realpath(probe);
-      if (!isLexicallyInside(real, realRoots)) {
+      if (!isLexicallyInside(real, paths)) {
         throw new Error("Host path is outside the granted folders");
       }
       if (probe === lexicalTarget) return real;
@@ -70,7 +114,7 @@ async function resolveInsideGrants(target: string) {
         throw new Error("Host path is outside the granted folders");
       }
       const finalPath = path.join(real, rest);
-      if (!isLexicallyInside(finalPath, realRoots)) {
+      if (!isLexicallyInside(finalPath, paths)) {
         throw new Error("Host path is outside the granted folders");
       }
       return finalPath;
@@ -107,7 +151,7 @@ async function realpathOfFd(fd: number): Promise<string> {
   }
 }
 
-/** Open + re-validate via fd realpath so a directory→symlink swap cannot escape. */
+/** Open + re-validate via fd realpath and covering grant (dev,ino). */
 async function openInsideGrants(target: string, flags: number) {
   const realRoots = await realGrantedRoots();
   const resolved = await resolveInsideGrants(target);
@@ -115,9 +159,7 @@ async function openInsideGrants(target: string, flags: number) {
   try {
     await handle.stat();
     const fdReal = await realpathOfFd(handle.fd);
-    if (!isLexicallyInside(fdReal, realRoots)) {
-      throw new Error("Host path is outside the granted folders");
-    }
+    await assertInsideAuthorizedRoots(fdReal, realRoots);
     return handle;
   } catch (error) {
     await handle.close().catch(() => undefined);
@@ -128,12 +170,12 @@ async function openInsideGrants(target: string, flags: number) {
 async function mkdirInsideGrants(target: string) {
   const realRoots = await realGrantedRoots();
   const resolved = await resolveInsideGrants(target);
-  if (realRoots.some((root) => root === resolved)) return resolved;
+  if (realRoots.some((root) => root.path === resolved)) return resolved;
 
-  const containingRoot = realRoots.find((root) => isLexicallyInside(resolved, [root]));
+  const containingRoot = realRoots.find((root) => isLexicallyInside(resolved, [root.path]));
   if (!containingRoot) throw new Error("Host path is outside the granted folders");
 
-  const relative = path.relative(containingRoot, resolved);
+  const relative = path.relative(containingRoot.path, resolved);
   if (
     relative === "" ||
     relative === ".." ||
@@ -143,8 +185,8 @@ async function mkdirInsideGrants(target: string) {
     throw new Error("Host path is outside the granted folders");
   }
 
-  const dirFlags = constants.O_RDONLY | (constants.O_DIRECTORY ?? 0);
-  let parentHandle: { fd: number; close: () => Promise<void> } = await openInsideGrants(
+  const dirFlags = constants.O_RDONLY | DIRECTORY;
+  let parentHandle: { fd: number; close: () => Promise<void> } = await openVerifiedGrantRoot(
     containingRoot,
     dirFlags,
   );
@@ -177,9 +219,7 @@ async function mkdirInsideGrants(target: string) {
       await parentHandle.close().catch(() => undefined);
       parentHandle = next;
       const fdReal = await realpathOfFd(parentHandle.fd);
-      if (!isLexicallyInside(fdReal, realRoots)) {
-        throw new Error("Host path is outside the granted folders");
-      }
+      await assertInsideAuthorizedRoots(fdReal, realRoots);
     }
     return await realpathOfFd(parentHandle.fd);
   } finally {
@@ -239,9 +279,7 @@ export function registerHostDiskIpc() {
       const opened = await handle.stat();
       if (!opened.isDirectory()) throw new Error("Host path is outside the granted folders");
       const fdReal = await realpathOfFd(handle.fd);
-      if (!isLexicallyInside(fdReal, realRoots)) {
-        throw new Error("Host path is outside the granted folders");
-      }
+      await assertInsideAuthorizedRoots(fdReal, realRoots);
       // Enumerate via the pinned dirfd (fdopendir). Pathname readdir(realpath(fd))
       // or even fdRefPath alone is weaker than dirfd readdir on Darwin; entry
       // opens use openat(dirfd, name) — never /dev/fd/<fd>/child.
@@ -253,7 +291,11 @@ export function registerHostDiskIpc() {
           const entryHandle = openatChild(handle.fd, name, constants.O_RDONLY | NOFOLLOW);
           try {
             const entryReal = await realpathOfFd(entryHandle.fd);
-            if (!isLexicallyInside(entryReal, realRoots)) continue;
+            try {
+              await assertInsideAuthorizedRoots(entryReal, realRoots);
+            } catch {
+              continue;
+            }
             const info = await entryHandle.stat();
             if (info.isDirectory()) {
               listed.push({ path: entryReal, kind: "dir", size: 0 });
@@ -316,9 +358,7 @@ export function registerHostDiskIpc() {
         // a cached parentFdReal: renaming the parent inside the grant updates
         // child realpaths while a stale parent string would false-reject and
         // unlink a contained write.
-        if (!isLexicallyInside(await realpathOfFd(parentHandle.fd), realRoots)) {
-          throw new Error("Host path is outside the granted folders");
-        }
+        await assertInsideAuthorizedRoots(await realpathOfFd(parentHandle.fd), realRoots);
 
         const tempHandle = openatChild(
           parentHandle.fd,
@@ -329,9 +369,7 @@ export function registerHostDiskIpc() {
         tempPending = true;
         try {
           const tempFdReal = await realpathOfFd(tempHandle.fd);
-          if (!isLexicallyInside(tempFdReal, realRoots)) {
-            throw new Error("Host path is outside the granted folders");
-          }
+          await assertInsideAuthorizedRoots(tempFdReal, realRoots);
           await tempHandle.writeFile(Buffer.from(contentBase64, "base64"));
         } finally {
           await tempHandle.close();
@@ -347,7 +385,14 @@ export function registerHostDiskIpc() {
           // mismatch after an in-grant parent rename.
           const parentLive = await realpathOfFd(parentHandle.fd);
           const fdReal = await realpathOfFd(finalHandle.fd);
-          if (!isLexicallyInside(parentLive, realRoots) || !isLexicallyInside(fdReal, realRoots)) {
+          let outsideGrants = false;
+          try {
+            await assertInsideAuthorizedRoots(parentLive, realRoots);
+            await assertInsideAuthorizedRoots(fdReal, realRoots);
+          } catch {
+            outsideGrants = true;
+          }
+          if (outsideGrants) {
             try {
               unlinkatChild(parentHandle.fd, baseName);
             } catch {

@@ -529,6 +529,77 @@ describe("host disk exclusive claims", () => {
     await expect(listing).rejects.toThrow();
   });
 
+  it("honors client done published after completingHoldMs while completing still held", async () => {
+    const dataDir = await tempDir();
+    const { BridgingHostDiskProvider, claimHostDiskOperation } = await import(
+      "./bridge-host-disk.js"
+    );
+
+    const provider = new BridgingHostDiskProvider({
+      dataDir,
+      timeoutMs: 40,
+      pollIntervalMs: 10,
+      completionGraceMs: 30,
+      // Soft hold is short; sliding must still honor a publish past this bound.
+      completingHoldMs: 60,
+    });
+    await saveHostDiskSettings(dataDir, "user-1", {
+      enabled: true,
+      roots: [path.join(dataDir, "granted")],
+      clientSeenAt: new Date().toISOString(),
+    });
+    await mkdir(path.join(dataDir, "granted"), { recursive: true });
+
+    const listing = provider.listFiles("user-1", "", adapterContext());
+
+    let claimed: Awaited<ReturnType<typeof claimHostDiskOperation>> = null;
+    for (let attempt = 0; attempt < 50 && !claimed; attempt += 1) {
+      claimed = await claimHostDiskOperation(dataDir, "user-1");
+      if (!claimed) await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    expect(claimed?.status).toBe("claimed");
+    if (!claimed) throw new Error("expected claim");
+
+    const { rename, readFile, writeFile } = await import("node:fs/promises");
+    const claimedPath = path.join(
+      dataDir,
+      "host-disk",
+      "operations",
+      "user-1",
+      `${claimed.id}.claimed.json`,
+    );
+    const completingPath = path.join(
+      dataDir,
+      "host-disk",
+      "operations",
+      "user-1",
+      `${claimed.id}.completing.json`,
+    );
+    await rename(claimedPath, completingPath);
+
+    const clientDone = (async () => {
+      // Past fixed completingHoldMs (60) after grace start; within timeout ceiling.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const raw = JSON.parse(await readFile(completingPath, "utf8")) as Record<string, unknown>;
+      const donePath = path.join(
+        dataDir,
+        "host-disk",
+        "operations",
+        "user-1",
+        `${claimed.id}.done.json`,
+      );
+      await writeFile(
+        completingPath,
+        `${JSON.stringify({ ...raw, status: "done", entries: [] }, null, 2)}\n`,
+        "utf8",
+      );
+      await rename(completingPath, donePath);
+    })();
+
+    await expect(listing).resolves.toEqual([]);
+    await clientDone;
+  });
+
   it("honors client done published after completionGrace while completing held", async () => {
     const dataDir = await tempDir();
     const { BridgingHostDiskProvider, claimHostDiskOperation } = await import(

@@ -91,7 +91,10 @@ describe("host disk grant store", () => {
     await store.ready;
     const added = await store.add(granted);
     const { realpath } = await import("node:fs/promises");
-    expect(await store.authorizedRealRoots()).toEqual([await realpath(granted)]);
+    const authorized = await store.authorizedRealRoots();
+    expect(authorized).toEqual([expect.objectContaining({ path: await realpath(granted) })]);
+    expect(authorized[0]?.dev).toMatch(/^\d+$/);
+    expect(authorized[0]?.ino).toMatch(/^\d+$/);
     expect(store.list()).toEqual([added]);
 
     const backup = path.join(dir, "Granted-original");
@@ -128,8 +131,43 @@ describe("host disk grant store", () => {
 
     const { realpath } = await import("node:fs/promises");
     const roots = await store.authorizedRealRoots();
-    expect(roots).toEqual([await realpath(backup)]);
-    expect(roots).not.toContain(await realpath(outside));
+    expect(roots).toEqual([expect.objectContaining({ path: await realpath(backup) })]);
+    expect(roots.map((root) => root.path)).not.toContain(await realpath(outside));
+  });
+
+  it("returns grant identity so IPC can reject a post-return directory swap", async () => {
+    const dir = await tempDir();
+    const grantsFilePath = path.join(dir, "host-disk-grants.json");
+    const granted = path.join(dir, "Granted");
+    await mkdir(granted);
+    await writeFile(path.join(granted, "ok.txt"), "yes\n", "utf8");
+
+    const store = createHostDiskGrantStore({ grantsFilePath });
+    await store.ready;
+    await store.add(granted);
+
+    const roots = await store.authorizedRealRoots();
+    expect(roots).toHaveLength(1);
+    const root = roots[0]!;
+
+    const backup = path.join(dir, "Granted-original");
+    await rename(granted, backup);
+    await mkdir(granted);
+    await writeFile(path.join(granted, "evil.txt"), "no\n", "utf8");
+
+    const { open } = await import("node:fs/promises");
+    const { constants: fsConsts } = await import("node:fs");
+    const handle = await open(
+      root.path,
+      fsConsts.O_RDONLY | (fsConsts.O_DIRECTORY ?? 0) | (fsConsts.O_NOFOLLOW ?? 0),
+    );
+    try {
+      const info = await handle.stat();
+      // Same pathname, different inode — IPC must refuse via returned identity.
+      expect(String(info.dev) === root.dev && String(info.ino) === root.ino).toBe(false);
+    } finally {
+      await handle.close();
+    }
   });
 
   it("does not realpath an fd-derived path after a post-derivation symlink swap", async () => {
@@ -156,7 +194,7 @@ describe("host disk grant store", () => {
 
     const { realpath } = await import("node:fs/promises");
     const roots = await store.authorizedRealRoots();
-    expect(roots).not.toContain(await realpath(outside));
+    expect(roots.map((root) => root.path)).not.toContain(await realpath(outside));
     // Fail closed on the swapped pathname (O_NOFOLLOW reopen fails / identity miss).
     expect(roots).toEqual([]);
   });

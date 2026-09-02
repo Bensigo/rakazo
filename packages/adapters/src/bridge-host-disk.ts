@@ -186,13 +186,20 @@ export class BridgingHostDiskProvider implements HostDiskProvider {
       error: "Timed out waiting for the Mac or phone app to handle host disk access",
     }).catch(() => undefined);
     // Client may hold .completing.json and publish .done/.error after our failed
-    // complete. Keep polling while exclusive completing is in flight (bounded),
-    // and allow a short grace for rename gaps once completing disappears.
+    // complete. Keep polling while exclusive completing is in flight: slide the
+    // soft deadline forward so a live owner is not cut off mid-publish, with an
+    // absolute ceiling so a crashed holder cannot block forever. After completing
+    // disappears, allow a short grace for the terminal rename gap.
     const graceMs = this.options.completionGraceMs ?? DEFAULT_COMPLETION_GRACE_MS;
     const completingHoldMs = this.options.completingHoldMs ?? DEFAULT_COMPLETING_HOLD_MS;
+    const timeoutMsForCeiling = this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     const graceStarted = this.options.now?.() ?? Date.now();
     const graceDeadline = graceStarted + graceMs;
-    const completingDeadline = graceStarted + completingHoldMs;
+    // Crash ceiling: prefer a full default hold window so a short timeoutMs used
+    // in tests (or tight prod timeouts) cannot cut off a live completing owner
+    // before soft sliding has a chance to observe them.
+    const completingCeiling =
+      graceStarted + Math.max(completingHoldMs, timeoutMsForCeiling, DEFAULT_COMPLETING_HOLD_MS);
     let sawCompleting = false;
     let postCompletingGraceDeadline: number | null = null;
     for (;;) {
@@ -205,7 +212,7 @@ export class BridgingHostDiskProvider implements HostDiskProvider {
         throw new Error(final.operation.error ?? "Host disk operation failed");
       }
       const now = this.options.now?.() ?? Date.now();
-      const completingInFlight = final !== null && final.file.endsWith(".completing.json");
+      const completingInFlight = final?.file.endsWith(".completing.json") === true;
       if (completingInFlight) {
         sawCompleting = true;
         postCompletingGraceDeadline = null;
@@ -213,9 +220,12 @@ export class BridgingHostDiskProvider implements HostDiskProvider {
         // Completing gone — brief window for completing → terminal rename.
         postCompletingGraceDeadline = now + graceMs;
       }
-      const deadline = sawCompleting
-        ? Math.min(completingDeadline, postCompletingGraceDeadline ?? completingDeadline)
-        : graceDeadline;
+      const deadline = completingInFlight
+        ? // Slide while the exclusive owner still holds completing.
+          Math.min(completingCeiling, now + completingHoldMs)
+        : sawCompleting
+          ? Math.min(completingCeiling, postCompletingGraceDeadline ?? completingCeiling)
+          : graceDeadline;
       if (now >= deadline) break;
       await sleep(Math.min(pollMs, Math.max(0, deadline - now)));
     }

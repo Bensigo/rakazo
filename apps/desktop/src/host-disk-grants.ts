@@ -9,6 +9,13 @@ import { pathFromOpenFd } from "./host-disk-posix-at.js";
  * captured at add time so replacing the pathname with a symlink (or a different
  * directory) cannot redefine authorization.
  */
+/** Verified grant root: pathname plus grant-time identity for IPC re-checks. */
+export type HostDiskAuthorizedRoot = {
+  path: string;
+  dev: string;
+  ino: string;
+};
+
 export type HostDiskGrantStore = {
   /** Resolves when the initial load has finished. Handlers must await this. */
   readonly ready: Promise<void>;
@@ -17,12 +24,14 @@ export type HostDiskGrantStore = {
   revoke(root: string): Promise<boolean>;
   hasGrantCovering(target: string): boolean;
   /**
-   * Realpaths of grants whose on-disk device+inode still match grant time.
+   * Grant roots whose on-disk device+inode still match grant time.
    * Symlink (or directory) replacement of a grant pathname yields no root.
    * Paths come from the verified open fd and are re-confirmed with O_NOFOLLOW
    * (never string realpath, which can follow a post-derivation symlink swap).
+   * Callers must re-check `dev`/`ino` when opening — pathnames alone are mutable
+   * after these descriptors are closed.
    */
-  authorizedRealRoots(): Promise<string[]>;
+  authorizedRealRoots(): Promise<HostDiskAuthorizedRoot[]>;
 };
 
 export type HostDiskGrantStoreOptions = {
@@ -224,7 +233,7 @@ export function createHostDiskGrantStore(options: HostDiskGrantStoreOptions): Ho
     },
     async authorizedRealRoots() {
       await ready;
-      const realRoots: string[] = [];
+      const realRoots: HostDiskAuthorizedRoot[] = [];
       for (const record of grantedRoots.values()) {
         try {
           // O_NOFOLLOW: if the grant pathname became a symlink, open fails.
@@ -256,7 +265,11 @@ export function createHostDiskGrantStore(options: HostDiskGrantStoreOptions): Ho
               ) {
                 continue;
               }
-              realRoots.push(pathFromOpenFd(confirmed.fd));
+              realRoots.push({
+                path: pathFromOpenFd(confirmed.fd),
+                dev: record.dev,
+                ino: record.ino,
+              });
             } finally {
               await confirmed.close().catch(() => undefined);
             }
