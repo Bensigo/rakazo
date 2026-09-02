@@ -35,11 +35,15 @@ test("teach a task records interaction and saves a draft", async ({ page }, test
   if (await more.isVisible().catch(() => false)) {
     await more.click();
     await expect(page.getByTestId("computer-more-menu")).toBeVisible();
-    await page.keyboard.press("Escape");
+    // Close via the More control again (Escape must not close the computer overlay).
+    await more.click();
+    await expect(page.getByTestId("computer-more-menu")).toHaveCount(0);
   }
   await captureScreenshot(page, testInfo, "teach-computer-chrome");
 
-  await chrome.getByTestId("teach-start-button").click();
+  const teachStart = chrome.getByTestId("teach-start-button");
+  await expect(teachStart).toBeEnabled();
+  await teachStart.click();
   await page.getByTestId("teach-goal-input").fill("Export weekly CRM list");
   await page.getByRole("button", { name: "Start recording" }).click();
   await expect(page.getByTestId("teach-recording-overlay")).toBeVisible();

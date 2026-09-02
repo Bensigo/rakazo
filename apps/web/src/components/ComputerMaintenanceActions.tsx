@@ -35,7 +35,10 @@ export function ComputerMaintenanceActions({
       if (!rootRef.current?.contains(event.target as Node)) setMenuOpen(false);
     }
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setMenuOpen(false);
+      if (event.key !== "Escape") return;
+      // Stop bubbling so Shell's Escape handler does not also close the computer.
+      event.stopPropagation();
+      setMenuOpen(false);
     }
     document.addEventListener("mousedown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);

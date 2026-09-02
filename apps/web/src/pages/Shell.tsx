@@ -2309,7 +2309,6 @@ export function ShellPage() {
 
   const embeddedScreenUrl = embeddableScreenUrl(screenUrl);
   const hasControl = userHoldsComputerControl(computer, active?.id);
-  const takeoverBlocked = computerTakeoverBlocked(computer, snapshot?.run?.status);
 
   const userName = session.data?.user.name ?? t`You`;
   const initials = userName
@@ -3720,24 +3719,9 @@ export function ShellPage() {
               ) : null}
               {recordingSkill ? (
                 <TeachStopButton busy={teachBusy} onStop={stopTeaching} />
-              ) : hasControl ? (
-                computer?.takeoverRequested ? (
-                  <ComputerReleaseActions takeoverRequested onRelease={releaseComputer} />
-                ) : null
-              ) : (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={takeoverBlocked}
-                  title={takeoverBlocked ? t`Stop the bot first` : undefined}
-                  onClick={() =>
-                    void bootComputer({ takeControl: true, overlay: false }).catch(() => undefined)
-                  }
-                >
-                  <Trans>Take control</Trans>
-                </Button>
-              )}
+              ) : hasControl && computer?.takeoverRequested ? (
+                <ComputerReleaseActions takeoverRequested onRelease={releaseComputer} />
+              ) : null}
               {active && !recordingSkill ? (
                 <TeachComputerOverlayControl
                   key={active.id}

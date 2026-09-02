@@ -89,7 +89,7 @@ export function TeachComputerOverlayControl({
     return () => {
       cancelled = true;
     };
-  }, [botId, onRefresh, t]);
+  }, [botId, onRefresh]); // t omitted: identity churn must not re-lock Start
 
   // Hide only for desktop-host bots. Null computer still shows the control so teaching can boot.
   if (computer?.kind === "desktop") return null;

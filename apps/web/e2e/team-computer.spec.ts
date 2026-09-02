@@ -166,14 +166,19 @@ test("an active Team bot must be stopped before user takeover", async ({ page },
     .toBe("running");
 
   await page.getByTitle("Agent computer").click();
+  const sidePanel = page.getByTestId("side-panel");
+  await expect(sidePanel.getByRole("button", { name: /Take control/i })).toHaveCount(0);
   await page.getByTestId("computer-preview").hover();
-  await page.getByTestId("computer-preview-open").click();
-  const takeControl = page
-    .getByTestId("computer-chrome")
-    .getByRole("button", { name: /Take control/i });
-  await expect(takeControl).toBeDisabled();
-  await expect(takeControl).toHaveAttribute("title", /Stop the bot first/i);
-  await captureScreenshot(page, testInfo, "48b-take-control-blocked-while-busy");
+  const openBusy = sidePanel.getByTestId("computer-preview-open");
+  await expect(openBusy).toBeVisible();
+  await expect(openBusy.getByText("Open", { exact: true })).toBeVisible();
+  await openBusy.click();
+  const chrome = page.getByTestId("computer-chrome");
+  await expect(page.getByRole("button", { name: "Close computer" })).toBeVisible();
+  // Open while the bot is busy must not grant control (takeover stays blocked).
+  await expect(chrome.getByText("You have control", { exact: true })).toHaveCount(0);
+  await expect(chrome.getByRole("button", { name: /Take control/i })).toHaveCount(0);
+  await captureScreenshot(page, testInfo, "48b-open-while-busy-no-control");
   await page.getByRole("button", { name: "Close computer" }).click();
 
   // Stop through the shell so the client refreshes computer status (API stop alone
@@ -190,12 +195,14 @@ test("an active Team bot must be stopped before user takeover", async ({ page },
         ).busyBotName,
     )
     .toBeNull();
-  await expect(takeControl).toBeEnabled();
-  await takeControl.click();
-  await expect(
-    page.getByTestId("side-panel").getByText("You have control", { exact: true }),
-  ).toBeVisible();
-  await captureScreenshot(page, testInfo, "49-team-computer-takeover-after-stop");
+
+  // After stop, Open via hover is the takeover path (no Take control button).
+  await page.getByTestId("computer-preview").hover();
+  await page.getByTestId("computer-preview-open").click();
+  await expect(page.getByRole("button", { name: "Close computer" })).toBeVisible();
+  await expect(chrome.getByText("You have control", { exact: true })).toBeVisible();
+  await expect(chrome.getByRole("button", { name: /Take control/i })).toHaveCount(0);
+  await captureScreenshot(page, testInfo, "49-team-computer-open-after-stop");
   await rpc(page, "computer/release", { botId: chiefId });
 });
 
