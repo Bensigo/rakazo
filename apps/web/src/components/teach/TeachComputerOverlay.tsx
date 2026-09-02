@@ -1,6 +1,6 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import type { ComputerStatus } from "@rakazo/contracts";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { rpc } from "../../lib/rpc";
 
 /**
@@ -24,13 +24,49 @@ export function TeachComputerOverlayControl({
   const [localBusy, setLocalBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /**
-   * Sticky after skills.start succeeds until a refresh shows the active recording.
-   * Dismiss may hide the recovery UI but must not clear this, or Start recording
-   * becomes usable again while the session is already active.
+   * Sticky after skills.start succeeds (or a recording is already active on the
+   * server) until a refresh shows Stop teaching. Dismiss may hide recovery UI
+   * but must not clear this, or Start recording becomes usable again while the
+   * session is already active.
    */
   const [needsRefresh, setNeedsRefresh] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const busy = Boolean(busyProp) || localBusy;
+
+  // Re-seed the lock from server state on mount. Local needsRefresh is lost when
+  // the computer closes; an active recording must still block Start recording.
+  useEffect(() => {
+    let cancelled = false;
+    async function syncRecordingLock() {
+      try {
+        const skills = await rpc.skills.list({ botId });
+        if (cancelled) return;
+        const recording = skills.some((skill) => skill.status === "recording");
+        if (!recording) return;
+        setNeedsRefresh(true);
+        setRecoveryOpen(true);
+        setGoalOpen(false);
+        try {
+          await onRefresh();
+          // Keep the lock until Shell swaps to Stop teaching via recordingSkill.
+        } catch (refreshError) {
+          if (cancelled) return;
+          setError(
+            refreshError instanceof Error
+              ? refreshError.message
+              : t`Recording may have started, but the view could not refresh`,
+          );
+        }
+      } catch {
+        // Probe failure must not unlock Start recording; leave local state alone.
+      }
+    }
+    void syncRecordingLock();
+    return () => {
+      cancelled = true;
+    };
+  }, [botId, onRefresh, t]);
+
   // Hide only for desktop-host bots. Null computer still shows the control so teaching can boot.
   if (computer?.kind === "desktop") return null;
 
@@ -64,11 +100,11 @@ export function TeachComputerOverlayControl({
       await rpc.skills.start({ botId, goal: goal.trim() });
       // Recording has started. Never reopen Start recording; only refresh the view.
       setGoalOpen(false);
-      setGoal("");
       try {
         await onRefresh();
         setNeedsRefresh(false);
         setRecoveryOpen(false);
+        setGoal("");
       } catch (refreshError) {
         setNeedsRefresh(true);
         setRecoveryOpen(true);
@@ -79,7 +115,15 @@ export function TeachComputerOverlayControl({
         );
       }
     } catch (startError) {
-      setError(startError instanceof Error ? startError.message : t`Could not start teaching`);
+      const message =
+        startError instanceof Error ? startError.message : t`Could not start teaching`;
+      setError(message);
+      // Server already has a session (e.g. remount before the probe finished).
+      if (/already active/i.test(message)) {
+        setNeedsRefresh(true);
+        setRecoveryOpen(true);
+        setGoalOpen(false);
+      }
     } finally {
       setLocalBusy(false);
     }
