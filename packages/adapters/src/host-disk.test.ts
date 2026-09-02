@@ -340,6 +340,26 @@ describe("host disk symlink containment", () => {
     expect(await readFile(path.join(nestedBackup, "planted.txt"), "utf8")).toBe("inside-write\n");
   });
 
+  it("keeps a write when the pinned parent is renamed inside the grant", async () => {
+    // Renaming the destination parent within the grant must not false-reject or
+    // unlink the committed file via a stale parentFdReal dirname check.
+    const dataDir = await tempDir();
+    const grant = path.join(dataDir, "granted");
+    const nested = path.join(grant, "nested");
+    await mkdir(nested, { recursive: true });
+
+    const nestedMoved = path.join(grant, "nested-moved");
+    await expect(
+      writeFileInsideHostRoots(path.join(nested, "kept.txt"), [grant], "kept\n", {
+        afterParentPinned: async () => {
+          await rename(nested, nestedMoved);
+        },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(await readFile(path.join(nestedMoved, "kept.txt"), "utf8")).toBe("kept\n");
+  });
+
   it("does not let recursive mkdir follow a swapped outside symlink", async () => {
     const dataDir = await tempDir();
     const grant = path.join(dataDir, "granted");
@@ -543,6 +563,75 @@ describe("host disk exclusive claims", () => {
 
     await expect(listing).resolves.toEqual([]);
     await clientDone;
+  });
+
+  it("does not delete .completing.json when it briefly holds status done", async () => {
+    const dataDir = await tempDir();
+    const { BridgingHostDiskProvider, claimHostDiskOperation } = await import(
+      "./bridge-host-disk.js"
+    );
+
+    const provider = new BridgingHostDiskProvider({
+      dataDir,
+      timeoutMs: 30,
+      pollIntervalMs: 5,
+      completionGraceMs: 500,
+    });
+    await saveHostDiskSettings(dataDir, "user-1", {
+      enabled: true,
+      roots: [path.join(dataDir, "granted")],
+      clientSeenAt: new Date().toISOString(),
+    });
+    await mkdir(path.join(dataDir, "granted"), { recursive: true });
+
+    const listing = provider.listFiles("user-1", "", adapterContext());
+
+    let claimed: Awaited<ReturnType<typeof claimHostDiskOperation>> = null;
+    for (let attempt = 0; attempt < 50 && !claimed; attempt += 1) {
+      claimed = await claimHostDiskOperation(dataDir, "user-1");
+      if (!claimed) await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    expect(claimed?.status).toBe("claimed");
+    if (!claimed) throw new Error("expected claim");
+
+    const { access, constants: fsConstants, rename, readFile, writeFile } =
+      await import("node:fs/promises");
+    const claimedPath = path.join(
+      dataDir,
+      "host-disk",
+      "operations",
+      "user-1",
+      `${claimed.id}.claimed.json`,
+    );
+    const completingPath = path.join(
+      dataDir,
+      "host-disk",
+      "operations",
+      "user-1",
+      `${claimed.id}.completing.json`,
+    );
+    const donePath = path.join(
+      dataDir,
+      "host-disk",
+      "operations",
+      "user-1",
+      `${claimed.id}.done.json`,
+    );
+    await rename(claimedPath, completingPath);
+    const raw = JSON.parse(await readFile(completingPath, "utf8")) as Record<string, unknown>;
+    await writeFile(
+      completingPath,
+      `${JSON.stringify({ ...raw, status: "done", entries: [] }, null, 2)}\n`,
+      "utf8",
+    );
+
+    // Give the waiter time to observe completing-with-done without treating it
+    // as a terminal artifact (and without unlinking it).
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    await expect(access(completingPath, fsConstants.F_OK)).resolves.toBeUndefined();
+
+    await rename(completingPath, donePath);
+    await expect(listing).resolves.toEqual([]);
   });
 });
 

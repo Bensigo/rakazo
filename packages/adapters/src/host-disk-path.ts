@@ -333,15 +333,14 @@ export async function writeFileInsideHostRoots(
   const tempName = `.rakazo-host-disk-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`;
   let tempPending = false;
   try {
-    let parentFdReal = await realpathOfFd(parentHandle.fd);
-    if (!isLexicallyInsideRoots(parentFdReal, realRoots)) {
+    // openat pins the parent inode. Avoid path.dirname(child) === cached
+    // parentFdReal checks: an in-grant parent rename updates child realpaths
+    // while a stale parent string would false-reject and unlink a valid write.
+    if (!isLexicallyInsideRoots(await realpathOfFd(parentHandle.fd), realRoots)) {
       throw new Error("Host path is outside the granted folders");
     }
     if (options?.afterParentPinned) await options.afterParentPinned();
-    // Refresh after the pin hook: the directory may have been renamed, but the
-    // inode (and fd) remain the same; path equality checks need the current name.
-    parentFdReal = await realpathOfFd(parentHandle.fd);
-    if (!isLexicallyInsideRoots(parentFdReal, realRoots)) {
+    if (!isLexicallyInsideRoots(await realpathOfFd(parentHandle.fd), realRoots)) {
       throw new Error("Host path is outside the granted folders");
     }
 
@@ -357,9 +356,6 @@ export async function writeFileInsideHostRoots(
       if (!isLexicallyInsideRoots(tempFdReal, realRoots)) {
         throw new Error("Host path is outside the granted folders");
       }
-      if (path.dirname(tempFdReal) !== parentFdReal) {
-        throw new Error("Host path is outside the granted folders");
-      }
       await tempHandle.writeFile(typeof content === "string" ? content : Buffer.from(content));
     } finally {
       await tempHandle.close();
@@ -370,16 +366,9 @@ export async function writeFileInsideHostRoots(
 
     const finalHandle = openatChild(parentHandle.fd, baseName, constants.O_RDONLY | NOFOLLOW);
     try {
+      const parentLive = await realpathOfFd(parentHandle.fd);
       const fdReal = await realpathOfFd(finalHandle.fd);
-      if (!isLexicallyInsideRoots(fdReal, realRoots)) {
-        try {
-          unlinkatChild(parentHandle.fd, baseName);
-        } catch {
-          // Best-effort cleanup.
-        }
-        throw new Error("Host path is outside the granted folders");
-      }
-      if (path.dirname(fdReal) !== parentFdReal) {
+      if (!isLexicallyInsideRoots(parentLive, realRoots) || !isLexicallyInsideRoots(fdReal, realRoots)) {
         try {
           unlinkatChild(parentHandle.fd, baseName);
         } catch {

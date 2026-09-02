@@ -157,8 +157,12 @@ export class BridgingHostDiskProvider implements HostDiskProvider {
     while ((this.options.now?.() ?? Date.now()) - started < timeoutMs) {
       if (context.signal.aborted) throw new Error("Host disk operation aborted");
       const current = await readOperationById(this.options.dataDir, userId, id);
+      // Only immutable *.done.json / *.error.json are terminal. .completing.json
+      // may briefly hold status done|error before rename; deleting it would race
+      // the owner's terminal publish (ENOENT) while the caller already saw success.
       if (
         current &&
+        isTerminalOperationFile(current.file) &&
         (current.operation.status === "done" || current.operation.status === "error")
       ) {
         if (current.operation.status === "error") {
@@ -180,11 +184,19 @@ export class BridgingHostDiskProvider implements HostDiskProvider {
     const graceDeadline = (this.options.now?.() ?? Date.now()) + graceMs;
     for (;;) {
       const final = await readOperationById(this.options.dataDir, userId, id);
-      if (final?.operation.status === "done") {
+      if (
+        final &&
+        isTerminalOperationFile(final.file) &&
+        final.operation.status === "done"
+      ) {
         void unlink(final.file).catch(() => undefined);
         return final.operation;
       }
-      if (final?.operation.status === "error") {
+      if (
+        final &&
+        isTerminalOperationFile(final.file) &&
+        final.operation.status === "error"
+      ) {
         throw new Error(final.operation.error ?? "Host disk operation failed");
       }
       const now = this.options.now?.() ?? Date.now();
@@ -210,6 +222,10 @@ function claimedOperationPath(dataDir: string, userId: string, id: string) {
 
 function completingOperationPath(dataDir: string, userId: string, id: string) {
   return path.join(operationsDir(dataDir, userId), `${id}.completing.json`);
+}
+
+function isTerminalOperationFile(file: string) {
+  return file.endsWith(".done.json") || file.endsWith(".error.json");
 }
 
 function terminalOperationPath(

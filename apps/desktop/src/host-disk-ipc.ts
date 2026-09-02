@@ -35,12 +35,10 @@ function isLexicallyInside(target: string, roots: string[]) {
 }
 
 async function realGrantedRoots() {
-  const roots = grants().list();
-  if (roots.length === 0) throw new Error("No host folders are granted");
-  const realRoots: string[] = [];
-  for (const root of roots) {
-    realRoots.push(await realpath(root));
-  }
+  // Authorize via grant-time device+inode, not a live realpath() of a mutable
+  // pathname (which a symlink/dir replacement would redefine).
+  const realRoots = await grants().authorizedRealRoots();
+  if (realRoots.length === 0) throw new Error("No host folders are granted");
   return realRoots;
 }
 
@@ -305,8 +303,11 @@ export function registerHostDiskIpc() {
       const tempName = `.rakazo-host-disk-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`;
       let tempPending = false;
       try {
-        const parentFdReal = await realpathOfFd(parentHandle.fd);
-        if (!isLexicallyInside(parentFdReal, realRoots)) {
+        // openat pins the parent inode. Do not require path.dirname(child) ===
+        // a cached parentFdReal: renaming the parent inside the grant updates
+        // child realpaths while a stale parent string would false-reject and
+        // unlink a contained write.
+        if (!isLexicallyInside(await realpathOfFd(parentHandle.fd), realRoots)) {
           throw new Error("Host path is outside the granted folders");
         }
 
@@ -322,9 +323,6 @@ export function registerHostDiskIpc() {
           if (!isLexicallyInside(tempFdReal, realRoots)) {
             throw new Error("Host path is outside the granted folders");
           }
-          if (path.dirname(tempFdReal) !== parentFdReal) {
-            throw new Error("Host path is outside the granted folders");
-          }
           await tempHandle.writeFile(Buffer.from(contentBase64, "base64"));
         } finally {
           await tempHandle.close();
@@ -335,16 +333,12 @@ export function registerHostDiskIpc() {
 
         const finalHandle = openatChild(parentHandle.fd, baseName, constants.O_RDONLY | NOFOLLOW);
         try {
+          // Re-validate live destination containment after renameat. Only unlink
+          // when the committed path is outside grants — not on a stale string
+          // mismatch after an in-grant parent rename.
+          const parentLive = await realpathOfFd(parentHandle.fd);
           const fdReal = await realpathOfFd(finalHandle.fd);
-          if (!isLexicallyInside(fdReal, realRoots)) {
-            try {
-              unlinkatChild(parentHandle.fd, baseName);
-            } catch {
-              // Best-effort cleanup.
-            }
-            throw new Error("Host path is outside the granted folders");
-          }
-          if (path.dirname(fdReal) !== parentFdReal) {
+          if (!isLexicallyInside(parentLive, realRoots) || !isLexicallyInside(fdReal, realRoots)) {
             try {
               unlinkatChild(parentHandle.fd, baseName);
             } catch {
