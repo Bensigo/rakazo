@@ -24,10 +24,10 @@ export function TeachComputerOverlayControl({
   const [localBusy, setLocalBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /**
-   * Sticky after skills.start succeeds (or a recording is already active on the
-   * server) until a refresh shows Stop teaching. Dismiss may hide recovery UI
-   * but must not clear this, or Start recording becomes usable again while the
-   * session is already active.
+   * Sticky once a recording is known active until Shell shows Stop teaching (this
+   * control unmounts) or a probe for the current bot finds no recording. Dismiss
+   * may hide recovery UI but must not clear this. Do not clear it just because
+   * onRefresh resolved: Shell loads skills after threads.get returns.
    */
   const [needsRefresh, setNeedsRefresh] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
@@ -36,8 +36,8 @@ export function TeachComputerOverlayControl({
   const busy = Boolean(busyProp) || localBusy;
   const startLocked = needsRefresh || syncingRecording;
 
-  // Re-seed the lock from server state on mount. Local needsRefresh is lost when
-  // the computer closes; an active recording must still block Start recording.
+  // Re-seed the lock from server state on mount / bot change. Local needsRefresh
+  // is lost on remount and can leak across bots if not cleared when idle.
   // Lock immediately while the probe runs so a remount cannot start twice.
   useEffect(() => {
     let cancelled = false;
@@ -48,12 +48,17 @@ export function TeachComputerOverlayControl({
         const skills = await rpc.skills.list({ botId });
         if (cancelled) return;
         const recording = skills.some((skill) => skill.status === "recording");
-        if (!recording) return;
+        if (!recording) {
+          setNeedsRefresh(false);
+          setRecoveryOpen(false);
+          setError(null);
+          return;
+        }
         setNeedsRefresh(true);
         setRecoveryOpen(true);
         try {
           await onRefresh();
-          // Keep the lock until Shell swaps to Stop teaching via recordingSkill.
+          // Keep needsRefresh. Shell swaps to Stop teaching once skills land.
         } catch (refreshError) {
           if (cancelled) return;
           setError(
@@ -63,7 +68,12 @@ export function TeachComputerOverlayControl({
           );
         }
       } catch {
-        // Probe failure must not unlock an existing needsRefresh lock.
+        // Fail closed: a transient skills.list error must not unlock Start while
+        // a recording may still be active.
+        if (cancelled) return;
+        setNeedsRefresh(true);
+        setRecoveryOpen(true);
+        setError(t`Could not check teaching status. Refresh the view to continue.`);
       } finally {
         if (!cancelled) setSyncingRecording(false);
       }
@@ -82,6 +92,14 @@ export function TeachComputerOverlayControl({
     setError(null);
     try {
       await onRefresh();
+      // Confirm with skills.list. onRefresh can resolve before Shell applies skills.
+      const skills = await rpc.skills.list({ botId });
+      if (skills.some((skill) => skill.status === "recording")) {
+        setNeedsRefresh(true);
+        setRecoveryOpen(false);
+        setGoal("");
+        return;
+      }
       setNeedsRefresh(false);
       setRecoveryOpen(false);
       setGoal("");
@@ -105,15 +123,16 @@ export function TeachComputerOverlayControl({
     try {
       await rpc.computer.boot({ botId });
       await rpc.skills.start({ botId, goal: goal.trim() });
-      // Recording has started. Never reopen Start recording; only refresh the view.
+      // Recording has started. Keep Start locked; only refresh the view.
       setGoalOpen(false);
+      setNeedsRefresh(true);
       try {
         await onRefresh();
-        setNeedsRefresh(false);
-        setRecoveryOpen(false);
         setGoal("");
+        // Keep needsRefresh. Shell unmounts this control when recordingSkill lands.
+        // If skills are still pending, Start stays locked without a false unlock.
+        setRecoveryOpen(false);
       } catch (refreshError) {
-        setNeedsRefresh(true);
         setRecoveryOpen(true);
         setError(
           refreshError instanceof Error
