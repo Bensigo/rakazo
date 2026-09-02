@@ -23,8 +23,13 @@ export function TeachComputerOverlayControl({
   const [goal, setGoal] = useState("");
   const [localBusy, setLocalBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** True after skills.start succeeded but the view refresh failed. */
+  /**
+   * Sticky after skills.start succeeds until a refresh shows the active recording.
+   * Dismiss may hide the recovery UI but must not clear this, or Start recording
+   * becomes usable again while the session is already active.
+   */
   const [needsRefresh, setNeedsRefresh] = useState(false);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
   const busy = Boolean(busyProp) || localBusy;
   // Hide only for desktop-host bots. Null computer still shows the control so teaching can boot.
   if (computer?.kind === "desktop") return null;
@@ -35,9 +40,11 @@ export function TeachComputerOverlayControl({
     try {
       await onRefresh();
       setNeedsRefresh(false);
+      setRecoveryOpen(false);
       setGoal("");
     } catch (refreshError) {
       setNeedsRefresh(true);
+      setRecoveryOpen(true);
       setError(
         refreshError instanceof Error
           ? refreshError.message
@@ -61,8 +68,10 @@ export function TeachComputerOverlayControl({
       try {
         await onRefresh();
         setNeedsRefresh(false);
+        setRecoveryOpen(false);
       } catch (refreshError) {
         setNeedsRefresh(true);
+        setRecoveryOpen(true);
         setError(
           refreshError instanceof Error
             ? refreshError.message
@@ -122,7 +131,7 @@ export function TeachComputerOverlayControl({
           </div>
         </div>
       ) : null}
-      {!goalOpen && needsRefresh ? (
+      {!goalOpen && needsRefresh && recoveryOpen ? (
         <div
           data-testid="teach-refresh-recovery"
           className="absolute end-0 top-full z-20 mt-2 w-[min(320px,calc(100vw-2rem))] rounded-[12px] border border-[#26262A] bg-[#121214] px-3 py-3 shadow-[0_12px_40px_rgba(0,0,0,.45)]"
@@ -147,10 +156,7 @@ export function TeachComputerOverlayControl({
             </button>
             <button
               type="button"
-              onClick={() => {
-                setNeedsRefresh(false);
-                setError(null);
-              }}
+              onClick={() => setRecoveryOpen(false)}
               className="rounded-[11px] border border-[#26262A] px-4 py-2 text-[14px] text-[#ECECEE]"
             >
               <Trans>Dismiss</Trans>
@@ -162,10 +168,14 @@ export function TeachComputerOverlayControl({
         type="button"
         data-testid="teach-start-button"
         aria-label={t`Teach a task`}
-        aria-expanded={goalOpen}
+        aria-expanded={goalOpen || (needsRefresh && recoveryOpen)}
         disabled={busy}
         onClick={() => {
-          if (needsRefresh) return;
+          if (needsRefresh) {
+            // Keep Start recording locked; only reopen refresh recovery.
+            setRecoveryOpen((open) => !open);
+            return;
+          }
           setError(null);
           setGoalOpen((open) => !open);
         }}
