@@ -39,12 +39,9 @@ export const native = {
 } as const;
 
 export function useResolvedAppearance(): ResolvedAppearance {
-  const preference = useSyncExternalStore(
-    subscribeAppearance,
-    getCachedAppearancePreference,
-    () => "system" as const,
-  );
-  return resolveMobileAppearance(preference);
+  // Snapshot the resolved light/dark value, not the preference. Preference stays
+  // "system" across OS scheme flips, so a preference snapshot would skip rerenders.
+  return useSyncExternalStore(subscribeAppearance, resolveMobileAppearance, () => "dark" as const);
 }
 
 /** Rebuild styles when the resolved appearance changes (avoids frozen StyleSheet snapshots). */

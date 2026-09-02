@@ -1,22 +1,17 @@
 import { DarkTheme, Stack, ThemeProvider } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { AvatarStyleProvider } from "../components/avatar-style";
 import { currentApiBase, loadApiBase, loadSessionToken, selectedSpaceId } from "../lib/api";
-import {
-  getCachedAppearancePreference,
-  loadAppearancePreference,
-  resolveMobileAppearance,
-  subscribeAppearance,
-} from "../lib/appearance";
+import { loadAppearancePreference } from "../lib/appearance";
 import {
   configureForegroundNotifications,
   resumeLiveNotifications,
 } from "../lib/live-notifications";
-import { native } from "../lib/native";
+import { native, useResolvedAppearance } from "../lib/native";
 import { applyMobileUiDirection } from "../lib/ui-direction";
 
 applyMobileUiDirection();
@@ -38,12 +33,7 @@ const lightTheme = {
 
 export default function Layout() {
   const [ready, setReady] = useState(false);
-  const preference = useSyncExternalStore(
-    subscribeAppearance,
-    getCachedAppearancePreference,
-    () => "system" as const,
-  );
-  const resolved = resolveMobileAppearance(preference);
+  const resolved = useResolvedAppearance();
   const navigationTheme = useMemo(() => {
     const base = resolved === "light" ? lightTheme : DarkTheme;
     return {
