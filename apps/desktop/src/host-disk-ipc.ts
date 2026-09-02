@@ -1,37 +1,17 @@
 import { constants } from "node:fs";
-import { mkdir, open, readdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, open, readdir, realpath, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { app, BrowserWindow, dialog, type IpcMainInvokeEvent, ipcMain } from "electron";
+import { createHostDiskGrantStore, type HostDiskGrantStore } from "./host-disk-grants.js";
 
 /** Roots granted via the native folder picker. Renderer-supplied roots are ignored. */
-const grantedRoots = new Set<string>();
-
-/** Resolves after the first grants file load; all handlers await this. */
-let grantsReady: Promise<void> = Promise.resolve();
+let grantStore: HostDiskGrantStore | null = null;
 
 const NOFOLLOW = constants.O_NOFOLLOW ?? 0;
 
-function grantsFilePath() {
-  return path.join(app.getPath("userData"), "host-disk-grants.json");
-}
-
-async function loadGrantedRoots() {
-  try {
-    const raw = JSON.parse(await readFile(grantsFilePath(), "utf8")) as unknown;
-    if (!Array.isArray(raw)) return;
-    for (const item of raw) {
-      if (typeof item === "string" && item.length > 0) {
-        grantedRoots.add(path.resolve(item));
-      }
-    }
-  } catch {
-    // First run or unreadable file: start with an empty grant set.
-  }
-}
-
-async function saveGrantedRoots() {
-  await mkdir(path.dirname(grantsFilePath()), { recursive: true });
-  await writeFile(grantsFilePath(), `${JSON.stringify([...grantedRoots], null, 2)}\n`, "utf8");
+function grants(): HostDiskGrantStore {
+  if (!grantStore) throw new Error("Host disk IPC is not registered");
+  return grantStore;
 }
 
 function isLexicallyInside(target: string, roots: string[]) {
@@ -46,7 +26,7 @@ function isLexicallyInside(target: string, roots: string[]) {
 }
 
 async function realGrantedRoots() {
-  const roots = [...grantedRoots];
+  const roots = grants().list();
   if (roots.length === 0) throw new Error("No host folders are granted");
   const realRoots: string[] = [];
   for (const root of roots) {
@@ -56,7 +36,7 @@ async function realGrantedRoots() {
 }
 
 async function resolveInsideGrants(target: string) {
-  const roots = [...grantedRoots];
+  const roots = grants().list();
   if (roots.length === 0) throw new Error("No host folders are granted");
   const lexicalTarget = path.resolve(typeof target === "string" ? target : "");
   if (!isLexicallyInside(lexicalTarget, roots)) {
@@ -140,11 +120,65 @@ async function openInsideGrants(target: string, flags: number) {
   }
 }
 
+async function mkdirInsideGrants(target: string) {
+  const realRoots = await realGrantedRoots();
+  const resolved = await resolveInsideGrants(target);
+  if (realRoots.some((root) => root === resolved)) return resolved;
+
+  const containingRoot = realRoots.find((root) => isLexicallyInside(resolved, [root]));
+  if (!containingRoot) throw new Error("Host path is outside the granted folders");
+
+  const relative = path.relative(containingRoot, resolved);
+  if (
+    relative === "" ||
+    relative === ".." ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  ) {
+    throw new Error("Host path is outside the granted folders");
+  }
+
+  const dirFlags = constants.O_RDONLY | (constants.O_DIRECTORY ?? 0);
+  let parentHandle = await openInsideGrants(containingRoot, dirFlags);
+  try {
+    for (const segment of relative.split(path.sep)) {
+      if (!segment || segment === "." || segment === "..") {
+        throw new Error("Host path is outside the granted folders");
+      }
+      const childViaFd = path.join(fdDirPath(parentHandle.fd), segment);
+      try {
+        const next = await open(childViaFd, dirFlags | NOFOLLOW);
+        await parentHandle.close().catch(() => undefined);
+        parentHandle = next;
+      } catch (error) {
+        const code =
+          error && typeof error === "object" && "code" in error
+            ? String((error as { code: unknown }).code)
+            : "";
+        if (code !== "ENOENT") throw error;
+        await mkdir(childViaFd);
+        const next = await open(childViaFd, dirFlags | NOFOLLOW);
+        await parentHandle.close().catch(() => undefined);
+        parentHandle = next;
+      }
+      const fdReal = await realpathOfFd(parentHandle.fd);
+      if (!isLexicallyInside(fdReal, realRoots)) {
+        throw new Error("Host path is outside the granted folders");
+      }
+    }
+    return await realpathOfFd(parentHandle.fd);
+  } finally {
+    await parentHandle.close().catch(() => undefined);
+  }
+}
+
 export function registerHostDiskIpc() {
-  grantsReady = loadGrantedRoots();
+  grantStore = createHostDiskGrantStore({
+    grantsFilePath: path.join(app.getPath("userData"), "host-disk-grants.json"),
+  });
 
   ipcMain.handle("desktop.hostDisk.pickFolder", async (event: IpcMainInvokeEvent) => {
-    await grantsReady;
+    await grants().ready;
     const win = BrowserWindow.fromWebContents(event.sender);
     const options: Electron.OpenDialogOptions = {
       properties: ["openDirectory", "createDirectory"],
@@ -155,34 +189,25 @@ export function registerHostDiskIpc() {
     if (result.canceled || result.filePaths.length === 0) return null;
     const chosen = result.filePaths[0];
     if (!chosen) return null;
-    const resolved = await realpath(path.resolve(chosen));
-    grantedRoots.add(resolved);
-    await saveGrantedRoots();
-    return resolved;
+    return grants().add(chosen);
   });
 
   ipcMain.handle("desktop.hostDisk.revokeRoot", async (_event, root: unknown) => {
-    await grantsReady;
+    await grants().ready;
     if (typeof root !== "string" || root.length === 0) return false;
-    const resolved = path.resolve(root);
-    let removed = grantedRoots.delete(resolved);
-    try {
-      removed = grantedRoots.delete(await realpath(resolved)) || removed;
-    } catch {
-      // Root may already be gone from disk.
-    }
-    if (removed) await saveGrantedRoots();
-    return removed;
+    // Revoke records intent before/while load and always persists so a late load
+    // cannot resurrect the folder.
+    return grants().revoke(root);
   });
 
   ipcMain.handle("desktop.hostDisk.listGrantedRoots", async () => {
-    await grantsReady;
-    return [...grantedRoots].sort((left, right) => left.localeCompare(right));
+    await grants().ready;
+    return grants().list();
   });
 
   ipcMain.handle("desktop.hostDisk.list", async (_event, requestPath: unknown) => {
-    await grantsReady;
-    const roots = [...grantedRoots];
+    await grants().ready;
+    const roots = grants().list();
     if (roots.length === 0) throw new Error("No host folders are granted");
     const trimmed = typeof requestPath === "string" ? requestPath.trim() : "";
     if (!trimmed) {
@@ -232,7 +257,7 @@ export function registerHostDiskIpc() {
   ipcMain.handle(
     "desktop.hostDisk.read",
     async (_event, requestPath: unknown, maxBytes: unknown) => {
-      await grantsReady;
+      await grants().ready;
       const handle = await openInsideGrants(String(requestPath ?? ""), constants.O_RDONLY);
       try {
         const info = await handle.stat();
@@ -251,10 +276,10 @@ export function registerHostDiskIpc() {
   ipcMain.handle(
     "desktop.hostDisk.write",
     async (_event, requestPath: unknown, contentBase64: unknown) => {
-      await grantsReady;
+      await grants().ready;
       if (typeof contentBase64 !== "string") throw new Error("Missing file content");
       const target = await resolveInsideGrants(String(requestPath ?? ""));
-      await mkdir(path.dirname(target), { recursive: true });
+      await mkdirInsideGrants(path.dirname(target));
 
       const realRoots = await realGrantedRoots();
       const baseName = path.basename(target);

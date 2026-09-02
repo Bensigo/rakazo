@@ -229,6 +229,62 @@ export async function listInsideHostRoots(
   }
 }
 
+/**
+ * Create directories under granted roots by walking pinned directory fds so a
+ * swapped symlink component cannot divert recursive mkdir outside the jail.
+ */
+export async function mkdirInsideHostRoots(target: string, roots: string[]) {
+  const realRoots = await realRootsOf(roots);
+  const resolved = await resolveInsideHostRoots(target, roots);
+  if (realRoots.some((root) => root === resolved)) return resolved;
+
+  const containingRoot = realRoots.find((root) => isLexicallyInsideRoots(resolved, [root]));
+  if (!containingRoot) throw new Error("Host path is outside the granted folders");
+
+  const relative = path.relative(containingRoot, resolved);
+  if (
+    relative === "" ||
+    relative === ".." ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  ) {
+    throw new Error("Host path is outside the granted folders");
+  }
+
+  const dirFlags = constants.O_RDONLY | (constants.O_DIRECTORY ?? 0);
+  let parentHandle = await openInsideHostRoots(containingRoot, roots, dirFlags);
+  try {
+    for (const segment of relative.split(path.sep)) {
+      if (!segment || segment === "." || segment === "..") {
+        throw new Error("Host path is outside the granted folders");
+      }
+      const childViaFd = path.join(fdDirPath(parentHandle.fd), segment);
+      try {
+        const next = await open(childViaFd, dirFlags | NOFOLLOW);
+        await parentHandle.close().catch(() => undefined);
+        parentHandle = next;
+      } catch (error) {
+        const code =
+          error && typeof error === "object" && "code" in error
+            ? String((error as { code: unknown }).code)
+            : "";
+        if (code !== "ENOENT") throw error;
+        await mkdir(childViaFd);
+        const next = await open(childViaFd, dirFlags | NOFOLLOW);
+        await parentHandle.close().catch(() => undefined);
+        parentHandle = next;
+      }
+      const fdReal = await realpathOfFd(parentHandle.fd);
+      if (!isLexicallyInsideRoots(fdReal, realRoots)) {
+        throw new Error("Host path is outside the granted folders");
+      }
+    }
+    return await realpathOfFd(parentHandle.fd);
+  } finally {
+    await parentHandle.close().catch(() => undefined);
+  }
+}
+
 export async function writeFileInsideHostRoots(
   target: string,
   roots: string[],
@@ -237,7 +293,7 @@ export async function writeFileInsideHostRoots(
 ) {
   const resolved = await resolveInsideHostRoots(target, roots);
   if (options?.afterResolve) await options.afterResolve();
-  await mkdir(path.dirname(resolved), { recursive: true });
+  await mkdirInsideHostRoots(path.dirname(resolved), roots);
 
   const realRoots = await realRootsOf(roots);
   const baseName = path.basename(resolved);

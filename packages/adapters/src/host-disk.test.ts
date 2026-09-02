@@ -329,6 +329,33 @@ describe("host disk symlink containment", () => {
     expect(await readFile(path.join(outside, "planted.txt"), "utf8")).toBe("outside-secret\n");
     expect(await readFile(path.join(nestedBackup, "planted.txt"), "utf8")).toBe("inside-write\n");
   });
+
+  it("does not let recursive mkdir follow a swapped outside symlink", async () => {
+    const dataDir = await tempDir();
+    const grant = path.join(dataDir, "granted");
+    const outside = path.join(dataDir, "outside");
+    await mkdir(grant, { recursive: true });
+    await mkdir(outside, { recursive: true });
+
+    // Create nested/a as a real dir, then swap nested to an outside symlink after
+    // resolve and before directory creation walks components.
+    const nested = path.join(grant, "nested");
+    await mkdir(nested, { recursive: true });
+    const target = path.join(nested, "deep", "file.txt");
+
+    await expect(
+      writeFileInsideHostRoots(target, [grant], "x", {
+        afterResolve: async () => {
+          await rm(nested, { recursive: true, force: true });
+          await symlink(outside, nested);
+        },
+      }),
+    ).rejects.toThrow(/outside the granted folders|ENOENT|ELOOP|EPERM|EACCES|ENOTDIR/i);
+
+    // Outside must not gain new directories from the failed write.
+    const { readdir } = await import("node:fs/promises");
+    expect(await readdir(outside)).toEqual([]);
+  });
 });
 
 describe("host disk exclusive claims", () => {
