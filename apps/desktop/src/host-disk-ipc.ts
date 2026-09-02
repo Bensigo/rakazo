@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { open, readdir, realpath } from "node:fs/promises";
+import { open, realpath } from "node:fs/promises";
 import path from "node:path";
 import { app, BrowserWindow, dialog, type IpcMainInvokeEvent, ipcMain } from "electron";
 import { createHostDiskGrantStore, type HostDiskGrantStore } from "./host-disk-grants.js";
@@ -8,6 +8,7 @@ import {
   openatChild,
   type PosixAtFileHandle,
   pathFromOpenFd,
+  readdirNamesAt,
   renameatChild,
   unlinkatChild,
 } from "./host-disk-posix-at.js";
@@ -106,11 +107,6 @@ async function realpathOfFd(fd: number): Promise<string> {
   } catch {
     throw new Error("Host path is outside the granted folders");
   }
-}
-
-/** Path referring to an open fd itself. Never join child names under this (Darwin). */
-function fdRefPath(fd: number) {
-  return process.platform === "linux" ? `/proc/self/fd/${fd}` : `/dev/fd/${fd}`;
 }
 
 /** Open + re-validate via fd realpath so a directory→symlink swap cannot escape. */
@@ -239,9 +235,10 @@ export function registerHostDiskIpc() {
       if (!isLexicallyInside(fdReal, realRoots)) {
         throw new Error("Host path is outside the granted folders");
       }
-      // List via the fd reference so a pathname→symlink swap cannot redirect
-      // enumeration. Entry opens use openat(dirfd, name).
-      const names = await readdir(fdRefPath(handle.fd));
+      // Enumerate via the pinned dirfd (fdopendir). Pathname readdir(realpath(fd))
+      // or even fdRefPath alone is weaker than dirfd readdir on Darwin; entry
+      // opens use openat(dirfd, name) — never /dev/fd/<fd>/child.
+      const names = readdirNamesAt(handle.fd);
       const listed: Array<{ path: string; kind: "file" | "dir"; size: number }> = [];
       for (const name of names) {
         if (name === "." || name === "..") continue;

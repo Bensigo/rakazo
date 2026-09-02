@@ -17,10 +17,13 @@ const writeFileFd = promisify(writeFileCb) as (
 ) => Promise<void>;
 
 /**
- * fd-relative POSIX helpers (openat/mkdirat/renameat/unlinkat).
+ * fd-relative POSIX helpers (openat/mkdirat/renameat/unlinkat/fdopendir).
  *
  * macOS cannot traverse `/dev/fd/<n>/child` the way Linux `/proc/self/fd/<n>/child`
  * works. Desktop host-disk IPC must use these *at APIs for pinned-dir children.
+ *
+ * Listing must also stay on the pinned dirfd: pathname `readdir(realpath(fd))`
+ * can follow a replaced symlink and disclose names outside the grant.
  */
 
 type PosixAtApi = {
@@ -28,6 +31,12 @@ type PosixAtApi = {
   mkdirat: (dirfd: number, pathname: string, mode: number) => number;
   renameat: (olddirfd: number, oldpath: string, newdirfd: number, newpath: string) => number;
   unlinkat: (dirfd: number, pathname: string, flags: number) => number;
+  dup: (fd: number) => number;
+  close: (fd: number) => number;
+  fdopendir: (fd: number) => unknown;
+  readdir: (dir: unknown) => unknown;
+  closedir: (dir: unknown) => number;
+  memcpy: (dest: Buffer, src: unknown, n: number) => unknown;
 };
 
 let cached: PosixAtApi | null | undefined;
@@ -73,6 +82,7 @@ function loadPosixAt(): PosixAtApi {
   try {
     const lib =
       process.platform === "darwin" ? koffi.load("libSystem.B.dylib") : koffi.load("libc.so.6");
+    koffi.opaque("DIR");
     cached = {
       openat: lib.func("int openat(int dirfd, const char *pathname, int flags, uint32_t mode)"),
       mkdirat: lib.func("int mkdirat(int dirfd, const char *pathname, uint32_t mode)"),
@@ -80,6 +90,12 @@ function loadPosixAt(): PosixAtApi {
         "int renameat(int olddirfd, const char *oldpath, int newdirfd, const char *newpath)",
       ),
       unlinkat: lib.func("int unlinkat(int dirfd, const char *pathname, int flags)"),
+      dup: lib.func("int dup(int oldfd)"),
+      close: lib.func("int close(int fd)"),
+      fdopendir: lib.func("DIR *fdopendir(int fd)"),
+      readdir: lib.func("void *readdir(DIR *dirp)"),
+      closedir: lib.func("int closedir(DIR *dirp)"),
+      memcpy: lib.func("void *memcpy(_Out_ uint8 *dest, const void *src, size_t n)"),
     };
     return cached;
   } catch {
@@ -189,4 +205,49 @@ export function unlinkatChild(dirFd: number, name: string, flags = 0) {
   const api = loadPosixAt();
   const rc = api.unlinkat(dirFd, name, flags);
   if (rc !== 0) fail(errnoCode(), `unlinkat failed for ${name}`);
+}
+
+/** Offset of `d_name` in the platform `struct dirent` (no koffi padding). */
+function direntNameOffset() {
+  return process.platform === "darwin" ? 21 : 19;
+}
+
+function readDirentName(api: PosixAtApi, ent: unknown): string {
+  const offset = direntNameOffset();
+  const maxName = process.platform === "darwin" ? 1024 : 256;
+  const buf = Buffer.alloc(offset + maxName);
+  api.memcpy(buf, ent, buf.length);
+  let end = offset;
+  while (end < buf.length && buf[end] !== 0) end += 1;
+  return buf.subarray(offset, end).toString("utf8");
+}
+
+/**
+ * Enumerate leaf names through a pinned directory fd (fdopendir/readdir).
+ * Does not re-open a mutable pathname, so a post-pin path→symlink swap cannot
+ * disclose names outside the grant.
+ */
+export function readdirNamesAt(dirFd: number): string[] {
+  const api = loadPosixAt();
+  const dupFd = api.dup(dirFd);
+  if (dupFd < 0) fail(errnoCode(), "dup failed for directory fd");
+  const dir = api.fdopendir(dupFd);
+  if (!dir) {
+    api.close(dupFd);
+    fail(errnoCode(), "fdopendir failed for directory fd");
+  }
+  try {
+    const names: string[] = [];
+    for (;;) {
+      const ent = api.readdir(dir);
+      if (!ent) break;
+      const name = readDirentName(api, ent);
+      if (!name || name === "." || name === "..") continue;
+      if (name.includes("/") || name.includes("\0")) continue;
+      names.push(name);
+    }
+    return names;
+  } finally {
+    api.closedir(dir);
+  }
 }

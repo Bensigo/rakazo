@@ -1,11 +1,12 @@
 import { constants } from "node:fs";
-import { lstat, open, readdir, realpath } from "node:fs/promises";
+import { lstat, open, realpath } from "node:fs/promises";
 import path from "node:path";
 import {
   mkdiratChild,
   openatChild,
   type PosixAtFileHandle,
   pathFromOpenFd,
+  readdirNamesAt,
   renameatChild,
   unlinkatChild,
 } from "./host-disk-posix-at.js";
@@ -132,9 +133,9 @@ export async function realpathOfFd(fd: number): Promise<string> {
 }
 
 /**
- * Path that refers to an open fd itself (for readdir/realpath of the inode).
+ * Path that refers to an open fd itself (for diagnostics / Linux fd walks).
  * Never join child names under this path — macOS cannot traverse `/dev/fd/N/child`.
- * Listing via this path stays on the pinned inode even if the pathname is swapped.
+ * Host-disk listing uses `readdirNamesAt` (fdopendir) instead of readdir on this path.
  */
 export function fdRefPath(fd: number) {
   return process.platform === "linux" ? `/proc/self/fd/${fd}` : `/dev/fd/${fd}`;
@@ -145,6 +146,8 @@ export type OpenInsideHostRootsOptions = {
   afterResolve?: () => Promise<void>;
   /** Test-only: run after the parent directory fd is pinned, before temp create/rename. */
   afterParentPinned?: () => Promise<void>;
+  /** Test-only: run after list pins the directory fd, before enumeration. */
+  afterDirPinned?: () => Promise<void>;
 };
 
 /**
@@ -199,9 +202,9 @@ export async function readFileInsideHostRoots(
 /**
  * List a directory inside granted roots. The directory is opened with
  * O_NOFOLLOW and re-validated via fd realpath. Names are read through the
- * pinned fd reference (`/proc/self/fd/N` or `/dev/fd/N` — never pathname
- * realpath, which a concurrent symlink swap can redirect). Each entry is
- * then opened with openat against the pinned dirfd.
+ * pinned dirfd (fdopendir/readdir) — never via pathname readdir of the
+ * realpath string, which a post-pin symlink swap could redirect. Each entry
+ * is then opened with openat against the same dirfd.
  */
 export async function listInsideHostRoots(
   target: string,
@@ -218,10 +221,8 @@ export async function listInsideHostRoots(
     if (!isLexicallyInsideRoots(fdReal, realRoots)) {
       throw new Error("Host path is outside the granted folders");
     }
-    // List via the fd reference so a pathname→symlink swap cannot redirect
-    // enumeration. Do not join children under this path (broken on Darwin);
-    // entry opens use openat(dirfd, name).
-    const names = await readdir(fdRefPath(handle.fd));
+    if (options?.afterDirPinned) await options.afterDirPinned();
+    const names = readdirNamesAt(handle.fd);
     const listed: Array<{ path: string; kind: "file" | "dir"; size: number }> = [];
     for (const name of names) {
       if (name === "." || name === "..") continue;
