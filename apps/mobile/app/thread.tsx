@@ -73,6 +73,7 @@ import {
   shouldApplyMobileThreadRefresh,
   subscribeThread,
 } from "../lib/api";
+import { mobileTokens } from "../lib/appearance";
 import { type MobileArtifactTarget, openMobileArtifact } from "../lib/artifact-open";
 import { confirmDeleteBot } from "../lib/bot-lifecycle";
 import { saveLastBotId } from "../lib/last-bot";
@@ -87,7 +88,6 @@ import {
   messagePresentationSegments,
   toolOwnerId,
 } from "../lib/message-presentation";
-import { mobileTokens } from "../lib/appearance";
 import { native, useResolvedAppearance } from "../lib/native";
 import {
   type PickedAttachment,
@@ -1414,7 +1414,12 @@ function Thread() {
               justifyContent: "center",
             }}
           >
-            <NativeSymbol ios="arrow.down" android="arrow-down" size={18} color={mobileTokens().ink} />
+            <NativeSymbol
+              ios="arrow.down"
+              android="arrow-down"
+              size={18}
+              color={mobileTokens().ink}
+            />
             {threadScrollState.unread ? (
               <View
                 style={{

@@ -15,7 +15,9 @@ export function WelcomePage() {
             <span className="h-6 w-[11px] rounded-full bg-[var(--rk-inset)]" />
             <span className="h-6 w-[11px] rounded-full bg-[var(--rk-inset)]" />
           </div>
-          <div className="text-[76px] leading-none tracking-[-0.03em] text-[var(--rk-ink)]">Rakazo</div>
+          <div className="text-[76px] leading-none tracking-[-0.03em] text-[var(--rk-ink)]">
+            Rakazo
+          </div>
         </div>
         <p className="max-w-[600px] text-center text-[27px] leading-[1.4] text-[var(--rk-soft)]">
           <Trans>
