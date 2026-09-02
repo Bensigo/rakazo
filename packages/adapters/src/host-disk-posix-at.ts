@@ -162,7 +162,9 @@ export function pathFromOpenFd(fd: number): string {
     const rc = api.fcntlGetPath(fd, F_GETPATH, buf);
     if (rc === -1) fail(errnoCode(), "fcntl F_GETPATH failed");
     const end = buf.indexOf(0);
-    const resolved = buf.toString("utf8", 0, end === -1 ? buf.length : end).trim();
+    // Keep the NUL-bounded path as-is. Trimming would break grants whose
+    // real path legitimately ends (or begins) with whitespace.
+    const resolved = buf.toString("utf8", 0, end === -1 ? buf.length : end);
     if (!resolved.startsWith("/")) fail("EINVAL", "fcntl F_GETPATH returned no path");
     return resolved;
   }
@@ -223,13 +225,20 @@ function direntNameOffset() {
 }
 
 function readDirentName(api: PosixAtApi, ent: unknown): string {
-  const offset = direntNameOffset();
+  const nameOffset = direntNameOffset();
   const maxName = process.platform === "darwin" ? 1024 : 256;
-  const buf = Buffer.alloc(offset + maxName);
-  api.memcpy(buf, ent, buf.length);
-  let end = offset;
+  // d_reclen is a uint16 at offset 16 on both Linux glibc and Darwin dirent layouts.
+  const header = Buffer.alloc(18);
+  api.memcpy(header, ent, header.length);
+  const reclen = header.readUInt16LE(16);
+  if (reclen < nameOffset + 1 || reclen > nameOffset + maxName) {
+    fail("EINVAL", "dirent d_reclen out of range");
+  }
+  const buf = Buffer.alloc(reclen);
+  api.memcpy(buf, ent, reclen);
+  let end = nameOffset;
   while (end < buf.length && buf[end] !== 0) end += 1;
-  return buf.subarray(offset, end).toString("utf8");
+  return buf.subarray(nameOffset, end).toString("utf8");
 }
 
 /**

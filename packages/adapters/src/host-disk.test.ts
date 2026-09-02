@@ -757,6 +757,28 @@ describe("host disk posix *at pinning", () => {
     }
   });
 
+  it("readdirNamesAt handles short and long variable-length dirent names", async () => {
+    const { readdirNamesAt, posixAtAvailable } = await import("./host-disk-posix-at.js");
+    expect(posixAtAvailable()).toBe(true);
+
+    const dataDir = await tempDir();
+    const dir = path.join(dataDir, "entries");
+    await mkdir(dir, { recursive: true });
+    const shortName = "a";
+    const longName = `${"n".repeat(200)}.txt`;
+    await writeFile(path.join(dir, shortName), "s\n", "utf8");
+    await writeFile(path.join(dir, longName), "l\n", "utf8");
+
+    const { open } = await import("node:fs/promises");
+    const handle = await open(dir, constants.O_RDONLY | (constants.O_DIRECTORY ?? 0));
+    try {
+      const names = readdirNamesAt(handle.fd);
+      expect(names).toEqual(expect.arrayContaining([shortName, longName]));
+    } finally {
+      await handle.close();
+    }
+  });
+
   it("list/write still work without /dev/fd child traversal", async () => {
     const dataDir = await tempDir();
     const grant = path.join(dataDir, "granted");
