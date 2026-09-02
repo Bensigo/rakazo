@@ -536,7 +536,6 @@ describe("host disk exclusive claims", () => {
   });
 });
 
-
 describe("host disk posix *at pinning", () => {
   it("does not join child names under /dev/fd paths", async () => {
     const { readFile } = await import("node:fs/promises");

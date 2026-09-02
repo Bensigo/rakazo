@@ -26,12 +26,7 @@ const writeFileFd = promisify(writeFileCb) as (
 type PosixAtApi = {
   openat: (dirfd: number, pathname: string, flags: number, mode: number) => number;
   mkdirat: (dirfd: number, pathname: string, mode: number) => number;
-  renameat: (
-    olddirfd: number,
-    oldpath: string,
-    newdirfd: number,
-    newpath: string,
-  ) => number;
+  renameat: (olddirfd: number, oldpath: string, newdirfd: number, newpath: string) => number;
   unlinkat: (dirfd: number, pathname: string, flags: number) => number;
 };
 
@@ -132,11 +127,7 @@ export function mkdiratChild(dirFd: number, name: string, mode = 0o755) {
   if (rc !== 0) fail(errnoCode(), `mkdirat failed for ${name}`);
 }
 
-export function renameatChild(
-  dirFd: number,
-  fromName: string,
-  toName: string,
-) {
+export function renameatChild(dirFd: number, fromName: string, toName: string) {
   assertLeafName(fromName);
   assertLeafName(toName);
   const api = loadPosixAt();

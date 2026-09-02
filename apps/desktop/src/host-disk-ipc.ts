@@ -6,9 +6,9 @@ import { createHostDiskGrantStore, type HostDiskGrantStore } from "./host-disk-g
 import {
   mkdiratChild,
   openatChild,
+  type PosixAtFileHandle,
   renameatChild,
   unlinkatChild,
-  type PosixAtFileHandle,
 } from "./host-disk-posix-at.js";
 
 /** Roots granted via the native folder picker. Renderer-supplied roots are ignored. */

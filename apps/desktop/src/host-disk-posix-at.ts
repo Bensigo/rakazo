@@ -25,12 +25,7 @@ const writeFileFd = promisify(writeFileCb) as (
 type PosixAtApi = {
   openat: (dirfd: number, pathname: string, flags: number, mode: number) => number;
   mkdirat: (dirfd: number, pathname: string, mode: number) => number;
-  renameat: (
-    olddirfd: number,
-    oldpath: string,
-    newdirfd: number,
-    newpath: string,
-  ) => number;
+  renameat: (olddirfd: number, oldpath: string, newdirfd: number, newpath: string) => number;
   unlinkat: (dirfd: number, pathname: string, flags: number) => number;
 };
 

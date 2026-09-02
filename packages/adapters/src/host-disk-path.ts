@@ -4,9 +4,9 @@ import path from "node:path";
 import {
   mkdiratChild,
   openatChild,
+  type PosixAtFileHandle,
   renameatChild,
   unlinkatChild,
-  type PosixAtFileHandle,
 } from "./host-disk-posix-at.js";
 
 type PathOperations = Pick<typeof path, "isAbsolute" | "relative" | "resolve" | "sep">;
