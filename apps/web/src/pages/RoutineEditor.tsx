@@ -97,11 +97,13 @@ export function RoutineListHeader({ onCreate }: { onCreate: () => void }) {
       </div>
       <button
         type="button"
-        aria-label={t`New routine`}
+        data-testid="routine-create-button"
+        aria-label={t`Create Routine`}
+        title={t`Create Routine`}
         onClick={onCreate}
-        className="grid h-8 w-8 place-items-center rounded-[10px] border border-[#3B82F6] bg-[#2563EB] text-white"
+        className="grid h-7 w-7 place-items-center rounded-[8px] bg-[#1A1A1D] text-[#C9C9CE] hover:bg-[#222226] hover:text-[#ECECEE] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#3A3A3E]"
       >
-        <Plus size={16} strokeWidth={2.2} />
+        <Plus size={15} strokeWidth={1.9} />
       </button>
     </div>
   );

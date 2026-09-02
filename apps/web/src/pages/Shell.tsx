@@ -3118,36 +3118,33 @@ export function ShellPage() {
                             ? t`Asleep`
                             : computerLabel(computer?.mode, active.name)}
                   </span>
-                  {hasControl ? (
-                    <ComputerReleaseActions
-                      takeoverRequested={computer?.takeoverRequested ?? false}
-                      onRelease={releaseComputer}
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    {hasControl ? (
+                      computer?.takeoverRequested ? (
+                        <ComputerReleaseActions takeoverRequested onRelease={releaseComputer} />
+                      ) : null
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={takeoverBlocked}
+                        title={takeoverBlocked ? t`Stop the bot first` : undefined}
+                        onClick={() => void openComputer()}
+                      >
+                        <Trans>Take control</Trans>
+                      </Button>
+                    )}
+                    <ComputerMaintenanceActions
+                      botId={active.id}
+                      computer={computer}
+                      variant="menu"
+                      onChanged={async () => {
+                        await refreshThread(active.id);
+                      }}
                     />
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={takeoverBlocked}
-                      title={takeoverBlocked ? t`Stop the bot first` : undefined}
-                      onClick={() => void openComputer()}
-                    >
-                      <Trans>Take control</Trans>
-                    </Button>
-                  )}
+                  </div>
                 </div>
-                {computer?.state === "error" ||
-                computer?.state === "stopped" ||
-                (computer?.state === "running" && !embeddedScreenUrl) ? (
-                  <ComputerMaintenanceActions
-                    botId={active.id}
-                    computer={computer}
-                    compact
-                    onChanged={async () => {
-                      await refreshThread(active.id);
-                    }}
-                  />
-                ) : null}
                 <RoutineListHeader
                   onCreate={() => {
                     setRoutineDraft(emptyRoutineDraft());
@@ -3704,7 +3701,10 @@ export function ShellPage() {
         </div>
       ) : computerOpen && active ? (
         <div className="absolute inset-0 z-30 flex flex-col bg-[#050506]">
-          <div className="flex items-center justify-between gap-4 border-b border-[#171719] px-[18px] py-3.5">
+          <div
+            data-testid="computer-chrome"
+            className="flex items-center justify-between gap-4 border-b border-[#171719] px-[18px] py-3.5"
+          >
             <div className="flex min-w-0 flex-1 items-center gap-3">
               <BotAvatar
                 color={active.color}
@@ -3747,10 +3747,9 @@ export function ShellPage() {
               {recordingSkill ? (
                 <TeachStopButton busy={teachBusy} onStop={stopTeaching} />
               ) : hasControl ? (
-                <ComputerReleaseActions
-                  takeoverRequested={computer?.takeoverRequested ?? false}
-                  onRelease={releaseComputer}
-                />
+                computer?.takeoverRequested ? (
+                  <ComputerReleaseActions takeoverRequested onRelease={releaseComputer} />
+                ) : null
               ) : (
                 <Button
                   type="button"
@@ -3765,6 +3764,14 @@ export function ShellPage() {
                   <Trans>Take control</Trans>
                 </Button>
               )}
+              {active && !recordingSkill ? (
+                <TeachComputerOverlayControl
+                  botId={active.id}
+                  computer={computer}
+                  busy={teachBusy}
+                  onRefresh={refreshActiveThread}
+                />
+              ) : null}
               <button
                 type="button"
                 className="text-[16px] text-[#85858A] hover:text-[#ECECEE]"
@@ -3820,14 +3827,6 @@ export function ShellPage() {
                   : computerLabel(computer?.mode, active.name)}
               </div>
             )}
-            {active && !recordingSkill ? (
-              <TeachComputerOverlayControl
-                botId={active.id}
-                computer={computer}
-                busy={teachBusy}
-                onRefresh={refreshActiveThread}
-              />
-            ) : null}
           </div>
         </div>
       ) : null}

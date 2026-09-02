@@ -3,7 +3,10 @@ import type { ComputerStatus } from "@rakazo/contracts";
 import { useState } from "react";
 import { rpc } from "../../lib/rpc";
 
-/** Compact Teach a task control for the live computer overlay (not the agent sidepanel). */
+/**
+ * Compact Teach a task control for the computer chrome bar above the screen
+ * (not painted on the framebuffer, and not in the agent sidepanel).
+ */
 export function TeachComputerOverlayControl({
   botId,
   computer,
@@ -51,9 +54,12 @@ export function TeachComputerOverlayControl({
   }
 
   return (
-    <div className="pointer-events-auto absolute top-3 end-3 z-10 flex max-w-[min(360px,calc(100%-1.5rem))] flex-col items-end gap-2">
+    <div className="relative flex max-w-[min(360px,100%)] flex-col items-end">
       {goalOpen ? (
-        <div className="w-[min(360px,100%)] rounded-[12px] border border-[#26262A] bg-[#121214]/90 px-3 py-3 shadow-[0_12px_40px_rgba(0,0,0,.45)] backdrop-blur-sm">
+        <div
+          data-testid="teach-chrome-popover"
+          className="absolute end-0 top-full z-20 mt-2 w-[min(360px,calc(100vw-2rem))] rounded-[12px] border border-[#26262A] bg-[#121214] px-3 py-3 shadow-[0_12px_40px_rgba(0,0,0,.45)]"
+        >
           <label htmlFor="teach-goal-input" className="text-[13px] text-[#85858A]">
             <Trans>What result will you demonstrate?</Trans>
           </label>
@@ -92,28 +98,25 @@ export function TeachComputerOverlayControl({
             </button>
           </div>
         </div>
-      ) : (
-        <button
-          type="button"
-          data-testid="teach-start-button"
-          aria-label={t`Teach a task`}
-          disabled={busy}
-          onClick={() => {
-            setError(null);
-            setGoalOpen(true);
-          }}
-          className="flex items-center gap-2 rounded-[10px] border border-[#2A2A2E] bg-[#141417]/92 px-3 py-2 text-[13.5px] text-[#ECECEE] shadow-[0_8px_24px_rgba(0,0,0,.35)] backdrop-blur-sm hover:bg-[#1A1A1E] disabled:opacity-40"
-        >
-          <span
-            aria-hidden
-            className="inline-block h-2.5 w-2.5 shrink-0 rounded-full border border-[#ECECEE]"
-          />
-          <Trans>Teach a task</Trans>
-          <span aria-hidden className="text-[12px] leading-none text-[#85858A]">
-            ↗
-          </span>
-        </button>
-      )}
+      ) : null}
+      <button
+        type="button"
+        data-testid="teach-start-button"
+        aria-label={t`Teach a task`}
+        aria-expanded={goalOpen}
+        disabled={busy}
+        onClick={() => {
+          setError(null);
+          setGoalOpen((open) => !open);
+        }}
+        className="flex items-center gap-2 rounded-[10px] border border-[#2A2A2E] bg-[#141417] px-3 py-1.5 text-[13px] text-[#ECECEE] hover:bg-[#1A1A1E] disabled:opacity-40"
+      >
+        <span
+          aria-hidden
+          className="inline-block h-2 w-2 shrink-0 rounded-full border border-[#ECECEE]"
+        />
+        <Trans>Teach a task</Trans>
+      </button>
     </div>
   );
 }

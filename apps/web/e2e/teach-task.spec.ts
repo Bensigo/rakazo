@@ -11,14 +11,31 @@ test("teach a task records interaction and saves a draft", async ({ page }, test
   await expect(sidePanel).toHaveAttribute("data-panel", "computer");
   await expect(sidePanel.getByText("Teach a task")).toHaveCount(0);
   await expect(sidePanel.getByTestId("teach-start-button")).toHaveCount(0);
-  await captureScreenshot(page, testInfo, "teach-sidepanel-no-teach");
+  await expect(sidePanel.getByRole("button", { name: "Recover computer" })).toHaveCount(0);
+  await expect(sidePanel.getByRole("button", { name: "Reset computer" })).toHaveCount(0);
+  await expect(sidePanel.getByRole("button", { name: "Update computer" })).toHaveCount(0);
+  await expect(sidePanel.getByRole("button", { name: "Take control" })).toBeVisible();
+  await captureScreenshot(page, testInfo, "teach-sidepanel-simple");
+
+  const more = sidePanel.getByTestId("computer-more-button");
+  if (await more.isVisible().catch(() => false)) {
+    await more.click();
+    await expect(page.getByTestId("computer-more-menu")).toBeVisible();
+    await expect(
+      page.getByTestId("computer-more-menu").getByRole("menuitem").first(),
+    ).toBeVisible();
+    await captureScreenshot(page, testInfo, "teach-sidepanel-computer-more");
+    await page.keyboard.press("Escape");
+  }
 
   await sidePanel.getByRole("button", { name: "Take control" }).click();
   await expect(page.getByRole("button", { name: "Close computer" })).toBeVisible();
-  await expect(page.getByTestId("teach-start-button")).toBeVisible();
-  await captureScreenshot(page, testInfo, "teach-computer-overlay");
+  await expect(page.getByRole("button", { name: "Release", exact: true })).toHaveCount(0);
+  const chrome = page.getByTestId("computer-chrome");
+  await expect(chrome.getByTestId("teach-start-button")).toBeVisible();
+  await captureScreenshot(page, testInfo, "teach-computer-chrome");
 
-  await page.getByTestId("teach-start-button").click();
+  await chrome.getByTestId("teach-start-button").click();
   await page.getByTestId("teach-goal-input").fill("Export weekly CRM list");
   await page.getByRole("button", { name: "Start recording" }).click();
   await expect(page.getByTestId("teach-recording-overlay")).toBeVisible();
