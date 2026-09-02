@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { access, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { DEFAULT_LOCAL_WEB_URL } from "./setup-config.js";
+import { DEFAULT_LOCAL_WEB_URL, isRakazoHealth } from "./setup-config.js";
 
 export const LOCAL_STACK_DIR_NAME = "local-stack";
 export const LOCAL_STACK_PROJECT_NAME = "rakazo-desktop";
@@ -291,11 +291,14 @@ export async function ensureLocalStack(deps: LocalStackDeps): Promise<LocalStack
     args: ["compose", "up", "--help"],
     cwd: dataDir,
   });
-  const supportsWaitTimeout =
-    upHelp.stdout.includes("--wait-timeout") || upHelp.stderr.includes("--wait-timeout");
+  const helpText = `${upHelp.stdout}\n${upHelp.stderr}`;
+  const supportsWait = helpText.includes("--wait");
+  const supportsWaitTimeout = helpText.includes("--wait-timeout");
   const upArgs = supportsWaitTimeout
     ? [...composeArgs, "up", "-d", "--wait", "--wait-timeout", "300"]
-    : [...composeArgs, "up", "-d"];
+    : supportsWait
+      ? [...composeArgs, "up", "-d", "--wait"]
+      : [...composeArgs, "up", "-d"];
   const up = await runner({
     command: "docker",
     args: upArgs,
@@ -311,7 +314,54 @@ export async function ensureLocalStack(deps: LocalStackDeps): Promise<LocalStack
     };
   }
 
+  // Older Compose builds can start containers without blocking on healthchecks.
+  if (!supportsWait) {
+    onProgress("Waiting for the local server to become healthy…");
+    const healthy = await waitForLocalStackHealthy(DEFAULT_LOCAL_WEB_URL, onProgress);
+    if (!healthy) {
+      return {
+        ok: false,
+        error:
+          "The local server started, but health checks did not pass in time. Open Docker Desktop, wait for Rakazo to finish starting, then try Continue again.",
+      };
+    }
+  }
+
   return { ok: true, url: DEFAULT_LOCAL_WEB_URL, attached: alreadyRunning };
+}
+
+const HEALTH_WAIT_TIMEOUT_MS = 300_000;
+const HEALTH_POLL_INTERVAL_MS = 2_000;
+
+async function waitForLocalStackHealthy(
+  url: string,
+  onProgress: LocalStackProgress,
+): Promise<boolean> {
+  const deadline = Date.now() + HEALTH_WAIT_TIMEOUT_MS;
+  let lastLog = 0;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(`${url}/rpc/health`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ json: {} }),
+        signal: AbortSignal.timeout(8_000),
+      });
+      if (response.ok) {
+        const body: unknown = await response.json();
+        if (isRakazoHealth(body)) return true;
+      }
+    } catch {
+      // Keep polling while Compose finishes pulling and booting services.
+    }
+    const now = Date.now();
+    if (now - lastLog >= 15_000) {
+      onProgress("Still waiting for the local server…");
+      lastLog = now;
+    }
+    await new Promise((resolve) => setTimeout(resolve, HEALTH_POLL_INTERVAL_MS));
+  }
+  return false;
 }
 
 function summarizeDockerFailure(prefix: string, detail: string): string {

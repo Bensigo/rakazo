@@ -628,7 +628,13 @@ async function ensureReachableServer(setup: DesktopSetup): Promise<DesktopReacha
       ? "Local server is running. Connecting…"
       : "Local server is ready. Connecting…",
   );
-  reachability = await probeServer(setup.serverUrl);
+  // Give the web origin a short window after Compose reports ready.
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
+    reachability = await probeServer(setup.serverUrl);
+    if (reachability.ok) return reachability;
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
   return reachability;
 }
 

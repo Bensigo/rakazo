@@ -110,7 +110,7 @@ describe("ensureLocalStack", () => {
       if (args[0] === "version" || args[0] === "compose") {
         if (args.includes("ps")) return { code: 0, stdout: "", stderr: "" };
         if (args.includes("up") && args.includes("--help")) {
-          return { code: 0, stdout: "--wait-timeout", stderr: "" };
+          return { code: 0, stdout: "--wait --wait-timeout", stderr: "" };
         }
         return { code: 0, stdout: "ok", stderr: "" };
       }
@@ -131,6 +131,41 @@ describe("ensureLocalStack", () => {
     expect(progress[0]).toContain("Docker");
   });
 
+  it("polls health when Compose cannot wait on startup", async () => {
+    dir = await mkdtemp(path.join(tmpdir(), "rakazo-stack-data-"));
+    templateDir = await mkdtemp(path.join(tmpdir(), "rakazo-stack-template-"));
+    await writeFile(path.join(templateDir, LOCAL_STACK_COMPOSE_FILE), "name: rakazo\n", "utf8");
+    await writeFile(path.join(templateDir, LOCAL_STACK_ENV_EXAMPLE), EXAMPLE, "utf8");
+
+    const calls: string[] = [];
+    const runner: LocalStackRunner = async ({ args }) => {
+      calls.push(args.join(" "));
+      if (args.includes("up") && args.includes("--help")) {
+        return { code: 0, stdout: "Usage: docker compose up", stderr: "" };
+      }
+      return { code: 0, stdout: args.includes("ps") ? "" : "ok", stderr: "" };
+    };
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ json: { ok: true, version: "0.1.0" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })) as typeof fetch;
+
+    try {
+      const result = await ensureLocalStack({
+        userDataDir: dir,
+        templateDir,
+        runner,
+      });
+      expect(result.ok).toBe(true);
+      expect(calls.some((call) => call.includes("up -d") && !call.includes("--wait"))).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("skips pull when the stack is already running", async () => {
     dir = await mkdtemp(path.join(tmpdir(), "rakazo-stack-data-"));
     templateDir = await mkdtemp(path.join(tmpdir(), "rakazo-stack-template-"));
@@ -142,7 +177,7 @@ describe("ensureLocalStack", () => {
       calls.push(args.join(" "));
       if (args.includes("ps")) return { code: 0, stdout: "abc123\n", stderr: "" };
       if (args.includes("up") && args.includes("--help")) {
-        return { code: 0, stdout: "--wait-timeout", stderr: "" };
+        return { code: 0, stdout: "--wait --wait-timeout", stderr: "" };
       }
       return { code: 0, stdout: "ok", stderr: "" };
     };
