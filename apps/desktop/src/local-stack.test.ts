@@ -153,10 +153,7 @@ describe("ensureLocalStack", () => {
     });
     expect(result.ok).toBe(true);
     expect(
-      calls.some(
-        (call) =>
-          call.includes("up -d --wait") && !call.includes("--wait-timeout"),
-      ),
+      calls.some((call) => call.includes("up -d --wait") && !call.includes("--wait-timeout")),
     ).toBe(true);
   });
 
