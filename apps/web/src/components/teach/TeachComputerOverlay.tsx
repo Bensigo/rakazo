@@ -85,7 +85,9 @@ export function TeachComputerOverlayControl({
             className="inline-block h-2.5 w-2.5 shrink-0 rounded-full border border-[#ECECEE]"
           />
           <Trans>Teach a task</Trans>
-          <span aria-hidden className="text-[12px] leading-none text-[#85858A]">↗</span>
+          <span aria-hidden className="text-[12px] leading-none text-[#85858A]">
+            ↗
+          </span>
         </button>
       )}
     </div>
