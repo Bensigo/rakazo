@@ -131,7 +131,7 @@ describe("ensureLocalStack", () => {
     expect(progress[0]).toContain("Docker");
   });
 
-  it("uses --wait when Compose help has no --wait-timeout", async () => {
+  it("polls health when Compose has --wait but no --wait-timeout", async () => {
     dir = await mkdtemp(path.join(tmpdir(), "rakazo-stack-data-"));
     templateDir = await mkdtemp(path.join(tmpdir(), "rakazo-stack-template-"));
     await writeFile(path.join(templateDir, LOCAL_STACK_COMPOSE_FILE), "name: rakazo\n", "utf8");
@@ -146,15 +146,25 @@ describe("ensureLocalStack", () => {
       return { code: 0, stdout: args.includes("ps") ? "" : "ok", stderr: "" };
     };
 
-    const result = await ensureLocalStack({
-      userDataDir: dir,
-      templateDir,
-      runner,
-    });
-    expect(result.ok).toBe(true);
-    expect(
-      calls.some((call) => call.includes("up -d --wait") && !call.includes("--wait-timeout")),
-    ).toBe(true);
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ json: { ok: true, version: "0.1.0" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })) as typeof fetch;
+
+    try {
+      const result = await ensureLocalStack({
+        userDataDir: dir,
+        templateDir,
+        runner,
+      });
+      expect(result.ok).toBe(true);
+      // Avoid bare --wait: it can hang forever without --wait-timeout.
+      expect(calls.some((call) => call.includes("up -d") && !call.includes("--wait"))).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it("polls health when Compose cannot wait on startup", async () => {

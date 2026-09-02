@@ -292,13 +292,12 @@ export async function ensureLocalStack(deps: LocalStackDeps): Promise<LocalStack
     cwd: dataDir,
   });
   const helpText = `${upHelp.stdout}\n${upHelp.stderr}`;
-  const supportsWait = helpText.includes("--wait");
+  // Only use Compose --wait when --wait-timeout is also available. Bare --wait
+  // can hang forever if a service never becomes healthy.
   const supportsWaitTimeout = helpText.includes("--wait-timeout");
   const upArgs = supportsWaitTimeout
     ? [...composeArgs, "up", "-d", "--wait", "--wait-timeout", "300"]
-    : supportsWait
-      ? [...composeArgs, "up", "-d", "--wait"]
-      : [...composeArgs, "up", "-d"];
+    : [...composeArgs, "up", "-d"];
   const up = await runner({
     command: "docker",
     args: upArgs,
@@ -314,8 +313,8 @@ export async function ensureLocalStack(deps: LocalStackDeps): Promise<LocalStack
     };
   }
 
-  // Older Compose builds can start containers without blocking on healthchecks.
-  if (!supportsWait) {
+  // Without a timed Compose wait, poll health with our own deadline.
+  if (!supportsWaitTimeout) {
     onProgress("Waiting for the local server to become healthy…");
     const healthy = await waitForLocalStackHealthy(DEFAULT_LOCAL_WEB_URL, onProgress);
     if (!healthy) {
