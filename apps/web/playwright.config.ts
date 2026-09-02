@@ -3,6 +3,7 @@ import { isRealSandboxProvider } from "./e2e/helpers";
 
 const webPort = Number(process.env.WEB_PORT ?? 5173);
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${webPort}`;
+const wwwURL = process.env.PLAYWRIGHT_WWW_BASE_URL ?? "http://127.0.0.1:4321";
 const realSandbox = isRealSandboxProvider();
 const boxSandbox = process.env.SANDBOX_PROVIDER === "box";
 const reporters = [
@@ -25,11 +26,30 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
-  webServer: {
-    command: "pnpm dev",
-    url: baseURL,
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  projects: [
+    {
+      name: "chromium",
+      testIgnore: /marketing-homepage\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "www",
+      testMatch: /marketing-homepage\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"], baseURL: wwwURL },
+    },
+  ],
+  webServer: [
+    {
+      command: "pnpm dev",
+      url: baseURL,
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+    {
+      command: "pnpm --filter @rakazo/www dev",
+      url: wwwURL,
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+  ],
 });

@@ -1,0 +1,36 @@
+import { expect, test } from "@playwright/test";
+import { captureScreenshot } from "./helpers";
+
+test.describe("marketing homepage", () => {
+  test("self-host is short CTAs, not an install script", async ({ page }, testInfo) => {
+    await page.goto("/");
+
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    const selfHost = page.locator("#selfhost");
+    await expect(selfHost).toBeVisible();
+    await expect(selfHost.getByRole("heading", { level: 2 })).toBeVisible();
+    await expect(selfHost.getByRole("button", { name: /Get started/i })).toBeVisible();
+    await expect(selfHost.getByRole("link", { name: /View on GitHub/i })).toBeVisible();
+    await expect(selfHost.getByRole("link", { name: /Read the docs/i })).toBeVisible();
+
+    await expect(selfHost.locator("pre")).toHaveCount(0);
+    await expect(selfHost).not.toContainText(
+      /openssl|docker-compose\.images|POSTGRES_PASSWORD|BETTER_AUTH_SECRET|mkdir rakazo/i,
+    );
+
+    await selfHost.scrollIntoViewIfNeeded();
+    await captureScreenshot(page, testInfo, "01-marketing-homepage-selfhost");
+
+    await page
+      .getByRole("button", { name: /Get started/i })
+      .first()
+      .click();
+    const dialog = page.locator("[data-get-started-dialog]");
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("heading")).toBeVisible();
+    await expect(dialog).not.toContainText(
+      /openssl|docker-compose\.images|POSTGRES_PASSWORD|BETTER_AUTH_SECRET|mkdir rakazo/i,
+    );
+    await captureScreenshot(page, testInfo, "02-marketing-get-started");
+  });
+});
