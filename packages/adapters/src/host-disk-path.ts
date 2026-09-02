@@ -127,6 +127,15 @@ export async function realpathOfFd(fd: number): Promise<string> {
   throw new Error("Host path is outside the granted folders");
 }
 
+/**
+ * Path that refers to an open fd itself (for readdir/realpath of the inode).
+ * Never join child names under this path — macOS cannot traverse `/dev/fd/N/child`.
+ * Listing via this path stays on the pinned inode even if the pathname is swapped.
+ */
+export function fdRefPath(fd: number) {
+  return process.platform === "linux" ? `/proc/self/fd/${fd}` : `/dev/fd/${fd}`;
+}
+
 export type OpenInsideHostRootsOptions = {
   /** Test-only: run after resolve and before open (path-swap race). */
   afterResolve?: () => Promise<void>;
@@ -185,10 +194,10 @@ export async function readFileInsideHostRoots(
 
 /**
  * List a directory inside granted roots. The directory is opened with
- * O_NOFOLLOW and re-validated via fd realpath. Names come from the pinned
- * inode's current path (realpath of the fd — not `/dev/fd/N/child`, which
- * macOS cannot traverse); each entry is then opened with openat against the
- * pinned dirfd so a path-swap cannot redirect type/size reads.
+ * O_NOFOLLOW and re-validated via fd realpath. Names are read through the
+ * pinned fd reference (`/proc/self/fd/N` or `/dev/fd/N` — never pathname
+ * realpath, which a concurrent symlink swap can redirect). Each entry is
+ * then opened with openat against the pinned dirfd.
  */
 export async function listInsideHostRoots(
   target: string,
@@ -205,9 +214,10 @@ export async function listInsideHostRoots(
     if (!isLexicallyInsideRoots(fdReal, realRoots)) {
       throw new Error("Host path is outside the granted folders");
     }
-    // realpath(fd) is the pinned inode's path; do not join children under
-    // /dev/fd/<fd> (broken on Darwin). Entry opens use openat(dirfd, name).
-    const names = await readdir(fdReal);
+    // List via the fd reference so a pathname→symlink swap cannot redirect
+    // enumeration. Do not join children under this path (broken on Darwin);
+    // entry opens use openat(dirfd, name).
+    const names = await readdir(fdRefPath(handle.fd));
     const listed: Array<{ path: string; kind: "file" | "dir"; size: number }> = [];
     for (const name of names) {
       if (name === "." || name === "..") continue;

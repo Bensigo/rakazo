@@ -1,5 +1,14 @@
 import { constants } from "node:fs";
-import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -576,6 +585,36 @@ describe("host disk posix *at pinning", () => {
       unlinkatChild(parentHandle.fd, "x.txt");
     } finally {
       await parentHandle.close();
+    }
+  });
+
+  it("fdRefPath readdir stays on the pinned inode after a pathname symlink swap", async () => {
+    const { open } = await import("node:fs/promises");
+    const { fdRefPath } = await import("./host-disk-path.js");
+    const dataDir = await tempDir();
+    const grant = path.join(dataDir, "granted");
+    const nested = path.join(grant, "nested");
+    const outside = path.join(dataDir, "outside");
+    await mkdir(nested, { recursive: true });
+    await mkdir(outside, { recursive: true });
+    await writeFile(path.join(nested, "inside.txt"), "in\n", "utf8");
+    await writeFile(path.join(outside, "secret.txt"), "out\n", "utf8");
+
+    const dirFlags = constants.O_RDONLY | (constants.O_DIRECTORY ?? 0);
+    const handle = await open(nested, dirFlags);
+    try {
+      const nestedBackup = path.join(grant, "nested-pinned");
+      await rename(nested, nestedBackup);
+      await symlink(outside, nested);
+
+      // Pathname now points outside; fd reference must still list the pinned inode.
+      const viaFd = await readdir(fdRefPath(handle.fd));
+      const viaPath = await readdir(nested);
+      expect(viaFd).toContain("inside.txt");
+      expect(viaFd).not.toContain("secret.txt");
+      expect(viaPath).toContain("secret.txt");
+    } finally {
+      await handle.close();
     }
   });
 

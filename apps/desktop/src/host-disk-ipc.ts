@@ -105,6 +105,11 @@ async function realpathOfFd(fd: number): Promise<string> {
   throw new Error("Host path is outside the granted folders");
 }
 
+/** Path referring to an open fd itself. Never join child names under this (Darwin). */
+function fdRefPath(fd: number) {
+  return process.platform === "linux" ? `/proc/self/fd/${fd}` : `/dev/fd/${fd}`;
+}
+
 /** Open + re-validate via fd realpath so a directory→symlink swap cannot escape. */
 async function openInsideGrants(target: string, flags: number) {
   const realRoots = await realGrantedRoots();
@@ -231,9 +236,9 @@ export function registerHostDiskIpc() {
       if (!isLexicallyInside(fdReal, realRoots)) {
         throw new Error("Host path is outside the granted folders");
       }
-      // realpath(fd) is the pinned inode's path; do not join children under
-      // /dev/fd/<fd> (broken on Darwin). Entry opens use openat(dirfd, name).
-      const names = await readdir(fdReal);
+      // List via the fd reference so a pathname→symlink swap cannot redirect
+      // enumeration. Entry opens use openat(dirfd, name).
+      const names = await readdir(fdRefPath(handle.fd));
       const listed: Array<{ path: string; kind: "file" | "dir"; size: number }> = [];
       for (const name of names) {
         if (name === "." || name === "..") continue;
