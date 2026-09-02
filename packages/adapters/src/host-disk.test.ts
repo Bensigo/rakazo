@@ -671,7 +671,6 @@ describe("host disk exclusive claims", () => {
     await clientDone;
   });
 
-
   it("honors client done published while timeout only saw claimed", async () => {
     const dataDir = await tempDir();
     const { BridgingHostDiskProvider, claimHostDiskOperation } = await import(
