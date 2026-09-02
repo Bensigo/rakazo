@@ -66,8 +66,8 @@ export function ComputerMaintenanceActions({
       else if (action === "reset") await rpc.computer.reset({ botId });
       else await rpc.computer.update({ botId });
       setConfirmReset(false);
-      setMenuOpen(false);
       await onChanged();
+      setMenuOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : t`Could not update computer`);
     } finally {
