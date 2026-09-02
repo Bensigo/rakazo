@@ -216,11 +216,11 @@ msgstr "Gib eine HTTPS-Server-URL ein."
 
 #: src/pages/PluginsOverlay.tsx:444
 msgid "Add GraphQL"
-msgstr ""
+msgstr "GraphQL hinzufügen"
 
 #: src/pages/PluginsOverlay.tsx:461
 msgid "Add GraphQL endpoint"
-msgstr ""
+msgstr "GraphQL-Endpunkt hinzufügen"
 
 #: src/pages/ScratchpadSection.tsx:182
 msgid "Add item"
@@ -2074,7 +2074,7 @@ msgstr "Noch keine MCP-Server."
 
 #: src/pages/PluginsOverlay.tsx:559
 msgid "No tool sources yet."
-msgstr "No tool sources yet."
+msgstr "Noch keine Tool-Quellen."
 
 #: src/pages/PeerMessagesOverlay.tsx:168
 msgid "No messages with {peerBotName} yet."
