@@ -171,6 +171,15 @@ export class BridgingHostDiskProvider implements HostDiskProvider {
       status: "error",
       error: "Timed out waiting for the Mac or phone app to handle host disk access",
     }).catch(() => undefined);
+    // Client completion may have won the exclusive take; honor its result.
+    const final = await readOperationById(this.options.dataDir, userId, id);
+    if (final?.operation.status === "done") {
+      void unlink(final.file).catch(() => undefined);
+      return final.operation;
+    }
+    if (final?.operation.status === "error") {
+      throw new Error(final.operation.error ?? "Host disk operation failed");
+    }
     throw new Error("Timed out waiting for the Mac or phone app to handle host disk access");
   }
 }
@@ -217,7 +226,12 @@ export async function claimHostDiskOperation(
   const dir = operationsDir(dataDir, userId);
   await mkdir(dir, { recursive: true });
   const names = (await readdir(dir))
-    .filter((name) => name.endsWith(".json") && !name.endsWith(".claimed.json"))
+    .filter(
+      (name) =>
+        name.endsWith(".json") &&
+        !name.endsWith(".claimed.json") &&
+        !name.endsWith(".completing.json"),
+    )
     .sort();
   for (const name of names) {
     const pendingPath = path.join(dir, name);
@@ -258,24 +272,59 @@ export async function completeHostDiskOperation(
 ): Promise<HostDiskOperation> {
   const pendingPath = operationPath(dataDir, userId, input.id);
   const claimedPath = claimedOperationPath(dataDir, userId, input.id);
-  const existing = (await readOperationFile(claimedPath)) ?? (await readOperationFile(pendingPath));
-  if (!existing || existing.userId !== userId) {
+  const completingPath = path.join(operationsDir(dataDir, userId), `${input.id}.completing.json`);
+
+  // Exclusive take: only one completer (client or server timeout) can rename
+  // the live operation file into the completing slot.
+  let takenFrom: string | null = null;
+  for (const candidate of [claimedPath, pendingPath]) {
+    try {
+      await rename(candidate, completingPath);
+      takenFrom = candidate;
+      break;
+    } catch {
+      // Lost the race or file missing; try the other candidate.
+    }
+  }
+
+  if (!takenFrom) {
+    const existing =
+      (await readOperationFile(claimedPath)) ?? (await readOperationFile(pendingPath));
+    if (existing && (existing.status === "done" || existing.status === "error")) {
+      throw new Error("Host disk operation already completed");
+    }
     throw new Error("Host disk operation not found");
   }
-  if (existing.status === "done" || existing.status === "error") {
-    throw new Error("Host disk operation already completed");
+
+  try {
+    const existing = await readOperationFile(completingPath);
+    if (!existing || existing.userId !== userId) {
+      throw new Error("Host disk operation not found");
+    }
+    if (existing.status === "done" || existing.status === "error") {
+      throw new Error("Host disk operation already completed");
+    }
+    const updated: HostDiskOperation = {
+      ...existing,
+      status: input.status,
+      entries: input.entries,
+      contentBase64: input.contentBase64 ?? existing.contentBase64,
+      error: input.error,
+      updatedAt: new Date(now()).toISOString(),
+    };
+    await writeFile(completingPath, `${JSON.stringify(updated, null, 2)}\n`, "utf8");
+    // Canonical terminal record lives at the claimed path for readers.
+    await rename(completingPath, claimedPath);
+    return updated;
+  } catch (error) {
+    // If we fail after taking the file, try to put it back so a retry can finish.
+    try {
+      await rename(completingPath, takenFrom);
+    } catch {
+      // Best-effort restore.
+    }
+    throw error;
   }
-  const file = (await readOperationFile(claimedPath)) ? claimedPath : pendingPath;
-  const updated: HostDiskOperation = {
-    ...existing,
-    status: input.status,
-    entries: input.entries,
-    contentBase64: input.contentBase64 ?? existing.contentBase64,
-    error: input.error,
-    updatedAt: new Date(now()).toISOString(),
-  };
-  await writeFile(file, `${JSON.stringify(updated, null, 2)}\n`, "utf8");
-  return updated;
 }
 
 /** Production default is the client bridge; set RAKAZO_HOST_DISK_MODE=local for same-host FS. */

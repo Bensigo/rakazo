@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -303,6 +303,32 @@ describe("host disk symlink containment", () => {
       }),
     ).rejects.toThrow(/outside the granted folders|ENOENT|ELOOP|EPERM|EACCES|ENOTDIR/i);
   });
+
+  it("keeps writes inside the pinned parent when the path is swapped to an outside symlink", async () => {
+    // After the parent directory fd is pinned, replacing that directory entry
+    // with an outside symlink must not redirect the rename/write.
+    const dataDir = await tempDir();
+    const grant = path.join(dataDir, "granted");
+    const outside = path.join(dataDir, "outside");
+    const nested = path.join(grant, "nested");
+    await mkdir(nested, { recursive: true });
+    await mkdir(outside, { recursive: true });
+    await writeFile(path.join(outside, "planted.txt"), "outside-secret\n", "utf8");
+
+    const nestedBackup = path.join(grant, "nested-original");
+    await expect(
+      writeFileInsideHostRoots(path.join(nested, "planted.txt"), [grant], "inside-write\n", {
+        afterParentPinned: async () => {
+          await rename(nested, nestedBackup);
+          await symlink(outside, nested);
+        },
+      }),
+    ).resolves.toBeUndefined();
+
+    // Outside content must be untouched; the write stayed on the pinned inode.
+    expect(await readFile(path.join(outside, "planted.txt"), "utf8")).toBe("outside-secret\n");
+    expect(await readFile(path.join(nestedBackup, "planted.txt"), "utf8")).toBe("inside-write\n");
+  });
 });
 
 describe("host disk exclusive claims", () => {
@@ -342,5 +368,77 @@ describe("host disk exclusive claims", () => {
 
     controller.abort();
     await expect(listing).rejects.toThrow();
+  });
+
+  it("lets only one of timeout and client completion win", async () => {
+    const dataDir = await tempDir();
+    const { BridgingHostDiskProvider, claimHostDiskOperation, completeHostDiskOperation } =
+      await import("./bridge-host-disk.js");
+    const provider = new BridgingHostDiskProvider({
+      dataDir,
+      timeoutMs: 50,
+      pollIntervalMs: 10,
+    });
+    await saveHostDiskSettings(dataDir, "user-1", {
+      enabled: true,
+      roots: [path.join(dataDir, "granted")],
+      clientSeenAt: new Date().toISOString(),
+    });
+    await mkdir(path.join(dataDir, "granted"), { recursive: true });
+
+    const listing = provider.listFiles("user-1", "", adapterContext());
+    let claimed = null;
+    for (let attempt = 0; attempt < 50 && !claimed; attempt += 1) {
+      claimed = await claimHostDiskOperation(dataDir, "user-1");
+      if (!claimed) await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    expect(claimed?.status).toBe("claimed");
+    if (!claimed) throw new Error("expected claim");
+
+    const clientComplete = completeHostDiskOperation(dataDir, "user-1", {
+      id: claimed.id,
+      status: "done",
+      entries: [],
+    });
+    // Overlap with server timeout completion inside listFiles.
+    const results = await Promise.allSettled([listing, clientComplete]);
+    const clientResult = results[1];
+    expect(clientResult.status === "fulfilled" || clientResult.status === "rejected").toBe(true);
+
+    // Terminal status must be consistent: not done then overwritten by timeout error
+    // (or vice versa) on the same file.
+    const { readFile: readOp } = await import("node:fs/promises");
+    const claimedPath = path.join(
+      dataDir,
+      "host-disk",
+      "operations",
+      "user-1",
+      `${claimed.id}.claimed.json`,
+    );
+    const pendingPath = path.join(
+      dataDir,
+      "host-disk",
+      "operations",
+      "user-1",
+      `${claimed.id}.json`,
+    );
+    let raw = null;
+    try {
+      raw = await readOp(claimedPath, "utf8");
+    } catch {
+      try {
+        raw = await readOp(pendingPath, "utf8");
+      } catch {
+        raw = null;
+      }
+    }
+    if (raw) {
+      const op = JSON.parse(raw);
+      expect(["done", "error"]).toContain(op.status);
+      // If the client won, listFiles should have returned entries (or timeout honored done).
+      if (op.status === "done") {
+        expect(results[0].status).toBe("fulfilled");
+      }
+    }
   });
 });

@@ -1,15 +1,5 @@
 import { constants } from "node:fs";
-import {
-  lstat,
-  mkdir,
-  open,
-  readdir,
-  readFile,
-  realpath,
-  rename,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, open, readdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { app, BrowserWindow, dialog, type IpcMainInvokeEvent, ipcMain } from "electron";
 
@@ -256,42 +246,67 @@ export function registerHostDiskIpc() {
       if (typeof contentBase64 !== "string") throw new Error("Missing file content");
       const target = await resolveInsideGrants(String(requestPath ?? ""));
       await mkdir(path.dirname(target), { recursive: true });
-      const parent = await resolveInsideGrants(path.dirname(target));
-      const tempPath = path.join(
-        parent,
-        `.rakazo-host-disk-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`,
-      );
+
+      const realRoots = await realGrantedRoots();
+      const baseName = path.basename(target);
+      if (!baseName || baseName === "." || baseName === "..") {
+        throw new Error("Host path is outside the granted folders");
+      }
+
+      const parentPath = await resolveInsideGrants(path.dirname(target));
+      const dirFlags = constants.O_RDONLY | (constants.O_DIRECTORY ?? 0);
+      const parentHandle = await openInsideGrants(parentPath, dirFlags);
+      const tempName = `.rakazo-host-disk-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`;
+      let tempViaFd: string | undefined;
+      let destViaFd: string | undefined;
       try {
-        const tempHandle = await openInsideGrants(
-          tempPath,
-          constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_TRUNC,
+        const parentFdReal = await realpathOfFd(parentHandle.fd);
+        if (!isLexicallyInside(parentFdReal, realRoots)) {
+          throw new Error("Host path is outside the granted folders");
+        }
+
+        tempViaFd = path.join(fdDirPath(parentHandle.fd), tempName);
+        destViaFd = path.join(fdDirPath(parentHandle.fd), baseName);
+
+        const tempHandle = await open(
+          tempViaFd,
+          constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_TRUNC | NOFOLLOW,
         );
         try {
+          const tempFdReal = await realpathOfFd(tempHandle.fd);
+          if (!isLexicallyInside(tempFdReal, realRoots)) {
+            throw new Error("Host path is outside the granted folders");
+          }
+          if (path.dirname(tempFdReal) !== parentFdReal) {
+            throw new Error("Host path is outside the granted folders");
+          }
           await tempHandle.writeFile(Buffer.from(contentBase64, "base64"));
         } finally {
           await tempHandle.close();
         }
-        const destination = await resolveInsideGrants(target);
-        await rename(tempPath, destination);
-        const realRoots = await realGrantedRoots();
-        const finalHandle = await open(destination, constants.O_RDONLY | NOFOLLOW);
+
+        await rename(tempViaFd, destViaFd);
+        tempViaFd = undefined;
+
+        const finalHandle = await open(destViaFd, constants.O_RDONLY | NOFOLLOW);
         try {
           const fdReal = await realpathOfFd(finalHandle.fd);
           if (!isLexicallyInside(fdReal, realRoots)) {
-            await rm(destination, { force: true }).catch(() => undefined);
+            await rm(destViaFd, { force: true }).catch(() => undefined);
             throw new Error("Host path is outside the granted folders");
           }
-          const finalStat = await lstat(destination);
-          if (finalStat.isSymbolicLink()) {
-            await rm(destination, { force: true }).catch(() => undefined);
+          if (path.dirname(fdReal) !== parentFdReal) {
+            await rm(destViaFd, { force: true }).catch(() => undefined);
             throw new Error("Host path is outside the granted folders");
           }
         } finally {
           await finalHandle.close().catch(() => undefined);
         }
       } catch (error) {
-        await rm(tempPath, { force: true }).catch(() => undefined);
+        if (tempViaFd) await rm(tempViaFd, { force: true }).catch(() => undefined);
         throw error;
+      } finally {
+        await parentHandle.close().catch(() => undefined);
       }
       return true;
     },

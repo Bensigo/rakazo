@@ -128,6 +128,8 @@ function fdDirPath(fd: number) {
 export type OpenInsideHostRootsOptions = {
   /** Test-only: run after resolve and before open (path-swap race). */
   afterResolve?: () => Promise<void>;
+  /** Test-only: run after the parent directory fd is pinned, before temp create/rename. */
+  afterParentPinned?: () => Promise<void>;
 };
 
 /**
@@ -236,46 +238,75 @@ export async function writeFileInsideHostRoots(
   const resolved = await resolveInsideHostRoots(target, roots);
   if (options?.afterResolve) await options.afterResolve();
   await mkdir(path.dirname(resolved), { recursive: true });
-  // Write via a temp file inside the same parent, then rename into place after
-  // re-validating the destination so a swapped symlink cannot retain the write.
-  const parent = path.dirname(resolved);
-  const verifiedParent = await resolveInsideHostRoots(parent, roots);
-  const tempPath = path.join(
-    verifiedParent,
-    `.rakazo-host-disk-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`,
-  );
+
+  const realRoots = await realRootsOf(roots);
+  const baseName = path.basename(resolved);
+  if (!baseName || baseName === "." || baseName === "..") {
+    throw new Error("Host path is outside the granted folders");
+  }
+
+  // Pin the parent directory inode. Temp create + rename go through this fd so a
+  // parent path swap to an outside symlink cannot redirect the write.
+  const parentPath = await resolveInsideHostRoots(path.dirname(resolved), roots);
+  const dirFlags = constants.O_RDONLY | (constants.O_DIRECTORY ?? 0);
+  const parentHandle = await openInsideHostRoots(parentPath, roots, dirFlags);
+  const tempName = `.rakazo-host-disk-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`;
+  let tempViaFd: string | undefined;
+  let destViaFd: string | undefined;
   try {
-    const tempHandle = await openInsideHostRoots(
-      tempPath,
-      roots,
-      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_TRUNC,
+    let parentFdReal = await realpathOfFd(parentHandle.fd);
+    if (!isLexicallyInsideRoots(parentFdReal, realRoots)) {
+      throw new Error("Host path is outside the granted folders");
+    }
+    if (options?.afterParentPinned) await options.afterParentPinned();
+    // Refresh after the pin hook: the directory may have been renamed, but the
+    // inode (and fd) remain the same; path equality checks need the current name.
+    parentFdReal = await realpathOfFd(parentHandle.fd);
+    if (!isLexicallyInsideRoots(parentFdReal, realRoots)) {
+      throw new Error("Host path is outside the granted folders");
+    }
+
+    tempViaFd = path.join(fdDirPath(parentHandle.fd), tempName);
+    destViaFd = path.join(fdDirPath(parentHandle.fd), baseName);
+
+    const tempHandle = await open(
+      tempViaFd,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_TRUNC | NOFOLLOW,
     );
     try {
+      const tempFdReal = await realpathOfFd(tempHandle.fd);
+      if (!isLexicallyInsideRoots(tempFdReal, realRoots)) {
+        throw new Error("Host path is outside the granted folders");
+      }
+      if (path.dirname(tempFdReal) !== parentFdReal) {
+        throw new Error("Host path is outside the granted folders");
+      }
       await tempHandle.writeFile(content);
     } finally {
       await tempHandle.close();
     }
-    const destination = await resolveInsideHostRoots(resolved, roots);
-    await rename(tempPath, destination);
-    // Final pin: destination inode (via path open) must still resolve inside roots.
-    const realRoots = await realRootsOf(roots);
-    const finalHandle = await open(destination, constants.O_RDONLY | NOFOLLOW);
+
+    await rename(tempViaFd, destViaFd);
+    tempViaFd = undefined;
+
+    const finalHandle = await open(destViaFd, constants.O_RDONLY | NOFOLLOW);
     try {
       const fdReal = await realpathOfFd(finalHandle.fd);
       if (!isLexicallyInsideRoots(fdReal, realRoots)) {
-        await rm(destination, { force: true }).catch(() => undefined);
+        await rm(destViaFd, { force: true }).catch(() => undefined);
         throw new Error("Host path is outside the granted folders");
       }
-      const finalStat = await lstat(destination);
-      if (finalStat.isSymbolicLink()) {
-        await rm(destination, { force: true }).catch(() => undefined);
+      if (path.dirname(fdReal) !== parentFdReal) {
+        await rm(destViaFd, { force: true }).catch(() => undefined);
         throw new Error("Host path is outside the granted folders");
       }
     } finally {
       await finalHandle.close().catch(() => undefined);
     }
   } catch (error) {
-    await rm(tempPath, { force: true }).catch(() => undefined);
+    if (tempViaFd) await rm(tempViaFd, { force: true }).catch(() => undefined);
     throw error;
+  } finally {
+    await parentHandle.close().catch(() => undefined);
   }
 }
