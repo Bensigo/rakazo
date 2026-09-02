@@ -1,4 +1,4 @@
-import { constants } from "node:fs";
+import { constants, realpathSync } from "node:fs";
 import { open, realpath } from "node:fs/promises";
 import path from "node:path";
 import { app, BrowserWindow, dialog, type IpcMainInvokeEvent, ipcMain } from "electron";
@@ -174,6 +174,19 @@ async function unlinkIfOwnedChild(dirFd: number, name: string, owned: FdIdentity
   }
 }
 
+/** Last-mile sync containment check (no await) before mkdirat/renameat. */
+function assertFdStillInsideRoots(fd: number, roots: HostDiskAuthorizedRoot[]) {
+  let fdReal: string;
+  try {
+    fdReal = realpathSync(pathFromOpenFd(fd));
+  } catch {
+    throw new Error("Host path is outside the granted folders");
+  }
+  if (!isLexicallyInside(fdReal, rootPaths(roots))) {
+    throw new Error("Host path is outside the granted folders");
+  }
+}
+
 /** Open + re-validate via fd realpath and covering grant (dev,ino). */
 async function openInsideGrants(target: string, flags: number) {
   const realRoots = await realGrantedRoots();
@@ -233,6 +246,8 @@ async function mkdirInsideGrants(target: string) {
         // post-open assert below removes the empty segment we created
         // (AT_REMOVEDIR) — undoing our mkdir, not deleting outside write dests.
         await assertInsideAuthorizedRoots(await realpathOfFd(parentHandle.fd), realRoots);
+        // Sync re-check with no await before mkdirat (shrink TOCTOU after async assert).
+        assertFdStillInsideRoots(parentHandle.fd, realRoots);
         try {
           mkdiratChild(parentHandle.fd, segment);
           createdSegment = true;
@@ -445,8 +460,8 @@ export function registerHostDiskIpc() {
             throw new Error("Host path is outside the granted folders");
           }
           await assertInsideAuthorizedRoots(await realpathOfFd(publishHandle.fd), realRoots);
-          // No await between the last containment proof and renameat: temp lives
-          // on this inode, so publish via the freshly verified dirfd.
+          // Sync re-check with no await before renameat (shrink TOCTOU after async assert).
+          assertFdStillInsideRoots(publishHandle.fd, realRoots);
           renameatChild(publishHandle.fd, tempName, baseName);
 
           const finalHandle = openatChild(
@@ -484,6 +499,13 @@ export function registerHostDiskIpc() {
                 }
               } catch {
                 // Best-effort rollback only.
+              }
+              // If rename-back did not clear baseName, remove only our inode —
+              // never a replacement that raced in under the same basename.
+              try {
+                await unlinkIfOwnedChild(publishHandle.fd, baseName, publishedStat);
+              } catch {
+                // Best-effort attributable cleanup only.
               }
             }
             if (publishError instanceof Error) throw publishError;

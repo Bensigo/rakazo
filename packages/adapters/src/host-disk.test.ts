@@ -835,18 +835,21 @@ describe("host disk posix *at pinning", () => {
     expect(ipcSource).not.toMatch(/readdir\(\s*fdReal\s*\)/);
     expect(ipcSource).not.toMatch(/readdir\(\s*fdRefPath\(/);
     expect(ipcSource).toMatch(/readdirNamesAt\(/);
-    // Write publish: re-bind parent via grant walk + matching (dev,ino) before
-    // renameat; roll back owned inode on residual escape — never unlink dest by
-    // basename. Temp/mkdir cleanup uses unlinkIfOwnedChild (inode-checked).
+    // Write publish: re-bind parent via grant walk + matching (dev,ino), sync
+    // last-mile gate, then renameat; on residual escape roll back / unlink only
+    // our inode — never unlink dest by basename alone.
     expect(ipcSource).toMatch(/const pinnedParent = await parentHandle\.stat\(\)/);
     expect(ipcSource).toMatch(/openInsideGrants\(parentPath, dirFlags\)/);
+    expect(ipcSource).toMatch(/assertFdStillInsideRoots\(publishHandle\.fd, realRoots\)/);
     expect(ipcSource).toMatch(/renameatChild\(publishHandle\.fd, tempName, baseName\)/);
     expect(ipcSource).not.toMatch(/unlinkatChild\(parentHandle\.fd, baseName\)/);
+    expect(ipcSource).toMatch(/unlinkIfOwnedChild\(publishHandle\.fd, baseName, publishedStat\)/);
     expect(ipcSource).toMatch(/unlinkIfOwnedChild\(/);
     expect(ipcSource).toMatch(/tempOwned/);
-    // mkdir: assert immediately before mkdirat; AT_REMOVEDIR cleans owned segments.
+    // mkdir: async assert + sync gate immediately before mkdirat; owned AT_REMOVEDIR.
+    expect(ipcSource).toMatch(/assertFdStillInsideRoots\(parentHandle\.fd, realRoots\)/);
     expect(ipcSource).toMatch(
-      /assertInsideAuthorizedRoots\(await realpathOfFd\(parentHandle\.fd\), realRoots\);\s*\n\s*try \{\s*\n\s*mkdiratChild/m,
+      /assertFdStillInsideRoots\(parentHandle\.fd, realRoots\);\s*\n\s*try \{\s*\n\s*mkdiratChild/m,
     );
     expect(ipcSource).toMatch(/AT_REMOVEDIR/);
     expect(pathSource).not.toMatch(/unlinkatChild\(parentHandle\.fd, baseName\)/);
