@@ -46,4 +46,14 @@ describe("host disk grant store", () => {
     const persisted = JSON.parse(await readFile(grantsFilePath, "utf8")) as string[];
     expect(persisted).toEqual([]);
   });
+
+  it("returns false when revoking a path that was never granted", async () => {
+    const dir = await tempDir();
+    const grantsFilePath = path.join(dir, "host-disk-grants.json");
+    await writeFile(grantsFilePath, `${JSON.stringify([], null, 2)}\n`, "utf8");
+
+    const store = createHostDiskGrantStore({ grantsFilePath });
+    await store.ready;
+    await expect(store.revoke(path.join(dir, "never-granted"))).resolves.toBe(false);
+  });
 });

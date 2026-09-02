@@ -1,6 +1,13 @@
 import { constants } from "node:fs";
-import { lstat, mkdir, open, readdir, realpath, rename, rm } from "node:fs/promises";
+import { lstat, open, readdir, realpath } from "node:fs/promises";
 import path from "node:path";
+import {
+  mkdiratChild,
+  openatChild,
+  renameatChild,
+  unlinkatChild,
+  type PosixAtFileHandle,
+} from "./host-disk-posix-at.js";
 
 type PathOperations = Pick<typeof path, "isAbsolute" | "relative" | "resolve" | "sep">;
 
@@ -120,11 +127,6 @@ export async function realpathOfFd(fd: number): Promise<string> {
   throw new Error("Host path is outside the granted folders");
 }
 
-function fdDirPath(fd: number) {
-  // Prefer Linux; fall back for macOS Electron. Same inode as the open dir fd.
-  return process.platform === "linux" ? `/proc/self/fd/${fd}` : `/dev/fd/${fd}`;
-}
-
 export type OpenInsideHostRootsOptions = {
   /** Test-only: run after resolve and before open (path-swap race). */
   afterResolve?: () => Promise<void>;
@@ -183,9 +185,10 @@ export async function readFileInsideHostRoots(
 
 /**
  * List a directory inside granted roots. The directory is opened with
- * O_NOFOLLOW and re-validated via fd realpath; entries are listed through
- * the pinned fd (not the original path string) and each entry is opened
- * the same way so a swapped symlink cannot be followed for type/size.
+ * O_NOFOLLOW and re-validated via fd realpath. Names come from the pinned
+ * inode's current path (realpath of the fd — not `/dev/fd/N/child`, which
+ * macOS cannot traverse); each entry is then opened with openat against the
+ * pinned dirfd so a path-swap cannot redirect type/size reads.
  */
 export async function listInsideHostRoots(
   target: string,
@@ -202,19 +205,22 @@ export async function listInsideHostRoots(
     if (!isLexicallyInsideRoots(fdReal, realRoots)) {
       throw new Error("Host path is outside the granted folders");
     }
-    const names = await readdir(fdDirPath(handle.fd));
+    // realpath(fd) is the pinned inode's path; do not join children under
+    // /dev/fd/<fd> (broken on Darwin). Entry opens use openat(dirfd, name).
+    const names = await readdir(fdReal);
     const listed: Array<{ path: string; kind: "file" | "dir"; size: number }> = [];
     for (const name of names) {
       if (name === "." || name === "..") continue;
-      const full = path.join(fdReal, name);
       try {
-        const entryHandle = await openInsideHostRoots(full, roots, constants.O_RDONLY | NOFOLLOW);
+        const entryHandle = openatChild(handle.fd, name, constants.O_RDONLY | NOFOLLOW);
         try {
+          const entryReal = await realpathOfFd(entryHandle.fd);
+          if (!isLexicallyInsideRoots(entryReal, realRoots)) continue;
           const info = await entryHandle.stat();
           if (info.isDirectory()) {
-            listed.push({ path: full, kind: "dir", size: 0 });
+            listed.push({ path: entryReal, kind: "dir", size: 0 });
           } else if (info.isFile()) {
-            listed.push({ path: full, kind: "file", size: info.size });
+            listed.push({ path: entryReal, kind: "file", size: info.size });
           }
         } finally {
           await entryHandle.close();
@@ -252,28 +258,30 @@ export async function mkdirInsideHostRoots(target: string, roots: string[]) {
   }
 
   const dirFlags = constants.O_RDONLY | (constants.O_DIRECTORY ?? 0);
-  let parentHandle = await openInsideHostRoots(containingRoot, roots, dirFlags);
+  let parentHandle: { fd: number; close: () => Promise<void> } = await openInsideHostRoots(
+    containingRoot,
+    roots,
+    dirFlags,
+  );
   try {
     for (const segment of relative.split(path.sep)) {
       if (!segment || segment === "." || segment === "..") {
         throw new Error("Host path is outside the granted folders");
       }
-      const childViaFd = path.join(fdDirPath(parentHandle.fd), segment);
+      let next: PosixAtFileHandle;
       try {
-        const next = await open(childViaFd, dirFlags | NOFOLLOW);
-        await parentHandle.close().catch(() => undefined);
-        parentHandle = next;
+        next = openatChild(parentHandle.fd, segment, dirFlags | NOFOLLOW);
       } catch (error) {
         const code =
           error && typeof error === "object" && "code" in error
             ? String((error as { code: unknown }).code)
             : "";
         if (code !== "ENOENT") throw error;
-        await mkdir(childViaFd);
-        const next = await open(childViaFd, dirFlags | NOFOLLOW);
-        await parentHandle.close().catch(() => undefined);
-        parentHandle = next;
+        mkdiratChild(parentHandle.fd, segment);
+        next = openatChild(parentHandle.fd, segment, dirFlags | NOFOLLOW);
       }
+      await parentHandle.close().catch(() => undefined);
+      parentHandle = next;
       const fdReal = await realpathOfFd(parentHandle.fd);
       if (!isLexicallyInsideRoots(fdReal, realRoots)) {
         throw new Error("Host path is outside the granted folders");
@@ -301,14 +309,14 @@ export async function writeFileInsideHostRoots(
     throw new Error("Host path is outside the granted folders");
   }
 
-  // Pin the parent directory inode. Temp create + rename go through this fd so a
-  // parent path swap to an outside symlink cannot redirect the write.
+  // Pin the parent directory inode. Temp create + rename use openat/renameat so
+  // a parent path swap to an outside symlink cannot redirect the write (macOS
+  // cannot traverse `/dev/fd/<fd>/child`).
   const parentPath = await resolveInsideHostRoots(path.dirname(resolved), roots);
   const dirFlags = constants.O_RDONLY | (constants.O_DIRECTORY ?? 0);
   const parentHandle = await openInsideHostRoots(parentPath, roots, dirFlags);
   const tempName = `.rakazo-host-disk-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`;
-  let tempViaFd: string | undefined;
-  let destViaFd: string | undefined;
+  let tempPending = false;
   try {
     let parentFdReal = await realpathOfFd(parentHandle.fd);
     if (!isLexicallyInsideRoots(parentFdReal, realRoots)) {
@@ -322,13 +330,13 @@ export async function writeFileInsideHostRoots(
       throw new Error("Host path is outside the granted folders");
     }
 
-    tempViaFd = path.join(fdDirPath(parentHandle.fd), tempName);
-    destViaFd = path.join(fdDirPath(parentHandle.fd), baseName);
-
-    const tempHandle = await open(
-      tempViaFd,
+    const tempHandle = openatChild(
+      parentHandle.fd,
+      tempName,
       constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_TRUNC | NOFOLLOW,
+      0o600,
     );
+    tempPending = true;
     try {
       const tempFdReal = await realpathOfFd(tempHandle.fd);
       if (!isLexicallyInsideRoots(tempFdReal, realRoots)) {
@@ -337,30 +345,44 @@ export async function writeFileInsideHostRoots(
       if (path.dirname(tempFdReal) !== parentFdReal) {
         throw new Error("Host path is outside the granted folders");
       }
-      await tempHandle.writeFile(content);
+      await tempHandle.writeFile(typeof content === "string" ? content : Buffer.from(content));
     } finally {
       await tempHandle.close();
     }
 
-    await rename(tempViaFd, destViaFd);
-    tempViaFd = undefined;
+    renameatChild(parentHandle.fd, tempName, baseName);
+    tempPending = false;
 
-    const finalHandle = await open(destViaFd, constants.O_RDONLY | NOFOLLOW);
+    const finalHandle = openatChild(parentHandle.fd, baseName, constants.O_RDONLY | NOFOLLOW);
     try {
       const fdReal = await realpathOfFd(finalHandle.fd);
       if (!isLexicallyInsideRoots(fdReal, realRoots)) {
-        await rm(destViaFd, { force: true }).catch(() => undefined);
+        try {
+          unlinkatChild(parentHandle.fd, baseName);
+        } catch {
+          // Best-effort cleanup.
+        }
         throw new Error("Host path is outside the granted folders");
       }
       if (path.dirname(fdReal) !== parentFdReal) {
-        await rm(destViaFd, { force: true }).catch(() => undefined);
+        try {
+          unlinkatChild(parentHandle.fd, baseName);
+        } catch {
+          // Best-effort cleanup.
+        }
         throw new Error("Host path is outside the granted folders");
       }
     } finally {
       await finalHandle.close().catch(() => undefined);
     }
   } catch (error) {
-    if (tempViaFd) await rm(tempViaFd, { force: true }).catch(() => undefined);
+    if (tempPending) {
+      try {
+        unlinkatChild(parentHandle.fd, tempName);
+      } catch {
+        // Best-effort cleanup.
+      }
+    }
     throw error;
   } finally {
     await parentHandle.close().catch(() => undefined);

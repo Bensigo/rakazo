@@ -92,6 +92,22 @@ export function createHostDiskGrantStore(options: HostDiskGrantStoreOptions): Ho
     },
     async revoke(root: string) {
       // Record intent before waiting on load so a concurrent load cannot revive it.
+      const lexical = path.resolve(root);
+      const wasInMemory = grantedRoots.has(lexical);
+      // Peek the grants file before we wait on load so a disk-backed root that is
+      // not yet in memory still counts as a successful revoke (without treating
+      // every unknown path as success via revokedRoots.has after rememberRevoked).
+      let listedOnDisk = false;
+      try {
+        const raw = JSON.parse(await readFile(options.grantsFilePath, "utf8")) as unknown;
+        if (Array.isArray(raw)) {
+          listedOnDisk = raw.some(
+            (item) => typeof item === "string" && path.resolve(item) === lexical,
+          );
+        }
+      } catch {
+        // Missing or unreadable grants file: treat as not listed.
+      }
       await rememberRevoked(root);
       await ready;
       const resolved = path.resolve(root);
@@ -103,9 +119,7 @@ export function createHostDiskGrantStore(options: HostDiskGrantStoreOptions): Ho
       }
       // Always persist after revoke so a no-op in-memory miss still clears disk.
       await save();
-      // True when we dropped it from memory, or blocked a concurrent load from
-      // resurrecting a root that had been on disk.
-      return removed || revokedRoots.has(resolved);
+      return removed || wasInMemory || listedOnDisk;
     },
     hasGrantCovering(target: string) {
       const resolved = path.resolve(target);

@@ -535,3 +535,61 @@ describe("host disk exclusive claims", () => {
     await clientDone;
   });
 });
+
+
+describe("host disk posix *at pinning", () => {
+  it("does not join child names under /dev/fd paths", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const pathSource = await readFile(new URL("./host-disk-path.ts", import.meta.url), "utf8");
+    expect(pathSource).not.toMatch(/path\.join\(\s*fdDirPath\(/);
+    expect(pathSource).not.toMatch(/readdir\(\s*fdDirPath\(/);
+    expect(pathSource).toMatch(/openatChild\(/);
+    expect(pathSource).toMatch(/mkdiratChild\(/);
+    expect(pathSource).toMatch(/renameatChild\(/);
+  });
+
+  it("openat/mkdirat/renameat keep writes on the pinned directory inode", async () => {
+    const { posixAtAvailable, openatChild, mkdiratChild, renameatChild, unlinkatChild } =
+      await import("./host-disk-posix-at.js");
+    expect(posixAtAvailable()).toBe(true);
+
+    const dataDir = await tempDir();
+    const parent = path.join(dataDir, "parent");
+    await mkdir(parent, { recursive: true });
+    const { open } = await import("node:fs/promises");
+    const dirFlags = constants.O_RDONLY | (constants.O_DIRECTORY ?? 0);
+    const parentHandle = await open(parent, dirFlags);
+    try {
+      mkdiratChild(parentHandle.fd, "child");
+      const temp = openatChild(
+        parentHandle.fd,
+        "x.tmp",
+        constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
+        0o600,
+      );
+      try {
+        await temp.writeFile("pinned\n");
+      } finally {
+        await temp.close();
+      }
+      renameatChild(parentHandle.fd, "x.tmp", "x.txt");
+      expect(await readFile(path.join(parent, "x.txt"), "utf8")).toBe("pinned\n");
+      unlinkatChild(parentHandle.fd, "x.txt");
+    } finally {
+      await parentHandle.close();
+    }
+  });
+
+  it("list/write still work without /dev/fd child traversal", async () => {
+    const dataDir = await tempDir();
+    const grant = path.join(dataDir, "granted");
+    await mkdir(grant, { recursive: true });
+    await writeFile(path.join(grant, "a.txt"), "hello\n", "utf8");
+
+    const listed = await listInsideHostRoots(grant, [grant]);
+    expect(listed.map((entry) => path.basename(entry.path))).toContain("a.txt");
+
+    await writeFileInsideHostRoots(path.join(grant, "b.txt"), [grant], "world\n");
+    expect(await readFile(path.join(grant, "b.txt"), "utf8")).toBe("world\n");
+  });
+});
