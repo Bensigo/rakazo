@@ -34,9 +34,6 @@ export type HomeCopy = {
     eyebrow: string;
     heading: string;
     copy: string;
-    installTitle: string;
-    installHint: string;
-    computersNote: string;
     features: Array<{ title: string; body: string }>;
   };
   roster: {
@@ -231,20 +228,16 @@ const HOME_COPY: Record<Locale, HomeCopy> = {
       viewOnGithub: "View on GitHub",
       setupWithAgent: "Set up with your agent",
       copiedForAgent: "Copied for your agent",
-      copyFailed: "Copy failed — try again",
+      copyFailed: "Copy failed. Try again.",
     },
     selfHost: {
       eyebrow: "Self-hosted",
       heading: "The computer is yours",
-      copy: "Run Rakazo on your machine with published images. Local Docker computers work without an E2B account.",
-      installTitle: "Install with Docker",
-      installHint: "Docker Engine and the Compose plugin required. Default tag is edge (amd64).",
-      computersNote:
-        "Default is Docker computers on this host. E2B, Daytona, and Box are optional remote providers.",
+      copy: "Run Rakazo on your machine. Your keys, your model, your data.",
       features: [
         {
           title: "Any model, your key",
-          body: "Point a bot at Claude, GPT, Grok, or a local model. Swap per bot — the cheap one triages, the smart one writes.",
+          body: "Point a bot at Claude, GPT, Grok, or a local model. Swap per bot: the cheap one triages, the smart one writes.",
         },
         {
           title: "Readable routines",
@@ -305,9 +298,9 @@ const HOME_COPY: Record<Locale, HomeCopy> = {
       closeLabel: "Close get started dialog",
       eyebrow: "Get started",
       title: "How do you want to start?",
-      copy: "Self-host now with Docker, or join the Cloud waitlist.",
+      copy: "Self-host on your machine, or join the Cloud waitlist.",
       selfHostNow: "Self-host now",
-      selfHostHint: "Published images. UI in minutes. No E2B key required to sign up.",
+      selfHostHint: "Install steps are in the docs.",
       cloudWaitlist: "Cloud waitlist",
       cloudHint: "Hosted Rakazo is coming. Leave your email.",
       back: "Back",
@@ -359,24 +352,20 @@ const HOME_COPY: Record<Locale, HomeCopy> = {
       viewOnGithub: "Auf GitHub ansehen",
       setupWithAgent: "Mit deinem Agenten einrichten",
       copiedForAgent: "Für deinen Agenten kopiert",
-      copyFailed: "Kopieren fehlgeschlagen — erneut versuchen",
+      copyFailed: "Kopieren fehlgeschlagen. Erneut versuchen.",
     },
     selfHost: {
       eyebrow: "Self-hosted",
       heading: "Der Computer gehört dir",
-      copy: "Starte Rakazo mit veröffentlichten Images. Lokale Docker-Computer laufen ohne E2B-Account.",
-      installTitle: "Mit Docker installieren",
-      installHint: "Docker Engine und Compose-Plugin nötig. Default-Tag ist edge (amd64).",
-      computersNote:
-        "Standard sind Docker-Computer auf diesem Host. E2B, Daytona und Box sind optionale Remote-Anbieter.",
+      copy: "Betreibe Rakazo auf deiner Maschine. Deine Keys, dein Modell, deine Daten.",
       features: [
         {
           title: "Beliebiges Modell, dein Key",
-          body: "Richte einen Bot auf Claude, GPT, Grok oder ein lokales Modell aus. Pro Bot wechselbar — der günstige triagiert, der smarte schreibt.",
+          body: "Richte einen Bot auf Claude, GPT, Grok oder ein lokales Modell aus. Pro Bot wechselbar: der günstige triagiert, der smarte schreibt.",
         },
         {
           title: "Lesbare Routinen",
-          body: "Zeig einem Bot einmal einen Workflow — er speichert eine Routine als Markdown, das du lesen, editieren und committen kannst.",
+          body: "Zeig einem Bot einmal einen Workflow. Er speichert eine Routine als Markdown, das du lesen, editieren und committen kannst.",
         },
         {
           title: "Freigaben, die greifen",
@@ -433,9 +422,9 @@ const HOME_COPY: Record<Locale, HomeCopy> = {
       closeLabel: "Loslegen-Dialog schließen",
       eyebrow: "Loslegen",
       title: "Wie willst du starten?",
-      copy: "Jetzt self-hosten mit Docker, oder auf die Cloud-Warteliste.",
+      copy: "Self-host auf deiner Maschine, oder auf die Cloud-Warteliste.",
       selfHostNow: "Jetzt self-hosten",
-      selfHostHint: "Veröffentlichte Images. UI in Minuten. Kein E2B-Key für Signup nötig.",
+      selfHostHint: "Installationsschritte stehen in den Docs.",
       cloudWaitlist: "Cloud-Warteliste",
       cloudHint: "Gehostetes Rakazo kommt. Hinterlasse deine E-Mail.",
       back: "Zurück",
@@ -486,20 +475,16 @@ const HOME_COPY: Record<Locale, HomeCopy> = {
       viewOnGithub: "GitHub에서 보기",
       setupWithAgent: "에이전트로 설정하기",
       copiedForAgent: "에이전트용으로 복사됨",
-      copyFailed: "복사 실패 — 다시 시도",
+      copyFailed: "복사 실패. 다시 시도하세요.",
     },
     selfHost: {
       eyebrow: "셀프 호스트",
       heading: "컴퓨터는 당신 것",
-      copy: "게시된 이미지로 Rakazo를 실행하세요. 로컬 Docker 컴퓨터는 E2B 계정 없이 동작합니다.",
-      installTitle: "Docker로 설치",
-      installHint: "Docker Engine과 Compose 플러그인이 필요합니다. 기본 태그는 edge(amd64)입니다.",
-      computersNote:
-        "기본값은 이 호스트의 Docker 컴퓨터입니다. E2B, Daytona, Box는 선택적 원격 제공자입니다.",
+      copy: "당신 머신에서 Rakazo를 실행하세요. 키, 모델, 데이터는 모두 당신 것.",
       features: [
         {
           title: "어떤 모델이든, 키는 당신 것",
-          body: "봇을 Claude, GPT, Grok 또는 로컬 모델에 연결하세요. 봇마다 바꿀 수 있습니다 — 저렴한 모델은 분류하고, 똑똑한 모델은 작성합니다.",
+          body: "봇을 Claude, GPT, Grok 또는 로컬 모델에 연결하세요. 봇마다 바꿀 수 있습니다. 저렴한 모델은 분류하고, 똑똑한 모델은 작성합니다.",
         },
         {
           title: "읽을 수 있는 루틴",
@@ -560,9 +545,9 @@ const HOME_COPY: Record<Locale, HomeCopy> = {
       closeLabel: "시작하기 대화상자 닫기",
       eyebrow: "시작하기",
       title: "어떻게 시작할까요?",
-      copy: "Docker로 지금 셀프 호스트하거나, Cloud 대기열에 등록하세요.",
+      copy: "당신 머신에서 셀프 호스트하거나, Cloud 대기열에 등록하세요.",
       selfHostNow: "지금 셀프 호스트",
-      selfHostHint: "게시된 이미지. 몇 분 안에 UI. 가입에 E2B 키 불필요.",
+      selfHostHint: "설치 단계는 문서에 있습니다.",
       cloudWaitlist: "Cloud 대기열",
       cloudHint: "호스팅 Rakazo가 곧 옵니다. 이메일을 남겨 주세요.",
       back: "뒤로",
