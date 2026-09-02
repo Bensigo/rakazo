@@ -34,11 +34,12 @@ export type BridgingHostDiskOptions = {
   /** Extra wait after timeout for an in-flight completer to publish .done/.error. */
   completionGraceMs?: number;
   /**
-   * Max wait after timeout while an exclusive `.completing.json` owner is still
-   * in flight. Fixed grace alone can expire before a slow host op publishes.
+   * Max wait after timeout while an exclusive `.claimed.json` or `.completing.json`
+   * owner is still in flight. Fixed grace alone can expire before a slow host op
+   * publishes (and must not steal a live claim).
    */
   completingHoldMs?: number;
-  /** Absolute bound while `.completing.json` is held (crash ceiling). */
+  /** Absolute bound while `.claimed.json` / `.completing.json` is held (crash ceiling). */
   completingMaxMs?: number;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
@@ -184,27 +185,20 @@ export class BridgingHostDiskProvider implements HostDiskProvider {
       }
       await sleep(pollMs);
     }
-    await this.complete(userId, {
-      id,
-      status: "error",
-      error: "Timed out waiting for the Mac or phone app to handle host disk access",
-    }).catch(() => undefined);
-    // Client may hold .completing.json and publish .done/.error after our failed
-    // complete. Keep polling while exclusive completing is in flight: slide the
-    // soft deadline forward so a live owner is not cut off mid-publish, with an
-    // absolute ceiling so a crashed holder cannot block forever. After completing
-    // disappears, allow a short grace for the terminal rename gap.
+    // Do not timeout-complete yet: that would steal a live `.claimed.json` while
+    // the client is still doing host FS work. Soft-slide while claimed or
+    // completing is held (crash ceiling), then record timeout only after.
     const graceMs = this.options.completionGraceMs ?? DEFAULT_COMPLETION_GRACE_MS;
     const completingHoldMs = this.options.completingHoldMs ?? DEFAULT_COMPLETING_HOLD_MS;
     const completingMaxMs = this.options.completingMaxMs ?? DEFAULT_COMPLETING_MAX_MS;
     const graceStarted = this.options.now?.() ?? Date.now();
     const graceDeadline = graceStarted + graceMs;
-    // Crash ceiling for a held `.completing.json`. Soft sliding uses
-    // completingHoldMs per poll so a live exclusive owner is not cut off by a
-    // short fixed deadline; completingMaxMs bounds a crashed holder.
-    const completingCrashCeiling = graceStarted + completingMaxMs;
-    let sawCompleting = false;
-    let postCompletingGraceDeadline: number | null = null;
+    // Crash ceiling for a held `.claimed.json` / `.completing.json`. Soft sliding
+    // uses completingHoldMs per poll so a live exclusive owner is not cut off by
+    // a short fixed deadline; completingMaxMs bounds a crashed holder.
+    const liveOwnerCrashCeiling = graceStarted + completingMaxMs;
+    let sawLiveOwner = false;
+    let postLiveOwnerGraceDeadline: number | null = null;
     for (;;) {
       const final = await readOperationById(this.options.dataDir, userId, id);
       if (final && isTerminalOperationFile(final.file) && final.operation.status === "done") {
@@ -215,23 +209,38 @@ export class BridgingHostDiskProvider implements HostDiskProvider {
         throw new Error(final.operation.error ?? "Host disk operation failed");
       }
       const now = this.options.now?.() ?? Date.now();
+      const claimedInFlight = final?.file.endsWith(".claimed.json") === true;
       const completingInFlight = final?.file.endsWith(".completing.json") === true;
-      if (completingInFlight) {
-        sawCompleting = true;
-        postCompletingGraceDeadline = null;
-      } else if (sawCompleting && postCompletingGraceDeadline === null) {
-        // Completing gone — brief window for completing → terminal rename.
-        postCompletingGraceDeadline = now + graceMs;
+      const liveOwnerInFlight = claimedInFlight || completingInFlight;
+      if (liveOwnerInFlight) {
+        sawLiveOwner = true;
+        postLiveOwnerGraceDeadline = null;
+      } else if (sawLiveOwner && postLiveOwnerGraceDeadline === null) {
+        // Live owner gone — brief window for claimed/completing → terminal rename.
+        postLiveOwnerGraceDeadline = now + graceMs;
       }
-      const deadline = completingInFlight
-        ? // Slide while exclusive owner holds completing; only the long crash
-          // ceiling can stop a live holder (not the short soft-hold window).
-          Math.min(completingCrashCeiling, now + completingHoldMs)
-        : sawCompleting
-          ? Math.min(completingCrashCeiling, postCompletingGraceDeadline ?? completingCrashCeiling)
+      const deadline = liveOwnerInFlight
+        ? // Slide while exclusive owner holds claimed/completing; only the long
+          // crash ceiling can stop a live holder (not the short soft-hold window).
+          Math.min(liveOwnerCrashCeiling, now + completingHoldMs)
+        : sawLiveOwner
+          ? Math.min(liveOwnerCrashCeiling, postLiveOwnerGraceDeadline ?? liveOwnerCrashCeiling)
           : graceDeadline;
       if (now >= deadline) break;
       await sleep(Math.min(pollMs, Math.max(0, deadline - now)));
+    }
+    await this.complete(userId, {
+      id,
+      status: "error",
+      error: "Timed out waiting for the Mac or phone app to handle host disk access",
+    }).catch(() => undefined);
+    const raced = await readOperationById(this.options.dataDir, userId, id);
+    if (raced && isTerminalOperationFile(raced.file) && raced.operation.status === "done") {
+      void unlink(raced.file).catch(() => undefined);
+      return raced.operation;
+    }
+    if (raced && isTerminalOperationFile(raced.file) && raced.operation.status === "error") {
+      throw new Error(raced.operation.error ?? "Host disk operation failed");
     }
     throw new Error("Timed out waiting for the Mac or phone app to handle host disk access");
   }

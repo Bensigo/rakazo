@@ -235,13 +235,16 @@ async function unlinkOwnedChildAnywhere(
     if (name === "." || name === "..") continue;
     try {
       const check = openatChild(dirFd, name, IDENTITY_OPEN);
+      let match = false;
       try {
         const st = await check.stat();
-        if (!sameFdIdentity(st, owned)) continue;
+        match = sameFdIdentity(st, owned);
       } finally {
         await check.close().catch(() => undefined);
       }
-      unlinkatChild(dirFd, name, flags);
+      if (!match) continue;
+      // Reuse rename-to-trash unlink so a replacement under this name is not deleted.
+      await unlinkIfOwnedChild(dirFd, name, owned, flags);
       return;
     } catch {
       // Skip vanished / raced entries.
@@ -353,8 +356,9 @@ async function mkdirInsideGrants(target: string) {
         await next.close().catch(() => undefined);
         if (owned) {
           try {
-            // Remove only the empty directory inode we created if it escaped.
-            await unlinkIfOwnedChild(parentHandle.fd, segment, owned, AT_REMOVEDIR);
+            // Preferred basename first, then inode scan — a same-user rename of
+            // our mkdir segment must not leave a grant-escaping directory behind.
+            await unlinkOwnedChildAnywhere(parentHandle.fd, owned, [segment], AT_REMOVEDIR);
           } catch {
             // Best-effort cleanup.
           }

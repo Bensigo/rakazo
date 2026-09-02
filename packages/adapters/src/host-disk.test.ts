@@ -671,6 +671,79 @@ describe("host disk exclusive claims", () => {
     await clientDone;
   });
 
+
+  it("honors client done published while timeout only saw claimed", async () => {
+    const dataDir = await tempDir();
+    const { BridgingHostDiskProvider, claimHostDiskOperation } = await import(
+      "./bridge-host-disk.js"
+    );
+
+    const provider = new BridgingHostDiskProvider({
+      dataDir,
+      timeoutMs: 40,
+      pollIntervalMs: 10,
+      completionGraceMs: 30,
+      completingHoldMs: 800,
+      completingMaxMs: 5_000,
+    });
+    await saveHostDiskSettings(dataDir, "user-1", {
+      enabled: true,
+      roots: [path.join(dataDir, "granted")],
+      clientSeenAt: new Date().toISOString(),
+    });
+    await mkdir(path.join(dataDir, "granted"), { recursive: true });
+
+    const listing = provider.listFiles("user-1", "", adapterContext());
+
+    let claimed: Awaited<ReturnType<typeof claimHostDiskOperation>> = null;
+    for (let attempt = 0; attempt < 50 && !claimed; attempt += 1) {
+      claimed = await claimHostDiskOperation(dataDir, "user-1");
+      if (!claimed) await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    expect(claimed?.status).toBe("claimed");
+    if (!claimed) throw new Error("expected claim");
+
+    // Keep exclusive .claimed.json through server timeout; publish .done later.
+    // Timeout must not steal the live claim and reject the late success.
+    const { rename, readFile, writeFile } = await import("node:fs/promises");
+    const claimedPath = path.join(
+      dataDir,
+      "host-disk",
+      "operations",
+      "user-1",
+      `${claimed.id}.claimed.json`,
+    );
+
+    const clientDone = (async () => {
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      const raw = JSON.parse(await readFile(claimedPath, "utf8")) as Record<string, unknown>;
+      const completingPath = path.join(
+        dataDir,
+        "host-disk",
+        "operations",
+        "user-1",
+        `${claimed.id}.completing.json`,
+      );
+      const donePath = path.join(
+        dataDir,
+        "host-disk",
+        "operations",
+        "user-1",
+        `${claimed.id}.done.json`,
+      );
+      await rename(claimedPath, completingPath);
+      await writeFile(
+        completingPath,
+        `${JSON.stringify({ ...raw, status: "done", entries: [] }, null, 2)}\n`,
+        "utf8",
+      );
+      await rename(completingPath, donePath);
+    })();
+
+    await expect(listing).resolves.toEqual([]);
+    await clientDone;
+  });
+
   it("honors client done published while timeout only saw completing", async () => {
     const dataDir = await tempDir();
     const { BridgingHostDiskProvider, claimHostDiskOperation } = await import(
@@ -863,6 +936,9 @@ describe("host disk posix *at pinning", () => {
       /assertFdStillInsideRoots\(parentHandle\.fd, realRoots\);\s*\n\s*try \{\s*\n\s*mkdiratChild/m,
     );
     expect(ipcSource).toMatch(/AT_REMOVEDIR/);
+    expect(ipcSource).toMatch(
+      /unlinkOwnedChildAnywhere\(parentHandle\.fd, owned, \[segment\], AT_REMOVEDIR\)/,
+    );
     // Darwin AT_REMOVEDIR is 0x80; Linux is 0x200 — a Linux-only constant
     // breaks macOS mkdir rollback and can leave grant-escaping directories.
     expect(ipcSource).toMatch(
