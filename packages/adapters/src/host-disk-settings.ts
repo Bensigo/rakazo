@@ -48,6 +48,44 @@ export async function saveHostDiskSettings(
   return normalized;
 }
 
+/** Per dataDir+userId chain so overlapping heartbeat/setEnabled/setRoots RMW cannot clobber. */
+const hostDiskSettingsUpdateChains = new Map<string, Promise<unknown>>();
+
+function hostDiskSettingsUpdateKey(dataDir: string, userId: string) {
+  return `${dataDir}\0${userId}`;
+}
+
+/**
+ * Load → mutate → save under a per-user serial queue. Concurrent handlers that
+ * each load/save would otherwise lose updates (e.g. heartbeat vs setRoots).
+ */
+export async function updateHostDiskSettings(
+  dataDir: string,
+  userId: string,
+  update: (current: HostDiskSettings) => HostDiskSettings | Promise<HostDiskSettings>,
+): Promise<HostDiskSettings> {
+  const key = hostDiskSettingsUpdateKey(dataDir, userId);
+  const previous = hostDiskSettingsUpdateChains.get(key) ?? Promise.resolve();
+  const run = previous.then(
+    async () => {
+      const current = await loadHostDiskSettings(dataDir, userId);
+      return saveHostDiskSettings(dataDir, userId, await update(current));
+    },
+    async () => {
+      const current = await loadHostDiskSettings(dataDir, userId);
+      return saveHostDiskSettings(dataDir, userId, await update(current));
+    },
+  );
+  hostDiskSettingsUpdateChains.set(
+    key,
+    run.then(
+      () => undefined,
+      () => undefined,
+    ),
+  );
+  return run;
+}
+
 export function normalizeHostDiskSettings(value: unknown): HostDiskSettings {
   if (!value || typeof value !== "object") return { ...DEFAULT_SETTINGS };
   const record = value as Record<string, unknown>;

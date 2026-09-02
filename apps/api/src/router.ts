@@ -61,8 +61,8 @@ import {
   resolveAutoReviewChecker,
   resolveBotWorkspacePath,
   sanitizeComposioError,
-  saveHostDiskSettings,
   savePushToken,
+  updateHostDiskSettings,
   scheduleComputerControlExpiry,
   scheduleComputerSleep,
   screenLeaseIdForRun,
@@ -3416,41 +3416,36 @@ export function createRouter(deps: RouterDeps) {
         hostDiskSettingsDto(deps.dataDir, context.actor.userId),
       ),
       setEnabled: authed.hostDisk.setEnabled.handler(async ({ context, input }) => {
-        const current = await loadHostDiskSettings(deps.dataDir, context.actor.userId);
-        const next = await saveHostDiskSettings(deps.dataDir, context.actor.userId, {
+        const next = await updateHostDiskSettings(deps.dataDir, context.actor.userId, (current) => ({
           ...current,
           enabled: input.enabled,
           // Turning off clears the client heartbeat so tools disappear immediately.
           clientSeenAt: input.enabled ? current.clientSeenAt : null,
           // Never keep roots when disabled.
           roots: input.enabled ? current.roots : [],
-        });
+        }));
         return hostDiskSettingsDtoFrom(next);
       }),
       setRoots: authed.hostDisk.setRoots.handler(async ({ context, input }) => {
-        const current = await loadHostDiskSettings(deps.dataDir, context.actor.userId);
-        if (!current.enabled) {
-          throw new ORPCError("BAD_REQUEST", {
-            message: "Turn on host disk access before granting folders.",
-          });
-        }
-        const roots = [
-          ...new Set(input.roots.map((root) => root.trim()).filter((root) => root.length > 0)),
-        ];
-        const next = await saveHostDiskSettings(deps.dataDir, context.actor.userId, {
-          ...current,
-          roots,
+        const next = await updateHostDiskSettings(deps.dataDir, context.actor.userId, (current) => {
+          if (!current.enabled) {
+            throw new ORPCError("BAD_REQUEST", {
+              message: "Turn on host disk access before granting folders.",
+            });
+          }
+          const roots = [
+            ...new Set(input.roots.map((root) => root.trim()).filter((root) => root.length > 0)),
+          ];
+          return { ...current, roots };
         });
         return hostDiskSettingsDtoFrom(next);
       }),
       heartbeat: authed.hostDisk.heartbeat.handler(async ({ context }) => {
-        const current = await loadHostDiskSettings(deps.dataDir, context.actor.userId);
-        if (!current.enabled || current.roots.length === 0) {
-          return hostDiskSettingsDtoFrom(current);
-        }
-        const next = await saveHostDiskSettings(deps.dataDir, context.actor.userId, {
-          ...current,
-          clientSeenAt: new Date().toISOString(),
+        const next = await updateHostDiskSettings(deps.dataDir, context.actor.userId, (current) => {
+          if (!current.enabled || current.roots.length === 0) {
+            return current;
+          }
+          return { ...current, clientSeenAt: new Date().toISOString() };
         });
         return hostDiskSettingsDtoFrom(next);
       }),

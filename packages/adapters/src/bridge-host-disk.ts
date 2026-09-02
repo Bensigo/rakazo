@@ -33,6 +33,11 @@ export type BridgingHostDiskOptions = {
   timeoutMs?: number;
   /** Extra wait after timeout for an in-flight completer to publish .done/.error. */
   completionGraceMs?: number;
+  /**
+   * Max wait after timeout while an exclusive `.completing.json` owner is still
+   * in flight. Fixed grace alone can expire before a slow host op publishes.
+   */
+  completingHoldMs?: number;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
 };
@@ -40,6 +45,8 @@ export type BridgingHostDiskOptions = {
 const DEFAULT_POLL_MS = 200;
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_COMPLETION_GRACE_MS = 2_000;
+/** Bound for waiting on exclusive `.completing.json` after the main timeout. */
+const DEFAULT_COMPLETING_HOLD_MS = 30_000;
 
 /**
  * Queues host-disk work for a connected Mac/phone client. The API exposes claim
@@ -178,10 +185,16 @@ export class BridgingHostDiskProvider implements HostDiskProvider {
       status: "error",
       error: "Timed out waiting for the Mac or phone app to handle host disk access",
     }).catch(() => undefined);
-    // Client may hold .completing.json and publish .done/.error just after our
-    // failed complete. Poll briefly so a successful winner is not reported as timeout.
+    // Client may hold .completing.json and publish .done/.error after our failed
+    // complete. Keep polling while exclusive completing is in flight (bounded),
+    // and allow a short grace for rename gaps once completing disappears.
     const graceMs = this.options.completionGraceMs ?? DEFAULT_COMPLETION_GRACE_MS;
-    const graceDeadline = (this.options.now?.() ?? Date.now()) + graceMs;
+    const completingHoldMs = this.options.completingHoldMs ?? DEFAULT_COMPLETING_HOLD_MS;
+    const graceStarted = this.options.now?.() ?? Date.now();
+    const graceDeadline = graceStarted + graceMs;
+    const completingDeadline = graceStarted + completingHoldMs;
+    let sawCompleting = false;
+    let postCompletingGraceDeadline: number | null = null;
     for (;;) {
       const final = await readOperationById(this.options.dataDir, userId, id);
       if (final && isTerminalOperationFile(final.file) && final.operation.status === "done") {
@@ -192,10 +205,19 @@ export class BridgingHostDiskProvider implements HostDiskProvider {
         throw new Error(final.operation.error ?? "Host disk operation failed");
       }
       const now = this.options.now?.() ?? Date.now();
-      if (now >= graceDeadline) break;
-      // Still claimed/pending/completing, or briefly missing between rename steps.
-      // Cap sleep to remaining grace so a large pollMs cannot overrun the deadline.
-      await sleep(Math.min(pollMs, Math.max(0, graceDeadline - now)));
+      const completingInFlight = final !== null && final.file.endsWith(".completing.json");
+      if (completingInFlight) {
+        sawCompleting = true;
+        postCompletingGraceDeadline = null;
+      } else if (sawCompleting && postCompletingGraceDeadline === null) {
+        // Completing gone — brief window for completing → terminal rename.
+        postCompletingGraceDeadline = now + graceMs;
+      }
+      const deadline = sawCompleting
+        ? Math.min(completingDeadline, postCompletingGraceDeadline ?? completingDeadline)
+        : graceDeadline;
+      if (now >= deadline) break;
+      await sleep(Math.min(pollMs, Math.max(0, deadline - now)));
     }
     throw new Error("Timed out waiting for the Mac or phone app to handle host disk access");
   }
