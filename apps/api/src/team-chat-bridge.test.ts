@@ -122,6 +122,7 @@ describe("team chat bridge", () => {
         ),
         updateMany: vi.fn(async () => ({ count: 0 })),
       },
+      run: { findMany: vi.fn(async () => []) },
       message: {
         findFirst: vi.fn(async () => ({
           blocks: [{ kind: "text", text: "The launch plan is ready." }],
@@ -250,6 +251,7 @@ describe("team chat bridge", () => {
         }),
         updateMany: vi.fn(async () => ({ count: 0 })),
       },
+      run: { findMany: vi.fn(async () => []) },
     } as unknown as PrismaClient;
     const bridge = new TeamChatBridge({
       prisma,
@@ -272,6 +274,93 @@ describe("team chat bridge", () => {
       }),
     );
     expect(record.threadMessageId).toBe("message-visible");
+  });
+
+  it("delivers a multi-agent result through Arthur to the originating Slack thread", async () => {
+    const provider = new FakeTeamChatProvider();
+    let mirrored = false;
+    const prisma = {
+      bot: {
+        findFirst: vi.fn(async () => ({
+          id: "bot-arthur",
+          spaceId: "space-1",
+          userId: "owner-1",
+          name: "Arthur",
+        })),
+      },
+      externalMessage: {
+        findMany: vi.fn(async () => []),
+        findUnique: vi.fn(async ({ where }: { where: { runId?: string } }) =>
+          where.runId === "run-external"
+            ? {
+                id: "external-1",
+                replyThreadId: "100.1",
+                externalConversation: { conversationId: "C-1" },
+              }
+            : null,
+        ),
+        updateMany: vi.fn(async () => ({ count: 0 })),
+      },
+      run: {
+        findMany: vi.fn(async () =>
+          mirrored
+            ? []
+            : [
+                {
+                  id: "run-arthur-result",
+                  status: "completed",
+                  sourceMessageId: "message-from-specialist",
+                },
+              ],
+        ),
+        findUnique: vi.fn(async ({ where }: { where: { id: string } }) =>
+          where.id === "run-arthur-delegates-again"
+            ? { sourceMessageId: "message-parent-source" }
+            : null,
+        ),
+        updateMany: vi.fn(async () => {
+          mirrored = true;
+          return { count: 1 };
+        }),
+      },
+      message: {
+        findUnique: vi.fn(async ({ where }: { where: { id: string } }) => {
+          if (where.id === "message-from-specialist") {
+            return { replyTo: { runId: "run-arthur-delegates-again" } };
+          }
+          if (where.id === "message-parent-source") {
+            return { replyTo: { runId: "run-external" } };
+          }
+          return null;
+        }),
+        findFirst: vi.fn(async () => ({
+          blocks: [{ kind: "text", text: "Research found that the launch should move." }],
+        })),
+      },
+    } as unknown as PrismaClient;
+    const bridge = new TeamChatBridge({
+      prisma,
+      events: { sendUserMessage: vi.fn() },
+      jobs: { enqueue: vi.fn() },
+      provider,
+      botId: "bot-arthur",
+      reconcileIntervalMs: 60_000,
+    });
+
+    await bridge.start();
+    await bridge.stop();
+
+    expect(provider.sent).toEqual([
+      {
+        conversationId: "C-1",
+        replyThreadId: "100.1",
+        content: "Research found that the launch should move.",
+      },
+    ]);
+    expect(prisma.run.updateMany).toHaveBeenCalledWith({
+      where: { id: "run-arthur-result", teamChatMirroredAt: null },
+      data: { teamChatMirroredAt: expect.any(Date) },
+    });
   });
 
   it("keeps ambient channel traffic silent when channel listening is disabled", async () => {
@@ -475,6 +564,7 @@ function ambientPrisma(
         },
       ),
     },
+    run: { findMany: vi.fn(async () => []) },
     message: { findFirst: vi.fn(async () => null) },
   };
 }

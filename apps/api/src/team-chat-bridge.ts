@@ -1,6 +1,7 @@
 import type { JobPublisher, TeamChatInboundMessage, TeamChatProvider } from "@rakazo/adapter-kit";
 import { runContinueJob } from "@rakazo/adapter-kit";
 import type { MessageBlock } from "@rakazo/contracts";
+import { BOT_MESSAGE_MAX_HOPS } from "@rakazo/core";
 import type { PrismaClient, ThreadEvents } from "@rakazo/db";
 import type { TeamChatEngagementJudge } from "./team-chat-judge.js";
 
@@ -287,6 +288,94 @@ export class TeamChatBridge {
         await this.deliverFailure(message).catch((error) => this.retry(message, error));
       }
     }
+    await this.deliverDelegatedReplies(target);
+  }
+
+  private async deliverDelegatedReplies(target: TargetBot): Promise<void> {
+    const runs = await this.deps.prisma.run.findMany({
+      where: {
+        botId: target.id,
+        trigger: "bot_message",
+        status: { in: ["completed", "failed"] },
+        teamChatMirroredAt: null,
+        thread: {
+          externalConversation: {
+            provider: this.deps.provider.id,
+            botId: target.id,
+          },
+        },
+      },
+      orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
+      take: BATCH_SIZE,
+      select: {
+        id: true,
+        status: true,
+        sourceMessageId: true,
+      },
+    });
+    for (const run of runs) {
+      const origin = await this.findExternalOrigin(run.sourceMessageId);
+      if (!origin) {
+        await this.markTeamChatMirrored(run.id);
+        continue;
+      }
+      const response =
+        run.status === "completed"
+          ? await this.deps.prisma.message.findFirst({
+              where: { runId: run.id, role: "bot" },
+              orderBy: { seq: "desc" },
+              select: { blocks: true },
+            })
+          : null;
+      const blocks = Array.isArray(response?.blocks) ? (response.blocks as MessageBlock[]) : [];
+      const content =
+        run.status === "failed"
+          ? `${target.name} could not complete the delegated request. Open Rakazo for details.`
+          : teamChatResponseText(blocks, target.name, true);
+      if (content) {
+        await this.deps.provider.send({
+          conversationId: origin.externalConversation.conversationId,
+          replyThreadId: origin.replyThreadId,
+          content,
+        });
+      }
+      await this.markTeamChatMirrored(run.id);
+    }
+  }
+
+  private async findExternalOrigin(sourceMessageId: string | null) {
+    let currentSourceMessageId: string | null = sourceMessageId;
+    const visitedRunIds = new Set<string>();
+    for (let depth = 0; currentSourceMessageId && depth <= BOT_MESSAGE_MAX_HOPS; depth += 1) {
+      const source = await this.deps.prisma.message.findUnique({
+        where: { id: currentSourceMessageId },
+        select: { replyTo: { select: { runId: true } } },
+      });
+      const parentRunId = source?.replyTo?.runId;
+      if (!parentRunId || visitedRunIds.has(parentRunId)) return null;
+      visitedRunIds.add(parentRunId);
+      const external = await this.deps.prisma.externalMessage.findUnique({
+        where: { runId: parentRunId },
+        select: {
+          replyThreadId: true,
+          externalConversation: { select: { conversationId: true } },
+        },
+      });
+      if (external) return external;
+      const parent = await this.deps.prisma.run.findUnique({
+        where: { id: parentRunId },
+        select: { sourceMessageId: true },
+      });
+      currentSourceMessageId = parent?.sourceMessageId ?? null;
+    }
+    return null;
+  }
+
+  private async markTeamChatMirrored(runId: string): Promise<void> {
+    await this.deps.prisma.run.updateMany({
+      where: { id: runId, teamChatMirroredAt: null },
+      data: { teamChatMirroredAt: new Date() },
+    });
   }
 
   private async evaluateAmbient(now: Date): Promise<void> {
