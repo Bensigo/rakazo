@@ -10,11 +10,11 @@ export type CreateBrowserProviderOptions = FakeBrowserProviderOptions & {
 /**
  * Resolve the deployment page-browser provider.
  *
- * Default is `computer`: attach to the bot computer when possible (fake
- * sandboxes use an in-process page session); otherwise return computer_act
- * fallback instead of mutating a detached DOM. Use BROWSER_PROVIDER=fake or
- * emulator only for offline tests. This slot is not Playwright/Puppeteer as a
- * product and needs no hosted browser vendor.
+ * Production default is always `computer` (live CDP on the bot computer via
+ * ComputerBrowserProvider). Fake and emulator are selected only when
+ * BROWSER_PROVIDER=fake or emulator for offline conformance. Real computers
+ * never report detached DOM success; they use the live page path or return
+ * computer_act fallback. This slot is not Playwright/Puppeteer as a product.
  */
 export function resolveBrowserProviderKind(source: NodeJS.ProcessEnv = process.env): string {
   const raw = source.BROWSER_PROVIDER?.trim().toLowerCase();
@@ -25,10 +25,11 @@ export function resolveBrowserProviderKind(source: NodeJS.ProcessEnv = process.e
 }
 
 export function createBrowserProvider(
-  kind: string = resolveBrowserProviderKind(),
+  kind?: string,
   options?: CreateBrowserProviderOptions,
 ): BrowserProvider {
-  switch (kind) {
+  const resolved = (kind ?? resolveBrowserProviderKind()).trim() || resolveBrowserProviderKind();
+  switch (resolved) {
     case "computer":
     case "sandbox":
     case "":
@@ -38,6 +39,6 @@ export function createBrowserProvider(
     case "emulator":
       return new EmulatorBrowserProvider(options);
     default:
-      throw new Error(`Unknown browser provider "${kind}"`);
+      throw new Error(`Unknown browser provider "${resolved}"`);
   }
 }

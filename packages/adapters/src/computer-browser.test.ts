@@ -1,6 +1,6 @@
 import type { AdapterContext, ComputerRef } from "@rakazo/adapter-kit";
-import { describe, expect, it, vi } from "vitest";
-import { createBrowserProvider } from "./browser-provider-factory.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createBrowserProvider, resolveBrowserProviderKind } from "./browser-provider-factory.js";
 import { ComputerBrowserProvider } from "./computer-browser.js";
 import { FakeBrowserProvider } from "./fake-browser.js";
 import { pageBrowserSessionKey } from "./page-browser-session.js";
@@ -22,12 +22,31 @@ const pages = {
   },
 };
 
-describe("computer browser provider", () => {
-  it("defaults createBrowserProvider to computer, not fake", () => {
-    const provider = createBrowserProvider();
-    expect(provider.describe().id).toBe("computer");
+describe("browser provider factory", () => {
+  const previous = process.env.BROWSER_PROVIDER;
+  afterEach(() => {
+    if (previous === undefined) delete process.env.BROWSER_PROVIDER;
+    else process.env.BROWSER_PROVIDER = previous;
   });
 
+  it("defaults production kind to computer, not fake", () => {
+    delete process.env.BROWSER_PROVIDER;
+    expect(resolveBrowserProviderKind({})).toBe("computer");
+    expect(resolveBrowserProviderKind({ BROWSER_PROVIDER: "" })).toBe("computer");
+    expect(createBrowserProvider().describe().id).toBe("computer");
+    // API/worker pass undefined kind with a sandbox; still computer.
+    expect(createBrowserProvider(undefined, {}).describe().id).toBe("computer");
+  });
+
+  it("selects fake or emulator only when BROWSER_PROVIDER asks for them", () => {
+    expect(resolveBrowserProviderKind({ BROWSER_PROVIDER: "fake" })).toBe("fake");
+    expect(createBrowserProvider("fake").describe().id).toBe("fake");
+    expect(resolveBrowserProviderKind({ BROWSER_PROVIDER: "emulator" })).toBe("emulator");
+    expect(createBrowserProvider("emulator").describe().id).toBe("emulator");
+  });
+});
+
+describe("computer browser provider", () => {
   it("falls back to computer_act when live Chrome is unavailable", async () => {
     const provider = new ComputerBrowserProvider({ pages });
     const computer: ComputerRef = {
@@ -135,19 +154,24 @@ describe("computer browser provider", () => {
 });
 
 describe("page browser session isolation", () => {
-  it("keeps the same page session across screen-lease fence renewals", () => {
-    const computer = {
+  it("keeps page state when the same bot reacquires after a lease fence renewal", async () => {
+    const browser = new FakeBrowserProvider({ pages });
+    const computer: ComputerRef = {
       id: "team-computer",
       botId: "team-home",
-      kind: "fake" as const,
+      kind: "fake",
       providerRef: "team-computer",
     };
-    const before = { ...baseContext, botId: "bot-a", screenLeaseId: "run-1:1" };
-    const after = { ...baseContext, botId: "bot-a", screenLeaseId: "run-1:8" };
-    expect(pageBrowserSessionKey(computer, before)).toBe(pageBrowserSessionKey(computer, after));
-    expect(pageBrowserSessionKey(computer, before)).not.toBe(
-      pageBrowserSessionKey(computer, { ...before, botId: "bot-b" }),
-    );
+    const first = { ...baseContext, botId: "bot-a", screenLeaseId: "run-1:1", runId: "run-1" };
+    const resumed = { ...baseContext, botId: "bot-a", screenLeaseId: "run-1:8", runId: "run-1" };
+
+    expect(pageBrowserSessionKey(computer, first)).toBe(pageBrowserSessionKey(computer, resumed));
+    expect(pageBrowserSessionKey(computer, first)).toBe("team-computer::bot-a");
+
+    await browser.navigate(computer, { url: "https://example.test/a" }, first);
+    const snap = await browser.snapshot(computer, {}, resumed);
+    expect(snap.url).toBe("https://example.test/a");
+    expect(snap.elements.find((el) => el.name.includes("Secret"))?.value).toBe("from-bot-a");
   });
 
   it("keeps Team bots on the same computer in separate sessions", async () => {
