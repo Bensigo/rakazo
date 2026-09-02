@@ -44,9 +44,7 @@ export function TeachComputerOverlayControl({
         setGoalOpen(true);
       }
     } catch (startError) {
-      setError(
-        startError instanceof Error ? startError.message : t`Could not start teaching`,
-      );
+      setError(startError instanceof Error ? startError.message : t`Could not start teaching`);
     } finally {
       setLocalBusy(false);
     }
