@@ -49,4 +49,29 @@ describe("appearance preference", () => {
     expect(dark.creamInk).not.toBe(dark.hairline);
     expect(light.creamInk).not.toBe(light.hairline);
   });
+
+  it("tolerates a throwing localStorage getter", () => {
+    const storageProbe = {
+      get storage() {
+        throw new Error("blocked");
+      },
+    };
+    // Simulate environments where accessing localStorage throws.
+    const desc = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      get() {
+        throw new Error("blocked");
+      },
+    });
+    try {
+      expect(resolveAppearancePreference()).toBe("system");
+      persistAppearancePreference("light");
+      expect(resolveAppearancePreference()).toBe("system");
+    } finally {
+      if (desc) Object.defineProperty(globalThis, "localStorage", desc);
+      else delete (globalThis as { localStorage?: Storage }).localStorage;
+    }
+    void storageProbe;
+  });
 });

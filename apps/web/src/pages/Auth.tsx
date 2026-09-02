@@ -88,7 +88,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
   }
 
   return (
-    <div className="flex min-h-full items-center justify-center bg-[var(--rk-cream)] px-6 py-16 text-[var(--rk-elevated)]">
+    <div className="flex min-h-full items-center justify-center bg-[var(--rk-page)] px-6 py-16 text-[var(--rk-ink)]">
       <form onSubmit={submit} className="flex w-[460px] flex-col items-center">
         <div className="flex h-[74px] w-[74px] items-center justify-center gap-[11px] rounded-full bg-[var(--rk-surface)]">
           <span className="h-5 w-[9px] rounded-full bg-[var(--rk-cream)]" />
@@ -97,13 +97,13 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
         <h1 className="mb-[38px] mt-[30px] text-[38px] tracking-[-0.02em]">{title}</h1>
         {sent ? (
           <div role="status" className="w-full text-center">
-            <p className="text-[17px] text-[var(--rk-elevated)]">
+            <p className="text-[17px] text-[var(--rk-ink)]">
               <Trans>Check your email</Trans>
             </p>
             <p className="mt-3 text-[15px] leading-relaxed text-[#6E6E68]">
               <Trans>If an account exists for that address, we sent a password reset link.</Trans>
             </p>
-            <Link to="/sign-in" className="mt-6 inline-block font-medium text-[var(--rk-elevated)]">
+            <Link to="/sign-in" className="mt-6 inline-block font-medium text-[var(--rk-ink)]">
               <Trans>Back to sign in</Trans>
             </Link>
           </div>
@@ -119,7 +119,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder={t`Your name`}
-                  className="mt-2 w-full rounded-[13px] border border-[#E4E4DE] bg-[#F1F1ED] px-[18px] py-[17px] text-[17px] text-[var(--rk-elevated)] outline-none"
+                  className="mt-2 w-full rounded-[13px] border border-[#E4E4DE] bg-[#F1F1ED] px-[18px] py-[17px] text-[17px] text-[#1A1A1A] outline-none"
                 />
               </label>
             ) : null}
@@ -134,7 +134,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
                 placeholder={t`Your email address`}
                 type="email"
                 required
-                className="mt-2 w-full rounded-[13px] border border-[#E4E4DE] bg-[#F1F1ED] px-[18px] py-[17px] text-[17px] text-[var(--rk-elevated)] outline-none"
+                className="mt-2 w-full rounded-[13px] border border-[#E4E4DE] bg-[#F1F1ED] px-[18px] py-[17px] text-[17px] text-[#1A1A1A] outline-none"
               />
             </label>
             {mode !== "forgot" ? (
@@ -153,14 +153,14 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
                     type={showPassword ? "text" : "password"}
                     required
                     minLength={8}
-                    className="w-full rounded-[13px] border border-[#E4E4DE] bg-[#F1F1ED] py-[17px] pl-[18px] pr-[52px] text-[17px] text-[var(--rk-elevated)] outline-none"
+                    className="w-full rounded-[13px] border border-[#E4E4DE] bg-[#F1F1ED] py-[17px] pl-[18px] pr-[52px] text-[17px] text-[#1A1A1A] outline-none"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((shown) => !shown)}
                     aria-label={showPassword ? t`Hide password` : t`Show password`}
                     aria-pressed={showPassword}
-                    className="absolute inset-y-0 right-0 flex items-center px-[18px] text-[#8C8C86] hover:text-[var(--rk-elevated)]"
+                    className="absolute inset-y-0 right-0 flex items-center px-[18px] text-[#8C8C86] hover:text-[var(--rk-ink)]"
                   >
                     {showPassword ? (
                       <svg
@@ -199,7 +199,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
                 </div>
                 {mode === "in" && reset?.passwordReset ? (
                   <div className="mt-2 text-right text-[14px]">
-                    <Link to="/forgot-password" className="font-medium text-[var(--rk-elevated)]">
+                    <Link to="/forgot-password" className="font-medium text-[var(--rk-ink)]">
                       <Trans>Forgot password?</Trans>
                     </Link>
                   </div>
@@ -230,19 +230,19 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
               {mode === "in" ? (
                 <>
                   <Trans>Don’t have an account?</Trans>{" "}
-                  <Link to="/sign-up" className="font-medium text-[var(--rk-elevated)]">
+                  <Link to="/sign-up" className="font-medium text-[var(--rk-ink)]">
                     <Trans>Sign up</Trans>
                   </Link>
                 </>
               ) : mode === "up" ? (
                 <>
                   <Trans>Already have an account?</Trans>{" "}
-                  <Link to="/sign-in" className="font-medium text-[var(--rk-elevated)]">
+                  <Link to="/sign-in" className="font-medium text-[var(--rk-ink)]">
                     <Trans>Sign in</Trans>
                   </Link>
                 </>
               ) : (
-                <Link to="/sign-in" className="font-medium text-[var(--rk-elevated)]">
+                <Link to="/sign-in" className="font-medium text-[var(--rk-ink)]">
                   <Trans>Back to sign in</Trans>
                 </Link>
               )}
@@ -290,7 +290,7 @@ export function PasswordResetPage() {
   }
 
   return (
-    <div className="flex min-h-full items-center justify-center bg-[var(--rk-cream)] px-6 py-16 text-[var(--rk-elevated)]">
+    <div className="flex min-h-full items-center justify-center bg-[var(--rk-page)] px-6 py-16 text-[var(--rk-ink)]">
       <form onSubmit={submit} className="flex w-[460px] flex-col items-center">
         <div className="flex h-[74px] w-[74px] items-center justify-center gap-[11px] rounded-full bg-[var(--rk-surface)]">
           <span className="h-5 w-[9px] rounded-full bg-[var(--rk-cream)]" />
@@ -370,7 +370,7 @@ function PasswordField({
         minLength={8}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-2 w-full rounded-[13px] border border-[#E4E4DE] bg-[#F1F1ED] px-[18px] py-[17px] text-[17px] text-[var(--rk-elevated)] outline-none"
+        className="mt-2 w-full rounded-[13px] border border-[#E4E4DE] bg-[#F1F1ED] px-[18px] py-[17px] text-[17px] text-[#1A1A1A] outline-none"
       />
     </label>
   );

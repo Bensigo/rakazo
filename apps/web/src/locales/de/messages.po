@@ -70,7 +70,7 @@ msgstr "{0} Läufe · {1} Tokens"
 #. placeholder {0}: active.name
 #: src/pages/Shell.tsx:3131
 msgid "{0}'s screen"
-msgstr ""
+msgstr "{0}s Bildschirm"
 
 #: src/pages/Shell.tsx:6319
 msgid "{botName}’s computer"
@@ -356,7 +356,7 @@ msgstr "API-Schlüssel-Header"
 #: src/pages/AccountSettingsOverlay.tsx:166
 #: src/pages/AccountSettingsOverlay.tsx:410
 msgid "Appearance"
-msgstr ""
+msgstr "Erscheinungsbild"
 
 #: src/pages/McpServersOverlay.tsx:372
 msgid "Applies when you click Add server. Use the agent chips on each server card to change access at any time — the agent picks it up on its next message."
@@ -1251,7 +1251,7 @@ msgstr ""
 
 #: src/pages/AccountSettingsOverlay.tsx:404
 msgid "Dark"
-msgstr ""
+msgstr "Dunkel"
 
 #: src/pages/RoutineSchedule.tsx:68
 msgid "day"
@@ -1733,7 +1733,7 @@ msgstr ""
 
 #: src/pages/AccountSettingsOverlay.tsx:403
 msgid "Light"
-msgstr ""
+msgstr "Hell"
 
 #: src/pages/RoutineEditor.tsx:47
 msgid "Linear issue"
@@ -2857,7 +2857,7 @@ msgstr "Wird gewechselt…"
 
 #: src/pages/AccountSettingsOverlay.tsx:402
 msgid "System"
-msgstr ""
+msgstr "System"
 
 #: src/components/teach/TeachComputerOverlay.tsx:259
 #: src/components/teach/TeachComputerOverlay.tsx:278

@@ -61,7 +61,7 @@ export function ArtifactFileCard(props: ArtifactFileCardProps) {
   return (
     <>
       <div>
-        <div className="flex min-w-[280px] overflow-hidden rounded-[20px] border border-[var(--rk-elevated)] bg-[var(--rk-elevated)] text-left text-[var(--rk-body)]">
+        <div className="flex min-w-[280px] overflow-hidden rounded-[20px] border border-[var(--rk-border)] bg-[var(--rk-elevated)] text-left text-[var(--rk-body)]">
           <button
             ref={previewButton}
             type="button"

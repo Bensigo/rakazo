@@ -267,7 +267,7 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Mobbin"
-              className="mb-4 w-full rounded-xl border border-[var(--rk-border)] bg-[var(--rk-sidebar)] px-3 py-2.5 text-sm text-white outline-none"
+              className="mb-4 w-full rounded-xl border border-[var(--rk-border)] bg-[var(--rk-sidebar)] px-3 py-2.5 text-sm text-[var(--rk-ink)] outline-none"
             />
             <div className="mb-4 grid grid-cols-3 gap-1 rounded-xl border border-[var(--rk-border)] bg-[var(--rk-sidebar)] p-1">
               {(
@@ -298,7 +298,7 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
                   value={command}
                   onChange={(e) => setCommand(e.target.value)}
                   placeholder="/opt/mcp-server"
-                  className="mb-4 w-full rounded-xl border border-[var(--rk-border)] bg-[var(--rk-sidebar)] px-3 py-2.5 text-sm text-white outline-none"
+                  className="mb-4 w-full rounded-xl border border-[var(--rk-border)] bg-[var(--rk-sidebar)] px-3 py-2.5 text-sm text-[var(--rk-ink)] outline-none"
                 />
                 <label className="mb-1.5 block text-xs text-[var(--rk-soft)]" htmlFor="mcp-args">
                   <Trans>Arguments</Trans>
@@ -308,7 +308,7 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
                   value={args}
                   onChange={(e) => setArgs(e.target.value)}
                   placeholder="--stdio"
-                  className="mb-4 w-full rounded-xl border border-[var(--rk-border)] bg-[var(--rk-sidebar)] px-3 py-2.5 text-sm text-white outline-none"
+                  className="mb-4 w-full rounded-xl border border-[var(--rk-border)] bg-[var(--rk-sidebar)] px-3 py-2.5 text-sm text-[var(--rk-ink)] outline-none"
                 />
               </>
             ) : (
@@ -324,7 +324,7 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
                   value={endpoint}
                   onChange={(e) => setEndpoint(e.target.value)}
                   placeholder="https://api.mobbin.com/mcp"
-                  className="mb-4 w-full rounded-xl border border-[var(--rk-border)] bg-[var(--rk-sidebar)] px-3 py-2.5 text-sm text-white outline-none"
+                  className="mb-4 w-full rounded-xl border border-[var(--rk-border)] bg-[var(--rk-sidebar)] px-3 py-2.5 text-sm text-[var(--rk-ink)] outline-none"
                 />
               </>
             )}
@@ -337,7 +337,7 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
               value={secret}
               onChange={(e) => setSecret(e.target.value)}
               placeholder={t`Stored encrypted`}
-              className="mb-3 w-full rounded-xl border border-[var(--rk-border)] bg-[var(--rk-sidebar)] px-3 py-2.5 text-sm text-white outline-none"
+              className="mb-3 w-full rounded-xl border border-[var(--rk-border)] bg-[var(--rk-sidebar)] px-3 py-2.5 text-sm text-[var(--rk-ink)] outline-none"
             />
             {transport !== "stdio" ? (
               <div className="grid grid-cols-[.7fr_1fr] gap-2">
@@ -345,7 +345,7 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
                   aria-label={t`Header name`}
                   value={headerName}
                   onChange={(e) => setHeaderName(e.target.value)}
-                  className="rounded-xl border border-[var(--rk-border)] bg-[var(--rk-sidebar)] px-3 py-2.5 text-xs text-white outline-none"
+                  className="rounded-xl border border-[var(--rk-border)] bg-[var(--rk-sidebar)] px-3 py-2.5 text-xs text-[var(--rk-ink)] outline-none"
                 />
                 <input
                   aria-label={t`Header value`}
@@ -353,7 +353,7 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
                   value={headerValue}
                   onChange={(e) => setHeaderValue(e.target.value)}
                   placeholder={t`Optional header value`}
-                  className="rounded-xl border border-[var(--rk-border)] bg-[var(--rk-sidebar)] px-3 py-2.5 text-xs text-white outline-none"
+                  className="rounded-xl border border-[var(--rk-border)] bg-[var(--rk-sidebar)] px-3 py-2.5 text-xs text-[var(--rk-ink)] outline-none"
                 />
               </div>
             ) : null}

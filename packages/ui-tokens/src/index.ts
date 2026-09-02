@@ -132,23 +132,27 @@ export type ResolveAppearancePreferenceOptions = {
   storage?: Pick<Storage, "getItem"> | null;
 };
 
+function getLocalStorage(): Pick<Storage, "getItem" | "setItem"> | null {
+  try {
+    return typeof localStorage !== "undefined" ? localStorage : null;
+  } catch {
+    return null;
+  }
+}
+
 export function resolveAppearancePreference(
   options: ResolveAppearancePreferenceOptions = {},
 ): AppearancePreference {
   const stored =
     options.stored !== undefined
       ? options.stored
-      : readStoredAppearance(
-          options.storage ?? (typeof localStorage !== "undefined" ? localStorage : null),
-        );
+      : readStoredAppearance(options.storage ?? getLocalStorage());
   return normalizeAppearancePreference(stored);
 }
 
 export function persistAppearancePreference(
   preference: AppearancePreference,
-  storage: Pick<Storage, "setItem"> | null = typeof localStorage !== "undefined"
-    ? localStorage
-    : null,
+  storage: Pick<Storage, "setItem"> | null = getLocalStorage(),
 ): void {
   if (!storage) return;
   try {

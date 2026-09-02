@@ -356,7 +356,7 @@ msgstr "API 키 헤더"
 #: src/pages/AccountSettingsOverlay.tsx:166
 #: src/pages/AccountSettingsOverlay.tsx:410
 msgid "Appearance"
-msgstr ""
+msgstr "모양"
 
 #: src/pages/McpServersOverlay.tsx:372
 msgid "Applies when you click Add server. Use the agent chips on each server card to change access at any time — the agent picks it up on its next message."
@@ -1251,7 +1251,7 @@ msgstr ""
 
 #: src/pages/AccountSettingsOverlay.tsx:404
 msgid "Dark"
-msgstr ""
+msgstr "다크"
 
 #: src/pages/RoutineSchedule.tsx:68
 msgid "day"
@@ -1733,7 +1733,7 @@ msgstr ""
 
 #: src/pages/AccountSettingsOverlay.tsx:403
 msgid "Light"
-msgstr ""
+msgstr "라이트"
 
 #: src/pages/RoutineEditor.tsx:47
 msgid "Linear issue"
@@ -2857,7 +2857,7 @@ msgstr "전환 중…"
 
 #: src/pages/AccountSettingsOverlay.tsx:402
 msgid "System"
-msgstr ""
+msgstr "시스템"
 
 #: src/components/teach/TeachComputerOverlay.tsx:259
 #: src/components/teach/TeachComputerOverlay.tsx:278
