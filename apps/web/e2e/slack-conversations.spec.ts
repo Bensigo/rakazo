@@ -139,6 +139,7 @@ test("opens a Slack conversation beneath its assigned agent as a read-only trans
   await expect(speakerMessages).toHaveCount(2);
   await expect(speakerMessages.nth(0)).toHaveText("@Pat: Can Chief confirm the launch date?");
   await expect(speakerMessages.nth(1)).toHaveText("@Slack Owner: It is still Friday.");
+  await expect(speakerMessages.nth(0)).toHaveCSS("color", "rgb(46, 46, 50)");
   await captureScreenshot(page, testInfo, "slack-conversation-transcript");
 
   await page.setViewportSize({ width: 390, height: 844 });

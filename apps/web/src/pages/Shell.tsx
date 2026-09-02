@@ -5338,10 +5338,10 @@ function ExternalSpeakerMessage({ message }: { message: ThreadMessage }) {
     <div
       data-testid="external-speaker-message"
       data-speaker-name={message.speakerName}
-      className="max-w-[90%] whitespace-pre-wrap break-words px-1 pr-10 text-[15px] leading-6 text-[#DFDFE2]"
+      className="max-w-[90%] whitespace-pre-wrap break-words px-1 pr-10 text-[15px] leading-6 text-[var(--rk-body)]"
       dir="auto"
     >
-      <span className="font-medium text-[#A8A8AD]">@{message.speakerName}: </span>
+      <span className="font-medium text-[var(--rk-soft)]">@{message.speakerName}: </span>
       {text}
     </div>
   );
