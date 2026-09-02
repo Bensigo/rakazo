@@ -31,12 +31,18 @@ export function TeachComputerOverlayControl({
    */
   const [needsRefresh, setNeedsRefresh] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
+  /** True while the mount probe runs so Start cannot race ahead of skills.list. */
+  const [syncingRecording, setSyncingRecording] = useState(true);
   const busy = Boolean(busyProp) || localBusy;
+  const startLocked = needsRefresh || syncingRecording;
 
   // Re-seed the lock from server state on mount. Local needsRefresh is lost when
   // the computer closes; an active recording must still block Start recording.
+  // Lock immediately while the probe runs so a remount cannot start twice.
   useEffect(() => {
     let cancelled = false;
+    setSyncingRecording(true);
+    setGoalOpen(false);
     async function syncRecordingLock() {
       try {
         const skills = await rpc.skills.list({ botId });
@@ -45,7 +51,6 @@ export function TeachComputerOverlayControl({
         if (!recording) return;
         setNeedsRefresh(true);
         setRecoveryOpen(true);
-        setGoalOpen(false);
         try {
           await onRefresh();
           // Keep the lock until Shell swaps to Stop teaching via recordingSkill.
@@ -58,7 +63,9 @@ export function TeachComputerOverlayControl({
           );
         }
       } catch {
-        // Probe failure must not unlock Start recording; leave local state alone.
+        // Probe failure must not unlock an existing needsRefresh lock.
+      } finally {
+        if (!cancelled) setSyncingRecording(false);
       }
     }
     void syncRecordingLock();
@@ -92,7 +99,7 @@ export function TeachComputerOverlayControl({
   }
 
   async function startTeaching() {
-    if (!goal.trim() || busy || needsRefresh) return;
+    if (!goal.trim() || busy || startLocked) return;
     setLocalBusy(true);
     setError(null);
     try {
@@ -156,11 +163,11 @@ export function TeachComputerOverlayControl({
           <div className="mt-3 flex gap-2">
             <button
               type="button"
-              disabled={busy || !goal.trim()}
+              disabled={busy || startLocked || !goal.trim()}
               onClick={() => void startTeaching()}
               className="rounded-[11px] bg-[#F1F1EF] px-4 py-2 text-[14px] text-[#17171A] disabled:opacity-40"
             >
-              {busy ? <Trans>Starting…</Trans> : <Trans>Start recording</Trans>}
+              {busy || syncingRecording ? <Trans>Starting…</Trans> : <Trans>Start recording</Trans>}
             </button>
             <button
               type="button"
@@ -213,8 +220,9 @@ export function TeachComputerOverlayControl({
         data-testid="teach-start-button"
         aria-label={t`Teach a task`}
         aria-expanded={goalOpen || (needsRefresh && recoveryOpen)}
-        disabled={busy}
+        disabled={busy || syncingRecording}
         onClick={() => {
+          if (syncingRecording) return;
           if (needsRefresh) {
             // Keep Start recording locked; only reopen refresh recovery.
             setRecoveryOpen((open) => !open);
