@@ -8,7 +8,6 @@ import {
   realpath,
   rename,
   rm,
-  stat,
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
@@ -115,22 +114,30 @@ async function resolveInsideGrants(target: string) {
   }
 }
 
-/** Open + re-validate so a directory→symlink swap cannot escape after resolve. */
+async function realpathOfFd(fd: number): Promise<string> {
+  for (const candidate of [`/proc/self/fd/${fd}`, `/dev/fd/${fd}`]) {
+    try {
+      return await realpath(candidate);
+    } catch {
+      // Try the next platform path.
+    }
+  }
+  throw new Error("Host path is outside the granted folders");
+}
+
+function fdDirPath(fd: number) {
+  return process.platform === "linux" ? `/proc/self/fd/${fd}` : `/dev/fd/${fd}`;
+}
+
+/** Open + re-validate via fd realpath so a directory→symlink swap cannot escape. */
 async function openInsideGrants(target: string, flags: number) {
   const realRoots = await realGrantedRoots();
   const resolved = await resolveInsideGrants(target);
   const handle = await open(resolved, flags | NOFOLLOW);
   try {
-    const opened = await handle.stat();
-    const again = await realpath(resolved);
-    if (!isLexicallyInside(again, realRoots)) {
-      throw new Error("Host path is outside the granted folders");
-    }
-    const againStat = await lstat(again);
-    if (againStat.isSymbolicLink()) {
-      throw new Error("Host path is outside the granted folders");
-    }
-    if (opened.dev !== againStat.dev || opened.ino !== againStat.ino) {
+    await handle.stat();
+    const fdReal = await realpathOfFd(handle.fd);
+    if (!isLexicallyInside(fdReal, realRoots)) {
       throw new Error("Host path is outside the granted folders");
     }
     return handle;
@@ -188,25 +195,41 @@ export function registerHostDiskIpc() {
         size: 0,
       }));
     }
-    const resolved = await resolveInsideGrants(trimmed);
-    const entries = await readdir(resolved, { withFileTypes: true });
-    const listed: Array<{ path: string; kind: "file" | "dir"; size: number }> = [];
-    for (const entry of entries) {
-      if (entry.isSymbolicLink()) continue;
-      const full = path.join(resolved, entry.name);
-      try {
-        await resolveInsideGrants(full);
-      } catch {
-        continue;
+    const realRoots = await realGrantedRoots();
+    const dirFlags = constants.O_RDONLY | (constants.O_DIRECTORY ?? 0);
+    const handle = await openInsideGrants(trimmed, dirFlags);
+    try {
+      const opened = await handle.stat();
+      if (!opened.isDirectory()) throw new Error("Host path is outside the granted folders");
+      const fdReal = await realpathOfFd(handle.fd);
+      if (!isLexicallyInside(fdReal, realRoots)) {
+        throw new Error("Host path is outside the granted folders");
       }
-      if (entry.isDirectory()) {
-        listed.push({ path: full, kind: "dir", size: 0 });
-      } else if (entry.isFile()) {
-        const info = await stat(full);
-        listed.push({ path: full, kind: "file", size: info.size });
+      const names = await readdir(fdDirPath(handle.fd));
+      const listed: Array<{ path: string; kind: "file" | "dir"; size: number }> = [];
+      for (const name of names) {
+        if (name === "." || name === "..") continue;
+        const full = path.join(fdReal, name);
+        try {
+          const entryHandle = await openInsideGrants(full, constants.O_RDONLY);
+          try {
+            const info = await entryHandle.stat();
+            if (info.isDirectory()) {
+              listed.push({ path: full, kind: "dir", size: 0 });
+            } else if (info.isFile()) {
+              listed.push({ path: full, kind: "file", size: info.size });
+            }
+          } finally {
+            await entryHandle.close();
+          }
+        } catch {
+          // Skip escaping, vanished, or symlink entries.
+        }
       }
+      return listed.sort((left, right) => left.path.localeCompare(right.path));
+    } finally {
+      await handle.close();
     }
-    return listed.sort((left, right) => left.path.localeCompare(right.path));
   });
 
   ipcMain.handle(
@@ -251,15 +274,20 @@ export function registerHostDiskIpc() {
         const destination = await resolveInsideGrants(target);
         await rename(tempPath, destination);
         const realRoots = await realGrantedRoots();
-        const finalReal = await realpath(destination);
-        if (!isLexicallyInside(finalReal, realRoots)) {
-          await rm(destination, { force: true }).catch(() => undefined);
-          throw new Error("Host path is outside the granted folders");
-        }
-        const finalStat = await lstat(destination);
-        if (finalStat.isSymbolicLink()) {
-          await rm(destination, { force: true }).catch(() => undefined);
-          throw new Error("Host path is outside the granted folders");
+        const finalHandle = await open(destination, constants.O_RDONLY | NOFOLLOW);
+        try {
+          const fdReal = await realpathOfFd(finalHandle.fd);
+          if (!isLexicallyInside(fdReal, realRoots)) {
+            await rm(destination, { force: true }).catch(() => undefined);
+            throw new Error("Host path is outside the granted folders");
+          }
+          const finalStat = await lstat(destination);
+          if (finalStat.isSymbolicLink()) {
+            await rm(destination, { force: true }).catch(() => undefined);
+            throw new Error("Host path is outside the granted folders");
+          }
+        } finally {
+          await finalHandle.close().catch(() => undefined);
         }
       } catch (error) {
         await rm(tempPath, { force: true }).catch(() => undefined);

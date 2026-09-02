@@ -1,8 +1,15 @@
+import { constants } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { builtinAgentTools } from "./builtin-tools.js";
+import {
+  listInsideHostRoots,
+  openInsideHostRoots,
+  readFileInsideHostRoots,
+  writeFileInsideHostRoots,
+} from "./host-disk-path.js";
 import {
   hostDiskAccessAllowed,
   loadHostDiskSettings,
@@ -243,6 +250,58 @@ describe("host disk symlink containment", () => {
         adapterContext(),
       ),
     ).rejects.toThrow(/outside the granted folders/i);
+  });
+
+  it("pins the opened inode so a check-then-use directory swap cannot escape", async () => {
+    // After resolveInsideHostRoots, open uses O_NOFOLLOW and re-checks
+    // realpath(/proc/self/fd/N). Swapping a nested dir to an outside symlink
+    // between resolve and open must not yield an outside fd.
+    const dataDir = await tempDir();
+    const grant = path.join(dataDir, "granted");
+    const outside = path.join(dataDir, "outside");
+    const nested = path.join(grant, "nested");
+    await mkdir(nested, { recursive: true });
+    await mkdir(outside, { recursive: true });
+    await writeFile(path.join(nested, "file.txt"), "inside\n", "utf8");
+    await writeFile(path.join(outside, "file.txt"), "outside-secret\n", "utf8");
+
+    const target = path.join(nested, "file.txt");
+    const swapNestedToOutside = async () => {
+      await rm(nested, { recursive: true, force: true });
+      await symlink(outside, nested);
+    };
+
+    await expect(
+      readFileInsideHostRoots(target, [grant], { afterResolve: swapNestedToOutside }),
+    ).rejects.toThrow(/outside the granted folders|ENOENT|ELOOP|EPERM|EACCES|ENOTDIR/i);
+
+    // Recreate the inside tree for list/write races.
+    await rm(nested, { recursive: true, force: true });
+    await mkdir(nested, { recursive: true });
+    await writeFile(path.join(nested, "file.txt"), "inside\n", "utf8");
+
+    await expect(
+      listInsideHostRoots(nested, [grant], { afterResolve: swapNestedToOutside }),
+    ).rejects.toThrow(/outside the granted folders|ENOENT|ELOOP|EPERM|EACCES|ENOTDIR/i);
+
+    await rm(nested, { recursive: true, force: true });
+    await mkdir(nested, { recursive: true });
+
+    await expect(
+      writeFileInsideHostRoots(path.join(nested, "planted.txt"), [grant], "x", {
+        afterResolve: swapNestedToOutside,
+      }),
+    ).rejects.toThrow(/outside the granted folders|ENOENT|ELOOP|EPERM|EACCES|ENOTDIR/i);
+
+    await rm(nested, { recursive: true, force: true });
+    await mkdir(nested, { recursive: true });
+    await writeFile(path.join(nested, "file.txt"), "inside\n", "utf8");
+
+    await expect(
+      openInsideHostRoots(target, [grant], constants.O_RDONLY, {
+        afterResolve: swapNestedToOutside,
+      }),
+    ).rejects.toThrow(/outside the granted folders|ENOENT|ELOOP|EPERM|EACCES|ENOTDIR/i);
   });
 });
 

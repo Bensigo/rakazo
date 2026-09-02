@@ -1,4 +1,3 @@
-import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import type {
   AdapterContext,
@@ -7,9 +6,8 @@ import type {
   PortableFile,
 } from "@rakazo/adapter-kit";
 import {
-  hostEntryEscapesRoots,
+  listInsideHostRoots,
   readFileInsideHostRoots,
-  resolveInsideHostRoots,
   writeFileInsideHostRoots,
 } from "./host-disk-path.js";
 import {
@@ -65,23 +63,7 @@ export class LocalHostDiskProvider implements HostDiskProvider {
         size: 0,
       }));
     }
-    const target = await resolveInsideHostRoots(trimmed, roots);
-    const entries = await readdir(target, { withFileTypes: true });
-    const listed: ComputerFileEntry[] = [];
-    for (const entry of entries) {
-      const full = path.join(target, entry.name);
-      if (await hostEntryEscapesRoots(full, roots)) continue;
-      if (entry.isSymbolicLink()) continue;
-      if (entry.isDirectory()) {
-        listed.push({ path: full, kind: "dir", size: 0 });
-        continue;
-      }
-      if (entry.isFile()) {
-        const info = await stat(full);
-        listed.push({ path: full, kind: "file", size: info.size });
-      }
-    }
-    return listed.sort((left, right) => left.path.localeCompare(right.path));
+    return listInsideHostRoots(trimmed, roots);
   }
 
   async readFile(

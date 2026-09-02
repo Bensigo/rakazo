@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { lstat, mkdir, open, realpath, rename, rm } from "node:fs/promises";
+import { lstat, mkdir, open, readdir, realpath, rename, rm } from "node:fs/promises";
 import path from "node:path";
 
 type PathOperations = Pick<typeof path, "isAbsolute" | "relative" | "resolve" | "sep">;
@@ -108,25 +108,48 @@ export async function hostEntryEscapesRoots(entryPath: string, roots: string[]) 
   }
 }
 
+/** Real path of an open fd (Linux /proc, macOS /dev/fd). */
+export async function realpathOfFd(fd: number): Promise<string> {
+  for (const candidate of [`/proc/self/fd/${fd}`, `/dev/fd/${fd}`]) {
+    try {
+      return await realpath(candidate);
+    } catch {
+      // Try the next platform path.
+    }
+  }
+  throw new Error("Host path is outside the granted folders");
+}
+
+function fdDirPath(fd: number) {
+  // Prefer Linux; fall back for macOS Electron. Same inode as the open dir fd.
+  return process.platform === "linux" ? `/proc/self/fd/${fd}` : `/dev/fd/${fd}`;
+}
+
+export type OpenInsideHostRootsOptions = {
+  /** Test-only: run after resolve and before open (path-swap race). */
+  afterResolve?: () => Promise<void>;
+};
+
 /**
  * Open a path only if it stays inside granted roots, pinning the fd against
- * symlink path swaps between resolve and open (re-validate after open).
+ * symlink path swaps between resolve and open (re-validate via fd realpath).
  */
-export async function openInsideHostRoots(target: string, roots: string[], flags: number) {
+export async function openInsideHostRoots(
+  target: string,
+  roots: string[],
+  flags: number,
+  options?: OpenInsideHostRootsOptions,
+) {
   const realRoots = await realRootsOf(roots);
   const resolved = await resolveInsideHostRoots(target, roots);
+  if (options?.afterResolve) await options.afterResolve();
+  // Open the validated realpath with O_NOFOLLOW so the final component cannot
+  // be a symlink. Intermediate swaps are caught by the fd realpath check.
   const handle = await open(resolved, flags | NOFOLLOW);
   try {
-    const opened = await handle.stat();
-    const again = await realpath(resolved);
-    if (!isLexicallyInsideRoots(again, realRoots)) {
-      throw new Error("Host path is outside the granted folders");
-    }
-    const againStat = await lstat(again);
-    if (againStat.isSymbolicLink()) {
-      throw new Error("Host path is outside the granted folders");
-    }
-    if (opened.dev !== againStat.dev || opened.ino !== againStat.ino) {
+    await handle.stat();
+    const fdReal = await realpathOfFd(handle.fd);
+    if (!isLexicallyInsideRoots(fdReal, realRoots)) {
       throw new Error("Host path is outside the granted folders");
     }
     return handle;
@@ -139,9 +162,11 @@ export async function openInsideHostRoots(target: string, roots: string[], flags
 export async function readFileInsideHostRoots(
   target: string,
   roots: string[],
-  options?: { maxBytes?: number },
+  options?: { maxBytes?: number; afterResolve?: () => Promise<void> },
 ) {
-  const handle = await openInsideHostRoots(target, roots, constants.O_RDONLY);
+  const handle = await openInsideHostRoots(target, roots, constants.O_RDONLY, {
+    afterResolve: options?.afterResolve,
+  });
   try {
     const info = await handle.stat();
     if (!info.isFile()) throw new Error("Host path is not a file");
@@ -154,12 +179,62 @@ export async function readFileInsideHostRoots(
   }
 }
 
+/**
+ * List a directory inside granted roots. The directory is opened with
+ * O_NOFOLLOW and re-validated via fd realpath; entries are listed through
+ * the pinned fd (not the original path string) and each entry is opened
+ * the same way so a swapped symlink cannot be followed for type/size.
+ */
+export async function listInsideHostRoots(
+  target: string,
+  roots: string[],
+  options?: OpenInsideHostRootsOptions,
+) {
+  const realRoots = await realRootsOf(roots);
+  const dirFlags = constants.O_RDONLY | (constants.O_DIRECTORY ?? 0);
+  const handle = await openInsideHostRoots(target, roots, dirFlags, options);
+  try {
+    const opened = await handle.stat();
+    if (!opened.isDirectory()) throw new Error("Host path is outside the granted folders");
+    const fdReal = await realpathOfFd(handle.fd);
+    if (!isLexicallyInsideRoots(fdReal, realRoots)) {
+      throw new Error("Host path is outside the granted folders");
+    }
+    const names = await readdir(fdDirPath(handle.fd));
+    const listed: Array<{ path: string; kind: "file" | "dir"; size: number }> = [];
+    for (const name of names) {
+      if (name === "." || name === "..") continue;
+      const full = path.join(fdReal, name);
+      try {
+        const entryHandle = await openInsideHostRoots(full, roots, constants.O_RDONLY | NOFOLLOW);
+        try {
+          const info = await entryHandle.stat();
+          if (info.isDirectory()) {
+            listed.push({ path: full, kind: "dir", size: 0 });
+          } else if (info.isFile()) {
+            listed.push({ path: full, kind: "file", size: info.size });
+          }
+        } finally {
+          await entryHandle.close();
+        }
+      } catch {
+        // Skip entries that escape, vanish, or are symlinks (O_NOFOLLOW).
+      }
+    }
+    return listed.sort((left, right) => left.path.localeCompare(right.path));
+  } finally {
+    await handle.close();
+  }
+}
+
 export async function writeFileInsideHostRoots(
   target: string,
   roots: string[],
   content: Uint8Array | Buffer | string,
+  options?: OpenInsideHostRootsOptions,
 ) {
   const resolved = await resolveInsideHostRoots(target, roots);
+  if (options?.afterResolve) await options.afterResolve();
   await mkdir(path.dirname(resolved), { recursive: true });
   // Write via a temp file inside the same parent, then rename into place after
   // re-validating the destination so a swapped symlink cannot retain the write.
@@ -182,17 +257,22 @@ export async function writeFileInsideHostRoots(
     }
     const destination = await resolveInsideHostRoots(resolved, roots);
     await rename(tempPath, destination);
-    // Final pin: destination must still resolve inside roots and not be a symlink.
+    // Final pin: destination inode (via path open) must still resolve inside roots.
     const realRoots = await realRootsOf(roots);
-    const finalReal = await realpath(destination);
-    if (!isLexicallyInsideRoots(finalReal, realRoots)) {
-      await rm(destination, { force: true }).catch(() => undefined);
-      throw new Error("Host path is outside the granted folders");
-    }
-    const finalStat = await lstat(destination);
-    if (finalStat.isSymbolicLink()) {
-      await rm(destination, { force: true }).catch(() => undefined);
-      throw new Error("Host path is outside the granted folders");
+    const finalHandle = await open(destination, constants.O_RDONLY | NOFOLLOW);
+    try {
+      const fdReal = await realpathOfFd(finalHandle.fd);
+      if (!isLexicallyInsideRoots(fdReal, realRoots)) {
+        await rm(destination, { force: true }).catch(() => undefined);
+        throw new Error("Host path is outside the granted folders");
+      }
+      const finalStat = await lstat(destination);
+      if (finalStat.isSymbolicLink()) {
+        await rm(destination, { force: true }).catch(() => undefined);
+        throw new Error("Host path is outside the granted folders");
+      }
+    } finally {
+      await finalHandle.close().catch(() => undefined);
     }
   } catch (error) {
     await rm(tempPath, { force: true }).catch(() => undefined);
