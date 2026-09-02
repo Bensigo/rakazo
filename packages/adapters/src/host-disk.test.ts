@@ -876,14 +876,18 @@ describe("host disk posix *at pinning", () => {
     await mkdir(dir, { recursive: true });
     const shortName = "a";
     const longName = `${"n".repeat(200)}.txt`;
+    // NAME_MAX (255) — Linux d_reclen pads to 280; must not reject as out of range.
+    const maxName = `${"m".repeat(251)}.txt`;
+    expect(maxName.length).toBe(255);
     await writeFile(path.join(dir, shortName), "s\n", "utf8");
     await writeFile(path.join(dir, longName), "l\n", "utf8");
+    await writeFile(path.join(dir, maxName), "m\n", "utf8");
 
     const { open } = await import("node:fs/promises");
     const handle = await open(dir, constants.O_RDONLY | (constants.O_DIRECTORY ?? 0));
     try {
       const names = readdirNamesAt(handle.fd);
-      expect(names).toEqual(expect.arrayContaining([shortName, longName]));
+      expect(names).toEqual(expect.arrayContaining([shortName, longName, maxName]));
     } finally {
       await handle.close();
     }

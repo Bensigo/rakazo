@@ -217,11 +217,15 @@ function direntNameOffset() {
 function readDirentName(api: PosixAtApi, ent: unknown): string {
   const nameOffset = direntNameOffset();
   const maxName = process.platform === "darwin" ? 1024 : 256;
+  // d_reclen includes trailing alignment padding (8-byte on Linux, 4-byte on Darwin).
+  // A 255-byte Linux name is 19+255+1=275 before pad → d_reclen 280.
+  const align = process.platform === "darwin" ? 4 : 8;
+  const maxReclen = Math.ceil((nameOffset + maxName) / align) * align;
   // d_reclen is a uint16 at offset 16 on both Linux glibc and Darwin dirent layouts.
   const header = Buffer.alloc(18);
   api.memcpy(header, ent, header.length);
   const reclen = header.readUInt16LE(16);
-  if (reclen < nameOffset + 1 || reclen > nameOffset + maxName) {
+  if (reclen < nameOffset + 1 || reclen > maxReclen) {
     fail("EINVAL", "dirent d_reclen out of range");
   }
   const buf = Buffer.alloc(reclen);

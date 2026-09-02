@@ -62,7 +62,6 @@ import {
   resolveBotWorkspacePath,
   sanitizeComposioError,
   savePushToken,
-  updateHostDiskSettings,
   scheduleComputerControlExpiry,
   scheduleComputerSleep,
   screenLeaseIdForRun,
@@ -72,6 +71,7 @@ import {
   toComputerRef,
   toStringRecord,
   touchRunningComputer,
+  updateHostDiskSettings,
   verifyMcpInstall,
 } from "@rakazo/adapters";
 import type { Auth } from "@rakazo/auth";
@@ -3416,14 +3416,18 @@ export function createRouter(deps: RouterDeps) {
         hostDiskSettingsDto(deps.dataDir, context.actor.userId),
       ),
       setEnabled: authed.hostDisk.setEnabled.handler(async ({ context, input }) => {
-        const next = await updateHostDiskSettings(deps.dataDir, context.actor.userId, (current) => ({
-          ...current,
-          enabled: input.enabled,
-          // Turning off clears the client heartbeat so tools disappear immediately.
-          clientSeenAt: input.enabled ? current.clientSeenAt : null,
-          // Never keep roots when disabled.
-          roots: input.enabled ? current.roots : [],
-        }));
+        const next = await updateHostDiskSettings(
+          deps.dataDir,
+          context.actor.userId,
+          (current) => ({
+            ...current,
+            enabled: input.enabled,
+            // Turning off clears the client heartbeat so tools disappear immediately.
+            clientSeenAt: input.enabled ? current.clientSeenAt : null,
+            // Never keep roots when disabled.
+            roots: input.enabled ? current.roots : [],
+          }),
+        );
         return hostDiskSettingsDtoFrom(next);
       }),
       setRoots: authed.hostDisk.setRoots.handler(async ({ context, input }) => {
