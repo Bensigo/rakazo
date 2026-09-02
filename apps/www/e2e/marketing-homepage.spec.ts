@@ -1,5 +1,15 @@
-import { expect, test } from "@playwright/test";
-import { captureScreenshot } from "./helpers";
+import { expect, type Page, type TestInfo, test } from "@playwright/test";
+
+async function captureScreenshot(page: Page, testInfo: TestInfo, name: string) {
+  const screenshotPath = testInfo.outputPath(`${name}.png`);
+  await page.screenshot({
+    animations: "disabled",
+    caret: "hide",
+    fullPage: true,
+    path: screenshotPath,
+  });
+  await testInfo.attach(name, { contentType: "image/png", path: screenshotPath });
+}
 
 test.describe("marketing homepage", () => {
   test("self-host is short CTAs, not an install script", async ({ page }, testInfo) => {
