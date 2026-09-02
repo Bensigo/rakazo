@@ -835,13 +835,13 @@ describe("host disk posix *at pinning", () => {
     expect(ipcSource).not.toMatch(/readdir\(\s*fdReal\s*\)/);
     expect(ipcSource).not.toMatch(/readdir\(\s*fdRefPath\(/);
     expect(ipcSource).toMatch(/readdirNamesAt\(/);
-    // Pre-rename containment check; never unlink the destination on post-rename
-    // escape (that can destroy an outside file after a moved parent).
+    // Pre-rename containment check; on post-rename escape unlink the name we
+    // just committed on this parent fd (cleanup of our write, not a leave-behind).
     expect(ipcSource).toMatch(
       /assertInsideAuthorizedRoots\(await realpathOfFd\(parentHandle\.fd\), realRoots\);\s*\n\s*renameatChild/m,
     );
-    expect(ipcSource).toMatch(/Do not unlink the destination/);
-    expect(ipcSource).not.toMatch(/unlinkatChild\(parentHandle\.fd, baseName\)/);
+    expect(ipcSource).toMatch(/unlinkatChild\(parentHandle\.fd, baseName\)/);
+    expect(ipcSource).toMatch(/AT_REMOVEDIR/);
   });
 
   it("openat/mkdirat/renameat keep writes on the pinned directory inode", async () => {

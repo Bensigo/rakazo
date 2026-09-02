@@ -22,6 +22,8 @@ let grantStore: HostDiskGrantStore | null = null;
 
 const NOFOLLOW = constants.O_NOFOLLOW ?? 0;
 const DIRECTORY = constants.O_DIRECTORY ?? 0;
+/** unlinkat flag to remove directories (Linux/macOS AT_REMOVEDIR). */
+const AT_REMOVEDIR = 0x200;
 
 function grants(): HostDiskGrantStore {
   if (!grantStore) throw new Error("Host disk IPC is not registered");
@@ -196,6 +198,10 @@ async function mkdirInsideGrants(target: string) {
         throw new Error("Host path is outside the granted folders");
       }
       let next: PosixAtFileHandle;
+      let createdSegment = false;
+      // Containment must hold before mkdirat — otherwise a parent moved outside
+      // the grant would leave an unauthorized directory behind on later reject.
+      await assertInsideAuthorizedRoots(await realpathOfFd(parentHandle.fd), realRoots);
       try {
         next = openatChild(parentHandle.fd, segment, dirFlags | NOFOLLOW);
       } catch (error) {
@@ -206,6 +212,7 @@ async function mkdirInsideGrants(target: string) {
         if (code !== "ENOENT") throw error;
         try {
           mkdiratChild(parentHandle.fd, segment);
+          createdSegment = true;
         } catch (mkdirError) {
           const mkdirCode =
             mkdirError && typeof mkdirError === "object" && "code" in mkdirError
@@ -216,10 +223,23 @@ async function mkdirInsideGrants(target: string) {
         }
         next = openatChild(parentHandle.fd, segment, dirFlags | NOFOLLOW);
       }
+      try {
+        const fdReal = await realpathOfFd(next.fd);
+        await assertInsideAuthorizedRoots(fdReal, realRoots);
+      } catch (error) {
+        await next.close().catch(() => undefined);
+        if (createdSegment) {
+          try {
+            // Best-effort remove the directory we just created outside the grant.
+            unlinkatChild(parentHandle.fd, segment, AT_REMOVEDIR);
+          } catch {
+            // Best-effort cleanup.
+          }
+        }
+        throw error;
+      }
       await parentHandle.close().catch(() => undefined);
       parentHandle = next;
-      const fdReal = await realpathOfFd(parentHandle.fd);
-      await assertInsideAuthorizedRoots(fdReal, realRoots);
     }
     return await realpathOfFd(parentHandle.fd);
   } finally {
@@ -390,9 +410,16 @@ export function registerHostDiskIpc() {
             await assertInsideAuthorizedRoots(parentLive, realRoots);
             await assertInsideAuthorizedRoots(fdReal, realRoots);
           } catch {
-            // Do not unlink the destination: the parent may have been moved
-            // outside the grant after renameat; unlinking would destroy an
-            // outside file. Fail closed and leave the committed name alone.
+            // Parent may have moved outside between the pre-rename check and
+            // renameat. Remove the name we just committed on this parent fd —
+            // that only deletes our write (renameat already replaced any prior
+            // file at this name). Leaving it would persist agent content outside
+            // the grant.
+            try {
+              unlinkatChild(parentHandle.fd, baseName);
+            } catch {
+              // Best-effort cleanup.
+            }
             throw new Error("Host path is outside the granted folders");
           }
         } finally {
