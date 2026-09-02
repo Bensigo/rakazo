@@ -2111,6 +2111,18 @@ export function ShellPage() {
     if (!id) return;
     await refreshThreadRef.current(id);
   }, []);
+  // Teach chrome needs skills applied before this resolves — refreshThread only
+  // kicks skills.list off in the background, so Stop teaching would never mount
+  // if that background call failed or lagged behind local recovery.
+  const refreshActiveTeaching = useCallback(async () => {
+    const id = activeBotId.current;
+    if (!id) return;
+    await refreshThreadRef.current(id);
+    const skills = await rpc.skills.list({ botId: id });
+    if (activeBotId.current !== id) return;
+    setTaughtSkills(skills);
+    setTaughtSkillsBotId(id);
+  }, []);
   const addSkillRoutine = useCallback((name: string, prompt: string) => {
     setRoutineDraft({ ...emptyRoutineDraft(), name, prompt });
     setRoutineWebhookSecret(null);
@@ -3728,7 +3740,7 @@ export function ShellPage() {
                   botId={active.id}
                   computer={computer}
                   busy={teachBusy}
-                  onRefresh={refreshActiveThread}
+                  onRefresh={refreshActiveTeaching}
                 />
               ) : null}
               {active && !recordingSkill ? (
