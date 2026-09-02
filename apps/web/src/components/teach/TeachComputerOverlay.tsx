@@ -106,7 +106,9 @@ export function TeachComputerOverlayControl({
       if (botIdRef.current !== requestBotId) return;
       if (skills.some((skill) => skill.status === "recording")) {
         setNeedsRefresh(true);
-        setRecoveryOpen(false);
+        // Keep recovery open until Shell mounts Stop teaching (this control
+        // unmounts). Closing here leaves a Refresh loop if Shell's skills load failed.
+        setRecoveryOpen(true);
         setGoal("");
         return;
       }
@@ -144,8 +146,9 @@ export function TeachComputerOverlayControl({
         await onRefresh();
         if (botIdRef.current !== requestBotId) return;
         setGoal("");
-        // Keep needsRefresh. Shell unmounts this control when recordingSkill lands.
-        setRecoveryOpen(false);
+        // Keep needsRefresh + recovery until Shell unmounts this control when
+        // recordingSkill lands. Closing recovery early hides Stop if skills lag.
+        setRecoveryOpen(true);
       } catch (refreshError) {
         if (botIdRef.current !== requestBotId) return;
         setRecoveryOpen(true);
