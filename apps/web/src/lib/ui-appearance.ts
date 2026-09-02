@@ -1,7 +1,7 @@
 import {
   type AppearancePreference,
-  type ResolvedAppearance,
   persistAppearancePreference,
+  type ResolvedAppearance,
   resolveAppearance,
   resolveAppearancePreference,
   tokensForAppearance,

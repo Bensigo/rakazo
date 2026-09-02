@@ -182,7 +182,9 @@ export function ComputerMaintenanceActions({
                 {pending === "update" ? <Trans>Updating…</Trans> : <Trans>Update computer</Trans>}
               </button>
             ) : null}
-            {error ? <p className="px-3.5 py-2 text-[12.5px] text-[var(--rk-danger)]">{error}</p> : null}
+            {error ? (
+              <p className="px-3.5 py-2 text-[12.5px] text-[var(--rk-danger)]">{error}</p>
+            ) : null}
           </div>
         ) : null}
         {resetDialog}
@@ -224,7 +226,9 @@ export function ComputerMaintenanceActions({
           </Trans>
         </p>
       ) : null}
-      {error && !confirmReset ? <p className="text-[13px] text-[var(--rk-danger)]">{error}</p> : null}
+      {error && !confirmReset ? (
+        <p className="text-[13px] text-[var(--rk-danger)]">{error}</p>
+      ) : null}
       {resetDialog}
     </div>
   );

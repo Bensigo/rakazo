@@ -1,13 +1,13 @@
-import * as SecureStore from "expo-secure-store";
-import { Appearance, type ColorSchemeName } from "react-native";
 import {
   type AppearancePreference,
-  type ResolvedAppearance,
   normalizeAppearancePreference,
+  type ResolvedAppearance,
   resolveAppearance,
   tokensForAppearance,
   UI_APPEARANCE_STORAGE_KEY,
 } from "@rakazo/ui-tokens";
+import * as SecureStore from "expo-secure-store";
+import { Appearance, type ColorSchemeName } from "react-native";
 
 export type { AppearancePreference, ResolvedAppearance };
 

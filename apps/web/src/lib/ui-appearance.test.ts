@@ -1,13 +1,10 @@
-import { describe, expect, it } from "vitest";
 import {
   persistAppearancePreference,
   resolveAppearancePreference,
   UI_APPEARANCE_STORAGE_KEY,
 } from "@rakazo/ui-tokens";
-import {
-  applyResolvedAppearance,
-  readSystemAppearance,
-} from "./ui-appearance";
+import { describe, expect, it } from "vitest";
+import { applyResolvedAppearance, readSystemAppearance } from "./ui-appearance";
 
 describe("ui-appearance", () => {
   it("treats matching light media as light", () => {

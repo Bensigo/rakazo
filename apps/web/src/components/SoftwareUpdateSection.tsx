@@ -263,6 +263,8 @@ function CheckSummary({ check }: { check: ServerUpdateCheck }) {
     );
   }
   return (
-    <p className="text-[12.5px] text-[var(--rk-danger)]">{check.reason ?? <Trans>Unavailable</Trans>}</p>
+    <p className="text-[12.5px] text-[var(--rk-danger)]">
+      {check.reason ?? <Trans>Unavailable</Trans>}
+    </p>
   );
 }

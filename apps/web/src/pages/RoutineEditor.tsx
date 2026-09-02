@@ -137,7 +137,10 @@ export function RoutineListRow({
           )}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[14.5px] font-medium text-[var(--rk-ink)]" dir="auto">
+          <span
+            className="block truncate text-[14.5px] font-medium text-[var(--rk-ink)]"
+            dir="auto"
+          >
             {routine.name}
           </span>
           <span className="block truncate text-[12.5px] text-[var(--rk-muted-2)]">
@@ -242,13 +245,23 @@ export function RoutineEditor({
   return (
     <div>
       <div className="mb-5 flex items-center justify-between">
-        <button type="button" onClick={onBack} className="text-[var(--rk-muted)]" aria-label={t`Back`}>
+        <button
+          type="button"
+          onClick={onBack}
+          className="text-[var(--rk-muted)]"
+          aria-label={t`Back`}
+        >
           <ChevronLeft size={18} strokeWidth={1.8} />
         </button>
         <div className="text-[15.5px] font-medium text-[var(--rk-ink-strong)]">
           <Trans>Routine</Trans>
         </div>
-        <button type="button" onClick={onClose} className="text-[var(--rk-muted-2)]" aria-label={t`Close`}>
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-[var(--rk-muted-2)]"
+          aria-label={t`Close`}
+        >
           <X size={16} strokeWidth={1.8} />
         </button>
       </div>

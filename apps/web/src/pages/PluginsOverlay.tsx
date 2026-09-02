@@ -257,7 +257,9 @@ export function PluginsOverlay({
         </div>
 
         <div id="integration-list" className="rk-scroll flex-1 overflow-y-auto px-8 py-6">
-          {catalogError ? <p className="mb-4 text-sm text-[var(--rk-danger)]">{catalogError}</p> : null}
+          {catalogError ? (
+            <p className="mb-4 text-sm text-[var(--rk-danger)]">{catalogError}</p>
+          ) : null}
           {loading ? (
             <p className="text-[var(--rk-muted-2)]">
               <Trans>Loading integrations…</Trans>
@@ -441,7 +443,9 @@ export function PluginsOverlay({
                 </Button>
               </div>
 
-              {sourceError ? <p className="text-sm text-[var(--rk-danger)]">{sourceError}</p> : null}
+              {sourceError ? (
+                <p className="text-sm text-[var(--rk-danger)]">{sourceError}</p>
+              ) : null}
 
               {sourceKind ? (
                 <div className="space-y-3 rounded-[16px] border border-[var(--rk-scroll)] bg-[var(--rk-inset)] p-5">
@@ -557,7 +561,9 @@ export function PluginsOverlay({
                       {source.kind === "mcp" ? "M" : "A"}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="text-[15.5px] font-medium text-[var(--rk-ink)]">{source.name}</div>
+                      <div className="text-[15.5px] font-medium text-[var(--rk-ink)]">
+                        {source.name}
+                      </div>
                       <div className="truncate text-[13.5px] text-[var(--rk-faint)]">
                         {source.kind.toUpperCase()} · {source.source} ·{" "}
                         {source.secretConfigured ? (

@@ -313,7 +313,10 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
               </>
             ) : (
               <>
-                <label className="mb-1.5 block text-xs text-[var(--rk-soft)]" htmlFor="mcp-endpoint">
+                <label
+                  className="mb-1.5 block text-xs text-[var(--rk-soft)]"
+                  htmlFor="mcp-endpoint"
+                >
                   <Trans>Server URL</Trans>
                 </label>
                 <input

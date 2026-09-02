@@ -2363,7 +2363,9 @@ export function ShellPage() {
               data-activity-mode={activityMode ? "on" : "off"}
               onClick={toggleActivityMode}
               className={`app-no-drag flex h-7 w-7 items-center justify-center rounded-full ${
-                activityMode ? "bg-[#4C8DFF] text-white" : "text-[var(--rk-faint)] hover:text-[var(--rk-soft)]"
+                activityMode
+                  ? "bg-[#4C8DFF] text-white"
+                  : "text-[var(--rk-faint)] hover:text-[var(--rk-soft)]"
               }`}
             >
               <Bell
@@ -2629,7 +2631,10 @@ export function ShellPage() {
                                   {item.chat.title}
                                 </div>
                                 {item.chat.preview ? (
-                                  <div dir="auto" className="truncate text-[12.5px] text-[var(--rk-muted-2)]">
+                                  <div
+                                    dir="auto"
+                                    className="truncate text-[12.5px] text-[var(--rk-muted-2)]"
+                                  >
                                     {item.chat.preview}
                                   </div>
                                 ) : null}
@@ -2638,7 +2643,9 @@ export function ShellPage() {
                               <div
                                 dir="auto"
                                 className={`mt-0.5 truncate text-[13.5px] ${
-                                  item.chat.unread ? "font-medium text-[var(--rk-soft)]" : "text-[var(--rk-muted)]"
+                                  item.chat.unread
+                                    ? "font-medium text-[var(--rk-soft)]"
+                                    : "text-[var(--rk-muted)]"
                                 }`}
                               >
                                 {item.kind === "bot"
@@ -2892,7 +2899,10 @@ export function ShellPage() {
                 />
               ) : null}
               <span className="min-w-0">
-                <span className="block truncate text-[16px] font-medium text-[var(--rk-ink)]" dir="auto">
+                <span
+                  className="block truncate text-[16px] font-medium text-[var(--rk-ink)]"
+                  dir="auto"
+                >
                   {inGroup
                     ? (activeGroup?.name ?? activeSnapshot?.groupName ?? t`Group`)
                     : (active?.name ?? t`Select a bot`)}
@@ -3705,7 +3715,10 @@ export function ShellPage() {
                   variant="overlay"
                 />
               ) : (
-                <span className="truncate text-[15.5px] font-medium text-[var(--rk-ink)]" dir="auto">
+                <span
+                  className="truncate text-[15.5px] font-medium text-[var(--rk-ink)]"
+                  dir="auto"
+                >
                   {computerLabel(computer?.mode, active.name)}
                 </span>
               )}
@@ -4494,7 +4507,10 @@ const Composer = memo(function Composer({
                     @{mention.name}
                   </span>
                   {mention.subtitle ? (
-                    <span dir="auto" className="block truncate text-[12.5px] text-[var(--rk-muted)]">
+                    <span
+                      dir="auto"
+                      className="block truncate text-[12.5px] text-[var(--rk-muted)]"
+                    >
                       {mention.subtitle}
                     </span>
                   ) : null}
@@ -4757,7 +4773,9 @@ function MentionOptionIcon({ mention }: { mention: ComposerMention }) {
     return <Clock size={16} strokeWidth={1.7} className="mt-0.5 shrink-0 text-[var(--rk-muted)]" />;
   }
   if (mention.kind === "connector") {
-    return <Puzzle size={16} strokeWidth={1.7} className="mt-0.5 shrink-0 text-[var(--rk-muted)]" />;
+    return (
+      <Puzzle size={16} strokeWidth={1.7} className="mt-0.5 shrink-0 text-[var(--rk-muted)]" />
+    );
   }
   if (mention.kind === "group") {
     return (
@@ -5438,7 +5456,11 @@ function CreateBotForm({
         </button>
       </div>
       {error ? (
-        <p role="alert" data-testid="create-bot-error" className="mb-3 text-[13px] text-[var(--rk-danger)]">
+        <p
+          role="alert"
+          data-testid="create-bot-error"
+          className="mb-3 text-[13px] text-[var(--rk-danger)]"
+        >
           {error}
         </p>
       ) : null}
@@ -5961,7 +5983,10 @@ function NewBotSectionDialog({
           });
         }}
       >
-        <h2 id="new-bot-section-title" className="text-[17px] font-medium text-[var(--rk-ink-strong)]">
+        <h2
+          id="new-bot-section-title"
+          className="text-[17px] font-medium text-[var(--rk-ink-strong)]"
+        >
           <Trans>New section</Trans>
         </h2>
         <p className="mt-2 text-[14px] leading-6 text-[var(--rk-muted)]">
@@ -6036,7 +6061,10 @@ function ClearConversationDialog({
         className="w-full max-w-[420px] rounded-[18px] border border-[var(--rk-elevated)] bg-[var(--rk-surface-2)] p-5 shadow-[0_24px_70px_rgba(0,0,0,.65)]"
         onPointerDown={(event) => event.stopPropagation()}
       >
-        <h2 id="clear-conversation-title" className="text-[17px] font-medium text-[var(--rk-ink-strong)]">
+        <h2
+          id="clear-conversation-title"
+          className="text-[17px] font-medium text-[var(--rk-ink-strong)]"
+        >
           <Trans>Clear {bot.name}’s conversation?</Trans>
         </h2>
         <p
@@ -6120,7 +6148,10 @@ function DeleteBotDialog({
         <h2 id="delete-bot-title" className="text-[17px] font-medium text-[var(--rk-ink-strong)]">
           <Trans>Delete {bot.name}?</Trans>
         </h2>
-        <p id="delete-bot-description" className="mt-2 text-[14px] leading-6 text-[var(--rk-muted)]">
+        <p
+          id="delete-bot-description"
+          className="mt-2 text-[14px] leading-6 text-[var(--rk-muted)]"
+        >
           <Trans>
             Its conversation, files, and routines will be permanently deleted. Bots it created stay
             in your list.
@@ -6236,7 +6267,10 @@ function DeleteItemDialog({
         <h2 id="delete-item-title" className="text-[17px] font-medium text-[var(--rk-ink-strong)]">
           <Trans>Delete {item.name}?</Trans>
         </h2>
-        <p id="delete-item-description" className="mt-2 text-[14px] leading-6 text-[var(--rk-muted)]">
+        <p
+          id="delete-item-description"
+          className="mt-2 text-[14px] leading-6 text-[var(--rk-muted)]"
+        >
           <Trans>This cannot be undone.</Trans>
         </p>
         {error ? <p className="mt-3 text-[13.5px] text-[var(--rk-danger)]">{error}</p> : null}
@@ -6370,7 +6404,9 @@ function ChoiceCard({
                 >
                   {option.label}
                 </span>
-                {block.answerId === option.id ? <span className="text-[var(--rk-soft)]">✓</span> : null}
+                {block.answerId === option.id ? (
+                  <span className="text-[var(--rk-soft)]">✓</span>
+                ) : null}
               </button>
             ))}
         </div>

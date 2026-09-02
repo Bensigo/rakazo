@@ -23,11 +23,8 @@ describe("mobile appearance", () => {
   });
 
   it("defaults to system and resolves light or dark from the scheme", async () => {
-    const {
-      getCachedAppearancePreference,
-      resolveMobileAppearance,
-      setAppearancePreference,
-    } = await import("./appearance");
+    const { getCachedAppearancePreference, resolveMobileAppearance, setAppearancePreference } =
+      await import("./appearance");
     expect(getCachedAppearancePreference()).toBe("system");
     expect(resolveMobileAppearance("system", "light")).toBe("light");
     expect(resolveMobileAppearance("system", "dark")).toBe("dark");

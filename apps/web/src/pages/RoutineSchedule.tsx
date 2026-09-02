@@ -233,7 +233,9 @@ export function RoutineSchedule({
           <path d="M12 7v5l3 2" />
         </svg>
         <span className="text-[14.5px] text-[var(--rk-ink)]">{lead}</span>
-        {detail ? <span className="flex-1 text-[14.5px] text-[var(--rk-muted)]">{detail}</span> : null}
+        {detail ? (
+          <span className="flex-1 text-[14.5px] text-[var(--rk-muted)]">{detail}</span>
+        ) : null}
       </div>
       <div className="mt-2.5 flex flex-wrap items-center gap-2 rounded-[11px] bg-[var(--rk-surface)] px-2.5 py-2.5 text-[14px] text-[var(--rk-faint)]">
         <select

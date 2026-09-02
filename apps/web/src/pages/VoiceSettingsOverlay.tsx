@@ -213,7 +213,9 @@ export function VoiceSettingsOverlay({ onClose }: { onClose: () => void }) {
             {notice ? <p className="mb-4 text-sm text-[var(--rk-success-soft)]">{notice}</p> : null}
             {selected ? (
               <>
-                <p className="text-[13.5px] leading-[1.5] text-[var(--rk-muted)]">{selected.description}</p>
+                <p className="text-[13.5px] leading-[1.5] text-[var(--rk-muted)]">
+                  {selected.description}
+                </p>
                 <div className="mt-5 rounded-[13px] border border-[var(--rk-border)] px-4 py-3">
                   <div className="text-[12.5px] uppercase tracking-[0.08em] text-[var(--rk-muted-2)]">
                     <Trans>Personal credential</Trans>

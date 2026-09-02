@@ -27,6 +27,11 @@ import {
   selectedSpaceId,
   signOut,
 } from "../lib/api";
+import {
+  getCachedAppearancePreference,
+  setAppearancePreference,
+  subscribeAppearance,
+} from "../lib/appearance";
 import { confirmDeleteBot } from "../lib/bot-lifecycle";
 import {
   canPostPromotedNotifications,
@@ -37,12 +42,6 @@ import {
   openPromotedNotificationSettings,
   setLiveNotificationSettings,
 } from "../lib/live-notifications";
-import {
-  type AppearancePreference,
-  getCachedAppearancePreference,
-  setAppearancePreference,
-  subscribeAppearance,
-} from "../lib/appearance";
 import { native } from "../lib/native";
 import { registerPushToken } from "../lib/push";
 

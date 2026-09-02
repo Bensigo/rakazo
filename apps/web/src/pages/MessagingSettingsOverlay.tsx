@@ -89,7 +89,10 @@ export function MessagingSettingsOverlay({ onClose }: { onClose: () => void }) {
         className="rk-scroll max-h-full w-[640px] max-w-full overflow-y-auto rounded-[26px] border border-[var(--rk-hairline-strong)] bg-[var(--rk-surface)] p-6 shadow-[0_40px_90px_rgba(0,0,0,.55)] sm:p-8"
       >
         <div className="flex items-start justify-between gap-6">
-          <h2 id="messaging-settings-title" className="text-2xl font-medium text-[var(--rk-ink-strong)]">
+          <h2
+            id="messaging-settings-title"
+            className="text-2xl font-medium text-[var(--rk-ink-strong)]"
+          >
             <Trans>Messaging</Trans>
           </h2>
           <button
@@ -172,8 +175,9 @@ export function MessagingSettingsOverlay({ onClose }: { onClose: () => void }) {
           {linkCode ? (
             <p className="mt-3 text-[14px] text-[var(--rk-soft)]" data-testid="messaging-link-code">
               <Trans>
-                Send <span className="font-mono text-[var(--rk-ink-strong)]">{linkCode}</span> to the line from
-                your chat app within 10 minutes. You'll get a confirmation reply once linked.
+                Send <span className="font-mono text-[var(--rk-ink-strong)]">{linkCode}</span> to
+                the line from your chat app within 10 minutes. You'll get a confirmation reply once
+                linked.
               </Trans>
             </p>
           ) : null}
@@ -196,7 +200,9 @@ export function MessagingSettingsOverlay({ onClose }: { onClose: () => void }) {
                 >
                   <span>
                     {channel.name ?? t`Group`}{" "}
-                    <span className="text-[12px] text-[var(--rk-faint)]">{channelMeta(channel)}</span>
+                    <span className="text-[12px] text-[var(--rk-faint)]">
+                      {channelMeta(channel)}
+                    </span>
                   </span>
                   <span className="flex gap-2">
                     {channel.status === "invited" ? (

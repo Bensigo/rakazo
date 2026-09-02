@@ -19,9 +19,9 @@ import { SoftwareUpdateSection } from "../components/SoftwareUpdateSection";
 import { authClient } from "../lib/auth";
 import { getActiveUiLocale, setUiLocale } from "../lib/i18n";
 import {
+  type AppearancePreference,
   getUiAppearancePreference,
   setUiAppearance,
-  type AppearancePreference,
 } from "../lib/ui-appearance";
 import { UI_LOCALE_LABELS, UI_LOCALES, type UiLocale } from "../lib/ui-locale";
 
@@ -119,7 +119,10 @@ export function AccountSettingsOverlay({
       >
         <div className="flex items-start justify-between gap-6">
           <div>
-            <h2 id="account-settings-title" className="text-2xl font-medium text-[var(--rk-ink-strong)]">
+            <h2
+              id="account-settings-title"
+              className="text-2xl font-medium text-[var(--rk-ink-strong)]"
+            >
               <Trans>Settings</Trans>
             </h2>
           </div>
@@ -405,11 +408,10 @@ function AppearancePicker({
   ];
 
   return (
-    <div
-      role="group"
+    <fieldset
       aria-label={t`Appearance`}
       data-testid="ui-appearance-select"
-      className="mt-3 grid grid-cols-3 gap-1 rounded-[12px] border border-[var(--rk-border)] bg-[var(--rk-page)] p-1"
+      className="mt-3 grid min-w-0 grid-cols-3 gap-1 rounded-[12px] border border-[var(--rk-border)] bg-[var(--rk-page)] p-1"
     >
       {options.map((option) => {
         const selected = option.value === value;
@@ -430,7 +432,7 @@ function AppearancePicker({
           </button>
         );
       })}
-    </div>
+    </fieldset>
   );
 }
 
