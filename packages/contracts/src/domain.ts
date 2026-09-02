@@ -12,6 +12,22 @@ export type MemoryScopeValue = z.infer<typeof MemoryScopeSchema>;
 export const AvatarStyleSchema = z.enum(["robot", "organic"]);
 export type AvatarStyle = z.infer<typeof AvatarStyleSchema>;
 
+export const AGENT_SECRET_NAME_PATTERN = /^[A-Z_][A-Z0-9_]{0,63}$/;
+
+export const AgentSecretSchema = z.object({
+  id: Id,
+  name: z.string().regex(AGENT_SECRET_NAME_PATTERN),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type AgentSecret = z.infer<typeof AgentSecretSchema>;
+
+export const AgentSecretInputSchema = z.object({
+  name: z.string().trim().regex(AGENT_SECRET_NAME_PATTERN),
+  value: z.string().min(1).max(16_384),
+});
+export type AgentSecretInput = z.infer<typeof AgentSecretInputSchema>;
+
 export const ThinkingLevelSchema = z.enum([
   "off",
   "minimal",
@@ -49,6 +65,8 @@ export const BotSchema = z.object({
   modelProvider: z.string().nullable(),
   modelId: z.string().nullable(),
   thinkingLevel: ThinkingLevelSchema.nullable(),
+  teamChatAmbientEnabled: z.boolean(),
+  teamChatRules: z.string(),
   webhookConfigured: z.boolean(),
 });
 export type Bot = z.infer<typeof BotSchema>;
@@ -57,7 +75,9 @@ export const ReorderBotsInput = z.object({
   botIds: z
     .array(Id)
     .min(1)
-    .refine((ids) => new Set(ids).size === ids.length, { error: "botIds must be distinct" }),
+    .refine((ids) => new Set(ids).size === ids.length, {
+      error: "botIds must be distinct",
+    }),
 });
 export type ReorderBotsInput = z.infer<typeof ReorderBotsInput>;
 
@@ -92,7 +112,9 @@ const GroupBotIds = z
   .array(Id)
   .min(GROUP_MEMBER_MIN)
   .max(GROUP_MEMBER_MAX)
-  .refine((ids) => new Set(ids).size === ids.length, { error: "botIds must be distinct" });
+  .refine((ids) => new Set(ids).size === ids.length, {
+    error: "botIds must be distinct",
+  });
 
 export const CreateGroupInput = z.object({
   name: z.string().trim().min(1).max(80),
@@ -157,12 +179,27 @@ export const SpaceGroupSchema = GroupSchema.pick({
 });
 export type SpaceGroup = z.infer<typeof SpaceGroupSchema>;
 
+export const ExternalConversationSchema = z.object({
+  id: Id,
+  spaceId: Id,
+  botId: Id,
+  provider: z.string(),
+  displayName: z.string().nullable(),
+  participantNames: z.array(z.string()),
+  threadId: Id,
+  preview: z.string(),
+  unread: z.boolean(),
+  updatedAt: z.string(),
+});
+export type ExternalConversation = z.infer<typeof ExternalConversationSchema>;
+
 export const SpaceSchema = z.object({
   id: Id,
   name: z.string(),
   isDefault: z.boolean(),
   bots: z.array(SpaceBotSchema),
   groups: z.array(SpaceGroupSchema),
+  externalConversations: z.array(ExternalConversationSchema),
   botSections: z.array(BotSectionSchema),
 });
 export type Space = z.infer<typeof SpaceSchema>;
@@ -173,6 +210,7 @@ export const SpaceNavigationSchema = z.object({
     name: z.string(),
     bots: z.array(BotSchema),
     groups: z.array(GroupSchema),
+    externalConversations: z.array(ExternalConversationSchema),
     botSections: z.array(BotSectionSchema),
   }),
   spaces: z.array(SpaceSchema),
@@ -183,6 +221,7 @@ export const BOT_NAME_MAX_LENGTH = 80;
 export const BOT_TITLE_MAX_LENGTH = 500;
 export const BOT_DESCRIPTION_MAX_LENGTH = 4000;
 export const BOT_INSTRUCTIONS_MAX_LENGTH = 20000;
+export const BOT_TEAM_CHAT_RULES_MAX_LENGTH = 4000;
 
 export const CreateBotInput = z.object({
   name: z.string().trim().min(1).max(BOT_NAME_MAX_LENGTH),
@@ -224,6 +263,8 @@ export const UpdateBotInput = z
     modelProvider: z.string().trim().min(1).max(80).nullable().optional(),
     modelId: z.string().trim().min(1).max(200).nullable().optional(),
     thinkingLevel: ThinkingLevelSchema.nullable().optional(),
+    teamChatAmbientEnabled: z.boolean().optional(),
+    teamChatRules: z.string().max(BOT_TEAM_CHAT_RULES_MAX_LENGTH).optional(),
   })
   .superRefine((value, ctx) => {
     const providerProvided = value.modelProvider !== undefined;
@@ -522,7 +563,10 @@ export const McpServerConfigInput = z.discriminatedUnion("transport", [
       .record(z.string().regex(/^[A-Z_][A-Z0-9_]*$/), z.string().max(4096))
       .superRefine((value, ctx) => {
         if (Object.keys(value).length > 32) {
-          ctx.addIssue({ code: "custom", message: "At most 32 environment variables are allowed" });
+          ctx.addIssue({
+            code: "custom",
+            message: "At most 32 environment variables are allowed",
+          });
         }
       })
       .default({}),
@@ -670,6 +714,8 @@ export const RunSchema = z.object({
     "bot_message",
     "webhook",
     "messaging",
+    "phone",
+    "external_message",
   ]),
   routineId: Id.nullable(),
   modelProvider: z.string().nullable(),
@@ -696,6 +742,10 @@ export const ThreadSnapshotSchema = z.object({
   botId: Id.optional(),
   groupId: Id.optional(),
   groupName: z.string().optional(),
+  externalConversationId: Id.optional(),
+  externalProvider: z.string().optional(),
+  externalDisplayName: z.string().nullable().optional(),
+  externalParticipantNames: z.array(z.string()).optional(),
   members: z.array(GroupMemberSchema).optional(),
   run: RunSchema.nullable(),
   activeRuns: z.array(RunSchema).optional(),
@@ -966,6 +1016,7 @@ export const AppBootstrapSchema = z.object({
   me: MeSchema,
   bots: z.array(BotSchema),
   groups: z.array(GroupSchema),
+  externalConversations: z.array(ExternalConversationSchema),
   botSections: z.array(BotSectionSchema),
   archivedBots: z.array(BotSchema),
   archivedGroups: z.array(GroupSchema),
@@ -978,9 +1029,21 @@ export type AppBootstrap = z.infer<typeof AppBootstrapSchema>;
 export const ExportManifestSchema = z.object({
   version: z.literal(1),
   exportedAt: z.string(),
-  bot: BotSchema.pick({ name: true, title: true, description: true, instructions: true }),
+  bot: BotSchema.pick({
+    name: true,
+    title: true,
+    description: true,
+    instructions: true,
+  }),
   memory: z.array(z.object({ path: z.string(), content: z.string() })),
-  routines: z.array(RoutineSchema.pick({ name: true, prompt: true, crons: true, timezone: true })),
+  routines: z.array(
+    RoutineSchema.pick({
+      name: true,
+      prompt: true,
+      crons: true,
+      timezone: true,
+    }),
+  ),
   files: z.array(z.object({ path: z.string(), content: z.string() })),
   history: z.array(ThreadMessageSchema),
 });

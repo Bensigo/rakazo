@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  AgentSecretInputSchema,
+  AgentSecretSchema,
   appContract,
   BOT_DESCRIPTION_MAX_LENGTH,
   BOT_INSTRUCTIONS_MAX_LENGTH,
+  BOT_TEAM_CHAT_RULES_MAX_LENGTH,
   BOT_TITLE_MAX_LENGTH,
   CreateBotInput,
   CreateGroupInput,
@@ -105,6 +108,22 @@ describe("contracts", () => {
     ).toBe(true);
   });
 
+  it("validates team chat engagement settings", () => {
+    expect(
+      UpdateBotInput.safeParse({
+        botId: "bot-1",
+        teamChatAmbientEnabled: true,
+        teamChatRules: "Engage when a launch deadline changes.",
+      }).success,
+    ).toBe(true);
+    expect(
+      UpdateBotInput.safeParse({
+        botId: "bot-1",
+        teamChatRules: "R".repeat(BOT_TEAM_CHAT_RULES_MAX_LENGTH + 1),
+      }).success,
+    ).toBe(false);
+  });
+
   it("normalizes group names and rejects duplicate members", () => {
     expect(CreateGroupInput.parse({ name: "  Draft team  ", botIds: ["bot-1", "bot-2"] })).toEqual({
       name: "Draft team",
@@ -141,6 +160,9 @@ describe("contracts", () => {
   });
 
   it("exposes the product rpc surface", () => {
+    expect(appContract.agentSecrets.list).toBeTruthy();
+    expect(appContract.agentSecrets.put).toBeTruthy();
+    expect(appContract.agentSecrets.remove).toBeTruthy();
     expect(appContract.models.beginOAuth).toBeTruthy();
     expect(appContract.bootstrap).toBeTruthy();
     expect(appContract.models.completeOAuth).toBeTruthy();
@@ -159,6 +181,29 @@ describe("contracts", () => {
     expect(ProductEventType.options).toContain("thread.cleared");
     expect(ProductEventType.options).toContain("thread.subagent");
     expect(ProductEventType.options).toContain("bot.spawned");
+  });
+
+  it("accepts only shell-safe managed secret names and bounded values", () => {
+    expect(AgentSecretInputSchema.parse({ name: "AUDIENTI_API_KEY", value: "test-value" })).toEqual(
+      { name: "AUDIENTI_API_KEY", value: "test-value" },
+    );
+    expect(AgentSecretInputSchema.safeParse({ name: "lowercase", value: "x" }).success).toBe(false);
+    expect(AgentSecretInputSchema.safeParse({ name: "1TOKEN", value: "x" }).success).toBe(false);
+    expect(AgentSecretInputSchema.safeParse({ name: "TOKEN", value: "" }).success).toBe(false);
+    expect(
+      AgentSecretInputSchema.safeParse({ name: "TOKEN", value: "x".repeat(16_385) }).success,
+    ).toBe(false);
+  });
+
+  it("keeps managed secret responses metadata-only", () => {
+    const parsed = AgentSecretSchema.parse({
+      id: "secret-link-1",
+      name: "AUDIENTI_API_KEY",
+      createdAt: "2026-09-02T12:00:00.000Z",
+      updatedAt: "2026-09-02T12:00:00.000Z",
+    });
+    expect(parsed).not.toHaveProperty("value");
+    expect(parsed).not.toHaveProperty("ciphertext");
   });
 
   it("requires a distinct, non-empty bot order", () => {
