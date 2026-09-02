@@ -18,7 +18,7 @@ export function ComputerMaintenanceActions({
   computer: ComputerStatus | null;
   onChanged: () => Promise<void>;
   compact?: boolean;
-  /** `menu` hides Recover/Reset/Update behind a More control (agent sidepanel). */
+  /** `menu` hides Recover/Reset/Update behind a More control (full computer chrome). */
   variant?: "panel" | "menu";
 }) {
   const { t } = useLingui();

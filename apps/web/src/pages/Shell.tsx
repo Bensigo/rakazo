@@ -82,6 +82,7 @@ import {
   Gauge,
   Lock,
   LogOut,
+  Maximize2,
   Menu,
   Mic,
   Monitor,
@@ -449,7 +450,7 @@ export function ShellPage() {
   const [routineError, setRoutineError] = useState<string | null>(null);
   const [screenUrl, setScreenUrl] = useState<string | null>(null);
   const [computerOpen, setComputerOpen] = useState(false);
-  const [computerError, setComputerError] = useState<string | null>(null);
+  const [, setComputerError] = useState<string | null>(null);
   useEffect(() => {
     if (!session.data?.user) return;
     let cancelled = false;
@@ -3065,7 +3066,10 @@ export function ShellPage() {
             ) : null}
             {panel === "computer" && active ? (
               <div>
-                <div className="relative aspect-[16/10] overflow-hidden rounded-[14px] bg-[#0E0E10]">
+                <div
+                  data-testid="computer-preview"
+                  className="group relative aspect-[16/10] overflow-hidden rounded-[14px] bg-[#0E0E10]"
+                >
                   {computerOpen ? (
                     <div className="grid h-full place-items-center text-sm text-[#6C6C70]">
                       <Trans>Open in full window</Trans>
@@ -3101,50 +3105,20 @@ export function ShellPage() {
                   )}
                   <button
                     type="button"
-                    className="absolute inset-0 cursor-pointer"
-                    aria-label={t`Open computer`}
+                    data-testid="computer-preview-open"
+                    className="absolute inset-0 flex cursor-pointer items-center justify-center bg-[rgba(4,4,5,.28)] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                    aria-label={t`Open`}
                     onClick={() => void openComputer()}
-                  />
+                  >
+                    <span className="inline-flex items-center gap-2 rounded-full bg-[rgba(12,12,14,.82)] px-3.5 py-2 text-[14px] text-[#F1F1F2] shadow-[0_8px_24px_rgba(0,0,0,.45)]">
+                      <Maximize2 size={15} strokeWidth={1.9} aria-hidden />
+                      <Trans>Open</Trans>
+                    </span>
+                  </button>
                 </div>
-                <div className="mt-3 flex items-center justify-between gap-3">
-                  <span className="min-w-0 text-[13.5px] text-[#85858A]">
-                    {hasControl
-                      ? t`You have control`
-                      : computerError
-                        ? computerError
-                        : computer?.busyBotName
-                          ? t`${computer.busyBotName} is using it`
-                          : computer?.state === "suspended"
-                            ? t`Asleep`
-                            : computerLabel(computer?.mode, active.name)}
-                  </span>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    {hasControl ? (
-                      computer?.takeoverRequested ? (
-                        <ComputerReleaseActions takeoverRequested onRelease={releaseComputer} />
-                      ) : null
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={takeoverBlocked}
-                        title={takeoverBlocked ? t`Stop the bot first` : undefined}
-                        onClick={() => void openComputer()}
-                      >
-                        <Trans>Take control</Trans>
-                      </Button>
-                    )}
-                    <ComputerMaintenanceActions
-                      botId={active.id}
-                      computer={computer}
-                      variant="menu"
-                      onChanged={async () => {
-                        await refreshThread(active.id);
-                      }}
-                    />
-                  </div>
-                </div>
+                <p className="mt-2 truncate text-[13.5px] text-[#85858A]" dir="auto">
+                  {t`${active.name}'s screen`}
+                </p>
                 <RoutineListHeader
                   onCreate={() => {
                     setRoutineDraft(emptyRoutineDraft());
@@ -3770,6 +3744,16 @@ export function ShellPage() {
                   computer={computer}
                   busy={teachBusy}
                   onRefresh={refreshActiveThread}
+                />
+              ) : null}
+              {active && !recordingSkill ? (
+                <ComputerMaintenanceActions
+                  botId={active.id}
+                  computer={computer}
+                  variant="menu"
+                  onChanged={async () => {
+                    await refreshThread(active.id);
+                  }}
                 />
               ) : null}
               <button
@@ -6329,7 +6313,7 @@ function computerPlaceholder(
 ) {
   if (state === "booting" || booting) return t`Booting live desktop…`;
   if (state === "running") return label;
-  if (state === "suspended") return t`Computer is asleep. Take control to wake it.`;
+  if (state === "suspended") return t`Computer is asleep. Open it to wake.`;
   if (state === "error") return t`Computer failed to boot`;
   return t`Computer is stopped`;
 }

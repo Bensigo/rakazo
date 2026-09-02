@@ -92,7 +92,8 @@ test("user control leaves another Team bot's screen available", async ({ page },
 
   await openBot(page, "Chief");
   await page.getByTitle("Agent computer").click();
-  await page.getByRole("button", { name: "Take control", exact: true }).click();
+  await page.getByTestId("computer-preview").hover();
+  await page.getByTestId("computer-preview-open").click();
   await expect(page.getByRole("button", { name: "Close computer" })).toBeVisible();
   await page.getByRole("button", { name: "Close computer" }).click();
 
@@ -165,10 +166,15 @@ test("an active Team bot must be stopped before user takeover", async ({ page },
     .toBe("running");
 
   await page.getByTitle("Agent computer").click();
-  const takeControl = page.getByRole("button", { name: /Take control/i }).first();
+  await page.getByTestId("computer-preview").hover();
+  await page.getByTestId("computer-preview-open").click();
+  const takeControl = page
+    .getByTestId("computer-chrome")
+    .getByRole("button", { name: /Take control/i });
   await expect(takeControl).toBeDisabled();
-  await expect(page.getByText(/is using it/i).first()).toBeVisible();
+  await expect(takeControl).toHaveAttribute("title", /Stop the bot first/i);
   await captureScreenshot(page, testInfo, "48b-take-control-blocked-while-busy");
+  await page.getByRole("button", { name: "Close computer" }).click();
 
   // Stop through the shell so the client refreshes computer status (API stop alone
   // does not emit a terminal thread event).
@@ -243,7 +249,8 @@ async function openBot(page: Page, name: string) {
 
 async function openComputerPanel(page: Page) {
   await page.getByTitle("Agent computer").click();
-  await expect(page.getByRole("button", { name: "Take control", exact: true })).toBeVisible();
+  await expect(page.getByTestId("computer-preview")).toBeVisible();
+  await expect(page.getByTestId("computer-preview-open")).toHaveCount(1);
 }
 
 async function sendAndWait(page: Page, botId: string, text: string) {

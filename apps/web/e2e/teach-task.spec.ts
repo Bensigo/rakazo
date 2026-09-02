@@ -14,25 +14,29 @@ test("teach a task records interaction and saves a draft", async ({ page }, test
   await expect(sidePanel.getByRole("button", { name: "Recover computer" })).toHaveCount(0);
   await expect(sidePanel.getByRole("button", { name: "Reset computer" })).toHaveCount(0);
   await expect(sidePanel.getByRole("button", { name: "Update computer" })).toHaveCount(0);
-  await expect(sidePanel.getByRole("button", { name: "Take control" })).toBeVisible();
+  await expect(sidePanel.getByRole("button", { name: "Take control" })).toHaveCount(0);
+  await expect(sidePanel.getByTestId("computer-more-button")).toHaveCount(0);
+  await expect(sidePanel.getByTestId("computer-preview")).toBeVisible();
   await captureScreenshot(page, testInfo, "teach-sidepanel-simple");
 
-  const more = sidePanel.getByTestId("computer-more-button");
-  if (await more.isVisible().catch(() => false)) {
-    await more.click();
-    await expect(page.getByTestId("computer-more-menu")).toBeVisible();
-    await expect(
-      page.getByTestId("computer-more-menu").getByRole("menuitem").first(),
-    ).toBeVisible();
-    await captureScreenshot(page, testInfo, "teach-sidepanel-computer-more");
-    await page.keyboard.press("Escape");
-  }
+  const preview = sidePanel.getByTestId("computer-preview");
+  await preview.hover();
+  const openButton = sidePanel.getByTestId("computer-preview-open");
+  await expect(openButton).toBeVisible();
+  await expect(openButton.getByText("Open", { exact: true })).toBeVisible();
+  await captureScreenshot(page, testInfo, "teach-sidepanel-open-hover");
 
-  await sidePanel.getByRole("button", { name: "Take control" }).click();
+  await openButton.click();
   await expect(page.getByRole("button", { name: "Close computer" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Release", exact: true })).toHaveCount(0);
   const chrome = page.getByTestId("computer-chrome");
   await expect(chrome.getByTestId("teach-start-button")).toBeVisible();
+  const more = chrome.getByTestId("computer-more-button");
+  if (await more.isVisible().catch(() => false)) {
+    await more.click();
+    await expect(page.getByTestId("computer-more-menu")).toBeVisible();
+    await page.keyboard.press("Escape");
+  }
   await captureScreenshot(page, testInfo, "teach-computer-chrome");
 
   await chrome.getByTestId("teach-start-button").click();
