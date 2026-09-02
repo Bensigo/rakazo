@@ -2766,104 +2766,148 @@ export function ShellPage() {
                             aria-keyshortcuts={
                               item.kind === "bot" ? "Alt+ArrowUp Alt+ArrowDown" : undefined
                             }
-                          }}
-                          onDrop={(event) => {
-                            if (item.kind !== "bot" || !draggedBotId) return;
-                            event.preventDefault();
-                            reorderRosterBot(draggedBotId, item.chat.id, groupBotIds);
-                            setDraggedBotId(null);
-                          }}
-                          onDragEnd={() => setDraggedBotId(null)}
-                          onKeyDown={(event) => {
-                            if (
-                              item.kind !== "bot" ||
-                              !event.altKey ||
-                              (event.key !== "ArrowUp" && event.key !== "ArrowDown")
-                            )
-                              return;
-                            const index = groupBotIds.indexOf(item.chat.id);
-                            const target = groupBotIds[index + (event.key === "ArrowUp" ? -1 : 1)];
-                            if (!target) return;
-                            event.preventDefault();
-                            reorderRosterBot(item.chat.id, target, groupBotIds);
-                          }}
-                          onClick={() => {
-                            openSpaceChat(
-                              item.chat.spaceId,
-                              item.kind === "bot"
-                                ? `/app/${item.chat.id}`
-                                : `/app/g/${item.chat.id}`,
-                            );
-                          }}
-                          onContextMenu={(event) => {
-                            if (item.chat.spaceId !== bootstrapMe?.spaceId) return;
-                            event.preventDefault();
-                            setBotMenu({
-                              kind: item.kind,
-                              id: item.chat.id,
-                              position: { x: event.clientX, y: event.clientY },
-                            });
-                          }}
-                          className={`flex w-full gap-3 rounded-xl px-2.5 py-[11px] text-start ${
-                            item.kind === "bot" ? "cursor-grab active:cursor-grabbing" : ""
-                          } ${
-                            (item.kind === "bot" && !inGroup && active?.id === item.chat.id) ||
-                            (item.kind === "group" && inGroup && activeGroup?.id === item.chat.id)
-                              ? "bg-[var(--rk-surface)]"
-                              : "hover:bg-[var(--rk-page)]"
-                          }`}
-                          style={{
-                            opacity:
-                              item.kind === "bot" && draggedBotId === item.chat.id ? 0.55 : 1,
-                          }}
-                        >
-                          {item.kind === "bot" ? (
-                            <BotAvatar
-                              color={item.chat.color}
-                              identity={item.chat.id}
-                              size={38}
-                              status={item.chat.status}
-                            />
-                          ) : (
-                            <GroupAvatar
-                              members={
-                                item.chat.id === activeSnapshot?.groupId
-                                  ? (activeSnapshot.members ?? item.chat.members)
-                                  : item.chat.members
+                            onDragStart={(event) => {
+                              if (item.kind !== "bot") return;
+                              setDraggedBotId(item.chat.id);
+                              event.dataTransfer.effectAllowed = "move";
+                              event.dataTransfer.setData("text/plain", item.chat.id);
+                            }}
+                            onDragOver={(event) => {
+                              if (
+                                item.kind === "bot" &&
+                                draggedBotId &&
+                                groupBotIds.includes(draggedBotId)
+                              ) {
+                                event.preventDefault();
+                                event.dataTransfer.dropEffect = "move";
                               }
-                              size={38}
-                            />
-                          )}
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-baseline justify-between gap-2">
-                              <span
-                                dir="auto"
-                                data-roster-bot-name={item.kind === "bot" ? "" : undefined}
-                                className={`truncate text-[15px] text-[var(--rk-ink)] ${
-                                  item.chat.unread ? "font-semibold" : "font-medium"
-                                }`}
-                              >
-                                {item.chat.name}
-                                {item.chat.unread ? (
-                                  <span className="sr-only">
-                                    <Trans> (unread)</Trans>
-                                  </span>
-                                ) : null}
-                              </span>
-                              <span className="flex shrink-0 items-center gap-1.5 text-[12.5px] text-[var(--rk-muted-2)]">
-                                {item.kind === "bot" && item.chat.status !== "idle"
-                                  ? item.chat.status
-                                  : ""}
-                                {item.chat.unread ? (
-                                  <span
-                                    aria-hidden="true"
-                                    className="inline-block h-2 w-2 rounded-full bg-[#8B5CF6]"
-                                  />
-                                ) : null}
-                              </span>
-                            </div>
-                            {item.kind === "bot" && item.chat.title ? (
-                              <>
+                            }}
+                            onDrop={(event) => {
+                              if (item.kind !== "bot" || !draggedBotId) return;
+                              event.preventDefault();
+                              reorderRosterBot(draggedBotId, item.chat.id, groupBotIds);
+                              setDraggedBotId(null);
+                            }}
+                            onDragEnd={() => setDraggedBotId(null)}
+                            onKeyDown={(event) => {
+                              if (
+                                item.kind !== "bot" ||
+                                !event.altKey ||
+                                (event.key !== "ArrowUp" && event.key !== "ArrowDown")
+                              )
+                                return;
+                              const index = groupBotIds.indexOf(item.chat.id);
+                              const target =
+                                groupBotIds[index + (event.key === "ArrowUp" ? -1 : 1)];
+                              if (!target) return;
+                              event.preventDefault();
+                              reorderRosterBot(item.chat.id, target, groupBotIds);
+                            }}
+                            onClick={() => {
+                              openSpaceChat(
+                                item.chat.spaceId,
+                                item.kind === "bot"
+                                  ? `/app/${item.chat.id}`
+                                  : `/app/g/${item.chat.id}`,
+                              );
+                            }}
+                            onContextMenu={(event) => {
+                              if (item.chat.spaceId !== bootstrapMe?.spaceId) return;
+                              event.preventDefault();
+                              setBotMenu({
+                                kind: item.kind,
+                                id: item.chat.id,
+                                position: {
+                                  x: event.clientX,
+                                  y: event.clientY,
+                                },
+                              });
+                            }}
+                            className={`flex w-full gap-3 rounded-xl px-2.5 py-[11px] text-start ${
+                              item.kind === "bot" ? "cursor-grab active:cursor-grabbing" : ""
+                            } ${
+                              (
+                                item.kind === "bot" &&
+                                  !inGroup &&
+                                  !inExternalConversation &&
+                                  active?.id === item.chat.id
+                              ) ||
+                              (item.kind === "group" && inGroup && activeGroup?.id === item.chat.id)
+                                ? "bg-[var(--rk-surface)]"
+                                : "hover:bg-[var(--rk-page)]"
+                            }`}
+                            style={{
+                              opacity:
+                                item.kind === "bot" && draggedBotId === item.chat.id ? 0.55 : 1,
+                            }}
+                          >
+                            {item.kind === "bot" ? (
+                              <BotAvatar
+                                color={item.chat.color}
+                                identity={item.chat.id}
+                                size={38}
+                                status={item.chat.status}
+                              />
+                            ) : (
+                              <GroupAvatar
+                                members={
+                                  item.chat.id === activeSnapshot?.groupId
+                                    ? (activeSnapshot.members ?? item.chat.members)
+                                    : item.chat.members
+                                }
+                                size={38}
+                              />
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-baseline justify-between gap-2">
+                                <span
+                                  dir="auto"
+                                  data-roster-bot-name={item.kind === "bot" ? "" : undefined}
+                                  className={`truncate text-[15px] text-[var(--rk-ink)] ${
+                                    item.chat.unread ? "font-semibold" : "font-medium"
+                                  }`}
+                                >
+                                  {item.chat.name}
+                                  {item.chat.unread ? (
+                                    <span className="sr-only">
+                                      <Trans> (unread)</Trans>
+                                    </span>
+                                  ) : null}
+                                </span>
+                                <span className="flex shrink-0 items-center gap-1.5 text-[12.5px] text-[var(--rk-muted-2)]">
+                                  {item.kind === "bot" && item.chat.status !== "idle"
+                                    ? item.chat.status
+                                    : ""}
+                                  {item.chat.unread ? (
+                                    <span
+                                      aria-hidden="true"
+                                      className="inline-block h-2 w-2 rounded-full bg-[#8B5CF6]"
+                                    />
+                                  ) : null}
+                                </span>
+                              </div>
+                              {item.kind === "bot" && item.chat.title ? (
+                                <>
+                                  <div
+                                    dir="auto"
+                                    className={`mt-0.5 truncate text-[13.5px] ${
+                                      item.chat.unread
+                                        ? "font-medium text-[var(--rk-soft)]"
+                                        : "text-[var(--rk-muted)]"
+                                    }`}
+                                  >
+                                    {item.chat.title}
+                                  </div>
+                                  {item.chat.preview ? (
+                                    <div
+                                      dir="auto"
+                                      className="truncate text-[12.5px] text-[var(--rk-muted-2)]"
+                                    >
+                                      {item.chat.preview}
+                                    </div>
+                                  ) : null}
+                                </>
+                              ) : (
                                 <div
                                   dir="auto"
                                   className={`mt-0.5 truncate text-[13.5px] ${
@@ -2877,32 +2921,54 @@ export function ShellPage() {
                                     : item.chat.preview ||
                                       item.chat.members.map((member) => member.name).join(", ")}
                                 </div>
-                                {item.chat.preview ? (
-                                  <div
+                              )}
+                            </div>
+                          </button>
+                          {item.externalConversations.map((conversation) => (
+                            <button
+                              key={conversation.id}
+                              type="button"
+                              data-external-conversation-id={conversation.id}
+                              onClick={() =>
+                                openSpaceChat(conversation.spaceId, `/app/x/${conversation.id}`)
+                              }
+                              className={`ms-10 flex w-[calc(100%_-_2.5rem)] items-center gap-2 rounded-lg px-2.5 py-2 text-start ${
+                                externalConversationId === conversation.id
+                                  ? "bg-[var(--rk-surface)]"
+                                  : "hover:bg-[var(--rk-page)]"
+                              }`}
+                            >
+                              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-[var(--rk-elevated)] text-[var(--rk-muted)]">
+                                <MessageSquare size={14} strokeWidth={1.8} aria-hidden="true" />
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span
+                                  className="block truncate text-[13.5px] font-medium text-[var(--rk-soft)]"
+                                  dir="auto"
+                                >
+                                  {conversation.displayName?.trim() ||
+                                    conversation.participantNames.join(", ") ||
+                                    t`Slack conversation`}
+                                </span>
+                                {conversation.participantNames.length > 0 ? (
+                                  <span
+                                    className="block truncate text-[12px] text-[var(--rk-muted-2)]"
                                     dir="auto"
-                                    className="truncate text-[12.5px] text-[var(--rk-muted-2)]"
                                   >
-                                    {item.chat.preview}
-                                  </div>
+                                    {conversation.participantNames.join(", ")}
+                                  </span>
+                                ) : conversation.preview ? (
+                                  <span
+                                    className="block truncate text-[12px] text-[var(--rk-muted-2)]"
+                                    dir="auto"
+                                  >
+                                    {conversation.preview}
+                                  </span>
                                 ) : null}
-                              </>
-                            ) : (
-                              <div
-                                dir="auto"
-                                className={`mt-0.5 truncate text-[13.5px] ${
-                                  item.chat.unread
-                                    ? "font-medium text-[var(--rk-soft)]"
-                                    : "text-[var(--rk-muted)]"
-                                }`}
-                              >
-                                {item.kind === "bot"
-                                  ? item.chat.preview
-                                  : item.chat.preview ||
-                                    item.chat.members.map((member) => member.name).join(", ")}
-                              </div>
-                            )}
-                          </div>
-                        </button>
+                              </span>
+                            </button>
+                          ))}
+                        </Fragment>
                       ))}
                   </div>
                 );
@@ -3139,44 +3205,21 @@ export function ShellPage() {
             >
               <Menu size={19} strokeWidth={1.7} />
             </button>
-            <button
-              type="button"
-              data-testid="bot-settings-trigger"
-              onClick={() => setPanel(inGroup ? "group-settings" : "settings")}
-              className="app-no-drag flex min-w-0 items-center gap-3"
-            >
-              {inGroup ? (
-                <GroupAvatar
-                  members={activeSnapshot?.members ?? activeGroup?.members ?? []}
-                  size={26}
-                />
-              ) : active ? (
-                <BotAvatar
-                  color={active.color}
-                  identity={active.id}
-                  size={26}
-                  status={active.status}
-                />
-              ) : null}
-              <span className="min-w-0">
-                <span
-                  className="block truncate text-[16px] font-medium text-[var(--rk-ink)]"
-                  dir="auto"
-                >
-                  {inGroup
-                    ? (activeGroup?.name ?? activeSnapshot?.groupName ?? t`Group`)
-                    : (active?.name ?? t`Select a bot`)}
+            {inExternalConversation ? (
+              <div className="app-no-drag flex min-w-0 items-center gap-3">
+                <span className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-md bg-[var(--rk-elevated)] text-[var(--rk-soft)]">
+                  <MessageSquare size={14} strokeWidth={1.8} aria-hidden="true" />
                 </span>
                 <span className="min-w-0">
                   <span
-                    className="block truncate text-[16px] font-medium text-[#ECECEE]"
+                    className="block truncate text-[16px] font-medium text-[var(--rk-ink)]"
                     dir="auto"
                   >
                     {activeExternalConversation?.displayName?.trim() ||
                       activeExternalParticipantNames ||
                       t`Slack conversation`}
                   </span>
-                  <span className="block truncate text-[12px] text-[#6C6C70]">
+                  <span className="block truncate text-[12px] text-[var(--rk-muted-2)]">
                     {activeExternalParticipantNames || `Slack · ${active?.name ?? ""}`}
                   </span>
                 </span>
@@ -3203,7 +3246,7 @@ export function ShellPage() {
                 ) : null}
                 <span className="min-w-0">
                   <span
-                    className="block truncate text-[16px] font-medium text-[#ECECEE]"
+                    className="block truncate text-[16px] font-medium text-[var(--rk-ink)]"
                     dir="auto"
                   >
                     {inGroup
@@ -3228,7 +3271,9 @@ export function ShellPage() {
                   setCallOpen(true);
                 }}
                 className="app-no-drag grid h-[30px] w-[34px] place-items-center rounded-[9px] hover:bg-[var(--rk-elevated)]"
-                style={{ background: callOpen ? "var(--rk-elevated)" : "transparent" }}
+                style={{
+                  background: callOpen ? "var(--rk-elevated)" : "transparent",
+                }}
               >
                 <Phone size={16} strokeWidth={1.6} className="text-[var(--rk-soft)]" />
               </button>
@@ -3246,7 +3291,9 @@ export function ShellPage() {
                   }
                 }}
                 className="app-no-drag grid h-[30px] w-[34px] place-items-center rounded-[9px] hover:bg-[var(--rk-elevated)]"
-                style={{ background: panel ? "var(--rk-elevated)" : "transparent" }}
+                style={{
+                  background: panel ? "var(--rk-elevated)" : "transparent",
+                }}
               >
                 <Monitor size={18} strokeWidth={1.6} className="text-[var(--rk-soft)]" />
               </button>
@@ -3282,7 +3329,7 @@ export function ShellPage() {
           onSpeak={speakMessage}
           readOnly={inExternalConversation}
         />
-        {recordingSkill ? (
+        {recordingSkill && !inExternalConversation ? (
           <div className="px-6 pb-2 text-center text-[13px] text-[var(--rk-danger)]">
             <Trans>Teaching in progress — stop teaching before sending a new message.</Trans>
           </div>
@@ -5194,15 +5241,17 @@ function MessageHoverActions({
         data-testid="message-hover-actions"
         className="flex items-center gap-0.5 rounded-full bg-[var(--rk-elevated)] p-0.5 shadow-[0_1px_4px_rgba(0,0,0,0.45)]"
       >
-        <button
-          type="button"
-          aria-label={t`Reply`}
-          onClick={() => onReply(message)}
-          className="grid h-7 w-7 place-items-center rounded-full text-[var(--rk-soft)] hover:bg-[var(--rk-scroll)] hover:text-[var(--rk-ink)]"
-        >
-          <Reply size={14} strokeWidth={1.8} />
-        </button>
-        {canReactToThreadMessage(message) ? (
+        {!readOnly ? (
+          <button
+            type="button"
+            aria-label={t`Reply`}
+            onClick={() => onReply(message)}
+            className="grid h-7 w-7 place-items-center rounded-full text-[var(--rk-soft)] hover:bg-[var(--rk-scroll)] hover:text-[var(--rk-ink)]"
+          >
+            <Reply size={14} strokeWidth={1.8} />
+          </button>
+        ) : null}
+        {!readOnly && canReactToThreadMessage(message) ? (
           <button
             type="button"
             aria-label={message.thumbsUp ? t`Remove thumbs-up` : t`Add thumbs-up`}
@@ -6137,8 +6186,8 @@ function BotSettings({
             </select>
           </label>
         ) : null}
-        <div className="mt-5 border-t border-[#26262A] pt-5">
-          <label className="flex cursor-pointer items-center gap-3 text-[14px] text-[#C9C9CE]">
+        <div className="mt-5 border-t border-[var(--rk-border)] pt-5">
+          <label className="flex cursor-pointer items-center gap-3 text-[14px] text-[var(--rk-soft)]">
             <input
               type="checkbox"
               checked={teamChatAmbientEnabled}
@@ -6146,7 +6195,7 @@ function BotSettings({
             />
             <Trans>Listen in Slack channels</Trans>
           </label>
-          <label className="mt-4 block text-[14px] text-[#85858A]">
+          <label className="mt-4 block text-[14px] text-[var(--rk-muted)]">
             <Trans>Channel rules</Trans>
             <textarea
               value={teamChatRules}
@@ -6155,7 +6204,7 @@ function BotSettings({
               placeholder={t`Engage when… Ignore…`}
               rows={5}
               disabled={!teamChatAmbientEnabled}
-              className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-3 text-[#ECECEE] disabled:opacity-40"
+              className="mt-2 w-full rounded-[11px] border border-[var(--rk-border)] bg-transparent px-3.5 py-3 text-[var(--rk-ink)] disabled:opacity-40"
             />
           </label>
         </div>
