@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import type { MobileBot, MobileBotSection } from "../lib/api";
-import { native } from "../lib/native";
+import { native, useThemedStyles } from "../lib/native";
 import { NativeSymbol } from "./native-symbol";
 
 export type BotOrganizationUpdate = {
@@ -24,6 +24,7 @@ export function BotOrganizeModal({
   onUpdate: (update: BotOrganizationUpdate) => Promise<void>;
   onCreateSection: (name: string) => Promise<void>;
 }) {
+  const styles = useThemedStyles(createBotOrganizeStyles);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
@@ -154,6 +155,7 @@ function SectionOption({
   disabled: boolean;
   onPress: () => void;
 }) {
+  const styles = useThemedStyles(createBotOrganizeStyles);
   return (
     <Pressable
       accessibilityRole="button"
@@ -171,105 +173,107 @@ function SectionOption({
   );
 }
 
-const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    justifyContent: "flex-end",
-    backgroundColor: "rgba(0, 0, 0, 0.62)",
-  },
-  sheet: {
-    maxHeight: "82%",
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    backgroundColor: "#1C1C1E",
-    paddingHorizontal: 16,
-    paddingTop: 18,
-    paddingBottom: 28,
-  },
-  title: {
-    color: native.label,
-    fontSize: 18,
-    fontWeight: "600",
-    paddingHorizontal: 8,
-    paddingBottom: 10,
-  },
-  action: {
-    minHeight: 46,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    borderRadius: 11,
-    paddingHorizontal: 10,
-  },
-  pressed: {
-    backgroundColor: native.fill,
-  },
-  actionLabel: {
-    flex: 1,
-    color: native.label,
-    fontSize: 16,
-  },
-  sectionLabel: {
-    color: native.secondaryLabel,
-    fontSize: 13,
-    fontWeight: "600",
-    paddingHorizontal: 10,
-    paddingTop: 12,
-    paddingBottom: 6,
-  },
-  sectionOptions: {
-    maxHeight: 230,
-  },
-  sectionOption: {
-    minHeight: 44,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    borderRadius: 11,
-    paddingHorizontal: 10,
-  },
-  newSectionRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-  },
-  newSectionInput: {
-    flex: 1,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: native.fill,
-    color: native.label,
-    paddingHorizontal: 12,
-    fontSize: 16,
-  },
-  newSectionSubmit: {
-    minHeight: 40,
-    justifyContent: "center",
-    borderRadius: 10,
-    backgroundColor: native.label,
-    paddingHorizontal: 14,
-  },
-  newSectionSubmitLabel: {
-    color: native.page,
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  error: {
-    color: "#EF4444",
-    fontSize: 13,
-    paddingHorizontal: 10,
-    paddingTop: 8,
-  },
-  cancel: {
-    alignItems: "center",
-    paddingTop: 14,
-    paddingBottom: 2,
-  },
-  cancelLabel: {
-    color: native.secondaryLabel,
-    fontSize: 16,
-    fontWeight: "600",
-  },
-});
+function createBotOrganizeStyles() {
+  return StyleSheet.create({
+    overlay: {
+      flex: 1,
+      justifyContent: "flex-end",
+      backgroundColor: "rgba(0, 0, 0, 0.62)",
+    },
+    sheet: {
+      maxHeight: "82%",
+      borderTopLeftRadius: 22,
+      borderTopRightRadius: 22,
+      backgroundColor: native.fillPressed,
+      paddingHorizontal: 16,
+      paddingTop: 18,
+      paddingBottom: 28,
+    },
+    title: {
+      color: native.label,
+      fontSize: 18,
+      fontWeight: "600",
+      paddingHorizontal: 8,
+      paddingBottom: 10,
+    },
+    action: {
+      minHeight: 46,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      borderRadius: 11,
+      paddingHorizontal: 10,
+    },
+    pressed: {
+      backgroundColor: native.fill,
+    },
+    actionLabel: {
+      flex: 1,
+      color: native.label,
+      fontSize: 16,
+    },
+    sectionLabel: {
+      color: native.secondaryLabel,
+      fontSize: 13,
+      fontWeight: "600",
+      paddingHorizontal: 10,
+      paddingTop: 12,
+      paddingBottom: 6,
+    },
+    sectionOptions: {
+      maxHeight: 230,
+    },
+    sectionOption: {
+      minHeight: 44,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      borderRadius: 11,
+      paddingHorizontal: 10,
+    },
+    newSectionRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingHorizontal: 8,
+      paddingVertical: 6,
+    },
+    newSectionInput: {
+      flex: 1,
+      height: 40,
+      borderRadius: 10,
+      backgroundColor: native.fill,
+      color: native.label,
+      paddingHorizontal: 12,
+      fontSize: 16,
+    },
+    newSectionSubmit: {
+      minHeight: 40,
+      justifyContent: "center",
+      borderRadius: 10,
+      backgroundColor: native.label,
+      paddingHorizontal: 14,
+    },
+    newSectionSubmitLabel: {
+      color: native.page,
+      fontSize: 14,
+      fontWeight: "600",
+    },
+    error: {
+      color: "#EF4444",
+      fontSize: 13,
+      paddingHorizontal: 10,
+      paddingTop: 8,
+    },
+    cancel: {
+      alignItems: "center",
+      paddingTop: 14,
+      paddingBottom: 2,
+    },
+    cancelLabel: {
+      color: native.secondaryLabel,
+      fontSize: 16,
+      fontWeight: "600",
+    },
+  });
+}

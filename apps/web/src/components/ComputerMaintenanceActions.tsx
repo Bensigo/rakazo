@@ -92,17 +92,17 @@ export function ComputerMaintenanceActions({
       aria-labelledby="reset-computer-title"
       aria-describedby="reset-computer-description"
     >
-      <BuiCard className="w-full max-w-[420px] border border-[#232326] p-5">
-        <div id="reset-computer-title" className="text-[16px] font-medium text-[#ECECEE]">
+      <BuiCard className="w-full max-w-[420px] border border-[var(--rk-hairline-strong)] p-5">
+        <div id="reset-computer-title" className="text-[16px] font-medium text-[var(--rk-ink)]">
           <Trans>Reset computer?</Trans>
         </div>
         <p
           id="reset-computer-description"
-          className="mt-2 text-[14px] leading-[1.5] text-[#85858A]"
+          className="mt-2 text-[14px] leading-[1.5] text-[var(--rk-muted)]"
         >
           <Trans>Restore the last saved workspace. Unsaved work on the computer is lost.</Trans>
         </p>
-        {error ? <p className="mt-2 text-[13px] text-[#EF4444]">{error}</p> : null}
+        {error ? <p className="mt-2 text-[13px] text-[var(--rk-danger)]">{error}</p> : null}
         <div className="mt-4 flex justify-end gap-2">
           <BuiButton onClick={() => setConfirmReset(false)}>
             <Trans>Cancel</Trans>
@@ -130,7 +130,7 @@ export function ComputerMaintenanceActions({
             setError(null);
             setMenuOpen((open) => !open);
           }}
-          className="grid h-8 w-8 place-items-center rounded-[10px] text-[#85858A] hover:bg-[#1B1B1E] hover:text-[#ECECEE] disabled:opacity-40"
+          className="grid h-8 w-8 place-items-center rounded-[10px] text-[var(--rk-muted)] hover:bg-[var(--rk-elevated)] hover:text-[var(--rk-ink)] disabled:opacity-40"
         >
           <MoreHorizontal size={16} strokeWidth={1.8} />
         </button>
@@ -139,7 +139,7 @@ export function ComputerMaintenanceActions({
             role="menu"
             aria-labelledby={menuId}
             data-testid="computer-more-menu"
-            className="absolute end-0 top-full z-20 mt-1.5 min-w-[180px] rounded-[12px] border border-[#2A2A2E] bg-[#16161A] py-1.5 shadow-[0_12px_40px_rgba(0,0,0,.55)]"
+            className="absolute end-0 top-full z-20 mt-1.5 min-w-[180px] rounded-[12px] border border-[var(--rk-scroll)] bg-[var(--rk-surface)] py-1.5 shadow-[0_12px_40px_rgba(0,0,0,.55)]"
           >
             {showRecover ? (
               <button
@@ -147,7 +147,7 @@ export function ComputerMaintenanceActions({
                 role="menuitem"
                 disabled={busy || pending !== null}
                 onClick={() => void run("recover")}
-                className="flex w-full px-3.5 py-2.5 text-start text-[14px] text-[#ECECEE] hover:bg-[#1E1E22] disabled:opacity-40"
+                className="flex w-full px-3.5 py-2.5 text-start text-[14px] text-[var(--rk-ink)] hover:bg-[var(--rk-elevated)] disabled:opacity-40"
               >
                 {pending === "recover" ? (
                   <Trans>Recovering…</Trans>
@@ -166,7 +166,7 @@ export function ComputerMaintenanceActions({
                   setMenuOpen(false);
                   setConfirmReset(true);
                 }}
-                className="flex w-full px-3.5 py-2.5 text-start text-[14px] text-[#ECECEE] hover:bg-[#1E1E22] disabled:opacity-40"
+                className="flex w-full px-3.5 py-2.5 text-start text-[14px] text-[var(--rk-ink)] hover:bg-[var(--rk-elevated)] disabled:opacity-40"
               >
                 {pending === "reset" ? <Trans>Resetting…</Trans> : <Trans>Reset computer</Trans>}
               </button>
@@ -177,12 +177,14 @@ export function ComputerMaintenanceActions({
                 role="menuitem"
                 disabled={busy || pending !== null}
                 onClick={() => void run("update")}
-                className="flex w-full px-3.5 py-2.5 text-start text-[14px] text-[#ECECEE] hover:bg-[#1E1E22] disabled:opacity-40"
+                className="flex w-full px-3.5 py-2.5 text-start text-[14px] text-[var(--rk-ink)] hover:bg-[var(--rk-elevated)] disabled:opacity-40"
               >
                 {pending === "update" ? <Trans>Updating…</Trans> : <Trans>Update computer</Trans>}
               </button>
             ) : null}
-            {error ? <p className="px-3.5 py-2 text-[12.5px] text-[#EF4444]">{error}</p> : null}
+            {error ? (
+              <p className="px-3.5 py-2 text-[12.5px] text-[var(--rk-danger)]">{error}</p>
+            ) : null}
           </div>
         ) : null}
         {resetDialog}
@@ -216,7 +218,7 @@ export function ComputerMaintenanceActions({
         ) : null}
       </div>
       {!compact ? (
-        <p className="text-[13px] leading-[1.45] text-[#6C6C70]">
+        <p className="text-[13px] leading-[1.45] text-[var(--rk-muted-2)]">
           <Trans>
             Recover replaces an unreachable computer and keeps files in the saved workspace. Reset
             restores the last saved workspace and loses unsaved work. Update rebuilds with the
@@ -224,7 +226,9 @@ export function ComputerMaintenanceActions({
           </Trans>
         </p>
       ) : null}
-      {error && !confirmReset ? <p className="text-[13px] text-[#EF4444]">{error}</p> : null}
+      {error && !confirmReset ? (
+        <p className="text-[13px] text-[var(--rk-danger)]">{error}</p>
+      ) : null}
       {resetDialog}
     </div>
   );

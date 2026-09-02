@@ -1,25 +1,56 @@
 import { DarkTheme, Stack, ThemeProvider } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { AvatarStyleProvider } from "../components/avatar-style";
 import { currentApiBase, loadApiBase, loadSessionToken, selectedSpaceId } from "../lib/api";
+import { loadAppearancePreference } from "../lib/appearance";
 import {
   configureForegroundNotifications,
   resumeLiveNotifications,
 } from "../lib/live-notifications";
+import { native, useResolvedAppearance } from "../lib/native";
 import { applyMobileUiDirection } from "../lib/ui-direction";
 
 applyMobileUiDirection();
 configureForegroundNotifications();
 
+const lightTheme = {
+  ...DarkTheme,
+  dark: false,
+  colors: {
+    ...DarkTheme.colors,
+    primary: "#1A1A1A",
+    background: "#F4F4F2",
+    card: "#F4F4F2",
+    text: "#1A1A1A",
+    border: "#D0D0CC",
+    notification: "#2A9E86",
+  },
+};
+
 export default function Layout() {
   const [ready, setReady] = useState(false);
+  const resolved = useResolvedAppearance();
+  const navigationTheme = useMemo(() => {
+    const base = resolved === "light" ? lightTheme : DarkTheme;
+    return {
+      ...base,
+      colors: {
+        ...base.colors,
+        background: String(native.page),
+        card: String(native.page),
+        text: String(native.label),
+        border: "transparent",
+        primary: String(native.label),
+      },
+    };
+  }, [resolved]);
 
   useEffect(() => {
-    void loadApiBase()
+    void Promise.all([loadApiBase(), loadAppearancePreference()])
       .then(async () =>
         resumeLiveNotifications(
           currentApiBase(),
@@ -36,15 +67,15 @@ export default function Layout() {
       <KeyboardProvider>
         {ready ? (
           <AvatarStyleProvider>
-            <ThemeProvider value={DarkTheme}>
-              <StatusBar style="light" />
+            <ThemeProvider value={navigationTheme}>
+              <StatusBar style={resolved === "light" ? "dark" : "light"} />
               <Stack
                 screenOptions={{
-                  headerStyle: { backgroundColor: "#000" },
-                  headerTintColor: "#ECECEE",
+                  headerStyle: { backgroundColor: String(native.page) },
+                  headerTintColor: String(native.label),
                   headerShadowVisible: false,
                   headerBackButtonDisplayMode: "minimal",
-                  contentStyle: { backgroundColor: "#000" },
+                  contentStyle: { backgroundColor: String(native.page) },
                 }}
               >
                 <Stack.Screen name="index" options={{ headerShown: false, title: "Rakazo" }} />
@@ -89,7 +120,7 @@ export default function Layout() {
             </ThemeProvider>
           </AvatarStyleProvider>
         ) : (
-          <View style={{ flex: 1, backgroundColor: "#000" }} />
+          <View style={{ flex: 1, backgroundColor: String(native.page) }} />
         )}
       </KeyboardProvider>
     </GestureHandlerRootView>

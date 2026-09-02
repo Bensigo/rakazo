@@ -297,13 +297,13 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center bg-[rgba(4,4,5,.62)] p-4 sm:p-10">
-      <div className="flex h-[min(760px,100%)] w-[1080px] max-w-full flex-col overflow-hidden rounded-[26px] border border-[#232326] bg-[#141416] shadow-[0_40px_90px_rgba(0,0,0,.55)]">
+      <div className="flex h-[min(760px,100%)] w-[1080px] max-w-full flex-col overflow-hidden rounded-[26px] border border-[var(--rk-hairline-strong)] bg-[var(--rk-surface)] shadow-[0_40px_90px_rgba(0,0,0,.55)]">
         <div className="flex items-start justify-between px-6 pt-6 sm:px-8 sm:pt-7">
           <div>
-            <div className="text-2xl font-medium text-[#F1F1F2]">
+            <div className="text-2xl font-medium text-[var(--rk-ink-strong)]">
               <Trans>Models</Trans>
             </div>
-            <p className="mt-1 text-[13.5px] text-[#7A7A80]">
+            <p className="mt-1 text-[13.5px] text-[var(--rk-faint)]">
               {loading ? (
                 <Trans>Loading model catalog…</Trans>
               ) : (
@@ -315,20 +315,20 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
             type="button"
             aria-label={t`Close model settings`}
             onClick={handleClose}
-            className="text-[#85858A]"
+            className="text-[var(--rk-muted)]"
           >
             ✕
           </button>
         </div>
 
-        <div className="mx-6 mt-5 rounded-[14px] border border-[#26262A] bg-[#101012] px-4 py-3 sm:mx-8">
-          <div className="text-[12.5px] uppercase tracking-[0.08em] text-[#6C6C70]">
+        <div className="mx-6 mt-5 rounded-[14px] border border-[var(--rk-border)] bg-[var(--rk-inset)] px-4 py-3 sm:mx-8">
+          <div className="text-[12.5px] uppercase tracking-[0.08em] text-[var(--rk-muted-2)]">
             <Trans>Active model</Trans>
           </div>
-          <div className="mt-1 text-[16px] text-[#F1F1F2]">
+          <div className="mt-1 text-[16px] text-[var(--rk-ink-strong)]">
             {currentEntry?.label ?? me?.defaultModel ?? t`Deployment default`}
           </div>
-          <div className="mt-1 text-[13px] text-[#85858A]">
+          <div className="mt-1 text-[13px] text-[var(--rk-muted)]">
             {currentEntry?.providerName ?? me?.defaultProvider ?? (
               <Trans>Configured by deployment</Trans>
             )}
@@ -337,7 +337,7 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
 
         <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-hidden px-6 py-6 sm:px-8 md:flex-row">
           <div className="flex min-h-0 shrink-0 flex-col md:w-[310px]">
-            <div className="mb-3 text-[13.5px] text-[#85858A]">
+            <div className="mb-3 text-[13.5px] text-[var(--rk-muted)]">
               <Trans>Providers</Trans>
             </div>
             <label className="sr-only" htmlFor="model-provider-search">
@@ -348,9 +348,9 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
               value={providerQuery}
               onChange={(event) => setProviderQuery(event.target.value)}
               placeholder={t`Search providers`}
-              className="w-full rounded-[11px] border border-[#26262A] bg-[#101012] px-3.5 py-2.5 text-[14px] text-[#ECECEE] outline-none placeholder:text-[#6C6C70] focus:border-[#4A4A50]"
+              className="w-full rounded-[11px] border border-[var(--rk-border)] bg-[var(--rk-inset)] px-3.5 py-2.5 text-[14px] text-[var(--rk-ink)] outline-none placeholder:text-[var(--rk-muted-2)] focus:border-[var(--rk-muted-2)]"
             />
-            <div className="rk-scroll mt-3 max-h-[240px] overflow-y-auto rounded-[13px] border border-[#26262A] md:min-h-0 md:max-h-none md:flex-1">
+            <div className="rk-scroll mt-3 max-h-[240px] overflow-y-auto rounded-[13px] border border-[var(--rk-border)] md:min-h-0 md:max-h-none md:flex-1">
               {filteredGroups.length ? (
                 filteredGroups.map((group) => {
                   const connected = credentials.some((entry) => entry.provider === group.id);
@@ -359,22 +359,24 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
                       key={group.id}
                       type="button"
                       onClick={() => chooseProvider(group.id)}
-                      className={`flex w-full items-center gap-3 border-b border-[#202023] px-3.5 py-3 text-start last:border-0 ${
-                        group.id === provider ? "bg-[#1A1A1D]" : "hover:bg-[#161618]"
+                      className={`flex w-full items-center gap-3 border-b border-[var(--rk-hairline-strong)] px-3.5 py-3 text-start last:border-0 ${
+                        group.id === provider
+                          ? "bg-[var(--rk-surface-2)]"
+                          : "hover:bg-[var(--rk-inset)]"
                       }`}
                     >
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[15px] text-[#ECECEE]">
+                        <span className="block truncate text-[15px] text-[var(--rk-ink)]">
                           {group.name}
                         </span>
-                        <span className="mt-0.5 block text-[12px] text-[#6C6C70]">
+                        <span className="mt-0.5 block text-[12px] text-[var(--rk-muted-2)]">
                           <Plural value={group.entries.length} one="# model" other="# models" />
                           {" · "}
                           {localizedProviderHint(group.entries[0]!)}
                         </span>
                       </span>
                       {connected ? (
-                        <span className="text-[12px] text-[#4ECB71]">
+                        <span className="text-[12px] text-[var(--rk-success-soft)]">
                           <Trans>Connected</Trans>
                         </span>
                       ) : null}
@@ -382,7 +384,7 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
                   );
                 })
               ) : (
-                <p className="px-3.5 py-4 text-[13px] text-[#85858A]">
+                <p className="px-3.5 py-4 text-[13px] text-[var(--rk-muted)]">
                   <Trans>No providers found.</Trans>
                 </p>
               )}
@@ -390,11 +392,11 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
           </div>
 
           <div ref={detailScrollRef} className="rk-scroll min-h-0 min-w-0 flex-1 overflow-y-auto">
-            {error ? <p className="mb-4 text-sm text-[#EF4444]">{error}</p> : null}
-            {notice ? <p className="mb-4 text-sm text-[#4ECB71]">{notice}</p> : null}
+            {error ? <p className="mb-4 text-sm text-[var(--rk-danger)]">{error}</p> : null}
+            {notice ? <p className="mb-4 text-sm text-[var(--rk-success-soft)]">{notice}</p> : null}
             {selected ? (
               <>
-                <div className="block text-[13.5px] text-[#85858A]">
+                <div className="block text-[13.5px] text-[var(--rk-muted)]">
                   {isOpenAiCompatible ? (
                     <>
                       <label className="block">
@@ -405,10 +407,10 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
                           aria-label={t`OpenAI-compatible server URL`}
                           placeholder="http://127.0.0.1:8000/v1"
                           autoComplete="off"
-                          className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-[#101012] px-3.5 py-3 text-[#ECECEE] outline-none"
+                          className="mt-2 w-full rounded-[11px] border border-[var(--rk-border)] bg-[var(--rk-inset)] px-3.5 py-3 text-[var(--rk-ink)] outline-none"
                         />
                       </label>
-                      <details className="mt-2 text-[13px] leading-[1.5] text-[#85858A]">
+                      <details className="mt-2 text-[13px] leading-[1.5] text-[var(--rk-muted)]">
                         <summary className="w-fit cursor-pointer select-none">
                           <Trans>Setup help</Trans>
                         </summary>
@@ -443,7 +445,7 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
                                 setNotice(null);
                               }}
                               aria-label={t`Models from server`}
-                              className="w-full appearance-none rounded-[11px] border border-[#26262A] bg-[#101012] py-3 pl-3.5 pr-11 text-sm text-[#ECECEE]"
+                              className="w-full appearance-none rounded-[11px] border border-[var(--rk-border)] bg-[var(--rk-inset)] py-3 pl-3.5 pr-11 text-sm text-[var(--rk-ink)]"
                             >
                               {probeModels.map((id) => (
                                 <option key={id} value={id}>
@@ -456,7 +458,7 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
                             </select>
                             <span
                               aria-hidden="true"
-                              className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[#85858A]"
+                              className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[var(--rk-muted)]"
                             >
                               <ChevronDown size={16} strokeWidth={1.8} />
                             </span>
@@ -473,13 +475,13 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
                             }}
                             aria-label={t`Model id`}
                             placeholder="exact-model-id"
-                            className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-[#101012] px-3.5 py-3 text-[#ECECEE] outline-none"
+                            className="mt-2 w-full rounded-[11px] border border-[var(--rk-border)] bg-[var(--rk-inset)] px-3.5 py-3 text-[var(--rk-ink)] outline-none"
                           />
                         )}
                         {probeModels.length && !probeModels.includes(modelId) ? (
                           <button
                             type="button"
-                            className="mt-2 text-[13px] text-[#85858A] underline"
+                            className="mt-2 text-[13px] text-[var(--rk-muted)] underline"
                             onClick={() => setModelId(probeModels[0] ?? "")}
                           >
                             <Trans>Use a found model</Trans>
@@ -507,24 +509,24 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
                   )}
                 </div>
                 {!isOpenAiCompatible && selected.billing ? (
-                  <p className="mt-2 text-[13px] leading-[1.5] text-[#85858A]">
+                  <p className="mt-2 text-[13px] leading-[1.5] text-[var(--rk-muted)]">
                     {selected.billing}
                   </p>
                 ) : null}
 
                 {!isOpenAiCompatible ? (
-                  <div className="mt-5 rounded-[13px] border border-[#26262A] px-4 py-3">
-                    <div className="text-[12.5px] uppercase tracking-[0.08em] text-[#6C6C70]">
+                  <div className="mt-5 rounded-[13px] border border-[var(--rk-border)] px-4 py-3">
+                    <div className="text-[12.5px] uppercase tracking-[0.08em] text-[var(--rk-muted-2)]">
                       <Trans>Personal credential</Trans>
                     </div>
-                    <div className="mt-1 text-[15px] text-[#ECECEE]">
+                    <div className="mt-1 text-[15px] text-[var(--rk-ink)]">
                       {credential ? (
                         <Trans>Connected · {credential.label}</Trans>
                       ) : (
                         <Trans>Not connected</Trans>
                       )}
                     </div>
-                    <div className="mt-1 text-[13px] text-[#85858A]">
+                    <div className="mt-1 text-[13px] text-[var(--rk-muted)]">
                       {credential ? (
                         <Trans>
                           Your key or subscription token is stored securely and is never shown here.
@@ -539,17 +541,17 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
                 {subscriptionSignIn ? (
                   <div className="mt-5">
                     {oauth ? (
-                      <div className="rounded-[13px] border border-[#26262A] px-4 py-3">
+                      <div className="rounded-[13px] border border-[var(--rk-border)] px-4 py-3">
                         {oauth.mode === "auth-url" ? (
                           <>
-                            <p className="text-sm leading-[1.5] text-[#85858A]">
+                            <p className="text-sm leading-[1.5] text-[var(--rk-muted)]">
                               <Trans>
                                 Finish signing in at{" "}
                                 <a
                                   href={oauth.verificationUri}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="text-[#ECECEE] underline"
+                                  className="text-[var(--rk-ink)] underline"
                                 >
                                   {new URL(oauth.verificationUri).hostname}
                                 </a>
@@ -564,7 +566,7 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
                                 autoComplete="off"
                                 spellCheck={false}
                                 placeholder="http://localhost:53692/callback?code=…"
-                                className="w-full rounded-[11px] border border-[#26262A] bg-transparent px-3.5 py-2.5 text-[13px] text-[#ECECEE]"
+                                className="w-full rounded-[11px] border border-[var(--rk-border)] bg-transparent px-3.5 py-2.5 text-[13px] text-[var(--rk-ink)]"
                               />
                               <Button
                                 type="button"
@@ -576,29 +578,29 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
                                 <Trans>Submit</Trans>
                               </Button>
                             </div>
-                            <p className="mt-2 text-sm text-[#85858A]">
+                            <p className="mt-2 text-sm text-[var(--rk-muted)]">
                               <Trans>Waiting for sign-in…</Trans>
                             </p>
                           </>
                         ) : (
                           <>
-                            <p className="text-sm leading-[1.5] text-[#85858A]">
+                            <p className="text-sm leading-[1.5] text-[var(--rk-muted)]">
                               <Trans>
                                 Enter this code at{" "}
                                 <a
                                   href={oauth.verificationUri}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="text-[#ECECEE] underline"
+                                  className="text-[var(--rk-ink)] underline"
                                 >
                                   {oauth.verificationUri.replace(/^https:\/\//, "")}
                                 </a>
                               </Trans>
                             </p>
-                            <p className="mt-2 font-mono text-[22px] tracking-[0.2em] text-[#F1F1F2]">
+                            <p className="mt-2 font-mono text-[22px] tracking-[0.2em] text-[var(--rk-ink-strong)]">
                               {oauth.userCode}
                             </p>
-                            <p className="mt-2 text-sm text-[#85858A]">
+                            <p className="mt-2 text-sm text-[var(--rk-muted)]">
                               <Trans>Waiting for sign-in…</Trans>
                             </p>
                           </>
@@ -625,7 +627,7 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
                 {acceptsKey ? (
                   <div className="mt-5">
                     {isOpenAiCompatible ? (
-                      <details className="text-[13.5px] text-[#85858A]">
+                      <details className="text-[13.5px] text-[var(--rk-muted)]">
                         <summary className="w-fit cursor-pointer select-none">
                           <Trans>API key</Trans>
                         </summary>
@@ -636,11 +638,11 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
                           placeholder={t`Optional`}
                           type="password"
                           autoComplete="new-password"
-                          className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-[#101012] px-3.5 py-3 text-[#ECECEE] outline-none"
+                          className="mt-2 w-full rounded-[11px] border border-[var(--rk-border)] bg-[var(--rk-inset)] px-3.5 py-3 text-[var(--rk-ink)] outline-none"
                         />
                       </details>
                     ) : (
-                      <label className="block text-[13.5px] text-[#85858A]">
+                      <label className="block text-[13.5px] text-[var(--rk-muted)]">
                         {credential ? (
                           <Trans>Replace API key</Trans>
                         ) : subscriptionSignIn ? (
@@ -654,7 +656,7 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
                           placeholder="sk-…"
                           type="password"
                           autoComplete="new-password"
-                          className="mt-2 w-full rounded-[11px] border border-[#26262A] bg-[#101012] px-3.5 py-3 text-[#ECECEE] outline-none"
+                          className="mt-2 w-full rounded-[11px] border border-[var(--rk-border)] bg-[var(--rk-inset)] px-3.5 py-3 text-[var(--rk-ink)] outline-none"
                         />
                       </label>
                     )}
@@ -683,7 +685,7 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
                 ) : null}
 
                 {selected.auth === "oauth" && !subscriptionSignIn ? (
-                  <p className="mt-5 text-sm leading-[1.5] text-[#85858A]">
+                  <p className="mt-5 text-sm leading-[1.5] text-[var(--rk-muted)]">
                     <Trans>
                       This subscription sign-in is not available in Rakazo yet. Use a deployment
                       credential or choose another provider.
@@ -710,11 +712,11 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
                 ) : null}
               </>
             ) : loading ? (
-              <p className="text-[#85858A]">
+              <p className="text-[var(--rk-muted)]">
                 <Trans>Loading model catalog…</Trans>
               </p>
             ) : (
-              <p className="text-[#85858A]">
+              <p className="text-[var(--rk-muted)]">
                 <Trans>No model catalog is available.</Trans>
               </p>
             )}
@@ -915,17 +917,17 @@ function ModelPicker({
         aria-controls={listboxId}
         aria-expanded={open}
         aria-haspopup="listbox"
-        className="flex w-full items-center justify-between rounded-[11px] border border-[#26262A] bg-[#101012] px-3.5 py-3 text-start text-[#ECECEE] outline-none focus-visible:border-[#4A4A50]"
+        className="flex w-full items-center justify-between rounded-[11px] border border-[var(--rk-border)] bg-[var(--rk-inset)] px-3.5 py-3 text-start text-[var(--rk-ink)] outline-none focus-visible:border-[var(--rk-muted-2)]"
         onClick={() => setOpen((current) => !current)}
         onKeyDown={onTriggerKeyDown}
       >
         <span className="min-w-0 truncate">{options[selectedIndex]?.label}</span>
-        <span className="ml-3 shrink-0 text-[#85858A]" aria-hidden="true">
+        <span className="ml-3 shrink-0 text-[var(--rk-muted)]" aria-hidden="true">
           <ChevronDown size={16} strokeWidth={1.8} />
         </span>
       </button>
       {open ? (
-        <div className="absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-[11px] border border-[#26262A] bg-[#101012] shadow-[0_20px_45px_rgba(0,0,0,.55)]">
+        <div className="absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-[11px] border border-[var(--rk-border)] bg-[var(--rk-inset)] shadow-[0_20px_45px_rgba(0,0,0,.55)]">
           <input
             ref={searchRef}
             type="text"
@@ -942,7 +944,7 @@ function ModelPicker({
               setHighlightedIndex(0);
             }}
             onKeyDown={onSearchKeyDown}
-            className="w-full border-b border-[#26262A] bg-transparent px-3 py-2.5 text-[13.5px] text-[#ECECEE] outline-none placeholder:text-[#6C6C70]"
+            className="w-full border-b border-[var(--rk-border)] bg-transparent px-3 py-2.5 text-[13.5px] text-[var(--rk-ink)] outline-none placeholder:text-[var(--rk-muted-2)]"
           />
           <div
             id={listboxId}
@@ -952,7 +954,7 @@ function ModelPicker({
           >
             {groupRanges.map((group) => (
               <div key={group.name}>
-                <p className="px-3 pb-1 pt-2 text-[11px] font-medium uppercase tracking-[0.08em] text-[#6C6C70]">
+                <p className="px-3 pb-1 pt-2 text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--rk-muted-2)]">
                   {group.name}
                 </p>
                 {group.entries.map((option, groupIndex) => {
@@ -974,7 +976,7 @@ function ModelPicker({
               </div>
             ))}
             {filteredOptions.length === 0 ? (
-              <p className="px-3 py-2 text-[13px] text-[#85858A]">
+              <p className="px-3 py-2 text-[13px] text-[var(--rk-muted)]">
                 <Trans>No matching models</Trans>
               </p>
             ) : null}
@@ -1015,15 +1017,15 @@ function ModelOption({
       role="option"
       aria-selected={option.id === value}
       tabIndex={highlighted ? 0 : -1}
-      className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-start text-[13.5px] text-[#ECECEE] outline-none hover:bg-[#1A1A1D] focus-visible:bg-[#1A1A1D] ${
-        highlighted || option.id === value ? "bg-[#1A1A1D]" : ""
+      className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-start text-[13.5px] text-[var(--rk-ink)] outline-none hover:bg-[var(--rk-surface-2)] focus-visible:bg-[var(--rk-surface-2)] ${
+        highlighted || option.id === value ? "bg-[var(--rk-surface-2)]" : ""
       }`}
       onClick={() => choose(index)}
       onKeyDown={(event) => onOptionKeyDown(event, index)}
     >
       <span className="min-w-0 truncate">{option.label}</span>
       {option.billing.toLowerCase().includes("free") ? (
-        <span className="shrink-0 text-[12px] text-[#85858A]">{t`Free`}</span>
+        <span className="shrink-0 text-[12px] text-[var(--rk-muted)]">{t`Free`}</span>
       ) : null}
     </button>
   );

@@ -21,11 +21,12 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { rpc } from "../lib/api";
 import { loadLastBotId } from "../lib/last-bot";
-import { native } from "../lib/native";
+import { native, useThemedStyles } from "../lib/native";
 
 type SourceKind = "treg" | "mcp" | "api";
 
 export default function Integrations() {
+  const styles = useThemedStyles(createIntegrationsStyles);
   const { width } = useWindowDimensions();
   const catalogColumns = width >= 480 ? 2 : 1;
   const [catalog, setCatalog] = useState<ConnectionCatalogItem[]>([]);
@@ -432,58 +433,60 @@ export default function Integrations() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: native.page },
-  content: { padding: 20, gap: 14 },
-  explanation: { color: native.secondaryLabel, fontSize: 14, lineHeight: 20 },
-  section: { color: native.secondaryLabel, fontSize: 14, fontWeight: "600", marginTop: 10 },
-  actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  smallButton: {
-    minHeight: 42,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    backgroundColor: native.fill,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  buttonLabel: { color: native.label, fontSize: 14, fontWeight: "600" },
-  card: { padding: 16, borderRadius: 16, backgroundColor: native.fill, gap: 12 },
-  input: {
-    minHeight: 48,
-    borderRadius: 12,
-    backgroundColor: native.fillPressed,
-    color: native.label,
-    paddingHorizontal: 14,
-    fontSize: 15,
-  },
-  authToggle: { minHeight: 42, justifyContent: "center" },
-  catalogGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  catalogStack: { gap: 8 },
-  catalogCell: { flexGrow: 1, flexBasis: "47%", maxWidth: "49%" },
-  row: {
-    minHeight: 56,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRadius: 14,
-    backgroundColor: native.fill,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  grow: { flex: 1, gap: 3, minWidth: 0 },
-  title: { color: native.label, fontSize: 15, fontWeight: "600" },
-  secondary: { color: native.secondaryLabel, fontSize: 13 },
-  link: { color: native.label, fontSize: 14, fontWeight: "600" },
-  remove: { color: "#E96B6B", fontSize: 14, fontWeight: "600" },
-  error: { color: "#E96B6B", fontSize: 14 },
-  advancedToggle: {
-    marginTop: 8,
-    minHeight: 44,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  advancedLabel: { color: native.secondaryLabel, fontSize: 14 },
-  advancedBody: { gap: 14 },
-  chevron: { color: native.secondaryLabel, fontSize: 18 },
-});
+function createIntegrationsStyles() {
+  return StyleSheet.create({
+    screen: { flex: 1, backgroundColor: native.page },
+    content: { padding: 20, gap: 14 },
+    explanation: { color: native.secondaryLabel, fontSize: 14, lineHeight: 20 },
+    section: { color: native.secondaryLabel, fontSize: 14, fontWeight: "600", marginTop: 10 },
+    actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+    smallButton: {
+      minHeight: 42,
+      paddingHorizontal: 14,
+      borderRadius: 12,
+      backgroundColor: native.fill,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    buttonLabel: { color: native.label, fontSize: 14, fontWeight: "600" },
+    card: { padding: 16, borderRadius: 16, backgroundColor: native.fill, gap: 12 },
+    input: {
+      minHeight: 48,
+      borderRadius: 12,
+      backgroundColor: native.fillPressed,
+      color: native.label,
+      paddingHorizontal: 14,
+      fontSize: 15,
+    },
+    authToggle: { minHeight: 42, justifyContent: "center" },
+    catalogGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+    catalogStack: { gap: 8 },
+    catalogCell: { flexGrow: 1, flexBasis: "47%", maxWidth: "49%" },
+    row: {
+      minHeight: 56,
+      paddingHorizontal: 12,
+      paddingVertical: 12,
+      borderRadius: 14,
+      backgroundColor: native.fill,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+    },
+    grow: { flex: 1, gap: 3, minWidth: 0 },
+    title: { color: native.label, fontSize: 15, fontWeight: "600" },
+    secondary: { color: native.secondaryLabel, fontSize: 13 },
+    link: { color: native.label, fontSize: 14, fontWeight: "600" },
+    remove: { color: "#E96B6B", fontSize: 14, fontWeight: "600" },
+    error: { color: "#E96B6B", fontSize: 14 },
+    advancedToggle: {
+      marginTop: 8,
+      minHeight: 44,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    advancedLabel: { color: native.secondaryLabel, fontSize: 14 },
+    advancedBody: { gap: 14 },
+    chevron: { color: native.secondaryLabel, fontSize: 18 },
+  });
+}

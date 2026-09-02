@@ -41,7 +41,7 @@ import {
 } from "../lib/api";
 import { botTag, filterBots, formatThreadTime, userInitials } from "../lib/inbox";
 import { dismissThreadNotifications, resumeLiveNotifications } from "../lib/live-notifications";
-import { native } from "../lib/native";
+import { native, useThemedStyles } from "../lib/native";
 import { previewSnippet } from "../lib/preview";
 import { registerPushToken } from "../lib/push";
 import { querySpaceSearch } from "../lib/search";
@@ -64,6 +64,7 @@ async function openMobileSpace(spaceId: string | undefined, open: () => void) {
 }
 
 export default function Home() {
+  const styles = useThemedStyles(createHomeStyles);
   const [bots, setBots] = useState<MobileBot[]>([]);
   const [groups, setGroups] = useState<MobileGroup[]>([]);
   const [botSections, setBotSections] = useState<MobileBotSection[]>([]);
@@ -511,6 +512,7 @@ function ActivitySection({
 }: {
   activity: { active: RunActivityRow[]; recent: RunActivityRow[] };
 }) {
+  const styles = useThemedStyles(createHomeStyles);
   const router = useRouter();
   const openRun = (run: RunActivityRow) => {
     if (run.groupId) {
@@ -548,6 +550,7 @@ function ActivitySection({
 }
 
 function ActivityRow({ run, onPress }: { run: RunActivityRow; onPress: () => void }) {
+  const styles = useThemedStyles(createHomeStyles);
   const title = run.groupName ? `${run.botName} · ${run.groupName}` : run.botName;
   const status = activityStatusLabel(run.status);
   const preview = run.promptSnippet ? `${run.promptSnippet} · ${status}` : status;
@@ -588,6 +591,7 @@ function CircleButton({
   active?: boolean;
   accent?: boolean;
 }) {
+  const styles = useThemedStyles(createHomeStyles);
   return (
     <Pressable
       accessibilityRole="button"
@@ -606,6 +610,7 @@ function CircleButton({
 }
 
 function SearchRow({ hit, onPress }: { hit: SearchHit; onPress: () => void }) {
+  const styles = useThemedStyles(createHomeStyles);
   return (
     <Pressable
       onPress={onPress}
@@ -635,6 +640,7 @@ function BotRow({
   onPress: () => void;
   onLongPress?: () => void;
 }) {
+  const styles = useThemedStyles(createHomeStyles);
   const preview = previewSnippet(bot.preview, 40) || bot.title || "No messages yet";
   const time = bot.updatedAt ? formatThreadTime(bot.updatedAt) : "";
   const tag = botTag(bot.title, bot.name);
@@ -705,6 +711,7 @@ function GroupRow({
   onPress: () => void;
   onLongPress?: () => void;
 }) {
+  const styles = useThemedStyles(createHomeStyles);
   const preview =
     previewSnippet(group.preview, 40) || group.members.map((member) => member.name).join(", ");
   const time = group.updatedAt ? formatThreadTime(group.updatedAt) : "";
@@ -737,181 +744,183 @@ function GroupRow({
   );
 }
 
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: native.page,
-  },
-  centered: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 10,
-  },
-  headerActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  circleButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#2C2C2E",
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  circlePressed: {
-    backgroundColor: "#3A3A3C",
-  },
-  circleAccent: {
-    backgroundColor: "#4C8DFF",
-  },
-  profileInitials: {
-    color: native.label,
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  searchField: {
-    marginHorizontal: 16,
-    marginBottom: 8,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: native.fill,
-    color: native.label,
-    paddingHorizontal: 12,
-    fontSize: 17,
-    writingDirection: "auto",
-  },
-  error: {
-    color: native.secondaryLabel,
-    paddingHorizontal: 20,
-    paddingBottom: 8,
-  },
-  list: {
-    flexGrow: 1,
-    paddingBottom: 32,
-  },
-  empty: {
-    color: native.secondaryLabel,
-    fontSize: 16,
-    paddingHorizontal: 20,
-    paddingTop: 28,
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    gap: 12,
-  },
-  rowPressed: {
-    opacity: 0.55,
-  },
-  rowBody: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
-  },
-  rowTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  titleRow: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  rowMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-  },
-  name: {
-    flexShrink: 1,
-    color: native.label,
-    fontSize: 17,
-    fontWeight: "600",
-    writingDirection: "auto",
-  },
-  tag: {
-    flexShrink: 1,
-    borderRadius: 999,
-    backgroundColor: native.fill,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-  },
-  tagLabel: {
-    color: native.secondaryLabel,
-    fontSize: 11,
-    fontWeight: "500",
-    writingDirection: "auto",
-  },
-  time: {
-    color: native.secondaryLabel,
-    fontSize: 15,
-  },
-  preview: {
-    color: native.secondaryLabel,
-    fontSize: 15,
-    lineHeight: 20,
-    writingDirection: "auto",
-  },
-  unreadPreview: {
-    color: native.label,
-    fontWeight: "600",
-  },
-  unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#8B5CF6",
-  },
-  sectionHeading: {
-    color: native.secondaryLabel,
-    fontSize: 14,
-    fontWeight: "600",
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 4,
-  },
-  activitySection: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#2C2C2E",
-    marginBottom: 4,
-    paddingBottom: 4,
-  },
-  activityGap: {
-    paddingTop: 16,
-  },
-  activityDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#8B5CF6",
-    marginTop: 6,
-  },
-  groupAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "#232326",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  groupAvatarLabel: {
-    color: "#C9C9CE",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-});
+function createHomeStyles() {
+  return StyleSheet.create({
+    screen: {
+      flex: 1,
+      backgroundColor: native.page,
+    },
+    centered: {
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 16,
+      paddingTop: 8,
+      paddingBottom: 10,
+    },
+    headerActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+    },
+    circleButton: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: native.fillPressed,
+      alignItems: "center",
+      justifyContent: "center",
+      overflow: "hidden",
+    },
+    circlePressed: {
+      backgroundColor: native.fill,
+    },
+    circleAccent: {
+      backgroundColor: "#4C8DFF",
+    },
+    profileInitials: {
+      color: native.label,
+      fontSize: 15,
+      fontWeight: "600",
+    },
+    searchField: {
+      marginHorizontal: 16,
+      marginBottom: 8,
+      height: 36,
+      borderRadius: 10,
+      backgroundColor: native.fill,
+      color: native.label,
+      paddingHorizontal: 12,
+      fontSize: 17,
+      writingDirection: "auto",
+    },
+    error: {
+      color: native.secondaryLabel,
+      paddingHorizontal: 20,
+      paddingBottom: 8,
+    },
+    list: {
+      flexGrow: 1,
+      paddingBottom: 32,
+    },
+    empty: {
+      color: native.secondaryLabel,
+      fontSize: 16,
+      paddingHorizontal: 20,
+      paddingTop: 28,
+    },
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      gap: 12,
+    },
+    rowPressed: {
+      opacity: 0.55,
+    },
+    rowBody: {
+      flex: 1,
+      minWidth: 0,
+      gap: 2,
+    },
+    rowTop: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    titleRow: {
+      flex: 1,
+      minWidth: 0,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
+    rowMeta: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 7,
+    },
+    name: {
+      flexShrink: 1,
+      color: native.label,
+      fontSize: 17,
+      fontWeight: "600",
+      writingDirection: "auto",
+    },
+    tag: {
+      flexShrink: 1,
+      borderRadius: 999,
+      backgroundColor: native.fill,
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+    },
+    tagLabel: {
+      color: native.secondaryLabel,
+      fontSize: 11,
+      fontWeight: "500",
+      writingDirection: "auto",
+    },
+    time: {
+      color: native.secondaryLabel,
+      fontSize: 15,
+    },
+    preview: {
+      color: native.secondaryLabel,
+      fontSize: 15,
+      lineHeight: 20,
+      writingDirection: "auto",
+    },
+    unreadPreview: {
+      color: native.label,
+      fontWeight: "600",
+    },
+    unreadDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: "#8B5CF6",
+    },
+    sectionHeading: {
+      color: native.secondaryLabel,
+      fontSize: 14,
+      fontWeight: "600",
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      paddingBottom: 4,
+    },
+    activitySection: {
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: native.fillPressed,
+      marginBottom: 4,
+      paddingBottom: 4,
+    },
+    activityGap: {
+      paddingTop: 16,
+    },
+    activityDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: "#8B5CF6",
+      marginTop: 6,
+    },
+    groupAvatar: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: native.fill,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    groupAvatarLabel: {
+      color: native.secondaryLabel,
+      fontSize: 16,
+      fontWeight: "600",
+    },
+  });
+}
