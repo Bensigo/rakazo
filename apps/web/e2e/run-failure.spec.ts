@@ -112,7 +112,7 @@ test("a covered run error is not remembered until it is presented", async ({ pag
   await page.getByPlaceholder(/^Message /).fill("fail this run");
   const modalSendButton = await page.getByRole("button", { name: "Send" }).elementHandle();
   if (!modalSendButton) throw new Error("Send button not found");
-  await page.getByTitle("Create").click();
+  await page.getByTitle("Create", { exact: true }).click();
   await page.getByRole("button", { name: "New space" }).click();
   const newSpaceDialog = page.getByRole("dialog", { name: "New space" });
   await expect(newSpaceDialog).toBeVisible();

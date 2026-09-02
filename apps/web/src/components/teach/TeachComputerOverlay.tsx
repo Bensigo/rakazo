@@ -23,28 +23,51 @@ export function TeachComputerOverlayControl({
   const [goal, setGoal] = useState("");
   const [localBusy, setLocalBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** True after skills.start succeeded but the view refresh failed. */
+  const [needsRefresh, setNeedsRefresh] = useState(false);
   const busy = Boolean(busyProp) || localBusy;
   // Hide only for desktop-host bots. Null computer still shows the control so teaching can boot.
   if (computer?.kind === "desktop") return null;
 
+  async function refreshView() {
+    setLocalBusy(true);
+    setError(null);
+    try {
+      await onRefresh();
+      setNeedsRefresh(false);
+      setGoal("");
+    } catch (refreshError) {
+      setNeedsRefresh(true);
+      setError(
+        refreshError instanceof Error
+          ? refreshError.message
+          : t`Recording may have started, but the view could not refresh`,
+      );
+    } finally {
+      setLocalBusy(false);
+    }
+  }
+
   async function startTeaching() {
-    if (!goal.trim() || busy) return;
+    if (!goal.trim() || busy || needsRefresh) return;
     setLocalBusy(true);
     setError(null);
     try {
       await rpc.computer.boot({ botId });
       await rpc.skills.start({ botId, goal: goal.trim() });
+      // Recording has started. Never reopen Start recording; only refresh the view.
       setGoalOpen(false);
+      setGoal("");
       try {
         await onRefresh();
-        setGoal("");
+        setNeedsRefresh(false);
       } catch (refreshError) {
+        setNeedsRefresh(true);
         setError(
           refreshError instanceof Error
             ? refreshError.message
             : t`Recording may have started, but the view could not refresh`,
         );
-        setGoalOpen(true);
       }
     } catch (startError) {
       setError(startError instanceof Error ? startError.message : t`Could not start teaching`);
@@ -99,6 +122,42 @@ export function TeachComputerOverlayControl({
           </div>
         </div>
       ) : null}
+      {!goalOpen && needsRefresh ? (
+        <div
+          data-testid="teach-refresh-recovery"
+          className="absolute end-0 top-full z-20 mt-2 w-[min(320px,calc(100vw-2rem))] rounded-[12px] border border-[#26262A] bg-[#121214] px-3 py-3 shadow-[0_12px_40px_rgba(0,0,0,.45)]"
+        >
+          {error ? (
+            <div role="alert" className="text-[13px] text-[#FCA5A5]">
+              {error}
+            </div>
+          ) : (
+            <p className="text-[13px] text-[#85858A]">
+              <Trans>Recording started. Refresh the view to continue.</Trans>
+            </p>
+          )}
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void refreshView()}
+              className="rounded-[11px] bg-[#F1F1EF] px-4 py-2 text-[14px] text-[#17171A] disabled:opacity-40"
+            >
+              {busy ? <Trans>Refreshing…</Trans> : <Trans>Refresh view</Trans>}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setNeedsRefresh(false);
+                setError(null);
+              }}
+              className="rounded-[11px] border border-[#26262A] px-4 py-2 text-[14px] text-[#ECECEE]"
+            >
+              <Trans>Dismiss</Trans>
+            </button>
+          </div>
+        </div>
+      ) : null}
       <button
         type="button"
         data-testid="teach-start-button"
@@ -106,6 +165,7 @@ export function TeachComputerOverlayControl({
         aria-expanded={goalOpen}
         disabled={busy}
         onClick={() => {
+          if (needsRefresh) return;
           setError(null);
           setGoalOpen((open) => !open);
         }}
