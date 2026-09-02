@@ -845,6 +845,8 @@ describe("host disk posix *at pinning", () => {
     expect(ipcSource).not.toMatch(/unlinkatChild\(parentHandle\.fd, baseName\)/);
     expect(ipcSource).toMatch(/unlinkIfOwnedChild\(publishHandle\.fd, baseName, publishedStat\)/);
     expect(ipcSource).toMatch(/unlinkIfOwnedChild\(/);
+    expect(ipcSource).toMatch(/unlinkOwnedChildAnywhere\(/);
+    expect(ipcSource).toMatch(/readdirNamesAt\(/);
     expect(ipcSource).toMatch(/tempOwned/);
     // mkdir: async assert + sync gate immediately before mkdirat; owned AT_REMOVEDIR.
     expect(ipcSource).toMatch(/assertFdStillInsideRoots\(parentHandle\.fd, realRoots\)/);

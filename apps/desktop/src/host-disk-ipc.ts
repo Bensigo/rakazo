@@ -178,6 +178,48 @@ async function unlinkIfOwnedChild(dirFd: number, name: string, owned: FdIdentity
   }
 }
 
+/**
+ * Remove `owned` from a pinned parent dirfd. Try preferred basenames first, then
+ * scan the directory so a same-user rename of our temp cannot leave renderer
+ * content outside the grant under a new name.
+ */
+async function unlinkOwnedChildAnywhere(
+  dirFd: number,
+  owned: FdIdentity,
+  preferredNames: string[] = [],
+  flags = 0,
+) {
+  for (const name of preferredNames) {
+    try {
+      await unlinkIfOwnedChild(dirFd, name, owned, flags);
+    } catch {
+      // Try the next name / scan.
+    }
+  }
+  let names: string[];
+  try {
+    names = readdirNamesAt(dirFd);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    if (name === "." || name === "..") continue;
+    try {
+      const check = openatChild(dirFd, name, constants.O_RDONLY | NOFOLLOW);
+      try {
+        const st = await check.stat();
+        if (!sameFdIdentity(st, owned)) continue;
+      } finally {
+        await check.close().catch(() => undefined);
+      }
+      unlinkatChild(dirFd, name, flags);
+      return;
+    } catch {
+      // Skip vanished / raced entries.
+    }
+  }
+}
+
 /** Last-mile sync containment check (no await) before mkdirat/renameat. */
 function assertFdStillInsideRoots(fd: number, roots: HostDiskAuthorizedRoot[]) {
   let fdReal: string;
@@ -433,6 +475,8 @@ export function registerHostDiskIpc() {
         // unlink a contained write.
         await assertInsideAuthorizedRoots(await realpathOfFd(parentHandle.fd), realRoots);
 
+        // Keep the temp fd open until publish/cleanup finishes so an unlink of
+        // tempName cannot orphan our inode under a renamed basename outside the grant.
         const tempHandle = openatChild(
           parentHandle.fd,
           tempName,
@@ -445,85 +489,87 @@ export function registerHostDiskIpc() {
           const tempFdReal = await realpathOfFd(tempHandle.fd);
           await assertInsideAuthorizedRoots(tempFdReal, realRoots);
           await tempHandle.writeFile(Buffer.from(contentBase64, "base64"));
-        } finally {
-          await tempHandle.close();
-        }
 
-        // Re-bind the parent through a fresh grant walk before publish. If the
-        // pinned parent was moved outside the grant, parentPath no longer names
-        // the same inode (or open fails) and we abort without renameat — so
-        // renderer content is never committed on the escaped directory.
-        const pinnedParent = await parentHandle.stat();
-        const publishHandle = await openInsideGrants(parentPath, dirFlags);
-        try {
-          const liveParent = await publishHandle.stat();
-          if (
-            String(liveParent.dev) !== String(pinnedParent.dev) ||
-            String(liveParent.ino) !== String(pinnedParent.ino)
-          ) {
-            throw new Error("Host path is outside the granted folders");
-          }
-          await assertInsideAuthorizedRoots(await realpathOfFd(publishHandle.fd), realRoots);
-          // Sync re-check with no await before renameat (shrink TOCTOU after async assert).
-          assertFdStillInsideRoots(publishHandle.fd, realRoots);
-          renameatChild(publishHandle.fd, tempName, baseName);
-
-          const finalHandle = openatChild(
-            publishHandle.fd,
-            baseName,
-            constants.O_RDONLY | NOFOLLOW,
-          );
-          let publishedStat: FdIdentity | null = null;
+          // Re-bind the parent through a fresh grant walk before publish. If the
+          // pinned parent was moved outside the grant, parentPath no longer names
+          // the same inode (or open fails) and we abort without renameat — so
+          // renderer content is never committed on the escaped directory.
+          const pinnedParent = await parentHandle.stat();
+          const publishHandle = await openInsideGrants(parentPath, dirFlags);
           try {
-            publishedStat = await finalHandle.stat();
-            await assertInsideAuthorizedRoots(await realpathOfFd(publishHandle.fd), realRoots);
-            await assertInsideAuthorizedRoots(await realpathOfFd(finalHandle.fd), realRoots);
-            // Publish accepted — temp name is gone.
-            tempPending = false;
-            tempOwned = null;
-          } catch (publishError) {
-            // Residual TOCTOU after renameat: never unlink an outside destination
-            // by basename (that can destroy unrelated outside data). Roll our
-            // inode back to the temp name when baseName still names the file we
-            // published, then let inode-checked temp cleanup remove it.
-            if (publishedStat) {
-              try {
-                const check = openatChild(
-                  publishHandle.fd,
-                  baseName,
-                  constants.O_RDONLY | NOFOLLOW,
-                );
-                try {
-                  const checkStat = await check.stat();
-                  if (sameFdIdentity(checkStat, publishedStat)) {
-                    renameatChild(publishHandle.fd, baseName, tempName);
-                  }
-                } finally {
-                  await check.close().catch(() => undefined);
-                }
-              } catch {
-                // Best-effort rollback only.
-              }
-              // If rename-back did not clear baseName, remove only our inode —
-              // never a replacement that raced in under the same basename.
-              try {
-                await unlinkIfOwnedChild(publishHandle.fd, baseName, publishedStat);
-              } catch {
-                // Best-effort attributable cleanup only.
-              }
+            const liveParent = await publishHandle.stat();
+            if (
+              String(liveParent.dev) !== String(pinnedParent.dev) ||
+              String(liveParent.ino) !== String(pinnedParent.ino)
+            ) {
+              throw new Error("Host path is outside the granted folders");
             }
-            if (publishError instanceof Error) throw publishError;
-            throw new Error("Host path is outside the granted folders");
+            await assertInsideAuthorizedRoots(await realpathOfFd(publishHandle.fd), realRoots);
+            // Sync re-check with no await before renameat (shrink TOCTOU after async assert).
+            assertFdStillInsideRoots(publishHandle.fd, realRoots);
+            renameatChild(publishHandle.fd, tempName, baseName);
+
+            const finalHandle = openatChild(
+              publishHandle.fd,
+              baseName,
+              constants.O_RDONLY | NOFOLLOW,
+            );
+            let publishedStat: FdIdentity | null = null;
+            try {
+              publishedStat = await finalHandle.stat();
+              await assertInsideAuthorizedRoots(await realpathOfFd(publishHandle.fd), realRoots);
+              await assertInsideAuthorizedRoots(await realpathOfFd(finalHandle.fd), realRoots);
+              // Publish accepted — temp name is gone.
+              tempPending = false;
+              tempOwned = null;
+            } catch (publishError) {
+              // Residual TOCTOU after renameat: never unlink an outside destination
+              // by basename (that can destroy unrelated outside data). Roll our
+              // inode back to the temp name when baseName still names the file we
+              // published, then let inode-checked temp cleanup remove it.
+              if (publishedStat) {
+                try {
+                  const check = openatChild(
+                    publishHandle.fd,
+                    baseName,
+                    constants.O_RDONLY | NOFOLLOW,
+                  );
+                  try {
+                    const checkStat = await check.stat();
+                    if (sameFdIdentity(checkStat, publishedStat)) {
+                      renameatChild(publishHandle.fd, baseName, tempName);
+                    }
+                  } finally {
+                    await check.close().catch(() => undefined);
+                  }
+                } catch {
+                  // Best-effort rollback only.
+                }
+                // If rename-back did not clear baseName, remove only our inode —
+                // never a replacement that raced in under the same basename.
+                try {
+                  await unlinkIfOwnedChild(publishHandle.fd, baseName, publishedStat);
+                } catch {
+                  // Best-effort attributable cleanup only.
+                }
+              }
+              if (publishError instanceof Error) throw publishError;
+              throw new Error("Host path is outside the granted folders");
+            } finally {
+              await finalHandle.close().catch(() => undefined);
+            }
           } finally {
-            await finalHandle.close().catch(() => undefined);
+            await publishHandle.close().catch(() => undefined);
           }
         } finally {
-          await publishHandle.close().catch(() => undefined);
+          await tempHandle.close().catch(() => undefined);
         }
       } catch (error) {
         if (tempPending && tempOwned) {
           try {
-            await unlinkIfOwnedChild(parentHandle.fd, tempName, tempOwned);
+            // Preferred names first, then scan the pinned parent so a rename of
+            // our temp cannot leave renderer content outside the grant.
+            await unlinkOwnedChildAnywhere(parentHandle.fd, tempOwned, [tempName, baseName]);
           } catch {
             // Best-effort cleanup of our temp inode only.
           }
