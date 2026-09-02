@@ -852,6 +852,16 @@ describe("host disk posix *at pinning", () => {
       /assertFdStillInsideRoots\(parentHandle\.fd, realRoots\);\s*\n\s*try \{\s*\n\s*mkdiratChild/m,
     );
     expect(ipcSource).toMatch(/AT_REMOVEDIR/);
+    // Darwin AT_REMOVEDIR is 0x80; Linux is 0x200 — a Linux-only constant
+    // breaks macOS mkdir rollback and can leave grant-escaping directories.
+    expect(ipcSource).toMatch(
+      /const AT_REMOVEDIR = process\.platform === ["']darwin["'] \? 0x80 : 0x200/,
+    );
+    // Darwin AT_REMOVEDIR is 0x80; Linux is 0x200 — a Linux-only constant
+    // breaks macOS mkdir rollback and can leave grant-escaping directories.
+    expect(ipcSource).toMatch(
+      /const AT_REMOVEDIR = process\.platform === ["']darwin["'] \? 0x80 : 0x200/,
+    );
     expect(pathSource).not.toMatch(/unlinkatChild\(parentHandle\.fd, baseName\)/);
     expect(pathSource).toMatch(/unlinkIfOwnedChild\(/);
   });

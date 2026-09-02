@@ -22,8 +22,12 @@ let grantStore: HostDiskGrantStore | null = null;
 
 const NOFOLLOW = constants.O_NOFOLLOW ?? 0;
 const DIRECTORY = constants.O_DIRECTORY ?? 0;
-/** unlinkat flag to remove directories (Linux/macOS AT_REMOVEDIR). */
-const AT_REMOVEDIR = 0x200;
+/**
+ * unlinkat flag to remove directories (AT_REMOVEDIR).
+ * Darwin sys/fcntl.h uses 0x80; Linux uses 0x200. A Linux-only constant makes
+ * macOS mkdir rollback a no-op and can leave grant-escaping directories behind.
+ */
+const AT_REMOVEDIR = process.platform === "darwin" ? 0x80 : 0x200;
 
 function grants(): HostDiskGrantStore {
   if (!grantStore) throw new Error("Host disk IPC is not registered");
