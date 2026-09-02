@@ -594,8 +594,13 @@ describe("host disk exclusive claims", () => {
     expect(claimed?.status).toBe("claimed");
     if (!claimed) throw new Error("expected claim");
 
-    const { access, constants: fsConstants, rename, readFile, writeFile } =
-      await import("node:fs/promises");
+    const {
+      access,
+      constants: fsConstants,
+      rename,
+      readFile,
+      writeFile,
+    } = await import("node:fs/promises");
     const claimedPath = path.join(
       dataDir,
       "host-disk",

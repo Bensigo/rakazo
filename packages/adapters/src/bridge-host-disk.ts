@@ -184,19 +184,11 @@ export class BridgingHostDiskProvider implements HostDiskProvider {
     const graceDeadline = (this.options.now?.() ?? Date.now()) + graceMs;
     for (;;) {
       const final = await readOperationById(this.options.dataDir, userId, id);
-      if (
-        final &&
-        isTerminalOperationFile(final.file) &&
-        final.operation.status === "done"
-      ) {
+      if (final && isTerminalOperationFile(final.file) && final.operation.status === "done") {
         void unlink(final.file).catch(() => undefined);
         return final.operation;
       }
-      if (
-        final &&
-        isTerminalOperationFile(final.file) &&
-        final.operation.status === "error"
-      ) {
+      if (final && isTerminalOperationFile(final.file) && final.operation.status === "error") {
         throw new Error(final.operation.error ?? "Host disk operation failed");
       }
       const now = this.options.now?.() ?? Date.now();

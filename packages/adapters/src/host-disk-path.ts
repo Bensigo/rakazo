@@ -377,7 +377,10 @@ export async function writeFileInsideHostRoots(
     try {
       const parentLive = await realpathOfFd(parentHandle.fd);
       const fdReal = await realpathOfFd(finalHandle.fd);
-      if (!isLexicallyInsideRoots(parentLive, realRoots) || !isLexicallyInsideRoots(fdReal, realRoots)) {
+      if (
+        !isLexicallyInsideRoots(parentLive, realRoots) ||
+        !isLexicallyInsideRoots(fdReal, realRoots)
+      ) {
         try {
           unlinkatChild(parentHandle.fd, baseName);
         } catch {
