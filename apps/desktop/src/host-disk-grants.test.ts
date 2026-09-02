@@ -131,4 +131,33 @@ describe("host disk grant store", () => {
     expect(roots).toEqual([await realpath(backup)]);
     expect(roots).not.toContain(await realpath(outside));
   });
+
+  it("does not realpath an fd-derived path after a post-derivation symlink swap", async () => {
+    // pathFromOpenFd returns a pathname string; replacing that path with an
+    // outside symlink before confirmation must fail closed — never authorize outside.
+    const dir = await tempDir();
+    const grantsFilePath = path.join(dir, "host-disk-grants.json");
+    const granted = path.join(dir, "Granted");
+    const outside = path.join(dir, "Outside");
+    await mkdir(granted);
+    await mkdir(outside);
+    await writeFile(path.join(outside, "secret.txt"), "nope\n", "utf8");
+
+    const backup = path.join(dir, "Granted-original");
+    const store = createHostDiskGrantStore({
+      grantsFilePath,
+      afterAuthorizedFdPathDerived: async () => {
+        await rename(granted, backup);
+        await symlink(outside, granted);
+      },
+    });
+    await store.ready;
+    await store.add(granted);
+
+    const { realpath } = await import("node:fs/promises");
+    const roots = await store.authorizedRealRoots();
+    expect(roots).not.toContain(await realpath(outside));
+    // Fail closed on the swapped pathname (O_NOFOLLOW reopen fails / identity miss).
+    expect(roots).toEqual([]);
+  });
 });

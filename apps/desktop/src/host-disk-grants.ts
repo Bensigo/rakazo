@@ -19,8 +19,8 @@ export type HostDiskGrantStore = {
   /**
    * Realpaths of grants whose on-disk device+inode still match grant time.
    * Symlink (or directory) replacement of a grant pathname yields no root.
-   * Paths are derived from the verified open fd, never from a second pathname
-   * realpath that could follow a mid-check swap.
+   * Paths come from the verified open fd and are re-confirmed with O_NOFOLLOW
+   * (never string realpath, which can follow a post-derivation symlink swap).
    */
   authorizedRealRoots(): Promise<string[]>;
 };
@@ -34,6 +34,11 @@ export type HostDiskGrantStoreOptions = {
    * allowlist path is taken from that fd (path-swap race).
    */
   afterAuthorizedIdentityVerified?: () => Promise<void>;
+  /**
+   * Test-only: after pathFromOpenFd returns, before the path is confirmed via
+   * O_NOFOLLOW reopen (pathname→symlink race on the fd-derived string).
+   */
+  afterAuthorizedFdPathDerived?: () => Promise<void>;
 };
 
 type GrantRecord = {
@@ -234,10 +239,27 @@ export function createHostDiskGrantStore(options: HostDiskGrantStoreOptions): Ho
             if (options.afterAuthorizedIdentityVerified) {
               await options.afterAuthorizedIdentityVerified();
             }
-            // Derive the allowlist path from the verified open fd. Never
-            // realpath(record.path) here — a post-check pathname→symlink swap
-            // would otherwise poison the authorized root.
-            realRoots.push(await realpath(pathFromOpenFd(handle.fd)));
+            // Path of the verified inode via the open fd (not record.path).
+            const fdPath = pathFromOpenFd(handle.fd);
+            if (options.afterAuthorizedFdPathDerived) {
+              await options.afterAuthorizedFdPathDerived();
+            }
+            // Confirm the fd-derived pathname still names the same inode without
+            // following a symlink. Do not realpath() the string — that can follow
+            // a post-derivation pathname→symlink swap into an ungranted tree.
+            const confirmed = await open(fdPath, constants.O_RDONLY | DIRECTORY | NOFOLLOW);
+            try {
+              const confirmedInfo = await confirmed.stat();
+              if (
+                String(confirmedInfo.dev) !== record.dev ||
+                String(confirmedInfo.ino) !== record.ino
+              ) {
+                continue;
+              }
+              realRoots.push(pathFromOpenFd(confirmed.fd));
+            } finally {
+              await confirmed.close().catch(() => undefined);
+            }
           } finally {
             await handle.close().catch(() => undefined);
           }
