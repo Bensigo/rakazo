@@ -32,9 +32,9 @@ export function TeachComputerOverlayControl({
       await rpc.computer.boot({ botId });
       await rpc.skills.start({ botId, goal: goal.trim() });
       setGoalOpen(false);
-      setGoal("");
       try {
         await onRefresh();
+        setGoal("");
       } catch (refreshError) {
         setError(
           refreshError instanceof Error
