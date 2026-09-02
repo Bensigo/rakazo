@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
+import { resolveWwwPort } from "./www-port.mjs";
 
-const port = Number(process.env.WWW_PORT ?? 4321);
+const port = resolveWwwPort();
 const baseURL = process.env.PLAYWRIGHT_WWW_BASE_URL ?? `http://127.0.0.1:${port}`;
 
 export default defineConfig({
