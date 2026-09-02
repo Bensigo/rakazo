@@ -845,6 +845,10 @@ describe("host disk posix *at pinning", () => {
     expect(ipcSource).not.toMatch(/unlinkatChild\(parentHandle\.fd, baseName\)/);
     expect(ipcSource).toMatch(/unlinkIfOwnedChild\(publishHandle\.fd, baseName, publishedStat\)/);
     expect(ipcSource).toMatch(/unlinkIfOwnedChild\(/);
+    // Owned unlink renames to an unguessable name before unlinkat to avoid
+    // deleting a replacement that raced into the basename after fstat.
+    expect(ipcSource).toMatch(/\.rakazo-unlink-/);
+    expect(ipcSource).toMatch(/renameatChild\(dirFd, name, trash\)/);
     expect(ipcSource).toMatch(/unlinkOwnedChildAnywhere\(/);
     expect(ipcSource).toMatch(/readdirNamesAt\(/);
     expect(ipcSource).toMatch(/tempOwned/);
@@ -859,13 +863,10 @@ describe("host disk posix *at pinning", () => {
     expect(ipcSource).toMatch(
       /const AT_REMOVEDIR = process\.platform === ["']darwin["'] \? 0x80 : 0x200/,
     );
-    // Darwin AT_REMOVEDIR is 0x80; Linux is 0x200 — a Linux-only constant
-    // breaks macOS mkdir rollback and can leave grant-escaping directories.
-    expect(ipcSource).toMatch(
-      /const AT_REMOVEDIR = process\.platform === ["']darwin["'] \? 0x80 : 0x200/,
-    );
     expect(pathSource).not.toMatch(/unlinkatChild\(parentHandle\.fd, baseName\)/);
     expect(pathSource).toMatch(/unlinkIfOwnedChild\(/);
+    expect(pathSource).toMatch(/\.rakazo-unlink-/);
+    expect(pathSource).toMatch(/renameatChild\(dirFd, name, trash\)/);
   });
 
   it("openat/mkdirat/renameat keep writes on the pinned directory inode", async () => {

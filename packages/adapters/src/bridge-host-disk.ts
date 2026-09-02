@@ -38,6 +38,8 @@ export type BridgingHostDiskOptions = {
    * in flight. Fixed grace alone can expire before a slow host op publishes.
    */
   completingHoldMs?: number;
+  /** Absolute bound while `.completing.json` is held (crash ceiling). */
+  completingMaxMs?: number;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
 };
@@ -47,6 +49,8 @@ const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_COMPLETION_GRACE_MS = 2_000;
 /** Bound for waiting on exclusive `.completing.json` after the main timeout. */
 const DEFAULT_COMPLETING_HOLD_MS = 30_000;
+/** Crash ceiling while `.completing.json` remains held (10 minutes). */
+const DEFAULT_COMPLETING_MAX_MS = 600_000;
 
 /**
  * Queues host-disk work for a connected Mac/phone client. The API exposes claim
@@ -192,14 +196,13 @@ export class BridgingHostDiskProvider implements HostDiskProvider {
     // disappears, allow a short grace for the terminal rename gap.
     const graceMs = this.options.completionGraceMs ?? DEFAULT_COMPLETION_GRACE_MS;
     const completingHoldMs = this.options.completingHoldMs ?? DEFAULT_COMPLETING_HOLD_MS;
-    const timeoutMsForCeiling = this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    const completingMaxMs = this.options.completingMaxMs ?? DEFAULT_COMPLETING_MAX_MS;
     const graceStarted = this.options.now?.() ?? Date.now();
     const graceDeadline = graceStarted + graceMs;
-    // Crash ceiling: prefer a full default hold window so a short timeoutMs used
-    // in tests (or tight prod timeouts) cannot cut off a live completing owner
-    // before soft sliding has a chance to observe them.
-    const completingCeiling =
-      graceStarted + Math.max(completingHoldMs, timeoutMsForCeiling, DEFAULT_COMPLETING_HOLD_MS);
+    // Crash ceiling for a held `.completing.json`. Soft sliding uses
+    // completingHoldMs per poll so a live exclusive owner is not cut off by a
+    // short fixed deadline; completingMaxMs bounds a crashed holder.
+    const completingCrashCeiling = graceStarted + completingMaxMs;
     let sawCompleting = false;
     let postCompletingGraceDeadline: number | null = null;
     for (;;) {
@@ -221,10 +224,11 @@ export class BridgingHostDiskProvider implements HostDiskProvider {
         postCompletingGraceDeadline = now + graceMs;
       }
       const deadline = completingInFlight
-        ? // Slide while the exclusive owner still holds completing.
-          Math.min(completingCeiling, now + completingHoldMs)
+        ? // Slide while exclusive owner holds completing; only the long crash
+          // ceiling can stop a live holder (not the short soft-hold window).
+          Math.min(completingCrashCeiling, now + completingHoldMs)
         : sawCompleting
-          ? Math.min(completingCeiling, postCompletingGraceDeadline ?? completingCeiling)
+          ? Math.min(completingCrashCeiling, postCompletingGraceDeadline ?? completingCrashCeiling)
           : graceDeadline;
       if (now >= deadline) break;
       await sleep(Math.min(pollMs, Math.max(0, deadline - now)));

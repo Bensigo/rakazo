@@ -332,9 +332,36 @@ async function unlinkIfOwnedChild(dirFd: number, name: string, owned: FdIdentity
   try {
     const st = await check.stat();
     if (!sameFdIdentity(st, owned)) return;
-    unlinkatChild(dirFd, name, flags);
   } finally {
     await check.close().catch(() => undefined);
+  }
+  // Rename to an unguessable name under the pinned dirfd, re-verify (dev,ino),
+  // then unlink — avoids deleting a replacement that raced into `name` between
+  // stat and unlinkat (basename-only unlink TOCTOU).
+  const trash = `.rakazo-unlink-${process.pid}-${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
+  try {
+    renameatChild(dirFd, name, trash);
+  } catch {
+    return;
+  }
+  try {
+    const verify = openatChild(dirFd, trash, constants.O_RDONLY | NOFOLLOW);
+    try {
+      const st = await verify.stat();
+      if (!sameFdIdentity(st, owned)) {
+        try {
+          renameatChild(dirFd, trash, name);
+        } catch {
+          // Best-effort restore of the unexpected dirent.
+        }
+        return;
+      }
+    } finally {
+      await verify.close().catch(() => undefined);
+    }
+    unlinkatChild(dirFd, trash, flags);
+  } catch {
+    // Best-effort attributable cleanup only.
   }
 }
 
