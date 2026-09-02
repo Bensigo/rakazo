@@ -40,6 +40,14 @@
       {
         "from": "../web/dist",
         "to": "web"
+      },
+      {
+        "from": "../../infra/compose/docker-compose.images.yml",
+        "to": "local-stack/docker-compose.images.yml"
+      },
+      {
+        "from": "../../infra/compose/.env.images.example",
+        "to": "local-stack/.env.images.example"
       }
     ],
     "extraMetadata": {

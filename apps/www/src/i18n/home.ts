@@ -25,6 +25,7 @@ export type HomeCopy = {
     heading: string;
     lead: string;
     getStarted: string;
+    download: string;
     viewOnGithub: string;
     setupWithAgent: string;
     copiedForAgent: string;
@@ -225,6 +226,7 @@ const HOME_COPY: Record<Locale, HomeCopy> = {
       heading: "AI teammates you actually own",
       lead: "Rakazo is an open source Grok Bot alternative. Give a bot real work. It signs in to your tools, uses them the way you do, and comes back when it needs you.",
       getStarted: "Get started",
+      download: "Download",
       viewOnGithub: "View on GitHub",
       setupWithAgent: "Set up with your agent",
       copiedForAgent: "Copied for your agent",
@@ -300,7 +302,7 @@ const HOME_COPY: Record<Locale, HomeCopy> = {
       title: "How do you want to start?",
       copy: "Self-host on your machine, or join the Cloud waitlist.",
       selfHostNow: "Self-host now",
-      selfHostHint: "Install steps are in the docs.",
+      selfHostHint: "Download the desktop app, or see the docs.",
       cloudWaitlist: "Cloud waitlist",
       cloudHint: "Hosted Rakazo is coming. Leave your email.",
       back: "Back",
@@ -349,6 +351,7 @@ const HOME_COPY: Record<Locale, HomeCopy> = {
       heading: "KI-Teamkollegen, die dir wirklich gehören",
       lead: "Rakazo ist eine Open-Source-Alternative zu Grok Bot. Gib einem Bot echte Arbeit. Er meldet sich in deinen Tools an, nutzt sie wie du — und kommt zurück, wenn er dich braucht.",
       getStarted: "Loslegen",
+      download: "Download",
       viewOnGithub: "Auf GitHub ansehen",
       setupWithAgent: "Mit deinem Agenten einrichten",
       copiedForAgent: "Für deinen Agenten kopiert",
@@ -424,7 +427,7 @@ const HOME_COPY: Record<Locale, HomeCopy> = {
       title: "Wie willst du starten?",
       copy: "Self-host auf deiner Maschine, oder auf die Cloud-Warteliste.",
       selfHostNow: "Jetzt self-hosten",
-      selfHostHint: "Installationsschritte stehen in den Docs.",
+      selfHostHint: "Desktop-App herunterladen oder Docs lesen.",
       cloudWaitlist: "Cloud-Warteliste",
       cloudHint: "Gehostetes Rakazo kommt. Hinterlasse deine E-Mail.",
       back: "Zurück",
@@ -472,6 +475,7 @@ const HOME_COPY: Record<Locale, HomeCopy> = {
       heading: "진짜로 내 것인 AI 팀원",
       lead: "Rakazo는 오픈소스 Grok Bot 대안입니다. 봇에게 실제 업무를 맡기세요. 봇이 도구에 로그인하고, 당신처럼 사용하며, 필요할 때 돌아와 묻습니다.",
       getStarted: "시작하기",
+      download: "다운로드",
       viewOnGithub: "GitHub에서 보기",
       setupWithAgent: "에이전트로 설정하기",
       copiedForAgent: "에이전트용으로 복사됨",
@@ -547,7 +551,7 @@ const HOME_COPY: Record<Locale, HomeCopy> = {
       title: "어떻게 시작할까요?",
       copy: "당신 머신에서 셀프 호스트하거나, Cloud 대기열에 등록하세요.",
       selfHostNow: "지금 셀프 호스트",
-      selfHostHint: "설치 단계는 문서에 있습니다.",
+      selfHostHint: "데스크톱 앱을 받거나 문서를 보세요.",
       cloudWaitlist: "Cloud 대기열",
       cloudHint: "호스팅 Rakazo가 곧 옵니다. 이메일을 남겨 주세요.",
       back: "뒤로",

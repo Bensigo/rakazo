@@ -86,13 +86,20 @@
     const value = activeField().value;
 
     setBusy(true);
-    setStatus("Connecting…");
+    setStatus(mode === "new" ? "Starting local server…" : "Connecting…");
+    const stopProgress =
+      typeof bridge.onProgress === "function"
+        ? bridge.onProgress((message) => {
+            setStatus(message);
+          })
+        : null;
     try {
       const saved = await bridge.save({ mode, serverUrl: value });
       if (!saved.ok) setStatus(saved.error ?? "Could not save that address.", "error");
     } catch {
       setStatus("Could not save that address. Try again.", "error");
     } finally {
+      stopProgress?.();
       setBusy(false);
     }
   });

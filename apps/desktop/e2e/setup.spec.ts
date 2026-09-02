@@ -83,6 +83,8 @@ test("first run asks whether to use a local or existing instance", async () => {
   await expect(setup.getByRole("radio", { name: /This computer/ })).toBeChecked();
   await expect(setup.locator("#local-url")).toHaveValue("http://127.0.0.1:5173");
   await expect(setup.locator("#panel-existing")).toBeHidden();
+  await expect(setup.getByText(/Starts a local server with Docker/i)).toBeVisible();
+  await expect(setup.locator("#panel-new")).not.toContainText(/pnpm/);
 
   await setup.screenshot({
     path: path.join(import.meta.dirname, "screenshots", "01-setup-new-instance.png"),

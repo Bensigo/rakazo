@@ -87,4 +87,6 @@ export interface RakazoSetup {
   test: (url: string) => Promise<DesktopReachability>;
   save: (setup: DesktopSetup) => Promise<{ ok: boolean; error?: string }>;
   quit: () => Promise<void>;
+  /** Status lines while This computer starts or attaches to the local stack. */
+  onProgress: (listener: (message: string) => void) => () => void;
 }

@@ -15,6 +15,7 @@ import {
 import { fetchGithubStars, formatStarCount } from "../github";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import {
+  CHANGELOG_URL,
   DOCS_URL,
   GITHUB_URL,
   SETUP_PROMPT_URL,
@@ -131,6 +132,7 @@ const structuredData = {
           <button class="button button--primary" type="button" data-get-started-open>
             {copy.hero.getStarted}
           </button>
+          <Button href={CHANGELOG_URL} variant="secondary" external>{copy.hero.download}</Button>
           <Button href={GITHUB_URL} variant="secondary" external>{copy.hero.viewOnGithub}</Button>
         </div>
         <div class="hero__agent-setup">
@@ -165,10 +167,10 @@ const structuredData = {
           </p>
         </div>
         <div class="selfhost-cta">
-          <button class="button button--primary" type="button" data-get-started-open>
+          <Button href={CHANGELOG_URL} variant="primary" external>{copy.hero.download}</Button>
+          <button class="button button--secondary" type="button" data-get-started-open>
             {copy.hero.getStarted}
           </button>
-          <Button href={GITHUB_URL} variant="secondary" external>{copy.hero.viewOnGithub}</Button>
           <Button href={DOCS_URL} variant="secondary" external>{copy.openSource.readTheDocs}</Button>
         </div>
         <div class="card-grid-3">

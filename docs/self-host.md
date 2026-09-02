@@ -2,6 +2,14 @@
 
 The signed-in product is a long-running API, a Graphile Worker, Postgres, and a computer provider (Docker supervisor, E2B, Daytona, or Box). It is not a static site. The marketing site in `apps/www` can be hosted separately.
 
+## Desktop app
+
+Download the Mac, Windows, or Linux installer from [GitHub Releases](https://github.com/elie222/rakazo/releases).
+On first launch, choose **This computer** to start a local server with Docker, or connect to a server you already run.
+After the app opens, create an account and add model keys in Settings if you want them.
+
+Install details for a headless server stay below. Do not put Compose one-liners on the marketing homepage.
+
 ## Local (source checkout)
 
 Same as the README quick start: `.env` from `.env.example`, Postgres via Compose, `pnpm sandbox:build`, `pnpm dev`, then [http://127.0.0.1:5173](http://127.0.0.1:5173). Electron: `pnpm --filter @rakazo/desktop dev` while that stack is up.

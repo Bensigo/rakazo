@@ -94,7 +94,7 @@ describe("setup preload bridge", () => {
     expect(exposeInMainWorld).toHaveBeenCalledTimes(1);
     const [globalName, bridge] = exposeInMainWorld.mock.calls[0] as [string, RakazoSetup];
     expect(globalName).toBe("rakazoSetup");
-    expect(Object.keys(bridge).sort()).toEqual(["quit", "save", "state", "test"]);
+    expect(Object.keys(bridge).sort()).toEqual(["onProgress", "quit", "save", "state", "test"]);
 
     await bridge.state();
     await bridge.test("http://127.0.0.1:5173");

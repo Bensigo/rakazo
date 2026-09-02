@@ -28,6 +28,7 @@ import {
   sessionPartitionForServerUrl,
 } from "./setup-config.js";
 import { clearSetup, readSetup, writeSetup } from "./setup-store.js";
+import { ensureLocalStack, isDefaultLocalStackUrl } from "./local-stack.js";
 import { shouldOpenInAppPopup } from "./window-open.js";
 import { browserWindowOptions, setupWindowOptions, warmWindowTtlMs } from "./window-options.js";
 
@@ -599,6 +600,39 @@ function fromSetupWindow(event: Electron.IpcMainInvokeEvent) {
   );
 }
 
+
+function emitSetupProgress(message: string) {
+  if (setupWindow !== null && !setupWindow.isDestroyed()) {
+    setupWindow.webContents.send("desktop.setup.progress", message);
+  }
+}
+
+async function ensureReachableServer(
+  setup: DesktopSetup,
+): Promise<DesktopReachability> {
+  let reachability = await probeServer(setup.serverUrl);
+  if (reachability.ok) return reachability;
+  if (setup.mode !== "new" || !isDefaultLocalStackUrl(setup.serverUrl)) {
+    return reachability;
+  }
+
+  const started = await ensureLocalStack({
+    userDataDir: app.getPath("userData"),
+    packaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    onProgress: emitSetupProgress,
+  });
+  if (!started.ok) {
+    return { ok: false, url: setup.serverUrl, error: started.error };
+  }
+
+  emitSetupProgress(
+    started.attached ? "Local server is running. Connecting…" : "Local server is ready. Connecting…",
+  );
+  reachability = await probeServer(setup.serverUrl);
+  return reachability;
+}
+
 async function probeServer(rawUrl: string): Promise<DesktopReachability> {
   const url = normalizeServerUrl(rawUrl);
   if (url === null) return { ok: false, error: "Enter a valid http:// or https:// address." };
@@ -926,7 +960,7 @@ app.whenReady().then(async () => {
         };
       }
 
-      const reachability = await probeServer(setup.serverUrl);
+      const reachability = await ensureReachableServer(setup);
       if (!reachability.ok) return { ok: false, error: reachability.error };
 
       // Open before persisting so a failed renderer load keeps the last working setup.
@@ -1009,7 +1043,8 @@ app.whenReady().then(async () => {
   if (target.kind === "setup") {
     showSetupWindow();
   } else if (target.source === "saved") {
-    const reachability = await probeServer(target.url);
+    const savedSetup = currentSetup ?? { mode: "existing" as const, serverUrl: target.url };
+    const reachability = await ensureReachableServer(savedSetup);
     if (reachability.ok) {
       if (await openApp(target.url)) {
         commitPendingAppSwitch();

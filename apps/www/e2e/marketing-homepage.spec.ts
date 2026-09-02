@@ -19,9 +19,13 @@ test.describe("marketing homepage", () => {
     const selfHost = page.locator("#selfhost");
     await expect(selfHost).toBeVisible();
     await expect(selfHost.getByRole("heading", { level: 2 })).toBeVisible();
+    await expect(selfHost.getByRole("link", { name: /Download/i })).toBeVisible();
     await expect(selfHost.getByRole("button", { name: /Get started/i })).toBeVisible();
-    await expect(selfHost.getByRole("link", { name: /View on GitHub/i })).toBeVisible();
     await expect(selfHost.getByRole("link", { name: /Read the docs/i })).toBeVisible();
+    await expect(selfHost.getByRole("link", { name: /Download/i })).toHaveAttribute(
+      "href",
+      /github\.com\/elie222\/rakazo\/releases/,
+    );
 
     await expect(selfHost.locator("pre")).toHaveCount(0);
     await expect(selfHost).not.toContainText(

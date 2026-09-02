@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { isIP } from "node:net";
 import type { DesktopSetup } from "@rakazo/contracts";
 
-/** Where `pnpm dev` serves the Rakazo web app on this machine. */
+/** Default loopback origin for a local Rakazo server on this machine. */
 export const DEFAULT_LOCAL_WEB_URL = "http://127.0.0.1:5173";
 
 export const SETUP_FILE_NAME = "setup.json";
