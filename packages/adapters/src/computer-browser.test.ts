@@ -135,6 +135,21 @@ describe("computer browser provider", () => {
 });
 
 describe("page browser session isolation", () => {
+  it("keeps the same page session across screen-lease fence renewals", () => {
+    const computer = {
+      id: "team-computer",
+      botId: "team-home",
+      kind: "fake" as const,
+      providerRef: "team-computer",
+    };
+    const before = { ...baseContext, botId: "bot-a", screenLeaseId: "run-1:1" };
+    const after = { ...baseContext, botId: "bot-a", screenLeaseId: "run-1:8" };
+    expect(pageBrowserSessionKey(computer, before)).toBe(pageBrowserSessionKey(computer, after));
+    expect(pageBrowserSessionKey(computer, before)).not.toBe(
+      pageBrowserSessionKey(computer, { ...before, botId: "bot-b" }),
+    );
+  });
+
   it("keeps Team bots on the same computer in separate sessions", async () => {
     const browser = new FakeBrowserProvider({ pages });
     // Production Team computers share computer.botId (home key) across bots.

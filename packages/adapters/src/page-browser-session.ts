@@ -5,6 +5,7 @@ import type {
   BrowserSnapshotNode,
   BrowserSnapshotResult,
 } from "@rakazo/adapter-kit";
+import { parseScreenLeaseId } from "@rakazo/core";
 import { JSDOM } from "jsdom";
 
 const INTERACTIVE_SELECTOR = [
@@ -256,15 +257,20 @@ export class PageBrowserSessionStore {
 }
 
 /**
- * Isolate page state per computer, bot, and screen lease on Team Computers.
+ * Isolate page state per computer, bot, and run on Team Computers.
  * Prefer `context.botId` (the running bot). `computer.botId` is the home key and
  * is shared by every bot on a Team Computer, so it alone cannot isolate sessions.
+ * Key by the stable run owner from `screenLeaseId` (or `runId`), not the fence, so
+ * lease renewals and takeover resumes keep the same page session and refs.
  */
 export function pageBrowserSessionKey(
   computer: { id: string; botId: string },
-  context?: { botId?: string; screenLeaseId?: string },
+  context?: { botId?: string; runId?: string; screenLeaseId?: string },
 ): string {
   const bot = context?.botId?.trim() || computer.botId;
-  const lease = context?.screenLeaseId?.trim() || "default";
-  return `${computer.id}::${bot}::${lease}`;
+  const run =
+    context?.runId?.trim() ||
+    (context?.screenLeaseId?.trim() ? parseScreenLeaseId(context.screenLeaseId).ownerId : "") ||
+    "default";
+  return `${computer.id}::${bot}::${run}`;
 }
