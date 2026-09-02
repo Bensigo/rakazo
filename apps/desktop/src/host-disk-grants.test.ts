@@ -198,4 +198,17 @@ describe("host disk grant store", () => {
     // Fail closed on the swapped pathname (O_NOFOLLOW reopen fails / identity miss).
     expect(roots).toEqual([]);
   });
+
+  it("captureGrantIdentity opens before resolving path (no realpath-then-open race)", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const source = await readFile(new URL("./host-disk-grants.ts", import.meta.url), "utf8");
+    const start = source.indexOf("async function captureGrantIdentity");
+    const end = source.indexOf("export function createHostDiskGrantStore");
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const fn = source.slice(start, end);
+    expect(fn).not.toMatch(/await\s+realpath\(/);
+    expect(fn).toMatch(/pathFromOpenFd\(/);
+    expect(fn).toMatch(/O_RDONLY\s*\|\s*DIRECTORY\s*\|\s*NOFOLLOW/);
+  });
 });

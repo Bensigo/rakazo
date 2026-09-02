@@ -375,29 +375,24 @@ export function registerHostDiskIpc() {
           await tempHandle.close();
         }
 
+        // Re-check parent containment immediately before renameat so a parent
+        // moved outside the grant is not committed into an ungranted tree.
+        await assertInsideAuthorizedRoots(await realpathOfFd(parentHandle.fd), realRoots);
         renameatChild(parentHandle.fd, tempName, baseName);
         tempPending = false;
 
         const finalHandle = openatChild(parentHandle.fd, baseName, constants.O_RDONLY | NOFOLLOW);
         try {
-          // Re-validate live destination containment after renameat. Only unlink
-          // when the committed path is outside grants — not on a stale string
-          // mismatch after an in-grant parent rename.
+          // Re-validate live destination containment after renameat.
           const parentLive = await realpathOfFd(parentHandle.fd);
           const fdReal = await realpathOfFd(finalHandle.fd);
-          let outsideGrants = false;
           try {
             await assertInsideAuthorizedRoots(parentLive, realRoots);
             await assertInsideAuthorizedRoots(fdReal, realRoots);
           } catch {
-            outsideGrants = true;
-          }
-          if (outsideGrants) {
-            try {
-              unlinkatChild(parentHandle.fd, baseName);
-            } catch {
-              // Best-effort cleanup.
-            }
+            // Do not unlink the destination: the parent may have been moved
+            // outside the grant after renameat; unlinking would destroy an
+            // outside file. Fail closed and leave the committed name alone.
             throw new Error("Host path is outside the granted folders");
           }
         } finally {

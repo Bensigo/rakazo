@@ -79,20 +79,36 @@ function grantPathFromPersisted(item: unknown): string | null {
 }
 
 async function captureGrantIdentity(root: string): Promise<GrantRecord> {
-  const resolved = await realpath(path.resolve(root));
-  // Refuse a final-component symlink so we never grant "whatever this path
-  // currently points at" when the user picked a real directory.
-  const handle = await open(resolved, constants.O_RDONLY | DIRECTORY | NOFOLLOW);
+  const candidate = path.resolve(root);
+  // Open first with O_NOFOLLOW|O_DIRECTORY. Do not realpath() then open — a
+  // same-user directory swap between those steps would persist the replacement's
+  // device+inode as the grant identity.
+  const handle = await open(candidate, constants.O_RDONLY | DIRECTORY | NOFOLLOW);
   try {
     const info = await handle.stat();
     if (!info.isDirectory()) {
       throw new Error("Host path is outside the granted folders");
     }
-    return {
-      path: resolved,
-      dev: String(info.dev),
-      ino: String(info.ino),
-    };
+    const fdPath = pathFromOpenFd(handle.fd);
+    // Confirm the fd-derived pathname still names this inode without following
+    // a symlink (same pattern as authorizedRealRoots).
+    const confirmed = await open(fdPath, constants.O_RDONLY | DIRECTORY | NOFOLLOW);
+    try {
+      const confirmedInfo = await confirmed.stat();
+      if (
+        String(confirmedInfo.dev) !== String(info.dev) ||
+        String(confirmedInfo.ino) !== String(info.ino)
+      ) {
+        throw new Error("Host path is outside the granted folders");
+      }
+      return {
+        path: pathFromOpenFd(confirmed.fd),
+        dev: String(info.dev),
+        ino: String(info.ino),
+      };
+    } finally {
+      await confirmed.close().catch(() => undefined);
+    }
   } finally {
     await handle.close().catch(() => undefined);
   }
