@@ -1041,7 +1041,7 @@ function Thread() {
       );
     } catch (err) {
       if (isCurrentTarget(targetBotId, targetGroupId)) {
-        setError(err instanceof Error ? err.message : "Failed to stop work");
+        setError(err instanceof Error ? err.message : t("Failed to stop work"));
       }
       setSending(false);
       return;
@@ -1050,8 +1050,8 @@ function Thread() {
       await refresh();
     } catch (err) {
       if (isCurrentTarget(targetBotId, targetGroupId)) {
-        const detail = err instanceof Error ? err.message : "Failed to refresh";
-        setError(`Work stopped, but the thread could not refresh: ${detail}`);
+        const detail = err instanceof Error ? err.message : t("Failed to refresh");
+        setError(t("Work stopped, but the thread could not refresh: {detail}", { detail }));
       }
     } finally {
       setSending(false);
@@ -2030,11 +2030,11 @@ const MessageBubble = memo(function MessageBubble({
   }
   const handoff = message.blocks.find((block) => block.kind === "handoff");
   if (handoff) {
-    const from = memberName(members, handoff.fromBotId) ?? "bot";
-    const to = memberName(members, handoff.toBotId) ?? "bot";
+    const from = memberName(members, handoff.fromBotId) ?? t("bot");
+    const to = memberName(members, handoff.toBotId) ?? t("bot");
     return (
       <AgentEventLabel
-        label={`${from} messaged ${to}`}
+        label={t("{from} messaged {to}", { from, to })}
         detail={handoff.text}
         expanded={peerExpanded}
         onToggle={() => setPeerExpanded((expanded) => !expanded)}
@@ -2120,7 +2120,7 @@ const MessageBubble = memo(function MessageBubble({
           }}
         >
           <Text style={{ color: "#ECECEE", fontSize: 15, fontWeight: "600" }}>
-            {special.name || "subagent"}
+            {special.name || t("subagent")}
           </Text>
           <Text
             style={{
@@ -2128,7 +2128,7 @@ const MessageBubble = memo(function MessageBubble({
               fontSize: 13,
             }}
           >
-            {running ? "subagent" : special.status}
+            {running ? t("subagent") : special.status}
           </Text>
         </View>
         {special.task ? (
