@@ -464,4 +464,74 @@ describe("host disk exclusive claims", () => {
     controller.abort();
     await expect(listing).rejects.toThrow();
   });
+
+  it("honors client done published while timeout only saw completing", async () => {
+    const dataDir = await tempDir();
+    const { BridgingHostDiskProvider, claimHostDiskOperation } = await import(
+      "./bridge-host-disk.js"
+    );
+
+    const provider = new BridgingHostDiskProvider({
+      dataDir,
+      timeoutMs: 40,
+      pollIntervalMs: 10,
+      completionGraceMs: 800,
+    });
+    await saveHostDiskSettings(dataDir, "user-1", {
+      enabled: true,
+      roots: [path.join(dataDir, "granted")],
+      clientSeenAt: new Date().toISOString(),
+    });
+    await mkdir(path.join(dataDir, "granted"), { recursive: true });
+
+    const listing = provider.listFiles("user-1", "", adapterContext());
+
+    let claimed: Awaited<ReturnType<typeof claimHostDiskOperation>> = null;
+    for (let attempt = 0; attempt < 50 && !claimed; attempt += 1) {
+      claimed = await claimHostDiskOperation(dataDir, "user-1");
+      if (!claimed) await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    expect(claimed?.status).toBe("claimed");
+    if (!claimed) throw new Error("expected claim");
+
+    // Client already holds the exclusive .completing.json take when the server
+    // times out; publish .done.json during the post-timeout grace window.
+    const { rename, readFile, writeFile } = await import("node:fs/promises");
+    const claimedPath = path.join(
+      dataDir,
+      "host-disk",
+      "operations",
+      "user-1",
+      `${claimed.id}.claimed.json`,
+    );
+    const completingPath = path.join(
+      dataDir,
+      "host-disk",
+      "operations",
+      "user-1",
+      `${claimed.id}.completing.json`,
+    );
+    await rename(claimedPath, completingPath);
+
+    const clientDone = (async () => {
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      const raw = JSON.parse(await readFile(completingPath, "utf8")) as Record<string, unknown>;
+      const donePath = path.join(
+        dataDir,
+        "host-disk",
+        "operations",
+        "user-1",
+        `${claimed.id}.done.json`,
+      );
+      await writeFile(
+        completingPath,
+        `${JSON.stringify({ ...raw, status: "done", entries: [] }, null, 2)}\n`,
+        "utf8",
+      );
+      await rename(completingPath, donePath);
+    })();
+
+    await expect(listing).resolves.toEqual([]);
+    await clientDone;
+  });
 });

@@ -31,12 +31,15 @@ export type BridgingHostDiskOptions = {
   dataDir: string;
   pollIntervalMs?: number;
   timeoutMs?: number;
+  /** Extra wait after timeout for an in-flight completer to publish .done/.error. */
+  completionGraceMs?: number;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
 };
 
 const DEFAULT_POLL_MS = 200;
 const DEFAULT_TIMEOUT_MS = 60_000;
+const DEFAULT_COMPLETION_GRACE_MS = 2_000;
 
 /**
  * Queues host-disk work for a connected Mac/phone client. The API exposes claim
@@ -171,14 +174,23 @@ export class BridgingHostDiskProvider implements HostDiskProvider {
       status: "error",
       error: "Timed out waiting for the Mac or phone app to handle host disk access",
     }).catch(() => undefined);
-    // Client completion may have won the exclusive take; honor its result.
-    const final = await readOperationById(this.options.dataDir, userId, id);
-    if (final?.operation.status === "done") {
-      void unlink(final.file).catch(() => undefined);
-      return final.operation;
-    }
-    if (final?.operation.status === "error") {
-      throw new Error(final.operation.error ?? "Host disk operation failed");
+    // Client may hold .completing.json and publish .done/.error just after our
+    // failed complete. Poll briefly so a successful winner is not reported as timeout.
+    const graceMs = this.options.completionGraceMs ?? DEFAULT_COMPLETION_GRACE_MS;
+    const graceDeadline = (this.options.now?.() ?? Date.now()) + graceMs;
+    for (;;) {
+      const final = await readOperationById(this.options.dataDir, userId, id);
+      if (final?.operation.status === "done") {
+        void unlink(final.file).catch(() => undefined);
+        return final.operation;
+      }
+      if (final?.operation.status === "error") {
+        throw new Error(final.operation.error ?? "Host disk operation failed");
+      }
+      const now = this.options.now?.() ?? Date.now();
+      if (now >= graceDeadline) break;
+      // Still claimed/pending/completing, or briefly missing between rename steps.
+      await sleep(pollMs);
     }
     throw new Error("Timed out waiting for the Mac or phone app to handle host disk access");
   }
@@ -220,6 +232,10 @@ async function readOperationById(
     const terminal = await readOperationFile(terminalPath);
     if (terminal) return { operation: terminal, file: terminalPath };
   }
+  // In-flight exclusive take: visible so waiters do not treat the op as vanished.
+  const completingPath = completingOperationPath(dataDir, userId, id);
+  const completing = await readOperationFile(completingPath);
+  if (completing) return { operation: completing, file: completingPath };
   const claimedPath = claimedOperationPath(dataDir, userId, id);
   const pendingPath = operationPath(dataDir, userId, id);
   const claimed = await readOperationFile(claimedPath);
