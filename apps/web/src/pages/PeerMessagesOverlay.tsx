@@ -181,7 +181,7 @@ export function PeerMessagesOverlay({
               >
                 <div
                   className={`max-w-[80%] rounded-[16px] px-4 py-2.5 ${
-                    sent ? "bg-[#1F1F23]" : "bg-[var(--rk-hairline)]"
+                    sent ? "bg-[var(--rk-elevated)]" : "bg-[var(--rk-hairline)]"
                   }`}
                 >
                   <div className="mb-1 text-[12px] text-[var(--rk-faint)]" dir="auto">

@@ -46,7 +46,7 @@ export function ArtifactFileCard(props: ArtifactFileCardProps) {
         <button
           type="button"
           onClick={() => void startDownload()}
-          className="rounded-[20px] border border-[var(--rk-border)] bg-[var(--rk-hairline)] px-4 py-3 text-left text-[14px] text-[var(--rk-body)] hover:bg-[#1F1F22]"
+          className="rounded-[20px] border border-[var(--rk-border)] bg-[var(--rk-hairline)] px-4 py-3 text-left text-[14px] text-[var(--rk-body)] hover:bg-[var(--rk-elevated)]"
         >
           <div className="font-medium">{props.name}</div>
           <div className="mt-1 text-[var(--rk-muted)]">
@@ -67,7 +67,7 @@ export function ArtifactFileCard(props: ArtifactFileCardProps) {
             type="button"
             aria-label={t`Preview ${props.name}`}
             onClick={() => setPreviewOpen(true)}
-            className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left hover:bg-[#222226]"
+            className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left hover:bg-[var(--rk-scroll)]"
           >
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[10px] bg-[#24344A] text-[#68A7FF]">
               <FileText size={21} strokeWidth={1.8} />
@@ -84,7 +84,7 @@ export function ArtifactFileCard(props: ArtifactFileCardProps) {
             aria-label={t`Download ${props.name}`}
             title={t`Download ${props.name}`}
             onClick={() => void startDownload()}
-            className="grid w-14 shrink-0 place-items-center border-l border-[var(--rk-elevated)] text-[var(--rk-muted)] hover:bg-[#222226] hover:text-[var(--rk-ink)]"
+            className="grid w-14 shrink-0 place-items-center border-l border-[var(--rk-elevated)] text-[var(--rk-muted)] hover:bg-[var(--rk-scroll)] hover:text-[var(--rk-ink)]"
           >
             <Download size={19} strokeWidth={1.8} />
           </button>
@@ -212,7 +212,7 @@ function MarkdownPreview({
                 }
               })()
             }
-            className="grid h-9 w-9 place-items-center rounded-full text-[#929298] hover:bg-[#1D1D20] hover:text-[var(--rk-ink)]"
+            className="grid h-9 w-9 place-items-center rounded-full text-[#929298] hover:bg-[var(--rk-elevated)] hover:text-[var(--rk-ink)]"
           >
             <Download size={18} strokeWidth={1.8} />
           </button>
@@ -221,7 +221,7 @@ function MarkdownPreview({
             type="button"
             aria-label={t`Close preview`}
             onClick={onClose}
-            className="grid h-9 w-9 place-items-center rounded-full text-[#929298] hover:bg-[#1D1D20] hover:text-[var(--rk-ink)]"
+            className="grid h-9 w-9 place-items-center rounded-full text-[#929298] hover:bg-[var(--rk-elevated)] hover:text-[var(--rk-ink)]"
           >
             <X size={19} strokeWidth={1.8} />
           </button>

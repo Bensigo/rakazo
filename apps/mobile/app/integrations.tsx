@@ -21,11 +21,12 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { rpc } from "../lib/api";
 import { loadLastBotId } from "../lib/last-bot";
-import { native } from "../lib/native";
+import { native, useThemedStyles } from "../lib/native";
 
 type SourceKind = "treg" | "mcp" | "api";
 
 export default function Integrations() {
+  const styles = useThemedStyles(createIntegrationsStyles);
   const { width } = useWindowDimensions();
   const catalogColumns = width >= 480 ? 2 : 1;
   const [catalog, setCatalog] = useState<ConnectionCatalogItem[]>([]);
@@ -432,7 +433,8 @@ export default function Integrations() {
   );
 }
 
-const styles = StyleSheet.create({
+function createIntegrationsStyles() {
+  return StyleSheet.create({
   screen: { flex: 1, backgroundColor: native.page },
   content: { padding: 20, gap: 14 },
   explanation: { color: native.secondaryLabel, fontSize: 14, lineHeight: 20 },
@@ -487,3 +489,5 @@ const styles = StyleSheet.create({
   advancedBody: { gap: 14 },
   chevron: { color: native.secondaryLabel, fontSize: 18 },
 });
+}
+

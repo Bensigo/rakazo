@@ -42,7 +42,7 @@ import {
   openPromotedNotificationSettings,
   setLiveNotificationSettings,
 } from "../lib/live-notifications";
-import { native } from "../lib/native";
+import { native, useThemedStyles } from "../lib/native";
 import { registerPushToken } from "../lib/push";
 
 export default function Account() {
@@ -77,6 +77,7 @@ export default function Account() {
     getCachedAppearancePreference,
     () => "system" as const,
   );
+  const styles = useThemedStyles(createAccountStyles);
 
   useEffect(() => {
     void rpc<MobileMe>("me")
@@ -559,6 +560,7 @@ function AccountPasswordInput({
   onChange: (value: string) => void;
   autoComplete: "current-password" | "new-password";
 }) {
+  const styles = useThemedStyles(createAccountStyles);
   return (
     <TextInput
       accessibilityLabel={label}
@@ -575,224 +577,226 @@ function AccountPasswordInput({
   );
 }
 
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: native.page,
-  },
-  content: {
-    flexGrow: 1,
-    padding: 20,
-    gap: 20,
-  },
-  profile: {
-    borderRadius: 16,
-    backgroundColor: native.fill,
-    padding: 18,
-    gap: 4,
-  },
-  name: {
-    color: native.label,
-    fontSize: 20,
-    fontWeight: "600",
-  },
-  email: {
-    color: native.secondaryLabel,
-    fontSize: 15,
-  },
-  button: {
-    minHeight: 50,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: native.fill,
-  },
-  buttonLabel: {
-    color: native.label,
-    fontSize: 17,
-    fontWeight: "600",
-  },
-  archivedSection: {
-    borderRadius: 16,
-    backgroundColor: native.fill,
-    padding: 18,
-    gap: 14,
-  },
-  sectionTitle: {
-    color: native.secondaryLabel,
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  archivedRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-  },
-  archivedName: {
-    flex: 1,
-    color: native.label,
-    fontSize: 16,
-  },
-  restoreLabel: {
-    color: native.label,
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  archivedDeleteLabel: {
-    color: "#FF6961",
-    fontSize: 14,
-  },
-  settingsButton: {
-    minHeight: 62,
-    borderRadius: 14,
-    backgroundColor: native.fill,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  avatarSection: {
-    borderRadius: 16,
-    backgroundColor: native.fill,
-    padding: 18,
-    gap: 14,
-  },
-  appearanceOptions: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  appearanceOption: {
-    flex: 1,
-    minHeight: 44,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: native.tertiaryLabel,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  appearanceOptionSelected: {
-    borderColor: native.label,
-    backgroundColor: native.fillPressed,
-  },
-  appearanceLabel: {
-    color: native.label,
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  avatarOptions: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  avatarOption: {
-    flex: 1,
-    minHeight: 86,
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: native.tertiaryLabel,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  avatarOptionSelected: {
-    borderColor: native.label,
-    backgroundColor: native.fillPressed,
-  },
-  avatarLabel: {
-    color: native.label,
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  settingsTitle: {
-    color: native.label,
-    fontSize: 17,
-    fontWeight: "600",
-  },
-  settingsExplanation: {
-    color: native.secondaryLabel,
-    fontSize: 13,
-    marginTop: 3,
-  },
-  accountPassword: {
-    minHeight: 46,
-    borderRadius: 12,
-    backgroundColor: native.fillPressed,
-    color: native.label,
-    paddingHorizontal: 14,
-    marginTop: 8,
-  },
-  passwordMessage: {
-    color: native.secondaryLabel,
-    fontSize: 13,
-    marginTop: 8,
-  },
-  changePasswordButton: {
-    minHeight: 44,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: native.fillPressed,
-    marginTop: 10,
-  },
-  changePasswordLabel: {
-    color: native.label,
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  chevron: {
-    color: native.secondaryLabel,
-    fontSize: 28,
-    fontWeight: "300",
-  },
-  dangerZone: {
-    marginTop: 12,
-    borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "#5A2426",
-    padding: 18,
-  },
-  dangerTitle: {
-    color: "#FF6961",
-    fontSize: 17,
-    fontWeight: "600",
-  },
-  explanation: {
-    color: native.secondaryLabel,
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 8,
-  },
-  password: {
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: native.fill,
-    color: native.label,
-    paddingHorizontal: 14,
-    marginTop: 16,
-    fontSize: 16,
-  },
-  error: {
-    color: "#FF6961",
-    fontSize: 14,
-    marginTop: 10,
-  },
-  deleteButton: {
-    minHeight: 50,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#C9363E",
-    marginTop: 14,
-  },
-  deleteLabel: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  disabled: {
-    opacity: 0.45,
-  },
-  pressed: {
-    opacity: 0.7,
-  },
-});
+function createAccountStyles() {
+  return StyleSheet.create({
+    screen: {
+      flex: 1,
+      backgroundColor: native.page,
+    },
+    content: {
+      flexGrow: 1,
+      padding: 20,
+      gap: 20,
+    },
+    profile: {
+      borderRadius: 16,
+      backgroundColor: native.fill,
+      padding: 18,
+      gap: 4,
+    },
+    name: {
+      color: native.label,
+      fontSize: 20,
+      fontWeight: "600",
+    },
+    email: {
+      color: native.secondaryLabel,
+      fontSize: 15,
+    },
+    button: {
+      minHeight: 50,
+      borderRadius: 14,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: native.fill,
+    },
+    buttonLabel: {
+      color: native.label,
+      fontSize: 17,
+      fontWeight: "600",
+    },
+    archivedSection: {
+      borderRadius: 16,
+      backgroundColor: native.fill,
+      padding: 18,
+      gap: 14,
+    },
+    sectionTitle: {
+      color: native.secondaryLabel,
+      fontSize: 14,
+      fontWeight: "600",
+    },
+    archivedRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 14,
+    },
+    archivedName: {
+      flex: 1,
+      color: native.label,
+      fontSize: 16,
+    },
+    restoreLabel: {
+      color: native.label,
+      fontSize: 14,
+      fontWeight: "600",
+    },
+    archivedDeleteLabel: {
+      color: "#FF6961",
+      fontSize: 14,
+    },
+    settingsButton: {
+      minHeight: 62,
+      borderRadius: 14,
+      backgroundColor: native.fill,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    avatarSection: {
+      borderRadius: 16,
+      backgroundColor: native.fill,
+      padding: 18,
+      gap: 14,
+    },
+    appearanceOptions: {
+      flexDirection: "row",
+      gap: 8,
+    },
+    appearanceOption: {
+      flex: 1,
+      minHeight: 44,
+      borderRadius: 12,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: native.tertiaryLabel,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    appearanceOptionSelected: {
+      borderColor: native.label,
+      backgroundColor: native.fillPressed,
+    },
+    appearanceLabel: {
+      color: native.label,
+      fontSize: 14,
+      fontWeight: "600",
+    },
+    avatarOptions: {
+      flexDirection: "row",
+      gap: 12,
+    },
+    avatarOption: {
+      flex: 1,
+      minHeight: 86,
+      borderRadius: 14,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: native.tertiaryLabel,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+    },
+    avatarOptionSelected: {
+      borderColor: native.label,
+      backgroundColor: native.fillPressed,
+    },
+    avatarLabel: {
+      color: native.label,
+      fontSize: 14,
+      fontWeight: "600",
+    },
+    settingsTitle: {
+      color: native.label,
+      fontSize: 17,
+      fontWeight: "600",
+    },
+    settingsExplanation: {
+      color: native.secondaryLabel,
+      fontSize: 13,
+      marginTop: 3,
+    },
+    accountPassword: {
+      minHeight: 46,
+      borderRadius: 12,
+      backgroundColor: native.fillPressed,
+      color: native.label,
+      paddingHorizontal: 14,
+      marginTop: 8,
+    },
+    passwordMessage: {
+      color: native.secondaryLabel,
+      fontSize: 13,
+      marginTop: 8,
+    },
+    changePasswordButton: {
+      minHeight: 44,
+      borderRadius: 12,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: native.fillPressed,
+      marginTop: 10,
+    },
+    changePasswordLabel: {
+      color: native.label,
+      fontSize: 15,
+      fontWeight: "600",
+    },
+    chevron: {
+      color: native.secondaryLabel,
+      fontSize: 28,
+      fontWeight: "300",
+    },
+    dangerZone: {
+      marginTop: 12,
+      borderRadius: 16,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: "#5A2426",
+      padding: 18,
+    },
+    dangerTitle: {
+      color: "#FF6961",
+      fontSize: 17,
+      fontWeight: "600",
+    },
+    explanation: {
+      color: native.secondaryLabel,
+      fontSize: 14,
+      lineHeight: 20,
+      marginTop: 8,
+    },
+    password: {
+      height: 48,
+      borderRadius: 12,
+      backgroundColor: native.fill,
+      color: native.label,
+      paddingHorizontal: 14,
+      marginTop: 16,
+      fontSize: 16,
+    },
+    error: {
+      color: "#FF6961",
+      fontSize: 14,
+      marginTop: 10,
+    },
+    deleteButton: {
+      minHeight: 50,
+      borderRadius: 12,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "#C9363E",
+      marginTop: 14,
+    },
+    deleteLabel: {
+      color: "#FFFFFF",
+      fontSize: 16,
+      fontWeight: "700",
+    },
+    disabled: {
+      opacity: 0.45,
+    },
+    pressed: {
+      opacity: 0.7,
+    },
+  });
+}

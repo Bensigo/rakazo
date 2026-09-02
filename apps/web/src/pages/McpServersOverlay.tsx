@@ -220,10 +220,10 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center bg-[rgba(4,4,5,.62)] p-6">
       <section
-        className="flex max-h-full w-[1080px] max-w-full flex-col overflow-hidden rounded-[26px] border border-[#2A2A31] bg-[var(--rk-surface)] shadow-[0_40px_90px_rgba(0,0,0,.55)]"
+        className="flex max-h-full w-[1080px] max-w-full flex-col overflow-hidden rounded-[26px] border border-[var(--rk-border)] bg-[var(--rk-surface)] shadow-[0_40px_90px_rgba(0,0,0,.55)]"
         aria-label={t`MCP servers`}
       >
-        <header className="flex items-start justify-between border-b border-[#27272C] px-8 py-6">
+        <header className="flex items-start justify-between border-b border-[var(--rk-hairline-strong)] px-8 py-6">
           <div>
             <h1 className="text-2xl font-medium text-[var(--rk-ink-strong)]">
               <Trans>MCP servers</Trans>
@@ -249,7 +249,7 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
           </p>
         ) : null}
         <div className="rk-scroll grid min-h-0 grid-cols-1 gap-6 overflow-y-auto p-8 lg:grid-cols-[1fr_1.08fr]">
-          <div className="rounded-2xl border border-[#292930] bg-[var(--rk-inset)] p-5">
+          <div className="rounded-2xl border border-[var(--rk-border)] bg-[var(--rk-inset)] p-5">
             <h2 className="text-[15px] font-medium text-[var(--rk-ink)]">
               <Trans>Add a server</Trans>
             </h2>
@@ -381,7 +381,7 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
                 {bots.map((bot) => (
                   <label
                     key={bot.id}
-                    className="flex cursor-pointer items-center gap-3 rounded-xl border border-[#292930] bg-[var(--rk-inset)] px-3 py-3"
+                    className="flex cursor-pointer items-center gap-3 rounded-xl border border-[var(--rk-border)] bg-[var(--rk-inset)] px-3 py-3"
                   >
                     <input
                       type="checkbox"
@@ -413,7 +413,7 @@ export function McpServersOverlay({ onClose }: { onClose: () => void }) {
                   servers.map((server) => (
                     <div
                       key={server.id}
-                      className="rounded-xl border border-[#292930] bg-[var(--rk-inset)] p-4"
+                      className="rounded-xl border border-[var(--rk-border)] bg-[var(--rk-inset)] p-4"
                     >
                       <div className="flex items-center justify-between">
                         <span className="font-medium text-[var(--rk-ink)]">{server.name}</span>

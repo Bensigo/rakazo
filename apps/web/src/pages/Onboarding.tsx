@@ -248,7 +248,7 @@ export function OnboardingPage() {
                     setNotice(null);
                   }}
                   className={`flex w-full items-center justify-between border-b border-[var(--rk-hairline-strong)] px-3.5 py-2.5 text-left last:border-0 ${
-                    entry.provider === provider ? "bg-[var(--rk-surface-2)]" : "hover:bg-[#161618]"
+                    entry.provider === provider ? "bg-[var(--rk-surface-2)]" : "hover:bg-[var(--rk-inset)]"
                   }`}
                 >
                   <span className="text-[15px] text-[var(--rk-ink)]">
@@ -400,7 +400,7 @@ export function OnboardingPage() {
                             type="button"
                             disabled={!pasteCode.trim()}
                             onClick={() => void submitOAuthCode()}
-                            className="rounded-[11px] bg-[var(--rk-cream)] px-4 py-2.5 text-[var(--rk-hairline)] disabled:opacity-40"
+                            className="rounded-[11px] bg-[var(--rk-cream)] px-4 py-2.5 text-[var(--rk-cream-ink)] disabled:opacity-40"
                           >
                             <Trans>Submit</Trans>
                           </button>
@@ -438,7 +438,7 @@ export function OnboardingPage() {
                     type="button"
                     disabled={oauthPending}
                     onClick={() => beginSelectedSubscriptionSignIn()}
-                    className="rounded-[11px] bg-[var(--rk-cream)] px-5 py-2.5 text-[var(--rk-hairline)] disabled:opacity-40"
+                    className="rounded-[11px] bg-[var(--rk-cream)] px-5 py-2.5 text-[var(--rk-cream-ink)] disabled:opacity-40"
                   >
                     {oauthPending ? <Trans>Starting…</Trans> : signInLabel}
                   </button>
@@ -489,7 +489,7 @@ export function OnboardingPage() {
                 type="button"
                 disabled={oauthPending || (isOpenAiCompatible && !openAiCompatibleReady)}
                 onClick={() => void saveModel()}
-                className="rounded-[11px] bg-[var(--rk-cream)] px-5 py-2.5 text-[var(--rk-hairline)] disabled:opacity-40"
+                className="rounded-[11px] bg-[var(--rk-cream)] px-5 py-2.5 text-[var(--rk-cream-ink)] disabled:opacity-40"
               >
                 <Trans>Continue</Trans>
               </button>
@@ -544,7 +544,7 @@ export function OnboardingPage() {
               type="button"
               disabled={!name.trim()}
               onClick={() => void createBot()}
-              className="mt-6 rounded-[11px] bg-[var(--rk-cream)] px-5 py-2.5 text-[var(--rk-hairline)] disabled:opacity-40"
+              className="mt-6 rounded-[11px] bg-[var(--rk-cream)] px-5 py-2.5 text-[var(--rk-cream-ink)] disabled:opacity-40"
             >
               <Trans>Continue</Trans>
             </button>

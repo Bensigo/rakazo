@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import type { MobileBot, MobileBotSection } from "../lib/api";
-import { native } from "../lib/native";
+import { native, useThemedStyles } from "../lib/native";
 import { NativeSymbol } from "./native-symbol";
 
 export type BotOrganizationUpdate = {
@@ -24,6 +24,7 @@ export function BotOrganizeModal({
   onUpdate: (update: BotOrganizationUpdate) => Promise<void>;
   onCreateSection: (name: string) => Promise<void>;
 }) {
+  const styles = useThemedStyles(createBotOrganizeStyles);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
@@ -154,6 +155,7 @@ function SectionOption({
   disabled: boolean;
   onPress: () => void;
 }) {
+  const styles = useThemedStyles(createBotOrganizeStyles);
   return (
     <Pressable
       accessibilityRole="button"
@@ -171,7 +173,8 @@ function SectionOption({
   );
 }
 
-const styles = StyleSheet.create({
+function createBotOrganizeStyles() {
+  return StyleSheet.create({
   overlay: {
     flex: 1,
     justifyContent: "flex-end",
@@ -181,7 +184,7 @@ const styles = StyleSheet.create({
     maxHeight: "82%",
     borderTopLeftRadius: 22,
     borderTopRightRadius: 22,
-    backgroundColor: "#1C1C1E",
+    backgroundColor: native.fillPressed,
     paddingHorizontal: 16,
     paddingTop: 18,
     paddingBottom: 28,
@@ -273,3 +276,5 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 });
+}
+

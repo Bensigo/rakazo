@@ -101,7 +101,7 @@ export function RoutineListHeader({ onCreate }: { onCreate: () => void }) {
         aria-label={t`Create Routine`}
         title={t`Create Routine`}
         onClick={onCreate}
-        className="grid h-7 w-7 place-items-center rounded-[8px] bg-[var(--rk-surface-2)] text-[var(--rk-soft)] hover:bg-[#222226] hover:text-[var(--rk-ink)] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#3A3A3E]"
+        className="grid h-7 w-7 place-items-center rounded-[8px] bg-[var(--rk-surface-2)] text-[var(--rk-soft)] hover:bg-[var(--rk-scroll)] hover:text-[var(--rk-ink)] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[var(--rk-border)]"
       >
         <Plus size={15} strokeWidth={1.9} />
       </button>
@@ -414,7 +414,7 @@ export function RoutineEditor({
                   onMouseEnter={() => setScheduleOpen(true)}
                   onFocus={() => setScheduleOpen(true)}
                   onClick={() => setScheduleOpen((open) => !open)}
-                  className="flex w-full items-center justify-between gap-3 px-3.5 py-2.5 text-start text-[14px] text-[var(--rk-ink)] hover:bg-[#1E1E22]"
+                  className="flex w-full items-center justify-between gap-3 px-3.5 py-2.5 text-start text-[14px] text-[var(--rk-ink)] hover:bg-[var(--rk-elevated)]"
                 >
                   <span className="flex items-center gap-2.5">
                     <ClockIcon />
@@ -433,7 +433,7 @@ export function RoutineEditor({
                         type="button"
                         role="menuitem"
                         onClick={() => addSchedule(freq)}
-                        className="flex w-full items-center justify-between gap-3 px-3.5 py-2.5 text-start text-[14px] text-[var(--rk-ink)] hover:bg-[#1E1E22]"
+                        className="flex w-full items-center justify-between gap-3 px-3.5 py-2.5 text-start text-[14px] text-[var(--rk-ink)] hover:bg-[var(--rk-elevated)]"
                       >
                         {schedulePresetLabel(freq)}
                         {freq === "Every day" || freq === "Weekdays" ? (
@@ -468,7 +468,7 @@ export function RoutineEditor({
                 role="menuitem"
                 disabled={draft.webhookEnabled}
                 onClick={() => void addWebhook()}
-                className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-start text-[14px] text-[var(--rk-ink)] hover:bg-[#1E1E22] disabled:text-[var(--rk-muted-2)]"
+                className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-start text-[14px] text-[var(--rk-ink)] hover:bg-[var(--rk-elevated)] disabled:text-[var(--rk-muted-2)]"
               >
                 <GlobeIcon />
                 <Trans>Webhook</Trans>
@@ -489,7 +489,7 @@ export function RoutineEditor({
           type="button"
           disabled={saving || running || !hasTriggers}
           onClick={onSave}
-          className="rounded-[11px] bg-[var(--rk-cream)] px-4 py-2 text-[var(--rk-hairline)] disabled:opacity-40"
+          className="rounded-[11px] bg-[var(--rk-cream)] px-4 py-2 text-[var(--rk-cream-ink)] disabled:opacity-40"
         >
           {saving ? t`Saving…` : t`Save`}
         </button>
@@ -559,7 +559,7 @@ function WebhookTriggerCard({
       <div className="mt-2.5 space-y-2.5 rounded-[11px] bg-[var(--rk-surface)] px-2.5 py-2.5 text-[13.5px]">
         <div className="block text-[var(--rk-faint)]">
           <Trans>POST to</Trans>
-          <div className="mt-1 break-all rounded-lg bg-[#24242A] px-2.5 py-1.5 font-mono text-[12.5px] text-[var(--rk-soft)]">
+          <div className="mt-1 break-all rounded-lg bg-[var(--rk-scroll)] px-2.5 py-1.5 font-mono text-[12.5px] text-[var(--rk-soft)]">
             {postValue}
           </div>
         </div>
@@ -567,13 +567,13 @@ function WebhookTriggerCard({
           <span className="shrink-0">
             <Trans>key</Trans>
           </span>
-          <div className="min-w-0 flex-1 break-all rounded-lg bg-[#24242A] px-2.5 py-1.5 font-mono text-[12.5px] text-[var(--rk-soft)]">
+          <div className="min-w-0 flex-1 break-all rounded-lg bg-[var(--rk-scroll)] px-2.5 py-1.5 font-mono text-[12.5px] text-[var(--rk-soft)]">
             {keyValue}
           </div>
         </div>
         <div className="block text-[var(--rk-faint)]">
           <Trans>header</Trans>
-          <div className="mt-1 break-all rounded-lg bg-[#24242A] px-2.5 py-1.5 font-mono text-[12.5px] text-[var(--rk-soft)]">
+          <div className="mt-1 break-all rounded-lg bg-[var(--rk-scroll)] px-2.5 py-1.5 font-mono text-[12.5px] text-[var(--rk-soft)]">
             {headerValue}
           </div>
         </div>

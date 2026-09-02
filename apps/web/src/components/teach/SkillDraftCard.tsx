@@ -73,7 +73,7 @@ export function SkillDraftCard({
   return (
     <div
       data-testid="skill-draft-card"
-      className="w-[min(520px,92%)] rounded-[20px] border border-[#242428] bg-[#141417] px-[18px] py-4"
+      className="w-[min(520px,92%)] rounded-[20px] border border-[var(--rk-border)] bg-[var(--rk-surface)] px-[18px] py-4"
     >
       <div className="text-[15px] font-medium text-[var(--rk-ink)]">
         <Trans>Draft skill</Trans>
@@ -157,7 +157,7 @@ export function SkillDraftCard({
           type="button"
           disabled={busy}
           onClick={() => void saveDraft()}
-          className="rounded-[11px] bg-[var(--rk-cream)] px-4 py-2 text-[14px] text-[var(--rk-hairline)] disabled:opacity-40"
+          className="rounded-[11px] bg-[var(--rk-cream)] px-4 py-2 text-[14px] text-[var(--rk-cream-ink)] disabled:opacity-40"
         >
           {saved ? <Trans>Saved</Trans> : busy ? <Trans>Saving…</Trans> : <Trans>Save</Trans>}
         </button>

@@ -348,7 +348,7 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
               value={providerQuery}
               onChange={(event) => setProviderQuery(event.target.value)}
               placeholder={t`Search providers`}
-              className="w-full rounded-[11px] border border-[var(--rk-border)] bg-[var(--rk-inset)] px-3.5 py-2.5 text-[14px] text-[var(--rk-ink)] outline-none placeholder:text-[var(--rk-muted-2)] focus:border-[#4A4A50]"
+              className="w-full rounded-[11px] border border-[var(--rk-border)] bg-[var(--rk-inset)] px-3.5 py-2.5 text-[14px] text-[var(--rk-ink)] outline-none placeholder:text-[var(--rk-muted-2)] focus:border-[var(--rk-muted-2)]"
             />
             <div className="rk-scroll mt-3 max-h-[240px] overflow-y-auto rounded-[13px] border border-[var(--rk-border)] md:min-h-0 md:max-h-none md:flex-1">
               {filteredGroups.length ? (
@@ -360,7 +360,7 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
                       type="button"
                       onClick={() => chooseProvider(group.id)}
                       className={`flex w-full items-center gap-3 border-b border-[var(--rk-hairline-strong)] px-3.5 py-3 text-start last:border-0 ${
-                        group.id === provider ? "bg-[var(--rk-surface-2)]" : "hover:bg-[#161618]"
+                        group.id === provider ? "bg-[var(--rk-surface-2)]" : "hover:bg-[var(--rk-inset)]"
                       }`}
                     >
                       <span className="min-w-0 flex-1">
@@ -915,7 +915,7 @@ function ModelPicker({
         aria-controls={listboxId}
         aria-expanded={open}
         aria-haspopup="listbox"
-        className="flex w-full items-center justify-between rounded-[11px] border border-[var(--rk-border)] bg-[var(--rk-inset)] px-3.5 py-3 text-start text-[var(--rk-ink)] outline-none focus-visible:border-[#4A4A50]"
+        className="flex w-full items-center justify-between rounded-[11px] border border-[var(--rk-border)] bg-[var(--rk-inset)] px-3.5 py-3 text-start text-[var(--rk-ink)] outline-none focus-visible:border-[var(--rk-muted-2)]"
         onClick={() => setOpen((current) => !current)}
         onKeyDown={onTriggerKeyDown}
       >

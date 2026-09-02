@@ -214,7 +214,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
             <button
               type="submit"
               disabled={pending}
-              className="mt-3 w-full rounded-[13px] bg-[#121215] py-[18px] text-center text-[17px] font-medium text-[#FBFBF9] hover:bg-[#26262B]"
+              className="mt-3 w-full rounded-[13px] bg-[var(--rk-elevated)] py-[18px] text-center text-[17px] font-medium text-[var(--rk-cream)] hover:bg-[var(--rk-scroll)]"
             >
               {pending ? (
                 <Trans>Working…</Trans>
@@ -331,7 +331,7 @@ export function PasswordResetPage() {
             <button
               type="submit"
               disabled={pending || !params.get("token")}
-              className="mt-4 w-full rounded-[13px] bg-[#121215] py-[18px] text-[17px] font-medium text-[#FBFBF9] disabled:opacity-60"
+              className="mt-4 w-full rounded-[13px] bg-[var(--rk-elevated)] py-[18px] text-[17px] font-medium text-[var(--rk-cream)] disabled:opacity-60"
             >
               {pending ? <Trans>Working…</Trans> : <Trans>Reset password</Trans>}
             </button>

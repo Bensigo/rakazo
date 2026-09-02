@@ -40,4 +40,13 @@ describe("appearance preference", () => {
     expect(tokensForAppearance("light").page).toBe("#F4F4F2");
     expect(tokensForAppearance("light").ink).not.toBe(tokensForAppearance("dark").ink);
   });
+
+  it("maps cream button ink separately from hairline", () => {
+    const dark = tokensForAppearance("dark");
+    const light = tokensForAppearance("light");
+    expect(dark.creamInk).toBe("#1A1A1A");
+    expect(light.creamInk).toBe("#F1F1EF");
+    expect(dark.creamInk).not.toBe(dark.hairline);
+    expect(light.creamInk).not.toBe(light.hairline);
+  });
 });

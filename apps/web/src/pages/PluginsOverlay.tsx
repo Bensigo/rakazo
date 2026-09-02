@@ -425,7 +425,7 @@ export function PluginsOverlay({
                 <button
                   type="button"
                   onClick={onOpenMcp}
-                  className="rounded-full border border-[#383844] px-3 py-1.5 text-xs text-[var(--rk-soft)] hover:bg-[var(--rk-hairline-strong)]"
+                  className="rounded-full border border-[var(--rk-border)] px-3 py-1.5 text-xs text-[var(--rk-soft)] hover:bg-[var(--rk-hairline-strong)]"
                 >
                   <Trans>MCP servers</Trans>
                 </button>

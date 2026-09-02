@@ -70,7 +70,7 @@ export function HostComputerPrompt({ initialMe }: { initialMe?: Me }) {
             type="button"
             disabled={pending}
             onClick={() => void choose("docker")}
-            className="rounded-[11px] bg-[var(--rk-cream)] px-5 py-2.5 text-[var(--rk-hairline)] disabled:opacity-40"
+            className="rounded-[11px] bg-[var(--rk-cream)] px-5 py-2.5 text-[var(--rk-cream-ink)] disabled:opacity-40"
           >
             <Trans>Docker (recommended)</Trans>
           </button>

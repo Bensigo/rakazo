@@ -203,7 +203,7 @@ export function TeachComputerOverlayControl({
               type="button"
               disabled={busy || startLocked || !goal.trim()}
               onClick={() => void startTeaching()}
-              className="rounded-[11px] bg-[var(--rk-cream)] px-4 py-2 text-[14px] text-[var(--rk-hairline)] disabled:opacity-40"
+              className="rounded-[11px] bg-[var(--rk-cream)] px-4 py-2 text-[14px] text-[var(--rk-cream-ink)] disabled:opacity-40"
             >
               {busy || syncingRecording ? <Trans>Starting…</Trans> : <Trans>Start recording</Trans>}
             </button>
@@ -239,7 +239,7 @@ export function TeachComputerOverlayControl({
               type="button"
               disabled={busy}
               onClick={() => void refreshView()}
-              className="rounded-[11px] bg-[var(--rk-cream)] px-4 py-2 text-[14px] text-[var(--rk-hairline)] disabled:opacity-40"
+              className="rounded-[11px] bg-[var(--rk-cream)] px-4 py-2 text-[14px] text-[var(--rk-cream-ink)] disabled:opacity-40"
             >
               {busy ? <Trans>Refreshing…</Trans> : <Trans>Refresh view</Trans>}
             </button>
@@ -269,7 +269,7 @@ export function TeachComputerOverlayControl({
           setError(null);
           setGoalOpen((open) => !open);
         }}
-        className="flex items-center gap-2 rounded-[10px] border border-[var(--rk-scroll)] bg-[#141417] px-3 py-1.5 text-[13px] text-[var(--rk-ink)] hover:bg-[#1A1A1E] disabled:opacity-40"
+        className="flex items-center gap-2 rounded-[10px] border border-[var(--rk-scroll)] bg-[var(--rk-surface)] px-3 py-1.5 text-[13px] text-[var(--rk-ink)] hover:bg-[var(--rk-surface-2)] disabled:opacity-40"
       >
         <span
           aria-hidden

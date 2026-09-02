@@ -24,7 +24,7 @@ import {
   finishModelOAuthAttempt,
   waitForModelOAuth,
 } from "../lib/model-auth";
-import { native } from "../lib/native";
+import { native, useThemedStyles } from "../lib/native";
 
 type ModelSelection = {
   provider?: string;
@@ -32,6 +32,7 @@ type ModelSelection = {
 };
 
 export default function Models() {
+  const styles = useThemedStyles(createModelsStyles);
   const [catalog, setCatalog] = useState<MobileModel[]>([]);
   const [credentials, setCredentials] = useState<MobileModelCredential[]>([]);
   const [me, setMe] = useState<MobileMe | null>(null);
@@ -740,7 +741,8 @@ export default function Models() {
   );
 }
 
-const styles = StyleSheet.create({
+function createModelsStyles() {
+  return StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: native.page,
@@ -953,3 +955,5 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
 });
+}
+

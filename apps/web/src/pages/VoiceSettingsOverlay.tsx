@@ -182,7 +182,7 @@ export function VoiceSettingsOverlay({ onClose }: { onClose: () => void }) {
                       void refresh(entry.id);
                     }}
                     className={`flex w-full items-center gap-3 border-b border-[var(--rk-hairline-strong)] px-3.5 py-3 text-start last:border-0 ${
-                      entry.id === provider ? "bg-[var(--rk-surface-2)]" : "hover:bg-[#161618]"
+                      entry.id === provider ? "bg-[var(--rk-surface-2)]" : "hover:bg-[var(--rk-inset)]"
                     }`}
                   >
                     <span className="min-w-0 flex-1">

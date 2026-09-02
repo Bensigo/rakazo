@@ -87,6 +87,8 @@ import {
   messagePresentationSegments,
   toolOwnerId,
 } from "../lib/message-presentation";
+import { mobileTokens } from "../lib/appearance";
+import { native, useResolvedAppearance } from "../lib/native";
 import {
   type PickedAttachment,
   pickDocuments,
@@ -141,6 +143,7 @@ function isWorkingStatus(status: string | undefined): boolean {
 type NotificationRouteState = "loading" | "ready" | "failed";
 
 export default function ThreadRoute() {
+  useResolvedAppearance();
   const router = useRouter();
   const { spaceId } = useLocalSearchParams<{ spaceId?: string | string[] }>();
   const requestedSpaceId = typeof spaceId === "string" && spaceId ? spaceId : null;
@@ -1405,13 +1408,13 @@ function Thread() {
               height: 42,
               borderRadius: 21,
               borderWidth: 1,
-              borderColor: "#303035",
-              backgroundColor: "#1A1A1D",
+              borderColor: native.fillPressed,
+              backgroundColor: native.fill,
               alignItems: "center",
               justifyContent: "center",
             }}
           >
-            <NativeSymbol ios="arrow.down" android="arrow-down" size={18} color="#ECECEE" />
+            <NativeSymbol ios="arrow.down" android="arrow-down" size={18} color={mobileTokens().ink} />
             {threadScrollState.unread ? (
               <View
                 style={{

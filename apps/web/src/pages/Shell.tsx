@@ -4058,7 +4058,7 @@ const Transcript = memo(function Transcript({
                   type="button"
                   aria-label={t`Remove thumbs-up`}
                   onClick={() => void onReact(message)}
-                  className={`mt-1 rounded-full border border-[#303034] bg-[var(--rk-surface-2)] px-2 py-0.5 text-xs ${
+                  className={`mt-1 rounded-full border border-[var(--rk-scroll)] bg-[var(--rk-surface-2)] px-2 py-0.5 text-xs ${
                     message.role === "user" ? "ml-auto block" : ""
                   }`}
                 >
@@ -4085,7 +4085,7 @@ const Transcript = memo(function Transcript({
         aria-hidden={atEnd}
         tabIndex={atEnd ? -1 : 0}
         onClick={jumpToLatest}
-        className={`absolute bottom-4 left-1/2 z-20 grid h-9 w-9 -translate-x-1/2 place-items-center rounded-full border border-[#303034] bg-[var(--rk-surface-2)]/95 text-[var(--rk-soft)] shadow-[0_8px_24px_rgba(0,0,0,.45)] backdrop-blur transition-[opacity,transform,background-color] duration-200 ease-[cubic-bezier(.22,1,.36,1)] hover:bg-[#242428] motion-reduce:transition-none ${
+        className={`absolute bottom-4 left-1/2 z-20 grid h-9 w-9 -translate-x-1/2 place-items-center rounded-full border border-[var(--rk-scroll)] bg-[var(--rk-surface-2)]/95 text-[var(--rk-soft)] shadow-[0_8px_24px_rgba(0,0,0,.45)] backdrop-blur transition-[opacity,transform,background-color] duration-200 ease-[cubic-bezier(.22,1,.36,1)] hover:bg-[var(--rk-border)] motion-reduce:transition-none ${
           atEnd ? "pointer-events-none translate-y-2 opacity-0" : "translate-y-0 opacity-100"
         }`}
       >
@@ -4497,8 +4497,8 @@ const Composer = memo(function Composer({
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => insertMention(mention)}
                 onMouseEnter={() => setMentionHighlightIndex(index)}
-                className={`flex w-full items-start gap-3 px-4 py-2.5 text-start hover:bg-[#1F1F22] ${
-                  highlighted ? "bg-[#1F1F22]" : ""
+                className={`flex w-full items-start gap-3 px-4 py-2.5 text-start hover:bg-[var(--rk-elevated)] ${
+                  highlighted ? "bg-[var(--rk-elevated)]" : ""
                 }`}
               >
                 <MentionOptionIcon mention={mention} />
@@ -4531,7 +4531,7 @@ const Composer = memo(function Composer({
               type="button"
               aria-label={t`Skill ${skill.name}`}
               onClick={() => insertSkill(skill)}
-              className="flex w-full items-start gap-3 px-4 py-2.5 text-start hover:bg-[#1F1F22]"
+              className="flex w-full items-start gap-3 px-4 py-2.5 text-start hover:bg-[var(--rk-elevated)]"
             >
               <Box size={16} strokeWidth={1.7} className="mt-0.5 shrink-0 text-[var(--rk-muted)]" />
               <span className="min-w-0">
@@ -4552,7 +4552,7 @@ const Composer = memo(function Composer({
                 type="button"
                 aria-label={label}
                 onClick={() => runSlashAction(action.id)}
-                className="flex w-full items-center gap-3 px-4 py-2.5 text-start hover:bg-[#1F1F22]"
+                className="flex w-full items-center gap-3 px-4 py-2.5 text-start hover:bg-[var(--rk-elevated)]"
               >
                 <Settings size={16} strokeWidth={1.7} className="shrink-0 text-[var(--rk-muted)]" />
                 <span className="text-[14px] text-[var(--rk-ink)]">{label}</span>
@@ -4611,7 +4611,7 @@ const Composer = memo(function Composer({
           {selectedSkill ? (
             <span
               data-testid="skill-chip"
-              className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-[#1C1C1F] px-2.5 py-1 text-[13px] text-[var(--rk-ink)]"
+              className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-[var(--rk-elevated)] px-2.5 py-1 text-[13px] text-[var(--rk-ink)]"
             >
               <Box size={13} strokeWidth={1.7} className="shrink-0 text-[#B0B0B6]" />
               <span dir="auto" className="truncate">
@@ -4632,7 +4632,7 @@ const Composer = memo(function Composer({
               key={mentionChipKey(mention)}
               data-testid="mention-chip"
               data-mention-kind={mention.kind}
-              className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-[#1C1C1F] px-2.5 py-1 text-[13px] text-[var(--rk-ink)]"
+              className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-[var(--rk-elevated)] px-2.5 py-1 text-[13px] text-[var(--rk-ink)]"
             >
               <MentionChipIcon mention={mention} />
               <span dir="auto" className="truncate">
@@ -4717,7 +4717,7 @@ const Composer = memo(function Composer({
             autoComplete="off"
             dir="auto"
             rows={1}
-            className="max-h-32 min-h-[24px] min-w-[8rem] flex-1 resize-none overflow-y-auto bg-transparent py-0.5 text-[15.5px] leading-6 text-[#E9E9EA] outline-none disabled:opacity-40"
+            className="max-h-32 min-h-[24px] min-w-[8rem] flex-1 resize-none overflow-y-auto bg-transparent py-0.5 text-[15.5px] leading-6 text-[var(--rk-ink)] outline-none disabled:opacity-40"
           />
         </div>
         {running ? (
@@ -4727,7 +4727,7 @@ const Composer = memo(function Composer({
               aria-label={t`Send`}
               disabled={sending || !canSend || disabled}
               onClick={send}
-              className="grid h-10 w-10 place-items-center rounded-full bg-[var(--rk-cream)] text-[var(--rk-hairline)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A6A6AD] disabled:opacity-50"
+              className="grid h-10 w-10 place-items-center rounded-full bg-[var(--rk-cream)] text-[var(--rk-cream-ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A6A6AD] disabled:opacity-50"
             >
               <ArrowUp size={18} strokeWidth={2} />
             </button>
@@ -4736,7 +4736,7 @@ const Composer = memo(function Composer({
               aria-label={t`Stop`}
               disabled={sending}
               onClick={() => void onStop()}
-              className="grid h-10 w-10 place-items-center rounded-full border border-[#34343A] text-[var(--rk-soft)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A6A6AD] disabled:opacity-50"
+              className="grid h-10 w-10 place-items-center rounded-full border border-[var(--rk-scroll)] text-[var(--rk-soft)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A6A6AD] disabled:opacity-50"
             >
               <Square size={12} strokeWidth={0} fill="currentColor" />
             </button>
@@ -4747,7 +4747,7 @@ const Composer = memo(function Composer({
             aria-label={t`Send`}
             disabled={sending || !canSend || disabled}
             onClick={send}
-            className="grid h-9 w-9 place-items-center rounded-full bg-[var(--rk-cream)] text-[var(--rk-hairline)] disabled:opacity-50"
+            className="grid h-9 w-9 place-items-center rounded-full bg-[var(--rk-cream)] text-[var(--rk-cream-ink)] disabled:opacity-50"
           >
             <ArrowUp size={18} strokeWidth={2} />
           </button>
@@ -4847,7 +4847,7 @@ function MessageHoverActions({
     <MessageHoverMetadata createdAt={message.createdAt}>
       <div
         data-testid="message-hover-actions"
-        className="flex items-center gap-0.5 rounded-full bg-[#1C1C1F] p-0.5 shadow-[0_1px_4px_rgba(0,0,0,0.45)]"
+        className="flex items-center gap-0.5 rounded-full bg-[var(--rk-elevated)] p-0.5 shadow-[0_1px_4px_rgba(0,0,0,0.45)]"
       >
         <button
           type="button"
@@ -5500,7 +5500,7 @@ function CreateBotForm({
         type="button"
         disabled={!name.trim() || submitting}
         onClick={() => void handleSubmit()}
-        className="mt-5 rounded-[11px] bg-[var(--rk-cream)] px-4 py-2 text-[var(--rk-hairline)] disabled:opacity-40"
+        className="mt-5 rounded-[11px] bg-[var(--rk-cream)] px-4 py-2 text-[var(--rk-cream-ink)] disabled:opacity-40"
       >
         {submitting ? <Trans>Creating…</Trans> : <Trans>Create</Trans>}
       </button>
@@ -5733,7 +5733,7 @@ function BotSettings({
                   onClick={() => setMemoryScope(option.value)}
                   className={`flex-1 rounded-[11px] border px-3 py-2 text-[13px] ${
                     memoryScope === option.value
-                      ? "border-[#4A4A50] bg-[var(--rk-surface-2)] text-[var(--rk-ink)]"
+                      ? "border-[var(--rk-muted-2)] bg-[var(--rk-surface-2)] text-[var(--rk-ink)]"
                       : "border-[var(--rk-border)] text-[var(--rk-muted)]"
                   }`}
                 >
@@ -5802,7 +5802,7 @@ function BotSettings({
               .catch((err) => setError(err instanceof Error ? err.message : t`Could not save`))
               .finally(() => setSaving(false));
           }}
-          className="rounded-[11px] bg-[var(--rk-cream)] px-4 py-2 text-[var(--rk-hairline)] disabled:opacity-40"
+          className="rounded-[11px] bg-[var(--rk-cream)] px-4 py-2 text-[var(--rk-cream-ink)] disabled:opacity-40"
         >
           <Trans>Save</Trans>
         </button>
@@ -6007,14 +6007,14 @@ function NewBotSectionDialog({
             type="button"
             disabled={saving}
             onClick={onCancel}
-            className="rounded-[10px] px-3.5 py-2 text-[14px] text-[var(--rk-soft)] hover:bg-[#29292D] disabled:opacity-40"
+            className="rounded-[10px] px-3.5 py-2 text-[14px] text-[var(--rk-soft)] hover:bg-[var(--rk-scroll)] disabled:opacity-40"
           >
             <Trans>Cancel</Trans>
           </button>
           <button
             type="submit"
             disabled={saving || !name.trim()}
-            className="rounded-[10px] bg-[var(--rk-cream)] px-3.5 py-2 text-[14px] font-medium text-[var(--rk-hairline)] disabled:opacity-40"
+            className="rounded-[10px] bg-[var(--rk-cream)] px-3.5 py-2 text-[14px] font-medium text-[var(--rk-cream-ink)] disabled:opacity-40"
           >
             {saving ? <Trans>Creating…</Trans> : <Trans>Create</Trans>}
           </button>
@@ -6082,7 +6082,7 @@ function ClearConversationDialog({
             type="button"
             disabled={clearing}
             onClick={onCancel}
-            className="rounded-[10px] px-3.5 py-2 text-[14px] text-[var(--rk-soft)] hover:bg-[#29292D] disabled:opacity-40"
+            className="rounded-[10px] px-3.5 py-2 text-[14px] text-[var(--rk-soft)] hover:bg-[var(--rk-scroll)] disabled:opacity-40"
           >
             <Trans>Cancel</Trans>
           </button>
@@ -6200,7 +6200,7 @@ function DeleteBotDialog({
             type="button"
             disabled={deleting}
             onClick={onCancel}
-            className="rounded-[10px] px-3.5 py-2 text-[14px] text-[var(--rk-soft)] hover:bg-[#29292D] disabled:opacity-40"
+            className="rounded-[10px] px-3.5 py-2 text-[14px] text-[var(--rk-soft)] hover:bg-[var(--rk-scroll)] disabled:opacity-40"
           >
             <Trans>Cancel</Trans>
           </button>
@@ -6279,7 +6279,7 @@ function DeleteItemDialog({
             type="button"
             disabled={deleting}
             onClick={onCancel}
-            className="rounded-[10px] px-3.5 py-2 text-[14px] text-[var(--rk-soft)] hover:bg-[#29292D] disabled:opacity-40"
+            className="rounded-[10px] px-3.5 py-2 text-[14px] text-[var(--rk-soft)] hover:bg-[var(--rk-scroll)] disabled:opacity-40"
           >
             <Trans>Cancel</Trans>
           </button>
@@ -6394,7 +6394,7 @@ function ChoiceCard({
                 type="button"
                 disabled={Boolean(block.answerId) || pending}
                 onClick={() => void choose(option.id)}
-                className={`flex w-full items-center gap-3 rounded-[12px] border border-[var(--rk-scroll)] px-3.5 py-3 text-start disabled:opacity-60 ${block.answerId ? "bg-[#1F1F23]" : "bg-[#161619] hover:bg-[#222226]"}`}
+                className={`flex w-full items-center gap-3 rounded-[12px] border border-[var(--rk-scroll)] px-3.5 py-3 text-start disabled:opacity-60 ${block.answerId ? "bg-[var(--rk-elevated)]" : "bg-[var(--rk-inset)] hover:bg-[var(--rk-scroll)]"}`}
               >
                 <span className="grid h-[24px] w-[24px] place-items-center rounded-[7px] bg-[var(--rk-hairline-strong)] text-[12.5px] text-[var(--rk-muted)]">
                   {option.letter}
@@ -6727,7 +6727,7 @@ function ChartBlockView({
         <button
           type="button"
           onClick={() => setExpanded(true)}
-          className="absolute end-3 top-3 rounded-lg border border-[var(--rk-elevated)] bg-[#1F1F22] px-2.5 py-1 text-[11px] text-[var(--rk-soft)] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A6A6AD]"
+          className="absolute end-3 top-3 rounded-lg border border-[var(--rk-elevated)] bg-[var(--rk-elevated)] px-2.5 py-1 text-[11px] text-[var(--rk-soft)] opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#A6A6AD]"
         >
           <Trans>Expand</Trans>
         </button>
@@ -6745,7 +6745,7 @@ function ChartBlockView({
             if (event.key === "Escape") setExpanded(false);
           }}
         >
-          <div className="max-h-[92vh] w-[min(1320px,94vw)] overflow-auto rounded-[24px] border border-[#2A2A31] bg-[var(--rk-surface)] p-8 shadow-[0_40px_90px_rgba(0,0,0,.6)]">
+          <div className="max-h-[92vh] w-[min(1320px,94vw)] overflow-auto rounded-[24px] border border-[var(--rk-border)] bg-[var(--rk-surface)] p-8 shadow-[0_40px_90px_rgba(0,0,0,.6)]">
             <div className="mb-3 flex items-center justify-between">
               <span className="text-[13px] text-[var(--rk-muted)]">{name}</span>
               <button

@@ -387,7 +387,7 @@ function SettingsPasswordInput({
         minLength={8}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1.5 w-full rounded-[11px] border border-[var(--rk-scroll)] bg-[var(--rk-hairline)] px-3.5 py-2.5 text-[14px] text-[var(--rk-ink)] outline-none focus:border-[#4A4A52]"
+        className="mt-1.5 w-full rounded-[11px] border border-[var(--rk-scroll)] bg-[var(--rk-hairline)] px-3.5 py-2.5 text-[14px] text-[var(--rk-ink)] outline-none focus:border-[var(--rk-muted-2)]"
       />
     </label>
   );
@@ -537,7 +537,7 @@ function UiLocalePicker({
         aria-controls={listboxId}
         aria-expanded={open}
         aria-haspopup="listbox"
-        className="flex w-full items-center justify-between rounded-[11px] border border-[var(--rk-border)] bg-[var(--rk-inset)] px-3.5 py-3 text-start text-[var(--rk-ink)] outline-none focus-visible:border-[#4A4A50]"
+        className="flex w-full items-center justify-between rounded-[11px] border border-[var(--rk-border)] bg-[var(--rk-inset)] px-3.5 py-3 text-start text-[var(--rk-ink)] outline-none focus-visible:border-[var(--rk-muted-2)]"
         onClick={() => setOpen((current) => !current)}
         onKeyDown={onTriggerKeyDown}
       >

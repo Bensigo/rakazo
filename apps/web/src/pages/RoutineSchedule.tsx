@@ -269,7 +269,7 @@ export function RoutineSchedule({
             placeholder="*/3 * * * *"
             aria-label={t`Cron expression`}
             onChange={(event) => patch({ cron: event.target.value })}
-            className="min-w-[120px] flex-1 rounded-lg border-0 bg-[#24242A] px-2.5 py-1.5 font-mono text-[13.5px] text-[var(--rk-ink)] outline-none"
+            className="min-w-[120px] flex-1 rounded-lg border-0 bg-[var(--rk-scroll)] px-2.5 py-1.5 font-mono text-[13.5px] text-[var(--rk-ink)] outline-none"
           />
         ) : null}
       </div>
