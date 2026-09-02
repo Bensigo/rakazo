@@ -5,6 +5,7 @@ import {
   mkdiratChild,
   openatChild,
   type PosixAtFileHandle,
+  pathFromOpenFd,
   renameatChild,
   unlinkatChild,
 } from "./host-disk-posix-at.js";
@@ -115,16 +116,19 @@ export async function hostEntryEscapesRoots(entryPath: string, roots: string[]) 
   }
 }
 
-/** Real path of an open fd (Linux /proc, macOS /dev/fd). */
+/**
+ * Real path of an open fd for grant checks.
+ * Linux uses `/proc/self/fd/N`; Darwin uses fcntl(F_GETPATH). Do not use
+ * `realpath(/dev/fd/N)` — on macOS that does not yield the backing path.
+ */
 export async function realpathOfFd(fd: number): Promise<string> {
-  for (const candidate of [`/proc/self/fd/${fd}`, `/dev/fd/${fd}`]) {
-    try {
-      return await realpath(candidate);
-    } catch {
-      // Try the next platform path.
-    }
+  try {
+    const fromFd = pathFromOpenFd(fd);
+    // Canonicalize so lexical grant compares match realpath(root).
+    return await realpath(fromFd);
+  } catch {
+    throw new Error("Host path is outside the granted folders");
   }
-  throw new Error("Host path is outside the granted folders");
 }
 
 /**

@@ -4,6 +4,7 @@ import {
   mkdtemp,
   readdir,
   readFile,
+  realpath,
   rename,
   rm,
   symlink,
@@ -585,6 +586,38 @@ describe("host disk posix *at pinning", () => {
       unlinkatChild(parentHandle.fd, "x.txt");
     } finally {
       await parentHandle.close();
+    }
+  });
+
+  it("pathFromOpenFd returns the open inode path (not /dev/fd)", async () => {
+    const { open } = await import("node:fs/promises");
+    const { pathFromOpenFd } = await import("./host-disk-posix-at.js");
+    const dataDir = await tempDir();
+    const target = path.join(dataDir, "file.txt");
+    await writeFile(target, "hi\n", "utf8");
+    const handle = await open(target, constants.O_RDONLY);
+    try {
+      const fromFd = pathFromOpenFd(handle.fd);
+      expect(fromFd).toBe(await realpath(target));
+      expect(fromFd).not.toMatch(/\/dev\/fd\//);
+      expect(fromFd).not.toMatch(/\/proc\/self\/fd\//);
+    } finally {
+      await handle.close();
+    }
+  });
+
+  it("realpathOfFd matches pathFromOpenFd after canonicalize", async () => {
+    const { open } = await import("node:fs/promises");
+    const { pathFromOpenFd } = await import("./host-disk-posix-at.js");
+    const { realpathOfFd } = await import("./host-disk-path.js");
+    const dataDir = await tempDir();
+    const dir = path.join(dataDir, "dir");
+    await mkdir(dir, { recursive: true });
+    const handle = await open(dir, constants.O_RDONLY | (constants.O_DIRECTORY ?? 0));
+    try {
+      expect(await realpathOfFd(handle.fd)).toBe(await realpath(pathFromOpenFd(handle.fd)));
+    } finally {
+      await handle.close();
     }
   });
 

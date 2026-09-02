@@ -2,6 +2,7 @@ import {
   close as closeCb,
   fstat as fstatCb,
   readFile as readFileCb,
+  readlinkSync,
   writeFile as writeFileCb,
 } from "node:fs";
 import { promisify } from "node:util";
@@ -106,6 +107,62 @@ export function fileHandleFromFd(fd: number) {
 }
 
 export type PosixAtFileHandle = ReturnType<typeof fileHandleFromFd>;
+
+/** Darwin fcntl(F_GETPATH): path of the open fd's inode (not /dev/fd). */
+const F_GETPATH = 50;
+const MAXPATHLEN = 1024;
+
+type DarwinPathApi = {
+  fcntlGetPath: (fd: number, cmd: number, buf: Buffer) => number;
+};
+
+let darwinPathCached: DarwinPathApi | null | undefined;
+
+function loadDarwinPathApi(): DarwinPathApi {
+  if (darwinPathCached === null) fail("ENOSYS", "fcntl F_GETPATH unavailable");
+  if (darwinPathCached) return darwinPathCached;
+  try {
+    const lib = koffi.load("libSystem.B.dylib");
+    darwinPathCached = {
+      fcntlGetPath: lib.func("int fcntl(int fd, int cmd, _Out_ uint8_t *buf)"),
+    };
+    return darwinPathCached;
+  } catch {
+    darwinPathCached = null;
+    fail("ENOSYS", "fcntl F_GETPATH unavailable");
+  }
+}
+
+/**
+ * Absolute path for an open fd.
+ * Linux: readlink `/proc/self/fd/N`. Darwin: fcntl(F_GETPATH). Never use
+ * `realpath(/dev/fd/N)` for grant checks — on macOS that does not yield the
+ * backing filesystem path.
+ */
+export function pathFromOpenFd(fd: number): string {
+  if (process.platform === "darwin") {
+    const api = loadDarwinPathApi();
+    const buf = Buffer.alloc(MAXPATHLEN);
+    const rc = api.fcntlGetPath(fd, F_GETPATH, buf);
+    if (rc === -1) fail(errnoCode(), "fcntl F_GETPATH failed");
+    const end = buf.indexOf(0);
+    const resolved = buf.toString("utf8", 0, end === -1 ? buf.length : end).trim();
+    if (!resolved.startsWith("/")) fail("EINVAL", "fcntl F_GETPATH returned no path");
+    return resolved;
+  }
+  if (process.platform === "linux") {
+    try {
+      return readlinkSync(`/proc/self/fd/${fd}`);
+    } catch (error) {
+      const code =
+        error && typeof error === "object" && "code" in error
+          ? String((error as { code: unknown }).code)
+          : "EINVAL";
+      fail(code, "readlink /proc/self/fd failed");
+    }
+  }
+  fail("ENOSYS", "pathFromOpenFd unsupported on this platform");
+}
 
 export function openatChild(
   dirFd: number,
