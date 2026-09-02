@@ -84,6 +84,8 @@ test("bot creation, editing, and deletion persist", async ({ page }, testInfo) =
   const bootOverlay = page.getByText(/Booting up .* computer/);
   await expect(sidePanel.getByRole("button", { name: "Take control" })).toBeVisible();
   await expect(bootOverlay).toBeHidden();
+  await expect(sidePanel.getByText("Teach a task")).toHaveCount(0);
+  await expect(sidePanel.getByTestId("teach-start-button")).toHaveCount(0);
   await captureScreenshot(page, testInfo, "27b-computer-panel");
   await page.getByRole("button", { name: "Show settings" }).click();
 

@@ -128,7 +128,7 @@ import { MessageHoverMetadata } from "../components/MessageHoverMetadata";
 import { ToolActivityDisclosure, ToolSteps } from "../components/ToolActivityDisclosure";
 import { SkillDraftCard } from "../components/teach/SkillDraftCard";
 import { TeachCaptureOverlay } from "../components/teach/TeachCaptureOverlay";
-import { TeachComputerSection } from "../components/teach/TeachComputerSection";
+import { TeachComputerOverlayControl } from "../components/teach/TeachComputerOverlay";
 import { TeachRecordingChrome, TeachStopButton } from "../components/teach/TeachRecordingChrome";
 import { readActivityMode, writeActivityMode } from "../lib/activity-mode";
 import { type ArtifactTarget, decodeArtifactBase64 } from "../lib/artifact-open";
@@ -3176,27 +3176,6 @@ export function ShellPage() {
                     />
                   );
                 })}
-                {active ? (
-                  <TeachComputerSection
-                    botId={active.id}
-                    computer={computer}
-                    skills={activeTaughtSkills}
-                    busy={teachBusy}
-                    onRefresh={refreshActiveThread}
-                    onOpenComputer={openComputer}
-                    onStopTeaching={stopTeaching}
-                    onAddRoutine={(skill) => {
-                      setRoutineDraft({
-                        ...emptyRoutineDraft(),
-                        name: skill.name || skill.goal.slice(0, 80),
-                        prompt: `Run taught skill: ${skill.name || skill.goal}\n${skill.playbook.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")}`,
-                      });
-                      setRoutineWebhookSecret(null);
-                      setEditingRoutine(null);
-                      setPanel("routine");
-                    }}
-                  />
-                ) : null}
               </div>
             ) : null}
             {panel === "create-group" ? (
@@ -3841,6 +3820,14 @@ export function ShellPage() {
                   : computerLabel(computer?.mode, active.name)}
               </div>
             )}
+            {active && !recordingSkill ? (
+              <TeachComputerOverlayControl
+                botId={active.id}
+                computer={computer}
+                busy={teachBusy}
+                onRefresh={refreshActiveThread}
+              />
+            ) : null}
           </div>
         </div>
       ) : null}
