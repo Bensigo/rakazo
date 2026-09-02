@@ -248,7 +248,9 @@ export function OnboardingPage() {
                     setNotice(null);
                   }}
                   className={`flex w-full items-center justify-between border-b border-[var(--rk-hairline-strong)] px-3.5 py-2.5 text-left last:border-0 ${
-                    entry.provider === provider ? "bg-[var(--rk-surface-2)]" : "hover:bg-[var(--rk-inset)]"
+                    entry.provider === provider
+                      ? "bg-[var(--rk-surface-2)]"
+                      : "hover:bg-[var(--rk-inset)]"
                   }`}
                 >
                   <span className="text-[15px] text-[var(--rk-ink)]">

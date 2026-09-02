@@ -360,7 +360,9 @@ export function ModelSettingsOverlay({ onClose }: { onClose: () => void }) {
                       type="button"
                       onClick={() => chooseProvider(group.id)}
                       className={`flex w-full items-center gap-3 border-b border-[var(--rk-hairline-strong)] px-3.5 py-3 text-start last:border-0 ${
-                        group.id === provider ? "bg-[var(--rk-surface-2)]" : "hover:bg-[var(--rk-inset)]"
+                        group.id === provider
+                          ? "bg-[var(--rk-surface-2)]"
+                          : "hover:bg-[var(--rk-inset)]"
                       }`}
                     >
                       <span className="min-w-0 flex-1">
