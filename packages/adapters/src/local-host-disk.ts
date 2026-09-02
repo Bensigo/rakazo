@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import type {
   AdapterContext,
@@ -6,7 +6,12 @@ import type {
   HostDiskProvider,
   PortableFile,
 } from "@rakazo/adapter-kit";
-import { hostEntryEscapesRoots, resolveInsideHostRoots } from "./host-disk-path.js";
+import {
+  hostEntryEscapesRoots,
+  readFileInsideHostRoots,
+  resolveInsideHostRoots,
+  writeFileInsideHostRoots,
+} from "./host-disk-path.js";
 import {
   type HostDiskSettings,
   hostDiskAccessAllowed,
@@ -86,22 +91,12 @@ export class LocalHostDiskProvider implements HostDiskProvider {
     options?: { maxBytes?: number },
   ): Promise<Uint8Array> {
     const roots = await this.requireRoots(userId);
-    const target = await resolveInsideHostRoots(requestPath, roots);
-    const info = await stat(target);
-    if (!info.isFile()) throw new Error("Host path is not a file");
-    if (options?.maxBytes !== undefined && info.size > options.maxBytes) {
-      throw new Error(`file exceeds ${options.maxBytes} bytes`);
-    }
-    return new Uint8Array(await readFile(target));
+    return readFileInsideHostRoots(requestPath, roots, options);
   }
 
   async writeFile(userId: string, file: PortableFile, _context: AdapterContext): Promise<void> {
     const roots = await this.requireRoots(userId);
-    const target = await resolveInsideHostRoots(file.path, roots);
-    await mkdir(path.dirname(target), { recursive: true });
-    // Re-resolve after creating parents so symlink races cannot escape.
-    const verified = await resolveInsideHostRoots(target, roots);
-    await writeFile(verified, file.content);
+    await writeFileInsideHostRoots(file.path, roots, file.content);
   }
 
   private async settingsFor(userId: string) {

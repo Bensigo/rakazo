@@ -208,6 +208,42 @@ describe("host disk symlink containment", () => {
     const listed = await provider.listFiles("user-1", grant, adapterContext());
     expect(listed.map((entry) => path.basename(entry.path))).not.toContain("leak.txt");
   });
+
+  it("rejects reads through a directory symlink that leaves the grant", async () => {
+    const dataDir = await tempDir();
+    const grant = path.join(dataDir, "granted");
+    const outside = path.join(dataDir, "outside");
+    await mkdir(grant, { recursive: true });
+    await mkdir(outside, { recursive: true });
+    await writeFile(path.join(outside, "secret.txt"), "private\n", "utf8");
+    await symlink(outside, path.join(grant, "sub"));
+
+    await saveHostDiskSettings(dataDir, "user-1", {
+      enabled: true,
+      roots: [grant],
+      clientSeenAt: new Date().toISOString(),
+    });
+
+    const provider = new LocalHostDiskProvider({
+      dataDir,
+      ignoreClientHeartbeat: true,
+    });
+
+    await expect(
+      provider.readFile("user-1", path.join(grant, "sub", "secret.txt"), adapterContext()),
+    ).rejects.toThrow(/outside the granted folders/i);
+
+    await expect(
+      provider.writeFile(
+        "user-1",
+        {
+          path: path.join(grant, "sub", "planted.txt"),
+          content: new TextEncoder().encode("nope"),
+        },
+        adapterContext(),
+      ),
+    ).rejects.toThrow(/outside the granted folders/i);
+  });
 });
 
 describe("host disk exclusive claims", () => {

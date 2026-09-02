@@ -1,9 +1,23 @@
-import { mkdir, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import {
+  lstat,
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { app, BrowserWindow, dialog, type IpcMainInvokeEvent, ipcMain } from "electron";
 
 /** Roots granted via the native folder picker. Renderer-supplied roots are ignored. */
 const grantedRoots = new Set<string>();
+
+const NOFOLLOW = constants.O_NOFOLLOW ?? 0;
 
 function grantsFilePath() {
   return path.join(app.getPath("userData"), "host-disk-grants.json");
@@ -39,6 +53,16 @@ function isLexicallyInside(target: string, roots: string[]) {
   });
 }
 
+async function realGrantedRoots() {
+  const roots = [...grantedRoots];
+  if (roots.length === 0) throw new Error("No host folders are granted");
+  const realRoots: string[] = [];
+  for (const root of roots) {
+    realRoots.push(await realpath(root));
+  }
+  return realRoots;
+}
+
 async function resolveInsideGrants(target: string) {
   const roots = [...grantedRoots];
   if (roots.length === 0) throw new Error("No host folders are granted");
@@ -47,10 +71,7 @@ async function resolveInsideGrants(target: string) {
     throw new Error("Host path is outside the granted folders");
   }
 
-  const realRoots: string[] = [];
-  for (const root of roots) {
-    realRoots.push(await realpath(root));
-  }
+  const realRoots = await realGrantedRoots();
 
   let probe = lexicalTarget;
   for (;;) {
@@ -91,6 +112,31 @@ async function resolveInsideGrants(target: string) {
       }
       probe = parent;
     }
+  }
+}
+
+/** Open + re-validate so a directory→symlink swap cannot escape after resolve. */
+async function openInsideGrants(target: string, flags: number) {
+  const realRoots = await realGrantedRoots();
+  const resolved = await resolveInsideGrants(target);
+  const handle = await open(resolved, flags | NOFOLLOW);
+  try {
+    const opened = await handle.stat();
+    const again = await realpath(resolved);
+    if (!isLexicallyInside(again, realRoots)) {
+      throw new Error("Host path is outside the granted folders");
+    }
+    const againStat = await lstat(again);
+    if (againStat.isSymbolicLink()) {
+      throw new Error("Host path is outside the granted folders");
+    }
+    if (opened.dev !== againStat.dev || opened.ino !== againStat.ino) {
+      throw new Error("Host path is outside the granted folders");
+    }
+    return handle;
+  } catch (error) {
+    await handle.close().catch(() => undefined);
+    throw error;
   }
 }
 
@@ -166,14 +212,18 @@ export function registerHostDiskIpc() {
   ipcMain.handle(
     "desktop.hostDisk.read",
     async (_event, requestPath: unknown, maxBytes: unknown) => {
-      const resolved = await resolveInsideGrants(String(requestPath ?? ""));
-      const info = await stat(resolved);
-      if (!info.isFile()) throw new Error("Host path is not a file");
-      if (typeof maxBytes === "number" && info.size > maxBytes) {
-        throw new Error(`file exceeds ${maxBytes} bytes`);
+      const handle = await openInsideGrants(String(requestPath ?? ""), constants.O_RDONLY);
+      try {
+        const info = await handle.stat();
+        if (!info.isFile()) throw new Error("Host path is not a file");
+        if (typeof maxBytes === "number" && info.size > maxBytes) {
+          throw new Error(`file exceeds ${maxBytes} bytes`);
+        }
+        const bytes = await handle.readFile();
+        return bytes.toString("base64");
+      } finally {
+        await handle.close();
       }
-      const bytes = await readFile(resolved);
-      return bytes.toString("base64");
     },
   );
 
@@ -183,8 +233,38 @@ export function registerHostDiskIpc() {
       if (typeof contentBase64 !== "string") throw new Error("Missing file content");
       const target = await resolveInsideGrants(String(requestPath ?? ""));
       await mkdir(path.dirname(target), { recursive: true });
-      const verified = await resolveInsideGrants(target);
-      await writeFile(verified, Buffer.from(contentBase64, "base64"));
+      const parent = await resolveInsideGrants(path.dirname(target));
+      const tempPath = path.join(
+        parent,
+        `.rakazo-host-disk-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`,
+      );
+      try {
+        const tempHandle = await openInsideGrants(
+          tempPath,
+          constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_TRUNC,
+        );
+        try {
+          await tempHandle.writeFile(Buffer.from(contentBase64, "base64"));
+        } finally {
+          await tempHandle.close();
+        }
+        const destination = await resolveInsideGrants(target);
+        await rename(tempPath, destination);
+        const realRoots = await realGrantedRoots();
+        const finalReal = await realpath(destination);
+        if (!isLexicallyInside(finalReal, realRoots)) {
+          await rm(destination, { force: true }).catch(() => undefined);
+          throw new Error("Host path is outside the granted folders");
+        }
+        const finalStat = await lstat(destination);
+        if (finalStat.isSymbolicLink()) {
+          await rm(destination, { force: true }).catch(() => undefined);
+          throw new Error("Host path is outside the granted folders");
+        }
+      } catch (error) {
+        await rm(tempPath, { force: true }).catch(() => undefined);
+        throw error;
+      }
       return true;
     },
   );
