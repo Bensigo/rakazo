@@ -131,6 +131,35 @@ describe("ensureLocalStack", () => {
     expect(progress[0]).toContain("Docker");
   });
 
+  it("uses --wait when Compose help has no --wait-timeout", async () => {
+    dir = await mkdtemp(path.join(tmpdir(), "rakazo-stack-data-"));
+    templateDir = await mkdtemp(path.join(tmpdir(), "rakazo-stack-template-"));
+    await writeFile(path.join(templateDir, LOCAL_STACK_COMPOSE_FILE), "name: rakazo\n", "utf8");
+    await writeFile(path.join(templateDir, LOCAL_STACK_ENV_EXAMPLE), EXAMPLE, "utf8");
+
+    const calls: string[] = [];
+    const runner: LocalStackRunner = async ({ args }) => {
+      calls.push(args.join(" "));
+      if (args.includes("up") && args.includes("--help")) {
+        return { code: 0, stdout: "Usage: docker compose up\n--wait\n", stderr: "" };
+      }
+      return { code: 0, stdout: args.includes("ps") ? "" : "ok", stderr: "" };
+    };
+
+    const result = await ensureLocalStack({
+      userDataDir: dir,
+      templateDir,
+      runner,
+    });
+    expect(result.ok).toBe(true);
+    expect(
+      calls.some(
+        (call) =>
+          call.includes("up -d --wait") && !call.includes("--wait-timeout"),
+      ),
+    ).toBe(true);
+  });
+
   it("polls health when Compose cannot wait on startup", async () => {
     dir = await mkdtemp(path.join(tmpdir(), "rakazo-stack-data-"));
     templateDir = await mkdtemp(path.join(tmpdir(), "rakazo-stack-template-"));
