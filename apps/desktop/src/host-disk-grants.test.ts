@@ -102,4 +102,33 @@ describe("host disk grant store", () => {
     expect(store.list()).toEqual([added]);
     expect(await store.authorizedRealRoots()).toEqual([]);
   });
+
+  it("does not let a mid-check root pathname swap poison authorizedRealRoots", async () => {
+    // After the grant fd identity is verified, replacing the pathname with a
+    // symlink to an outside directory must not make that outside path an
+    // authorized root. The allowlist path comes from the open fd.
+    const dir = await tempDir();
+    const grantsFilePath = path.join(dir, "host-disk-grants.json");
+    const granted = path.join(dir, "Granted");
+    const outside = path.join(dir, "Outside");
+    await mkdir(granted);
+    await mkdir(outside);
+    await writeFile(path.join(outside, "secret.txt"), "nope\n", "utf8");
+
+    const backup = path.join(dir, "Granted-original");
+    const store = createHostDiskGrantStore({
+      grantsFilePath,
+      afterAuthorizedIdentityVerified: async () => {
+        await rename(granted, backup);
+        await symlink(outside, granted);
+      },
+    });
+    await store.ready;
+    await store.add(granted);
+
+    const { realpath } = await import("node:fs/promises");
+    const roots = await store.authorizedRealRoots();
+    expect(roots).toEqual([await realpath(backup)]);
+    expect(roots).not.toContain(await realpath(outside));
+  });
 });

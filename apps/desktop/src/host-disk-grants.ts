@@ -1,6 +1,7 @@
 import { constants } from "node:fs";
 import { mkdir, open, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { pathFromOpenFd } from "./host-disk-posix-at.js";
 
 /**
  * Main-process grant set with load/revoke serialization so a revoke cannot be
@@ -18,6 +19,8 @@ export type HostDiskGrantStore = {
   /**
    * Realpaths of grants whose on-disk device+inode still match grant time.
    * Symlink (or directory) replacement of a grant pathname yields no root.
+   * Paths are derived from the verified open fd, never from a second pathname
+   * realpath that could follow a mid-check swap.
    */
   authorizedRealRoots(): Promise<string[]>;
 };
@@ -26,6 +29,11 @@ export type HostDiskGrantStoreOptions = {
   grantsFilePath: string;
   /** Start loading immediately (default true). */
   autoload?: boolean;
+  /**
+   * Test-only: after identity is verified on the open grant fd, before the
+   * allowlist path is taken from that fd (path-swap race).
+   */
+  afterAuthorizedIdentityVerified?: () => Promise<void>;
 };
 
 type GrantRecord = {
@@ -223,7 +231,13 @@ export function createHostDiskGrantStore(options: HostDiskGrantStoreOptions): Ho
               // Pathname now names a different directory than the one granted.
               continue;
             }
-            realRoots.push(await realpath(record.path));
+            if (options.afterAuthorizedIdentityVerified) {
+              await options.afterAuthorizedIdentityVerified();
+            }
+            // Derive the allowlist path from the verified open fd. Never
+            // realpath(record.path) here — a post-check pathname→symlink swap
+            // would otherwise poison the authorized root.
+            realRoots.push(await realpath(pathFromOpenFd(handle.fd)));
           } finally {
             await handle.close().catch(() => undefined);
           }
