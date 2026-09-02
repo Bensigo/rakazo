@@ -1,11 +1,15 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import type { ComputerStatus } from "@rakazo/contracts";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { rpc } from "../../lib/rpc";
 
 /**
  * Compact Teach a task control for the computer chrome bar above the screen
  * (not painted on the framebuffer, and not in the agent sidepanel).
+ *
+ * Mount with key={botId} from Shell so a bot switch remounts clean state.
+ * Async completions still check botIdRef so a late response from bot A cannot
+ * mutate bot B if the instance is reused.
  */
 export function TeachComputerOverlayControl({
   botId,
@@ -23,6 +27,8 @@ export function TeachComputerOverlayControl({
   const [goal, setGoal] = useState("");
   const [localBusy, setLocalBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const botIdRef = useRef(botId);
+  botIdRef.current = botId;
   /**
    * Sticky once a recording is known active until Shell shows Stop teaching (this
    * control unmounts) or a probe for the current bot finds no recording. Dismiss
@@ -41,12 +47,13 @@ export function TeachComputerOverlayControl({
   // Lock immediately while the probe runs so a remount cannot start twice.
   useEffect(() => {
     let cancelled = false;
+    const probeBotId = botId;
     setSyncingRecording(true);
     setGoalOpen(false);
     async function syncRecordingLock() {
       try {
-        const skills = await rpc.skills.list({ botId });
-        if (cancelled) return;
+        const skills = await rpc.skills.list({ botId: probeBotId });
+        if (cancelled || botIdRef.current !== probeBotId) return;
         const recording = skills.some((skill) => skill.status === "recording");
         if (!recording) {
           setNeedsRefresh(false);
@@ -60,7 +67,7 @@ export function TeachComputerOverlayControl({
           await onRefresh();
           // Keep needsRefresh. Shell swaps to Stop teaching once skills land.
         } catch (refreshError) {
-          if (cancelled) return;
+          if (cancelled || botIdRef.current !== probeBotId) return;
           setError(
             refreshError instanceof Error
               ? refreshError.message
@@ -70,12 +77,12 @@ export function TeachComputerOverlayControl({
       } catch {
         // Fail closed: a transient skills.list error must not unlock Start while
         // a recording may still be active.
-        if (cancelled) return;
+        if (cancelled || botIdRef.current !== probeBotId) return;
         setNeedsRefresh(true);
         setRecoveryOpen(true);
         setError(t`Could not check teaching status. Refresh the view to continue.`);
       } finally {
-        if (!cancelled) setSyncingRecording(false);
+        if (!cancelled && botIdRef.current === probeBotId) setSyncingRecording(false);
       }
     }
     void syncRecordingLock();
@@ -88,12 +95,15 @@ export function TeachComputerOverlayControl({
   if (computer?.kind === "desktop") return null;
 
   async function refreshView() {
+    const requestBotId = botId;
     setLocalBusy(true);
     setError(null);
     try {
       await onRefresh();
+      if (botIdRef.current !== requestBotId) return;
       // Confirm with skills.list. onRefresh can resolve before Shell applies skills.
-      const skills = await rpc.skills.list({ botId });
+      const skills = await rpc.skills.list({ botId: requestBotId });
+      if (botIdRef.current !== requestBotId) return;
       if (skills.some((skill) => skill.status === "recording")) {
         setNeedsRefresh(true);
         setRecoveryOpen(false);
@@ -104,6 +114,7 @@ export function TeachComputerOverlayControl({
       setRecoveryOpen(false);
       setGoal("");
     } catch (refreshError) {
+      if (botIdRef.current !== requestBotId) return;
       setNeedsRefresh(true);
       setRecoveryOpen(true);
       setError(
@@ -112,27 +123,31 @@ export function TeachComputerOverlayControl({
           : t`Recording may have started, but the view could not refresh`,
       );
     } finally {
-      setLocalBusy(false);
+      if (botIdRef.current === requestBotId) setLocalBusy(false);
     }
   }
 
   async function startTeaching() {
     if (!goal.trim() || busy || startLocked) return;
+    const requestBotId = botId;
+    const requestGoal = goal.trim();
     setLocalBusy(true);
     setError(null);
     try {
-      await rpc.computer.boot({ botId });
-      await rpc.skills.start({ botId, goal: goal.trim() });
+      await rpc.computer.boot({ botId: requestBotId });
+      await rpc.skills.start({ botId: requestBotId, goal: requestGoal });
+      if (botIdRef.current !== requestBotId) return;
       // Recording has started. Keep Start locked; only refresh the view.
       setGoalOpen(false);
       setNeedsRefresh(true);
       try {
         await onRefresh();
+        if (botIdRef.current !== requestBotId) return;
         setGoal("");
         // Keep needsRefresh. Shell unmounts this control when recordingSkill lands.
-        // If skills are still pending, Start stays locked without a false unlock.
         setRecoveryOpen(false);
       } catch (refreshError) {
+        if (botIdRef.current !== requestBotId) return;
         setRecoveryOpen(true);
         setError(
           refreshError instanceof Error
@@ -141,6 +156,7 @@ export function TeachComputerOverlayControl({
         );
       }
     } catch (startError) {
+      if (botIdRef.current !== requestBotId) return;
       const message =
         startError instanceof Error ? startError.message : t`Could not start teaching`;
       setError(message);
@@ -151,7 +167,7 @@ export function TeachComputerOverlayControl({
         setGoalOpen(false);
       }
     } finally {
-      setLocalBusy(false);
+      if (botIdRef.current === requestBotId) setLocalBusy(false);
     }
   }
 

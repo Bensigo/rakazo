@@ -3740,6 +3740,7 @@ export function ShellPage() {
               )}
               {active && !recordingSkill ? (
                 <TeachComputerOverlayControl
+                  key={active.id}
                   botId={active.id}
                   computer={computer}
                   busy={teachBusy}
