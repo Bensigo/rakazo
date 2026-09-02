@@ -929,6 +929,8 @@ describe("host disk posix *at pinning", () => {
     expect(ipcSource).toMatch(/IDENTITY_OPEN/);
     expect(pathSource).toMatch(/O_NONBLOCK/);
     expect(pathSource).toMatch(/IDENTITY_OPEN/);
+    expect(pathSource).toMatch(/Do not rename trash back onto/);
+    expect(pathSource).toMatch(/pathFromOpenFd\(tempHandle\.fd\)/);
     // mkdir: async assert + sync gate immediately before mkdirat; owned AT_REMOVEDIR.
     expect(ipcSource).toMatch(/assertFdStillInsideRoots\(parentHandle\.fd, realRoots\)/);
     expect(ipcSource).toMatch(
@@ -936,6 +938,8 @@ describe("host disk posix *at pinning", () => {
     );
     expect(ipcSource).toMatch(/AT_REMOVEDIR/);
     expect(ipcSource).toMatch(/unlinkOwnedEscapedDir\(/);
+    expect(ipcSource).toMatch(/unlinkOwnedEscapedFile\(/);
+    expect(ipcSource).toMatch(/Do not rename trash back onto/);
     expect(ipcSource).toMatch(/emptyDirAt\(/);
     expect(ipcSource).toMatch(/unlinkOwnedEscapedDir\(parentHandle\.fd, owned, segment, next\)/);
     // Darwin AT_REMOVEDIR is 0x80; Linux is 0x200 — a Linux-only constant

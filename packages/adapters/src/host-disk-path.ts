@@ -351,11 +351,8 @@ async function unlinkIfOwnedChild(dirFd: number, name: string, owned: FdIdentity
     try {
       const st = await verify.stat();
       if (!sameFdIdentity(st, owned)) {
-        try {
-          renameatChild(dirFd, trash, name);
-        } catch {
-          // Best-effort restore of the unexpected dirent.
-        }
+        // Do not rename trash back onto `name` — that can overwrite a replacement
+        // that raced in under the basename. Leave the mismatched trash entry.
         return;
       }
     } finally {
@@ -418,56 +415,77 @@ export async function writeFileInsideHostRoots(
         throw new Error("Host path is outside the granted folders");
       }
       await tempHandle.writeFile(typeof content === "string" ? content : Buffer.from(content));
-    } finally {
-      await tempHandle.close();
-    }
 
-    renameatChild(parentHandle.fd, tempName, baseName);
+      renameatChild(parentHandle.fd, tempName, baseName);
 
-    const finalHandle = openatChild(parentHandle.fd, baseName, constants.O_RDONLY | NOFOLLOW);
-    let publishedStat: FdIdentity | null = null;
-    try {
-      publishedStat = await finalHandle.stat();
-      const parentLive = await realpathOfFd(parentHandle.fd);
-      const fdReal = await realpathOfFd(finalHandle.fd);
-      if (
-        !isLexicallyInsideRoots(parentLive, realRoots) ||
-        !isLexicallyInsideRoots(fdReal, realRoots)
-      ) {
-        // Never unlink an outside destination by basename — that can destroy
-        // unrelated outside data. Roll our inode back to the temp name when
-        // baseName still names the file we published, then let inode-checked
-        // temp cleanup remove it.
-        try {
-          const check = openatChild(parentHandle.fd, baseName, constants.O_RDONLY | NOFOLLOW);
+      const finalHandle = openatChild(parentHandle.fd, baseName, constants.O_RDONLY | NOFOLLOW);
+      let publishedStat: FdIdentity | null = null;
+      try {
+        publishedStat = await finalHandle.stat();
+        const parentLive = await realpathOfFd(parentHandle.fd);
+        const fdReal = await realpathOfFd(finalHandle.fd);
+        if (
+          !isLexicallyInsideRoots(parentLive, realRoots) ||
+          !isLexicallyInsideRoots(fdReal, realRoots)
+        ) {
+          // Never unlink an outside destination by basename — that can destroy
+          // unrelated outside data. Roll our inode back to the temp name when
+          // baseName still names the file we published, then let inode-checked
+          // temp cleanup remove it.
           try {
-            const checkStat = await check.stat();
-            if (publishedStat && sameFdIdentity(checkStat, publishedStat)) {
-              renameatChild(parentHandle.fd, baseName, tempName);
+            const check = openatChild(parentHandle.fd, baseName, constants.O_RDONLY | NOFOLLOW);
+            try {
+              const checkStat = await check.stat();
+              if (publishedStat && sameFdIdentity(checkStat, publishedStat)) {
+                renameatChild(parentHandle.fd, baseName, tempName);
+              }
+            } finally {
+              await check.close().catch(() => undefined);
             }
+          } catch {
+            // Best-effort rollback only.
+          }
+          throw new Error("Host path is outside the granted folders");
+        }
+        // Publish accepted — temp name is gone.
+        tempPending = false;
+        tempOwned = null;
+      } finally {
+        await finalHandle.close().catch(() => undefined);
+      }
+    } catch (error) {
+      if (tempPending && tempOwned) {
+        try {
+          await unlinkIfOwnedChild(parentHandle.fd, tempName, tempOwned);
+        } catch {
+          // Best-effort.
+        }
+        try {
+          await unlinkIfOwnedChild(parentHandle.fd, baseName, tempOwned);
+        } catch {
+          // Best-effort.
+        }
+        // Still open: recover current parent if renamed across directories.
+        try {
+          await tempHandle.stat();
+          const currentPath = pathFromOpenFd(tempHandle.fd);
+          const altParent = await open(
+            path.dirname(currentPath),
+            constants.O_RDONLY | (constants.O_DIRECTORY ?? 0) | NOFOLLOW,
+          );
+          try {
+            await unlinkIfOwnedChild(altParent.fd, path.basename(currentPath), tempOwned);
           } finally {
-            await check.close().catch(() => undefined);
+            await altParent.close().catch(() => undefined);
           }
         } catch {
-          // Best-effort rollback only.
+          // Best-effort attributable cleanup only.
         }
-        throw new Error("Host path is outside the granted folders");
       }
-      // Publish accepted — temp name is gone.
-      tempPending = false;
-      tempOwned = null;
+      throw error;
     } finally {
-      await finalHandle.close().catch(() => undefined);
+      await tempHandle.close().catch(() => undefined);
     }
-  } catch (error) {
-    if (tempPending && tempOwned) {
-      try {
-        await unlinkIfOwnedChild(parentHandle.fd, tempName, tempOwned);
-      } catch {
-        // Best-effort cleanup of our temp inode only.
-      }
-    }
-    throw error;
   } finally {
     await parentHandle.close().catch(() => undefined);
   }

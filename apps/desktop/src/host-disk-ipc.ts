@@ -191,11 +191,8 @@ async function unlinkIfOwnedChild(dirFd: number, name: string, owned: FdIdentity
     try {
       const st = await verify.stat();
       if (!sameFdIdentity(st, owned)) {
-        try {
-          renameatChild(dirFd, trash, name);
-        } catch {
-          // Best-effort restore of the unexpected dirent.
-        }
+        // Do not rename trash back onto `name` — that can overwrite a replacement
+        // that raced in under the basename. Leave the mismatched trash entry.
         return;
       }
     } finally {
@@ -328,6 +325,43 @@ async function unlinkOwnedEscapedDir(
     const altParent = await open(parentPath, constants.O_RDONLY | DIRECTORY | NOFOLLOW);
     try {
       await unlinkOwnedChildAnywhere(altParent.fd, owned, [baseName], AT_REMOVEDIR);
+    } finally {
+      await altParent.close().catch(() => undefined);
+    }
+  } catch {
+    // Best-effort attributable cleanup only.
+  }
+}
+
+/**
+ * Remove an escaped temp file we still hold open. Prefer the pinned parent
+ * (basename + inode scan); if still present, recover the current parent from
+ * the fd path so a same-user cross-directory rename cannot leave renderer
+ * content outside the grant.
+ */
+async function unlinkOwnedEscapedFile(
+  parentFd: number,
+  owned: FdIdentity,
+  preferredNames: string[],
+  fileHandle: PosixAtFileHandle,
+) {
+  try {
+    await unlinkOwnedChildAnywhere(parentFd, owned, preferredNames);
+  } catch {
+    // Try recovery below.
+  }
+  try {
+    await fileHandle.stat();
+  } catch {
+    return; // Already gone.
+  }
+  try {
+    const currentPath = pathFromOpenFd(fileHandle.fd);
+    const parentPath = path.dirname(currentPath);
+    const baseName = path.basename(currentPath);
+    const altParent = await open(parentPath, constants.O_RDONLY | DIRECTORY | NOFOLLOW);
+    try {
+      await unlinkOwnedChildAnywhere(altParent.fd, owned, [baseName, ...preferredNames]);
     } finally {
       await altParent.close().catch(() => undefined);
     }
@@ -680,19 +714,23 @@ export function registerHostDiskIpc() {
             await publishHandle.close().catch(() => undefined);
           }
         } finally {
+          if (tempPending && tempOwned) {
+            try {
+              // Cleanup while tempHandle is still open: parent scan + fd-path
+              // parent recovery so a same-user cross-directory rename cannot
+              // leave renderer content outside the grant.
+              await unlinkOwnedEscapedFile(
+                parentHandle.fd,
+                tempOwned,
+                [tempName, baseName],
+                tempHandle,
+              );
+            } catch {
+              // Best-effort cleanup of our temp inode only.
+            }
+          }
           await tempHandle.close().catch(() => undefined);
         }
-      } catch (error) {
-        if (tempPending && tempOwned) {
-          try {
-            // Preferred names first, then scan the pinned parent so a rename of
-            // our temp cannot leave renderer content outside the grant.
-            await unlinkOwnedChildAnywhere(parentHandle.fd, tempOwned, [tempName, baseName]);
-          } catch {
-            // Best-effort cleanup of our temp inode only.
-          }
-        }
-        throw error;
       } finally {
         await parentHandle.close().catch(() => undefined);
       }
