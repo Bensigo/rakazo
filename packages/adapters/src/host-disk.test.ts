@@ -835,13 +835,22 @@ describe("host disk posix *at pinning", () => {
     expect(ipcSource).not.toMatch(/readdir\(\s*fdReal\s*\)/);
     expect(ipcSource).not.toMatch(/readdir\(\s*fdRefPath\(/);
     expect(ipcSource).toMatch(/readdirNamesAt\(/);
-    // Pre-rename containment check; on post-rename escape unlink the name we
-    // just committed on this parent fd (cleanup of our write, not a leave-behind).
+    // Write publish: re-bind parent via grant walk + matching (dev,ino) before
+    // renameat; roll back owned inode on residual escape — never unlink dest by
+    // basename. Temp/mkdir cleanup uses unlinkIfOwnedChild (inode-checked).
+    expect(ipcSource).toMatch(/const pinnedParent = await parentHandle\.stat\(\)/);
+    expect(ipcSource).toMatch(/openInsideGrants\(parentPath, dirFlags\)/);
+    expect(ipcSource).toMatch(/renameatChild\(publishHandle\.fd, tempName, baseName\)/);
+    expect(ipcSource).not.toMatch(/unlinkatChild\(parentHandle\.fd, baseName\)/);
+    expect(ipcSource).toMatch(/unlinkIfOwnedChild\(/);
+    expect(ipcSource).toMatch(/tempOwned/);
+    // mkdir: assert immediately before mkdirat; AT_REMOVEDIR cleans owned segments.
     expect(ipcSource).toMatch(
-      /assertInsideAuthorizedRoots\(await realpathOfFd\(parentHandle\.fd\), realRoots\);\s*\n\s*renameatChild/m,
+      /assertInsideAuthorizedRoots\(await realpathOfFd\(parentHandle\.fd\), realRoots\);\s*\n\s*try \{\s*\n\s*mkdiratChild/m,
     );
-    expect(ipcSource).toMatch(/unlinkatChild\(parentHandle\.fd, baseName\)/);
     expect(ipcSource).toMatch(/AT_REMOVEDIR/);
+    expect(pathSource).not.toMatch(/unlinkatChild\(parentHandle\.fd, baseName\)/);
+    expect(pathSource).toMatch(/unlinkIfOwnedChild\(/);
   });
 
   it("openat/mkdirat/renameat keep writes on the pinned directory inode", async () => {
@@ -871,6 +880,106 @@ describe("host disk posix *at pinning", () => {
       renameatChild(parentHandle.fd, "x.tmp", "x.txt");
       expect(await readFile(path.join(parent, "x.txt"), "utf8")).toBe("pinned\n");
       unlinkatChild(parentHandle.fd, "x.txt");
+    } finally {
+      await parentHandle.close();
+    }
+  });
+
+  it("cleanup skips replacements under the same basename", async () => {
+    const { posixAtAvailable, openatChild, unlinkatChild } = await import(
+      "./host-disk-posix-at.js"
+    );
+    expect(posixAtAvailable()).toBe(true);
+
+    const dataDir = await tempDir();
+    const parent = path.join(dataDir, "parent");
+    await mkdir(parent, { recursive: true });
+    const { open, writeFile, readFile, unlink } = await import("node:fs/promises");
+    const dirFlags = constants.O_RDONLY | (constants.O_DIRECTORY ?? 0);
+    const parentHandle = await open(parent, dirFlags);
+    try {
+      const ownedHandle = openatChild(
+        parentHandle.fd,
+        "race.txt",
+        constants.O_WRONLY |
+          constants.O_CREAT |
+          constants.O_EXCL |
+          constants.O_TRUNC |
+          (constants.O_NOFOLLOW ?? 0),
+        0o600,
+      );
+      let owned: { dev: unknown; ino: unknown };
+      try {
+        await ownedHandle.writeFile("owned\n");
+        owned = await ownedHandle.stat();
+      } finally {
+        await ownedHandle.close();
+      }
+
+      // Swap in a replacement under the same basename (unlink first so create
+      // is a distinct dirent; inode numbers may still recycle).
+      await unlink(path.join(parent, "race.txt"));
+      await writeFile(path.join(parent, "race.txt"), "replacement\n", "utf8");
+
+      const check = openatChild(
+        parentHandle.fd,
+        "race.txt",
+        constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+      );
+      try {
+        const st = await check.stat();
+        // Mimic unlinkIfOwnedChild with a *stale* ownership record that no
+        // longer matches the live dirent — must not delete the replacement.
+        const staleOwned = { dev: owned.dev, ino: `not-${String(owned.ino)}` };
+        if (
+          String(st.dev) === String(staleOwned.dev) &&
+          String(st.ino) === String(staleOwned.ino)
+        ) {
+          unlinkatChild(parentHandle.fd, "race.txt");
+        }
+      } finally {
+        await check.close();
+      }
+
+      expect(await readFile(path.join(parent, "race.txt"), "utf8")).toBe("replacement\n");
+
+      // Matching ownership still removes our own inode.
+      const victim = openatChild(
+        parentHandle.fd,
+        "victim.txt",
+        constants.O_WRONLY |
+          constants.O_CREAT |
+          constants.O_EXCL |
+          constants.O_TRUNC |
+          (constants.O_NOFOLLOW ?? 0),
+        0o600,
+      );
+      let victimOwned: { dev: unknown; ino: unknown };
+      try {
+        await victim.writeFile("victim\n");
+        victimOwned = await victim.stat();
+      } finally {
+        await victim.close();
+      }
+      const victimCheck = openatChild(
+        parentHandle.fd,
+        "victim.txt",
+        constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+      );
+      try {
+        const st = await victimCheck.stat();
+        if (
+          String(st.dev) === String(victimOwned.dev) &&
+          String(st.ino) === String(victimOwned.ino)
+        ) {
+          unlinkatChild(parentHandle.fd, "victim.txt");
+        }
+      } finally {
+        await victimCheck.close();
+      }
+      await expect(readFile(path.join(parent, "victim.txt"), "utf8")).rejects.toMatchObject({
+        code: "ENOENT",
+      });
     } finally {
       await parentHandle.close();
     }
