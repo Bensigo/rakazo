@@ -30,7 +30,9 @@ export function ComputerMaintenanceActions({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!menuOpen) return;
+    // Keep Escape active while the reset dialog is open even after the menu closes,
+    // so Escape dismisses confirm instead of Shell closing the computer overlay.
+    if (!menuOpen && !confirmReset) return;
     function onPointerDown(event: MouseEvent) {
       if (!rootRef.current?.contains(event.target as Node)) setMenuOpen(false);
     }
@@ -38,6 +40,10 @@ export function ComputerMaintenanceActions({
       if (event.key !== "Escape") return;
       // Stop bubbling so Shell's Escape handler does not also close the computer.
       event.stopPropagation();
+      if (confirmReset) {
+        setConfirmReset(false);
+        return;
+      }
       setMenuOpen(false);
     }
     document.addEventListener("mousedown", onPointerDown);
@@ -46,7 +52,7 @@ export function ComputerMaintenanceActions({
       document.removeEventListener("mousedown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [menuOpen]);
+  }, [menuOpen, confirmReset]);
 
   if (!computer) return null;
 
