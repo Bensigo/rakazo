@@ -162,7 +162,16 @@ async function mkdirInsideGrants(target: string) {
             ? String((error as { code: unknown }).code)
             : "";
         if (code !== "ENOENT") throw error;
-        mkdiratChild(parentHandle.fd, segment);
+        try {
+          mkdiratChild(parentHandle.fd, segment);
+        } catch (mkdirError) {
+          const mkdirCode =
+            mkdirError && typeof mkdirError === "object" && "code" in mkdirError
+              ? String((mkdirError as { code: unknown }).code)
+              : "";
+          // Concurrent creator won the race — reopen the existing segment.
+          if (mkdirCode !== "EEXIST") throw mkdirError;
+        }
         next = openatChild(parentHandle.fd, segment, dirFlags | NOFOLLOW);
       }
       await parentHandle.close().catch(() => undefined);

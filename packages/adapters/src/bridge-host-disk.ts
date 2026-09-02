@@ -202,7 +202,8 @@ export class BridgingHostDiskProvider implements HostDiskProvider {
       const now = this.options.now?.() ?? Date.now();
       if (now >= graceDeadline) break;
       // Still claimed/pending/completing, or briefly missing between rename steps.
-      await sleep(pollMs);
+      // Cap sleep to remaining grace so a large pollMs cannot overrun the deadline.
+      await sleep(Math.min(pollMs, Math.max(0, graceDeadline - now)));
     }
     throw new Error("Timed out waiting for the Mac or phone app to handle host disk access");
   }
