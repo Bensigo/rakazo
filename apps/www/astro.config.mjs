@@ -31,11 +31,11 @@ export default defineConfig({
   },
   server: {
     host: "127.0.0.1",
-    port: 4321,
+    port: Number(process.env.WWW_PORT ?? 4321),
     strictPort: true,
   },
   preview: {
     host: "0.0.0.0",
-    port: 4321,
+    port: Number(process.env.WWW_PORT ?? 4321),
   },
 });
