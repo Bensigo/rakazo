@@ -336,6 +336,7 @@ export interface RouterDeps {
   /** Present when the external messaging surface is enabled. */
   messaging?: { enabled: boolean; providers: string[]; openSignup: boolean };
   env: {
+    agentRuntime: string;
     defaultProvider: string;
     defaultModel: string;
     deploymentModelKey?: string;
@@ -1074,6 +1075,9 @@ export function createRouter(deps: RouterDeps) {
         }
       }),
       send: authed.threads.send.handler(async ({ context, input }) => {
+        if ((await modelSetup(deps, context.actor)).needsModel) {
+          throw new ORPCError("BAD_REQUEST", { message: "Connect a model to start a run." });
+        }
         const target = await resolveThreadTarget(deps.prisma, context.actor, input);
         if (target.kind === "bot") {
           await assertTeachingSendAllowed(deps.prisma, context.actor.spaceId, target.botId);
@@ -3671,8 +3675,32 @@ async function loadAutoReviewSettings(deps: RouterDeps, actor: Actor) {
 }
 
 async function meDto(deps: RouterDeps, actor: Actor): Promise<Me> {
-  const [user, cred, settings] = await Promise.all([
+  const [user, setup] = await Promise.all([
     deps.prisma.user.findUniqueOrThrow({ where: { id: actor.userId } }),
+    modelSetup(deps, actor),
+  ]);
+  return {
+    userId: actor.userId,
+    email: user.email,
+    name: user.name,
+    spaceId: actor.spaceId,
+    isDeploymentOwner: actor.isDeploymentOwner,
+    needsModel: setup.needsModel,
+    defaultProvider:
+      setup.credential?.provider ??
+      setup.settings?.defaultModelProvider ??
+      deps.env.defaultProvider,
+    defaultModel:
+      setup.credential?.defaultModel ?? setup.settings?.defaultModelId ?? deps.env.defaultModel,
+    computerHost: computerHostFor(setup.settings?.computerHost, deps.env.sandboxProvider),
+    canChooseHostComputer: actor.isDeploymentOwner && deps.env.sandboxProvider === "docker",
+    sandboxProvider: deps.env.sandboxProvider,
+    avatarStyle: user.avatarStyle === "organic" ? "organic" : "robot",
+  };
+}
+
+async function modelSetup(deps: RouterDeps, actor: Actor) {
+  const [credential, settings] = await Promise.all([
     findDefaultModelCredential(deps.prisma, actor),
     deps.prisma.deploymentSettings.findUnique({ where: { id: "default" } }),
   ]);
@@ -3680,18 +3708,9 @@ async function meDto(deps: RouterDeps, actor: Actor): Promise<Me> {
     settings?.deploymentModelCredentialCipher || deps.env.deploymentModelKey,
   );
   return {
-    userId: actor.userId,
-    email: user.email,
-    name: user.name,
-    spaceId: actor.spaceId,
-    isDeploymentOwner: actor.isDeploymentOwner,
-    needsModel: !cred && !hasDeployment,
-    defaultProvider: cred?.provider ?? settings?.defaultModelProvider ?? deps.env.defaultProvider,
-    defaultModel: cred?.defaultModel ?? settings?.defaultModelId ?? deps.env.defaultModel,
-    computerHost: computerHostFor(settings?.computerHost, deps.env.sandboxProvider),
-    canChooseHostComputer: actor.isDeploymentOwner && deps.env.sandboxProvider === "docker",
-    sandboxProvider: deps.env.sandboxProvider,
-    avatarStyle: user.avatarStyle === "organic" ? "organic" : "robot",
+    credential,
+    settings,
+    needsModel: deps.env.agentRuntime !== "scripted" && !credential && !hasDeployment,
   };
 }
 

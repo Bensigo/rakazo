@@ -31,6 +31,7 @@ export function OnboardingPage() {
   const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [needsModel, setNeedsModel] = useState(false);
   const probeRequestIdRef = useRef(0);
 
   const {
@@ -53,6 +54,7 @@ export function OnboardingPage() {
     void Promise.all([rpc.me(), rpc.models.list().catch(() => [])])
       .then(([me, models]) => {
         setCatalog(models);
+        setNeedsModel(me.needsModel);
         const preferred =
           models.find(
             (entry) => entry.provider === me.defaultProvider && entry.id === me.defaultModel,
@@ -481,16 +483,18 @@ export function OnboardingPage() {
               >
                 <Trans>Continue</Trans>
               </Button>
-              <Button
-                variant="ghost"
-                className="text-muted-foreground"
-                onClick={() => {
-                  cancelOAuthAttempt();
-                  setStep("bot");
-                }}
-              >
-                <Trans>Skip for now</Trans>
-              </Button>
+              {needsModel ? null : (
+                <Button
+                  variant="ghost"
+                  className="text-muted-foreground"
+                  onClick={() => {
+                    cancelOAuthAttempt();
+                    setStep("bot");
+                  }}
+                >
+                  <Trans>Skip for now</Trans>
+                </Button>
+              )}
             </div>
           </div>
         ) : null}
