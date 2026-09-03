@@ -96,6 +96,33 @@ export async function extendActiveComputerControl(
   return true;
 }
 
+/** Clears controlHolder=user when no live control lease remains (stale / orphaned rows). */
+export async function clearInactiveUserComputerControl(
+  prisma: PrismaClient,
+  computerId: string,
+  now = new Date(),
+): Promise<boolean> {
+  const cleared = await prisma.computer.updateMany({
+    where: {
+      id: computerId,
+      controlHolder: "user",
+      OR: [
+        { controlLeaseId: null },
+        { controlLeaseExpiresAt: null },
+        { controlLeaseExpiresAt: { lte: now } },
+      ],
+    },
+    data: {
+      controlHolder: "none",
+      controlLeaseId: null,
+      controlLeaseExpiresAt: null,
+      controlBotId: null,
+      controlRunId: null,
+    },
+  });
+  return cleared.count === 1;
+}
+
 export async function expireComputerControl(
   deps: {
     prisma: PrismaClient;
@@ -110,7 +137,57 @@ export async function expireComputerControl(
   const computer = await deps.prisma.computer.findUnique({ where: { id: computerId } });
   if (!computer || computer.controlLeaseId !== leaseId) return false;
   const botId = computer.controlBotId;
-  if (!botId) return false;
+  if (!botId) {
+    if (
+      computer.controlLeaseExpiresAt &&
+      computer.controlLeaseExpiresAt.getTime() > now.getTime()
+    ) {
+      await scheduleComputerControlExpiry(
+        deps.jobs,
+        computer.id,
+        leaseId,
+        computer.controlLeaseExpiresAt,
+      );
+      return false;
+    }
+    // Orphaned user control: revoke the provider stream, then clear this lease id.
+    if (computer.providerRef) {
+      const context: AdapterContext = {
+        operationId: "computer.control-expire",
+        traceId: "computer.control-expire",
+        spaceId: computer.spaceId,
+        userId: computer.userId,
+        signal: new AbortController().signal,
+      };
+      try {
+        await deps.sandbox.setScreenControl?.(toComputerRef(computer), false, context, leaseId);
+      } catch {
+        // Keep the lease id and try to reschedule so reconciler/status can retry.
+        try {
+          await scheduleComputerControlExpiry(
+            deps.jobs,
+            computer.id,
+            leaseId,
+            new Date(now.getTime() + 30_000),
+          );
+        } catch (error) {
+          console.error("orphan computer control expiry reschedule", error);
+        }
+        return false;
+      }
+    }
+    const cleared = await deps.prisma.computer.updateMany({
+      where: { id: computer.id, controlLeaseId: leaseId },
+      data: {
+        controlHolder: "none",
+        controlLeaseId: null,
+        controlLeaseExpiresAt: null,
+        controlBotId: null,
+        controlRunId: null,
+      },
+    });
+    return cleared.count === 1;
+  }
 
   if (computer.controlLeaseExpiresAt && computer.controlLeaseExpiresAt.getTime() > now.getTime()) {
     await scheduleComputerControlExpiry(

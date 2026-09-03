@@ -3747,8 +3747,11 @@ export function ShellPage() {
               ) : null}
               {recordingSkill ? (
                 <TeachStopButton busy={teachBusy} onStop={stopTeaching} />
-              ) : hasControl && computer?.takeoverRequested ? (
-                <ComputerReleaseActions takeoverRequested onRelease={releaseComputer} />
+              ) : hasControl ? (
+                <ComputerReleaseActions
+                  takeoverRequested={Boolean(computer?.takeoverRequested)}
+                  onRelease={releaseComputer}
+                />
               ) : null}
               {active && !recordingSkill ? (
                 <TeachComputerOverlayControl
