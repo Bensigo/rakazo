@@ -1,4 +1,4 @@
-import { Redirect, useRouter } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import {
@@ -32,12 +32,14 @@ import {
   signUp,
   usesCustomApiBase,
 } from "../lib/api";
+import { type AuthMode, initialAuthMode } from "../lib/auth-routing";
 import { useI18n } from "../lib/i18n";
 
 export default function SignIn() {
   const { t } = useI18n();
   const router = useRouter();
-  const [mode, setMode] = useState<"in" | "up" | "forgot">("in");
+  const { mode: requestedMode } = useLocalSearchParams<{ mode?: string | string[] }>();
+  const [mode, setMode] = useState<AuthMode>(() => initialAuthMode(requestedMode));
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
