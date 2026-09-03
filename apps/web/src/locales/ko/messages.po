@@ -70,7 +70,7 @@ msgstr "{0}회 실행 · 토큰 {1}개"
 #. placeholder {0}: active.name
 #: src/pages/Shell.tsx:3131
 msgid "{0}'s screen"
-msgstr ""
+msgstr "{0}의 화면"
 
 #: src/pages/Shell.tsx:6319
 msgid "{botName}’s computer"
@@ -328,7 +328,7 @@ msgstr "응답함"
 #. placeholder {0}: selectedAskActionLabel(answer, actions)
 #: src/components/AskCard.tsx:19
 msgid "Answered: {0}"
-msgstr ""
+msgstr "응답: {0}"
 
 #: src/components/AskCard.tsx:25
 msgid "Answered: {answer}"
@@ -768,7 +768,7 @@ msgstr "컴퓨터가 절전 상태입니다"
 
 #: src/pages/Shell.tsx:6313
 msgid "Computer is asleep. Open it to wake."
-msgstr ""
+msgstr "컴퓨터가 절전 상태입니다. 열어 깨우세요."
 
 #: src/pages/Shell.tsx:6315
 msgid "Computer is stopped"
@@ -918,7 +918,7 @@ msgstr "기본 모델을 변경하지 못했습니다."
 
 #: src/components/teach/TeachComputerOverlay.tsx:83
 msgid "Could not check teaching status. Refresh the view to continue."
-msgstr ""
+msgstr "가르치기 상태를 확인하지 못했습니다. 화면을 새로고침한 뒤 이어가세요."
 
 #: src/pages/Shell.tsx:6068
 msgid "Could not clear conversation"
@@ -1135,7 +1135,7 @@ msgstr "OAuth 인증을 시작하지 못했습니다."
 
 #: src/components/teach/TeachComputerOverlay.tsx:164
 msgid "Could not start teaching"
-msgstr ""
+msgstr "가르치기를 시작하지 못했습니다."
 
 #: src/components/AskCard.tsx:69
 msgid "Could not submit this answer"
@@ -1199,7 +1199,7 @@ msgstr "그룹 만들기"
 #: src/pages/RoutineEditor.tsx:101
 #: src/pages/RoutineEditor.tsx:102
 msgid "Create Routine"
-msgstr ""
+msgstr "자동 실행 만들기"
 
 #: src/components/AskCard.tsx:33
 #: src/pages/Shell.tsx:5908
@@ -1354,7 +1354,7 @@ msgstr "연결 해제 중…"
 
 #: src/components/teach/TeachComputerOverlay.tsx:251
 msgid "Dismiss"
-msgstr ""
+msgstr "닫기"
 
 #: src/pages/Shell.tsx:4401
 msgid "Dismiss error"
@@ -1949,7 +1949,7 @@ msgstr "매월"
 
 #: src/components/ComputerMaintenanceActions.tsx:125
 msgid "More computer actions"
-msgstr ""
+msgstr "컴퓨터 작업 더보기"
 
 #. placeholder {0}: bot.name
 #: src/pages/BotContextMenu.tsx:110
@@ -2346,11 +2346,11 @@ msgstr "다시 연결 중"
 #: src/components/teach/TeachComputerOverlay.tsx:125
 #: src/components/teach/TeachComputerOverlay.tsx:158
 msgid "Recording may have started, but the view could not refresh"
-msgstr ""
+msgstr "녹화가 시작됐을 수 있지만 화면을 새로고침하지 못했습니다"
 
 #: src/components/teach/TeachComputerOverlay.tsx:234
 msgid "Recording started. Refresh the view to continue."
-msgstr ""
+msgstr "녹화가 시작되었습니다. 화면을 새로고침한 뒤 이어가세요."
 
 #. placeholder {0}: recording.goal
 #: src/components/teach/TeachRecordingChrome.tsx:43
@@ -2374,11 +2374,11 @@ msgstr "복구 중…"
 
 #: src/components/teach/TeachComputerOverlay.tsx:244
 msgid "Refresh view"
-msgstr ""
+msgstr "화면 새로고침"
 
 #: src/components/teach/TeachComputerOverlay.tsx:244
 msgid "Refreshing…"
-msgstr ""
+msgstr "새로고침 중…"
 
 #: src/pages/Shell.tsx:4904
 msgid "Release"
