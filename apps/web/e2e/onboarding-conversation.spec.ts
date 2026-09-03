@@ -40,14 +40,48 @@ test("focus choice suggests apps and preserves a completed connection", async ({
     .getByTestId("transcript")
     .getByText("Hit those three and I’ll start pulling the picture.")
     .scrollIntoViewIfNeeded();
+  await page.mouse.move(1, 1);
+  await captureScreenshot(page, testInfo, "02-app-suggestions");
+
   const authorizeButton = slackCard(page).getByRole("button", { name: "Authorize" });
-  const restingBackground = await authorizeButton.evaluate(
-    (button) => getComputedStyle(button).backgroundColor,
-  );
+  const restingStyles = await authorizeButton.evaluate((button) => {
+    const style = getComputedStyle(button);
+    return { backgroundColor: style.backgroundColor, color: style.color };
+  });
   await authorizeButton.hover();
+  // Guard the primary-token flip (bg + label). The shared secondary variant already
+  // changes background on hover via a subtle color-mix, so a "different bg" check
+  // alone would pass without hover:bg-primary / hover:text-primary-foreground.
   await expect
-    .poll(() => authorizeButton.evaluate((button) => getComputedStyle(button).backgroundColor))
-    .not.toBe(restingBackground);
+    .poll(() =>
+      authorizeButton.evaluate((button) => {
+        const probe = document.createElement("span");
+        probe.className = "bg-primary text-primary-foreground";
+        probe.setAttribute("aria-hidden", "true");
+        probe.style.cssText = "position:fixed;left:-9999px;top:0";
+        document.body.append(probe);
+        const primary = getComputedStyle(probe);
+        const expected = {
+          backgroundColor: primary.backgroundColor,
+          color: primary.color,
+        };
+        probe.remove();
+        const style = getComputedStyle(button);
+        return {
+          backgroundColor: style.backgroundColor,
+          color: style.color,
+          matchesPrimary:
+            style.backgroundColor === expected.backgroundColor && style.color === expected.color,
+        };
+      }),
+    )
+    .toMatchObject({ matchesPrimary: true });
+  const hoveredStyles = await authorizeButton.evaluate((button) => {
+    const style = getComputedStyle(button);
+    return { backgroundColor: style.backgroundColor, color: style.color };
+  });
+  expect(hoveredStyles.backgroundColor).not.toBe(restingStyles.backgroundColor);
+  expect(hoveredStyles.color).not.toBe(restingStyles.color);
   await captureScreenshot(page, testInfo, "02-app-suggestions-authorize-hover");
 
   await authorizeButton.click();
