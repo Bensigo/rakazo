@@ -26,8 +26,8 @@ import type {
   ScreenSession,
 } from "@rakazo/adapter-kit";
 import { boundedSandboxCommandTimeoutMs } from "@rakazo/core";
-import { ComputerScreenUnavailableError, screenSessionKey } from "./computer-screens.js";
 import { CANCEL_PRIMARY_BROWSER_WORK } from "./computer-idle.js";
+import { ComputerScreenUnavailableError, screenSessionKey } from "./computer-screens.js";
 import {
   boundedComputerActions,
   clampRounded,
@@ -495,9 +495,7 @@ export class DaytonaSandboxProvider implements SandboxProvider {
     await Promise.all(previews.map((preview) => this.revokeScreenPreview(sandbox, preview)));
     if (index === 0) {
       if (context.cancelRunWork) {
-        await sandbox.process
-          .executeCommand(CANCEL_PRIMARY_BROWSER_WORK)
-          .catch(() => undefined);
+        await sandbox.process.executeCommand(CANCEL_PRIMARY_BROWSER_WORK).catch(() => undefined);
       }
       return;
     }

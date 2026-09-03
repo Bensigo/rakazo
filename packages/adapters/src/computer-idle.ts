@@ -66,11 +66,11 @@ export const CANCEL_COMPUTER_RUN_WORK = [
 
 /** Kill the primary Chromium profile without matching chromium-screen-* profiles. */
 export const CANCEL_PRIMARY_BROWSER_WORK = [
-  "pkill -TERM -f -- '--user-data-dir=.*/\.browser-profiles/chromium$' || true",
-  "pkill -TERM -f -- '--user-data-dir=.*/\.browser-profiles/chromium ' || true",
+  "pkill -TERM -f -- '--user-data-dir=.*/.browser-profiles/chromium$' || true",
+  "pkill -TERM -f -- '--user-data-dir=.*/.browser-profiles/chromium ' || true",
   "sleep 0.2",
-  "pkill -KILL -f -- '--user-data-dir=.*/\.browser-profiles/chromium$' || true",
-  "pkill -KILL -f -- '--user-data-dir=.*/\.browser-profiles/chromium ' || true",
+  "pkill -KILL -f -- '--user-data-dir=.*/.browser-profiles/chromium$' || true",
+  "pkill -KILL -f -- '--user-data-dir=.*/.browser-profiles/chromium ' || true",
   'rm -f "$HOME/.browser-profiles/chromium/SingletonLock" "$HOME/.browser-profiles/chromium/SingletonCookie" "$HOME/.browser-profiles/chromium/SingletonSocket" 2>/dev/null || true',
 ].join("; ");
 

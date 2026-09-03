@@ -260,10 +260,7 @@ export function stopPrimaryBrowserCommand() {
   ].join("; ");
 }
 
-export function stopExtraScreenCommand(
-  index: number,
-  options: { cancelRunWork?: boolean } = {},
-) {
+export function stopExtraScreenCommand(index: number, options: { cancelRunWork?: boolean } = {}) {
   if (index <= 0) {
     return options.cancelRunWork ? stopPrimaryBrowserCommand() : "";
   }

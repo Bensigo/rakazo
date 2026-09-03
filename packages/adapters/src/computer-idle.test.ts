@@ -225,7 +225,15 @@ describe("background work launch and probe", () => {
       markers.add(activeMarker);
       const completed = spawn(
         "bash",
-        ["-c", BACKGROUND_WORK_LAUNCH, "rakazo-background-launch", markerId, "run-1", "completed", "true"],
+        [
+          "-c",
+          BACKGROUND_WORK_LAUNCH,
+          "rakazo-background-launch",
+          markerId,
+          "run-1",
+          "completed",
+          "true",
+        ],
         { stdio: "ignore" },
       );
       children.push(completed);
@@ -348,7 +356,6 @@ describe("background work launch and probe", () => {
       expect(await probeBackgroundWork(computerId)).toBe(1);
     },
   );
-
 });
 
 describe("e2b create options", () => {
