@@ -712,7 +712,7 @@ msgstr "Nube"
 #: src/components/AskCard.tsx:128
 #: src/components/AskCard.tsx:133
 msgid "Code"
-msgstr "Code"
+msgstr "Código"
 
 #. placeholder {0}: group.title
 #: src/pages/Shell.tsx:2509
@@ -1560,7 +1560,7 @@ msgstr "Cuelga y luego ingresa el código en pantalla."
 
 #: src/pages/RoutineEditor.tsx:493
 msgid "header"
-msgstr "header"
+msgstr "Encabezado"
 
 #: src/pages/McpServersOverlay.tsx:367
 #: src/pages/PluginsOverlay.tsx:543
@@ -1688,7 +1688,7 @@ msgstr "Conservar memorias"
 
 #: src/pages/RoutineEditor.tsx:488
 msgid "key"
-msgstr "key"
+msgstr "Clave"
 
 #: src/pages/VoiceSettingsOverlay.tsx:250
 msgid "Keys stay on the server. The app only learns whether a provider is configured."
