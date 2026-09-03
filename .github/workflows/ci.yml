@@ -25,6 +25,15 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
 
+  compose-installer-smoke:
+    name: Compose installer smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: Run compose installer smoke scripts
+        run: bash infra/compose/run-smokes.sh
+
   check:
     name: Typecheck
     runs-on: ubuntu-latest
@@ -100,7 +109,7 @@ jobs:
   publish-mobile-update:
     name: Publish compatible mobile update
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [lint, check, build, test, test-integration, test-e2e]
+    needs: [lint, compose-installer-smoke, check, build, test, test-integration, test-e2e]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     concurrency:
@@ -253,7 +262,7 @@ jobs:
       github.event_name == 'push' &&
       github.ref == 'refs/heads/main' &&
       vars.PRODUCTION_DEPLOY_ENABLED == 'true'
-    needs: [lint, check, build, test, test-integration, test-e2e]
+    needs: [lint, compose-installer-smoke, check, build, test, test-integration, test-e2e]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     concurrency:
