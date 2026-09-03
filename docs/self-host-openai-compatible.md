@@ -64,12 +64,12 @@ is used, prefer HTTPS; `http` is fine for trusted private or loopback links.
 A reverse proxy on `127.0.0.1`, `localhost`, `*.localhost`,
 `host.docker.internal`, or an RFC1918 address does **not** need
 `RAKAZO_OPENAI_COMPAT_ALLOW_PUBLIC=1`. Point the base URL at that private
-listener. From Docker Compose, use `host.docker.internal` or an RFC1918 /
-loopback address the **containers** can reach, not only the host's loopback.
-Bare Compose DNS hostnames (for example `ollama`) are treated as public.
-Even with `RAKAZO_OPENAI_COMPAT_ALLOW_PUBLIC=1`, hostnames that resolve to
-private addresses are rejected. Use a private IP or `host.docker.internal`
-instead.
+listener. From Docker Compose, use an RFC1918 or loopback address the
+**containers** can reach, or `host.docker.internal` when that name resolves
+(Docker Desktop; or Linux with a `host-gateway` mapping). Bare Compose DNS
+hostnames (for example `ollama`) are treated as public. Even with
+`RAKAZO_OPENAI_COMPAT_ALLOW_PUBLIC=1`, hostnames that resolve to private
+addresses are rejected. Prefer a private IP literal the containers can reach.
 
 ## Probe failures
 
