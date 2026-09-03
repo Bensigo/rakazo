@@ -390,8 +390,6 @@ export const ZH_MESSAGES: Record<string, string> = {
   "While agents are working": "智能体工作时",
   Working: "工作中",
   "Working…": "处理中…",
-  Worked: "已完成",
-  "Worked for {duration}": "已工作 {duration}",
   "Work stopped, but the thread could not refresh: {detail}":
     "工作已停止，但线程无法刷新：{detail}",
   "You have control": "你已接管控制",

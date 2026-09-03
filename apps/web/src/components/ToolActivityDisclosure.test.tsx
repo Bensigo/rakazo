@@ -9,7 +9,7 @@ import { ToolActivityDisclosure } from "./ToolActivityDisclosure";
 describe("ToolActivityDisclosure", () => {
   it.each([
     [true, "Working…"],
-    [false, "Worked for 1m 43s"],
+    [false, "Done"],
   ])("defaults collapsed with the %s state label", (live, label) => {
     const html = renderToStaticMarkup(
       <ToolActivityDisclosure live={live} label={label}>
@@ -30,7 +30,7 @@ describe("ToolActivityDisclosure", () => {
     const render = (live: boolean) =>
       flushSync(() =>
         root.render(
-          <ToolActivityDisclosure live={live} label={live ? "Working…" : "Worked for 1m 43s"}>
+          <ToolActivityDisclosure live={live} label={live ? "Working…" : "Done"}>
             <span>Shell ×2</span>
           </ToolActivityDisclosure>,
         ),
@@ -42,7 +42,7 @@ describe("ToolActivityDisclosure", () => {
 
     render(false);
     expect(container.querySelector("details")?.open).toBe(false);
-    expect(container.querySelector("summary")?.textContent).toContain("Worked for 1m 43s");
+    expect(container.querySelector("summary")?.textContent).toContain("Done");
     root.unmount();
   });
 });

@@ -51,7 +51,6 @@ import {
   searchHitThreadTarget,
   serializeComposerPrompt,
   speechFromBlocks,
-  toolActivityLabel,
   truncateSlashDescription,
   userVisibleMessages,
 } from "@rakazo/core";
@@ -5032,7 +5031,7 @@ const MessageView = memo(function MessageView({
                   <ToolActivityDisclosure
                     key={i}
                     live={isLive}
-                    label={isLive ? t`Working…` : toolActivityLabel(block.durationMs, false)}
+                    label={isLive ? t`Working…` : t`Done`}
                   >
                     <ToolSteps
                       steps={block.steps}
@@ -5142,10 +5141,7 @@ const MessageView = memo(function MessageView({
                 className="max-w-[74%] space-y-1.5 rounded-[20px] bg-muted px-[18px] py-3"
                 dir="ltr"
               >
-                <ToolActivityDisclosure
-                  live={isLive}
-                  label={isLive ? t`Working…` : toolActivityLabel(block.durationMs, false)}
-                >
+                <ToolActivityDisclosure live={isLive} label={isLive ? t`Working…` : t`Done`}>
                   <ToolSteps
                     steps={block.steps}
                     currentIndex={isLive ? block.steps.length - 1 : undefined}
