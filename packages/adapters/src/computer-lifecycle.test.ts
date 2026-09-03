@@ -903,8 +903,11 @@ describe("computer replacement", () => {
       computer: { findUniqueOrThrow, findUnique, updateMany: vi.fn() },
       run: { findFirst: vi.fn() },
     } as unknown as PrismaClient;
-    const sandbox = new FakeSandboxProvider();
-    sandbox.setScreenControl = vi.fn().mockRejectedValue(new Error("provider unavailable"));
+    const sandbox = Object.assign(new FakeSandboxProvider(), {
+      setScreenControl: async () => {
+        throw new Error("provider unavailable");
+      },
+    }) as SandboxProvider;
 
     await expect(
       replaceComputer(
