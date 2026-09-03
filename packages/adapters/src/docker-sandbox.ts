@@ -77,6 +77,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       "x-rakazo-space-id": context.spaceId,
       ...(botId ? { "x-rakazo-bot-id": botId } : {}),
       ...(context.screenLeaseId ? { "x-rakazo-screen-lease-id": context.screenLeaseId } : {}),
+      ...(context.cancelRunWork ? { "x-rakazo-cancel-run-work": "1" } : {}),
     };
   }
 

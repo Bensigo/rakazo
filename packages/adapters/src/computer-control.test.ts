@@ -2,6 +2,7 @@ import type { BackgroundJob, JobPublisher, SandboxProvider } from "@rakazo/adapt
 import type { PrismaClient, ThreadEvents } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
 import {
+  clearInactiveUserComputerControl,
   DEFAULT_TAKEOVER_LEASE_MS,
   expireComputerControl,
   extendActiveComputerControl,
@@ -162,6 +163,83 @@ describe("computer control leases", () => {
     expect(harness.setScreenControl).not.toHaveBeenCalled();
     expect(harness.prisma.computer.updateMany).not.toHaveBeenCalled();
   });
+
+  it("clears stale user control when the lease is empty or expired", async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const prisma = { computer: { updateMany } } as unknown as PrismaClient;
+    const now = new Date("2026-01-01T00:00:00.000Z");
+
+    await expect(clearInactiveUserComputerControl(prisma, "computer-1", now)).resolves.toBe(true);
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "computer-1",
+        controlHolder: "user",
+        OR: [
+          { controlLeaseId: null },
+          { controlLeaseExpiresAt: null },
+          { controlLeaseExpiresAt: { lte: now } },
+        ],
+      },
+      data: {
+        controlHolder: "none",
+        controlLeaseId: null,
+        controlLeaseExpiresAt: null,
+        controlBotId: null,
+        controlRunId: null,
+      },
+    });
+  });
+
+  it("revokes then clears orphaned user control when expiry has no control bot id", async () => {
+    const harness = controlHarness({ controlBotId: null });
+    await expect(expireComputerControl(harness.deps, "computer-id", "lease-1")).resolves.toBe(true);
+    expect(harness.setScreenControl).toHaveBeenCalledWith(
+      expect.objectContaining({ providerRef: "computer" }),
+      false,
+      expect.objectContaining({ operationId: "computer.control-expire" }),
+      "lease-1",
+    );
+    expect(harness.prisma.computer.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "computer-id",
+        controlLeaseId: "lease-1",
+      },
+      data: {
+        controlHolder: "none",
+        controlLeaseId: null,
+        controlLeaseExpiresAt: null,
+        controlBotId: null,
+        controlRunId: null,
+      },
+    });
+  });
+
+  it("keeps an orphaned lease when provider revocation fails", async () => {
+    const harness = controlHarness({
+      controlBotId: null,
+      revokeError: new Error("provider unavailable"),
+    });
+    await expect(expireComputerControl(harness.deps, "computer-id", "lease-1")).resolves.toBe(
+      false,
+    );
+    expect(harness.prisma.computer.updateMany).not.toHaveBeenCalled();
+    expect(harness.enqueue).toHaveBeenCalled();
+  });
+
+  it("keeps an orphaned lease when revoke and reschedule both fail", async () => {
+    const harness = controlHarness({
+      controlBotId: null,
+      revokeError: new Error("provider unavailable"),
+      enqueueError: new Error("queue unavailable"),
+    });
+    const logError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    await expect(expireComputerControl(harness.deps, "computer-id", "lease-1")).resolves.toBe(
+      false,
+    );
+    expect(harness.prisma.computer.updateMany).not.toHaveBeenCalled();
+    expect(logError).toHaveBeenCalled();
+    logError.mockRestore();
+  });
 });
 
 describe("teaching control lease extension", () => {
@@ -218,6 +296,7 @@ function controlHarness(
   options: {
     controlLeaseId?: string;
     controlLeaseExpiresAt?: Date | null;
+    controlBotId?: string | null;
     revokeError?: Error;
     finalizeError?: Error;
     enqueueError?: Error;
@@ -234,7 +313,7 @@ function controlHarness(
     state: "running",
     controlHolder: "user",
     controlLeaseId: options.controlLeaseId ?? "lease-1",
-    controlBotId: "bot",
+    controlBotId: options.controlBotId === undefined ? "bot" : options.controlBotId,
     controlRunId: options.controlRunId ?? options.waitingRunId ?? null,
     executionRunId: options.executionRunId ?? null,
     controlLeaseExpiresAt:

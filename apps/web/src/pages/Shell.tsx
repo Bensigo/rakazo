@@ -2685,7 +2685,10 @@ export function ShellPage() {
             ) : null}
           </div>
         </div>
-        <div className="mx-3.5 mb-3 flex items-center gap-2.5 rounded-xl border border-[var(--rk-hairline-strong)] bg-[var(--rk-surface)] px-3 py-2 text-[14px] text-[var(--rk-body)]">
+        <div
+          data-testid="sidebar-search"
+          className="mx-2.5 mb-3 flex items-center gap-2.5 rounded-xl border border-[var(--rk-hairline-strong)] bg-[var(--rk-surface)] px-3 py-2 text-[14px] text-[var(--rk-body)]"
+        >
           <span aria-hidden="true">⌕</span>
           <input
             value={query}
@@ -4153,8 +4156,11 @@ export function ShellPage() {
               ) : null}
               {recordingSkill ? (
                 <TeachStopButton busy={teachBusy} onStop={stopTeaching} />
-              ) : hasControl && computer?.takeoverRequested ? (
-                <ComputerReleaseActions takeoverRequested onRelease={releaseComputer} />
+              ) : hasControl ? (
+                <ComputerReleaseActions
+                  takeoverRequested={Boolean(computer?.takeoverRequested)}
+                  onRelease={releaseComputer}
+                />
               ) : null}
               {active && !recordingSkill ? (
                 <TeachComputerOverlayControl

@@ -1973,8 +1973,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 BACKGROUND_WORK_LAUNCH,
                 "rakazo-background-launch",
                 // Marker id must match sleepComputerIfIdle's probe (DB id), not ComputerRef.id
-                // (providerRef via toComputerRef).
+                // (providerRef via toComputerRef). Scope launches to this run for cancel teardown.
                 storedComputer.id,
+                runId,
                 randomUUID(),
                 command,
               ],

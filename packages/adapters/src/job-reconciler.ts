@@ -291,12 +291,12 @@ export function createJobReconciler(
             : [],
         ),
         ...controls.flatMap((computer) =>
-          computer.controlBotId
+          computer.controlLeaseId
             ? [
                 scheduleComputerControlExpiry(
                   deps.jobs,
                   computer.id,
-                  computer.controlLeaseId!,
+                  computer.controlLeaseId,
                   computer.controlLeaseExpiresAt ?? now,
                 ),
               ]

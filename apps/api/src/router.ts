@@ -25,7 +25,9 @@ import {
   ComputerBusyError,
   type ComputerExecutionLease,
   type ConnectorRegistry,
+  cancelComputerRunWork,
   checkpointAndRecordComputerWorkspace,
+  clearInactiveUserComputerControl,
   computerSupportsUpdate,
   createVoiceProvider,
   deletePushToken,
@@ -1036,17 +1038,32 @@ export function createRouter(deps: RouterDeps) {
         );
         await Promise.all(
           archived.computers.map(async (computer) => {
-            if (!computer.providerRef || !computer.executionBotId) return;
-            await deps.sandbox
-              .releaseScreen?.(toComputerRef(computer), {
-                operationId: "stop",
-                traceId: "stop",
-                spaceId: context.actor.spaceId,
-                userId: context.actor.userId,
-                botId: computer.executionBotId,
-                signal: new AbortController().signal,
-              })
-              .catch(() => undefined);
+            if (!computer.providerRef || !computer.executionBotId || !computer.executionRunId) {
+              return;
+            }
+            const adapterContext = {
+              operationId: "stop",
+              traceId: "stop",
+              spaceId: context.actor.spaceId,
+              userId: context.actor.userId,
+              botId: computer.executionBotId,
+              runId: computer.executionRunId,
+              screenLeaseId: screenLeaseIdForRun(
+                { runId: computer.executionRunId, fence: computer.executionFence },
+                computer.executionRunId,
+              ),
+              cancelRunWork: true,
+              signal: new AbortController().signal,
+            };
+            const ref = toComputerRef(computer);
+            await cancelComputerRunWork(
+              deps.sandbox,
+              ref,
+              computer.id,
+              computer.executionRunId,
+              adapterContext,
+            );
+            await deps.sandbox.releaseScreen?.(ref, adapterContext).catch(() => undefined);
           }),
         );
         return { ok: true as const };
@@ -1620,13 +1637,19 @@ export function createRouter(deps: RouterDeps) {
         if (!bot.computer) throw new IsolationError();
         const controlBotId = bot.computer.controlBotId;
         const controlLeaseId = bot.computer.controlLeaseId;
-        if (
-          !hasActiveComputerControl(bot.computer) ||
-          bot.computer.controlHolder !== "user" ||
-          !controlBotId ||
-          !controlLeaseId ||
-          controlBotId !== bot.id
-        ) {
+        if (bot.computer.controlHolder !== "user" || !controlBotId || controlBotId !== bot.id) {
+          return { ok: true as const };
+        }
+        if (!hasActiveComputerControl(bot.computer) || !controlLeaseId) {
+          // Stale controlHolder=user. Prefer expiry (revokes provider control). If a lease id
+          // remains after a failed revoke, keep it so reconciliation can retry.
+          if (controlLeaseId) {
+            await expireComputerControl(deps, bot.computer.id, controlLeaseId).catch(
+              () => undefined,
+            );
+          } else {
+            await clearInactiveUserComputerControl(deps.prisma, bot.computer.id);
+          }
           return { ok: true as const };
         }
         if (bot.computer.providerRef) {
@@ -3911,14 +3934,20 @@ async function expireStaleComputerControl(
   computer:
     | (NonNullable<Parameters<typeof hasActiveComputerControl>[0]> & {
         id: string;
+        controlHolder?: string;
       })
     | null
     | undefined,
 ): Promise<boolean> {
-  const leaseId = computer?.controlLeaseId;
-  if (!leaseId || hasActiveComputerControl(computer)) return false;
-  await expireComputerControl(deps, computer.id, leaseId).catch(() => undefined);
-  return true;
+  if (!computer || hasActiveComputerControl(computer)) return false;
+  if (computer.controlHolder !== "user") return false;
+  const leaseId = computer.controlLeaseId;
+  // Keep a failed revoke's lease id so reconciliation can retry provider shutdown.
+  if (leaseId) {
+    await expireComputerControl(deps, computer.id, leaseId).catch(() => undefined);
+    return true;
+  }
+  return clearInactiveUserComputerControl(deps.prisma, computer.id).catch(() => false);
 }
 
 async function computerScreenContext(
