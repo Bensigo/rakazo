@@ -10,7 +10,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { localizedProviderHint } from "../lib/localized-provider-hint";
 import type { ModelCatalogEntry } from "../lib/model-auth";
-import { featuredModelProviders } from "../lib/onboarding-providers";
+import { featuredModelProviders, keepSelectedProviderVisible } from "../lib/onboarding-providers";
 import { rpc } from "../lib/rpc";
 import { useModelOAuthSignIn } from "../lib/use-model-oauth-signin";
 
@@ -98,7 +98,10 @@ export function OnboardingPage() {
   }, [catalog, providers, query]);
 
   const displayedProviders = useMemo(
-    () => (showAllProviders ? filteredProviders : featuredModelProviders(providers, provider)),
+    () =>
+      showAllProviders
+        ? keepSelectedProviderVisible(filteredProviders, providers, provider)
+        : featuredModelProviders(providers, provider),
     [filteredProviders, provider, providers, showAllProviders],
   );
 

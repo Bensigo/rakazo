@@ -30,3 +30,16 @@ export function featuredModelProviders(
   if (!selected || featured.some((entry) => entry.provider === selectedProvider)) return featured;
   return [...featured.slice(0, DEFAULT_PROVIDER_COUNT - 1), selected];
 }
+
+/** Search results still show the active choice, even when its text does not match the query. */
+export function keepSelectedProviderVisible(
+  filteredProviders: readonly ModelCatalogEntry[],
+  allProviders: readonly ModelCatalogEntry[],
+  selectedProvider: string,
+): ModelCatalogEntry[] {
+  if (filteredProviders.some((entry) => entry.provider === selectedProvider)) {
+    return [...filteredProviders];
+  }
+  const selected = allProviders.find((entry) => entry.provider === selectedProvider);
+  return selected ? [selected, ...filteredProviders] : [...filteredProviders];
+}

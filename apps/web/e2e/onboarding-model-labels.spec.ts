@@ -19,6 +19,10 @@ test("onboarding model list never labels an older model the latest one", async (
   await captureScreenshot(page, testInfo, "onboarding-popular-providers");
   await page.getByRole("button", { name: "Show all providers" }).click();
   await page.getByPlaceholder("Search providers and models").fill("anthropic");
+  await expect(page.getByRole("button", { name: /OpenRouter/ })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await page
     .getByRole("button", { name: /Anthropic/ })
     .first()

@@ -1,6 +1,6 @@
 import type { ModelCatalogEntry } from "@rakazo/contracts";
 import { describe, expect, it } from "vitest";
-import { featuredModelProviders } from "./onboarding-providers";
+import { featuredModelProviders, keepSelectedProviderVisible } from "./onboarding-providers";
 
 function provider(provider: string): ModelCatalogEntry {
   return {
@@ -69,5 +69,27 @@ describe("featuredModelProviders", () => {
       "google",
       "local",
     ]);
+  });
+});
+
+describe("keepSelectedProviderVisible", () => {
+  it("pins the active provider above unrelated search results", () => {
+    const providers = [provider("openrouter"), provider("anthropic"), provider("bedrock")];
+
+    expect(
+      keepSelectedProviderVisible(providers.slice(1), providers, "openrouter").map(
+        (entry) => entry.provider,
+      ),
+    ).toEqual(["openrouter", "anthropic", "bedrock"]);
+  });
+
+  it("does not duplicate an active provider that matches the search", () => {
+    const providers = [provider("openrouter"), provider("anthropic")];
+
+    expect(
+      keepSelectedProviderVisible(providers, providers, "openrouter").map(
+        (entry) => entry.provider,
+      ),
+    ).toEqual(["openrouter", "anthropic"]);
   });
 });
