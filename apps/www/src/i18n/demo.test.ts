@@ -16,20 +16,28 @@ describe("Chinese product demo", () => {
       expect(translated.preview).not.toBe(source.preview);
       expect(translated.reply).not.toBe(source.reply);
       expect(translated.screen.title).not.toBe(source.screen.title);
+      expect(translated.screen.lines).toHaveLength(source.screen.lines.length);
       source.screen.lines.forEach((line, lineIndex) => {
+        expect(translated.screen.lines[lineIndex]).toBeDefined();
         expect(translated.screen.lines[lineIndex]).not.toBe(line);
       });
+      expect(translated.routines).toHaveLength(source.routines.length);
       source.routines.forEach((routine, routineIndex) => {
+        expect(translated.routines[routineIndex]?.name).toBeDefined();
         expect(translated.routines[routineIndex]?.name).not.toBe(routine.name);
       });
+      expect(translated.thread).toHaveLength(source.thread.length);
       source.thread.forEach((message, messageIndex) => {
         const localizedMessage = translated.thread[messageIndex];
+        expect(localizedMessage).toBeDefined();
         expect(localizedMessage?.type).toBe(message.type);
         if (!localizedMessage || message.type === "typing" || localizedMessage.type === "typing") {
           return;
         }
         if (message.type === "card" && localizedMessage.type === "card") {
+          expect(localizedMessage.lines).toHaveLength(message.lines.length);
           message.lines.forEach((line, lineIndex) => {
+            expect(localizedMessage.lines[lineIndex]).toBeDefined();
             expect(localizedMessage.lines[lineIndex]?.k).not.toBe(line.k);
             expect(localizedMessage.lines[lineIndex]?.v).not.toBe(line.v);
           });

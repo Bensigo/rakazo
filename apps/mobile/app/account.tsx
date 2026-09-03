@@ -54,6 +54,7 @@ export default function Account() {
   const [me, setMe] = useState<MobileMe | null>(null);
   const [password, setPassword] = useState("");
   const [localeSaving, setLocaleSaving] = useState(false);
+  const [localeError, setLocaleError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [avatarPending, setAvatarPending] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
@@ -361,7 +362,12 @@ export default function Account() {
                   onPress={() => {
                     if (code === locale || localeSaving) return;
                     setLocaleSaving(true);
-                    void setUiLocale(code as UiLocale).finally(() => setLocaleSaving(false));
+                    setLocaleError(null);
+                    void setUiLocale(code as UiLocale)
+                      .catch(() => {
+                        setLocaleError(t("Could not change language"));
+                      })
+                      .finally(() => setLocaleSaving(false));
                   }}
                   style={({ pressed }) => [
                     styles.localeOption,
@@ -375,6 +381,7 @@ export default function Account() {
               );
             })}
           </View>
+          {localeError ? <Text style={styles.error}>{localeError}</Text> : null}
         </View>
 
         {Platform.OS === "android" ? (

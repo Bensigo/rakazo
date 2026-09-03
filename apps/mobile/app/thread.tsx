@@ -2128,7 +2128,13 @@ const MessageBubble = memo(function MessageBubble({
               fontSize: 13,
             }}
           >
-            {running ? t("subagent") : special.status}
+            {running
+              ? t("Running")
+              : special.status === "failed"
+                ? t("Failed")
+                : special.status === "completed"
+                  ? t("Completed")
+                  : special.status}
           </Text>
         </View>
         {special.task ? (

@@ -65,7 +65,7 @@ export function AskActions({
           >
             {pendingAction === action.id
               ? t("Sending…")
-              : KNOWN_ASK_ACTION_LABELS[action.id]
+              : Object.hasOwn(KNOWN_ASK_ACTION_LABELS, action.id)
                 ? t(KNOWN_ASK_ACTION_LABELS[action.id]!)
                 : action.label}
           </Text>
