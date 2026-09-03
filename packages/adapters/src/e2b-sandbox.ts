@@ -18,7 +18,7 @@ import type {
   ScreenSession,
 } from "@rakazo/adapter-kit";
 import { boundedSandboxCommandTimeoutMs } from "@rakazo/core";
-import { sandboxIdleMs } from "./computer-idle.js";
+import { CANCEL_PRIMARY_BROWSER_WORK, sandboxIdleMs } from "./computer-idle.js";
 import { ComputerScreenUnavailableError, screenSessionKey } from "./computer-screens.js";
 import {
   boundedComputerActions,
@@ -654,7 +654,12 @@ export class E2BSandboxProvider implements SandboxProvider {
     if (index === undefined) return;
     const controlKey = screenControlKey(id, screenKey);
     this.controlStreams.delete(controlKey);
-    if (index === 0) return;
+    if (index === 0) {
+      if (context.cancelRunWork) {
+        await desktop.commands.run(CANCEL_PRIMARY_BROWSER_WORK).catch(() => undefined);
+      }
+      return;
+    }
     // Non-primary teardown runs inside the registry lock before the slot is reusable.
   }
 

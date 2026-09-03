@@ -9,6 +9,8 @@ export interface AdapterContext {
   runId?: string;
   /** Opaque fence for releasing a graphical screen without tearing down its replacement. */
   screenLeaseId?: string;
+  /** When releasing a screen after cancel, also stop orphaned browser work on that screen. */
+  cancelRunWork?: boolean;
   signal: AbortSignal;
   /** Connected external accounts available to this run, including their owning connector. */
   connectedConnections?: ConnectedConnector[];

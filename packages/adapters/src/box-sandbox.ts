@@ -25,7 +25,7 @@ import type {
   ScreenRequest,
   ScreenSession,
 } from "@rakazo/adapter-kit";
-import { boundedSandboxCommandTimeoutMs } from "@rakazo/core";
+import { boundedSandboxCommandTimeoutMs, canReleaseScreenLease } from "@rakazo/core";
 import { SingleScreenClaimTracker } from "./computer-screens.js";
 import {
   boundedComputerActions,
@@ -48,6 +48,7 @@ const BOX_READY_TIMEOUT_MS = 5 * 60_000;
 const BOX_API_COMMAND_TIMEOUT_SECONDS = 600;
 const BOX_TTL_SECONDS = 2 * 60 * 60;
 const BOX_EXPORT_CONCURRENCY = 16;
+const BOX_SCREEN_LEASE_PATH = "/tmp/rakazo-screen-lease";
 
 export type BoxSandboxSdk = Pick<
   BoxApi,
@@ -70,6 +71,26 @@ interface BoxCommandResult {
   stderr: string;
   exitCode: number;
   timedOut: boolean;
+}
+
+/** Decide whether cancel may stop Box browsers across API/worker processes. */
+export type BoxRemoteScreenLease =
+  | { status: "missing" }
+  | { status: "present"; leaseId: string }
+  | { status: "error" };
+
+/** Decide whether cancel may stop Box browsers across API/worker processes. */
+export function shouldStopBoxBrowsersOnCancel(input: {
+  remoteLease: BoxRemoteScreenLease;
+  screenLeaseId?: string;
+}): boolean {
+  // Fail closed on transport/command errors so a stale cancel cannot kill a newer browser.
+  if (input.remoteLease.status === "error") return false;
+  // No remote fence: treat as orphaned work from this cancel path.
+  if (input.remoteLease.status === "missing") return true;
+  // A remote fence always wins over any local claim state.
+  if (!input.screenLeaseId) return false;
+  return canReleaseScreenLease(input.remoteLease.leaseId, input.screenLeaseId);
 }
 
 export class BoxSandboxProvider implements SandboxProvider {
@@ -253,7 +274,7 @@ export class BoxSandboxProvider implements SandboxProvider {
     context: AdapterContext,
   ): Promise<ScreenSession> {
     const id = this.id(computer);
-    this.screens.claim(id, context);
+    await this.claimScreen(id, context);
     try {
       const deadline = Date.now() + 60_000;
       while (true) {
@@ -294,7 +315,7 @@ export class BoxSandboxProvider implements SandboxProvider {
     context: AdapterContext,
     _controlToken?: string,
   ): Promise<void> {
-    if (interactive) this.screens.claim(this.id(computer), context);
+    if (interactive) await this.claimScreen(this.id(computer), context);
   }
 
   async sendInput(
@@ -304,13 +325,13 @@ export class BoxSandboxProvider implements SandboxProvider {
     context: AdapterContext,
   ): Promise<void> {
     const id = this.id(computer);
-    this.screens.claim(id, context);
+    await this.claimScreen(id, context);
     await this.applyAction(id, input, context);
   }
 
   async observe(computer: ComputerRef, context: AdapterContext): Promise<ComputerObservation> {
     const id = this.id(computer);
-    this.screens.claim(id, context);
+    await this.claimScreen(id, context);
     const imagePath = `/tmp/rakazo-observe-${randomUUID()}.png`;
     try {
       const result = await this.runCommand(
@@ -333,7 +354,7 @@ export class BoxSandboxProvider implements SandboxProvider {
 
   async act(computer: ComputerRef, request: ComputerActionRequest, context: AdapterContext) {
     const id = this.id(computer);
-    this.screens.claim(id, context);
+    await this.claimScreen(id, context);
     const actions = boundedComputerActions(request.actions);
     let completed = 0;
     for (const action of actions) {
@@ -465,7 +486,11 @@ export class BoxSandboxProvider implements SandboxProvider {
   }
 
   async releaseScreen(computer: ComputerRef, context: AdapterContext): Promise<void> {
-    this.screens.release(this.id(computer), context);
+    const id = this.id(computer);
+    this.screens.release(id, context);
+    if (!context.cancelRunWork || !context.screenLeaseId) return;
+    // Atomically re-check the remote fence under flock before stopping browsers.
+    await this.stopBrowsersIfLeaseAllows(id, context.screenLeaseId);
   }
 
   async stop(computer: ComputerRef, context: AdapterContext): Promise<void> {
@@ -605,6 +630,74 @@ export class BoxSandboxProvider implements SandboxProvider {
     return parseBoxFileEntries(result.stdout).filter(
       (entry) => entry.kind === "file" && !shouldSkipPortableWorkspaceFile(entry.path),
     );
+  }
+
+  private async claimScreen(id: string, context: AdapterContext): Promise<void> {
+    this.screens.claim(id, context);
+    if (!context.screenLeaseId) return;
+    try {
+      await this.writeScreenLease(id, context.screenLeaseId);
+    } catch (error) {
+      this.screens.release(id, context);
+      throw error;
+    }
+  }
+
+  private async writeScreenLease(id: string, leaseId: string): Promise<void> {
+    const lockPath = `${BOX_SCREEN_LEASE_PATH}.lock`;
+    const script = [
+      "set -eu",
+      `lease=${shellQuote(BOX_SCREEN_LEASE_PATH)}`,
+      `lock=${shellQuote(lockPath)}`,
+      `incoming=${shellQuote(leaseId)}`,
+      'exec 9>"$lock"',
+      "flock 9",
+      'current="$(cat -- "$lease" 2>/dev/null || true)"',
+      'current="$(printf "%s" "$current" | tr -d "\\r\\n")"',
+      'if [ -n "$current" ] && [ "$current" != "$incoming" ]; then',
+      '  current_fence="${current##*:}"',
+      '  incoming_fence="${incoming##*:}"',
+      "  case \"$current_fence\" in ''|*[!0-9]*) exit 1 ;; esac",
+      "  case \"$incoming_fence\" in ''|*[!0-9]*) exit 1 ;; esac",
+      '  if [ "$incoming_fence" -le "$current_fence" ]; then exit 2; fi',
+      "fi",
+      'printf "%s\\n" "$incoming" >"$lease"',
+    ].join("\n");
+    const result = await this.rawCommand(id, script, 10);
+    if (result.exitCode !== 0 || result.timedOut) {
+      throw new Error(result.stderr || result.stdout || "could not publish Box screen lease");
+    }
+  }
+
+  private async stopBrowsersIfLeaseAllows(id: string, screenLeaseId: string): Promise<void> {
+    const lockPath = `${BOX_SCREEN_LEASE_PATH}.lock`;
+    const script = [
+      "set -eu",
+      `lease=${shellQuote(BOX_SCREEN_LEASE_PATH)}`,
+      `lock=${shellQuote(lockPath)}`,
+      `expected=${shellQuote(screenLeaseId)}`,
+      'exec 9>"$lock"',
+      "flock 9",
+      'current="$(cat -- "$lease" 2>/dev/null || true)"',
+      'current="$(printf "%s" "$current" | tr -d "\\r\\n")"',
+      'if [ -n "$current" ] && [ "$current" != "$expected" ]; then',
+      '  current_owner="${current%:*}"',
+      '  expected_owner="${expected%:*}"',
+      '  current_fence="${current##*:}"',
+      '  expected_fence="${expected##*:}"',
+      "  case \"$current_fence\" in ''|*[!0-9]*) exit 3 ;; esac",
+      "  case \"$expected_fence\" in ''|*[!0-9]*) exit 3 ;; esac",
+      '  if [ "$expected_owner" != "$current_owner" ] || [ "$expected_fence" -lt "$current_fence" ]; then',
+      "    exit 2",
+      "  fi",
+      "fi",
+      PORTABLE_BROWSER_STOP_COMMAND,
+      'rm -f -- "$lease"',
+    ].join("\n");
+    const result = await this.rawCommand(id, script, 30).catch(() => undefined);
+    // exit 2 = newer remote fence; treat as a successful no-op.
+    if (!result || result.timedOut) return;
+    if (result.exitCode === 0 || result.exitCode === 2) return;
   }
 
   private async stopBrowsers(id: string): Promise<void> {

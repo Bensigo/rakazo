@@ -1,6 +1,11 @@
 import type { Command200Response } from "@asciidev/box-sdk";
 import { describe, expect, it, vi } from "vitest";
-import { BoxSandboxProvider, type BoxSandboxSdk, isUnrecoverableBoxError } from "./box-sandbox.js";
+import {
+  BoxSandboxProvider,
+  type BoxSandboxSdk,
+  isUnrecoverableBoxError,
+  shouldStopBoxBrowsersOnCancel,
+} from "./box-sandbox.js";
 
 const context = {
   operationId: "test",
@@ -322,3 +327,49 @@ function finished(overrides: Partial<Command200Response> = {}): Command200Respon
     ...overrides,
   } as Command200Response;
 }
+
+describe("shouldStopBoxBrowsersOnCancel", () => {
+  it("keeps a newer remote fence alive even if a local claim was released", () => {
+    expect(
+      shouldStopBoxBrowsersOnCancel({
+        remoteLease: { status: "present", leaseId: "run-2:2" },
+        screenLeaseId: "run-1:1",
+      }),
+    ).toBe(false);
+  });
+
+  it("stops cross-process cancel when the remote fence matches", () => {
+    expect(
+      shouldStopBoxBrowsersOnCancel({
+        remoteLease: { status: "present", leaseId: "run-1:1" },
+        screenLeaseId: "run-1:1",
+      }),
+    ).toBe(true);
+  });
+
+  it("stops orphaned browsers when no remote fence exists", () => {
+    expect(
+      shouldStopBoxBrowsersOnCancel({
+        remoteLease: { status: "missing" },
+        screenLeaseId: "run-1:1",
+      }),
+    ).toBe(true);
+  });
+
+  it("fails closed when the remote lease cannot be read", () => {
+    expect(
+      shouldStopBoxBrowsersOnCancel({
+        remoteLease: { status: "error" },
+        screenLeaseId: "run-1:1",
+      }),
+    ).toBe(false);
+  });
+
+  it("fails closed when cancel has no screen lease id", () => {
+    expect(
+      shouldStopBoxBrowsersOnCancel({
+        remoteLease: { status: "present", leaseId: "run-1:1" },
+      }),
+    ).toBe(false);
+  });
+});
