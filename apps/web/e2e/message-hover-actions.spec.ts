@@ -20,6 +20,21 @@ async function clearHoverRail(rail: import("@playwright/test").Locator) {
   await rail.evaluate((el) => el.removeAttribute("style"));
 }
 
+/** Park the pointer outside the message so group-hover clears; rail uses opacity-0 at rest. */
+async function expectRailAtRest(
+  page: import("@playwright/test").Page,
+  row: import("@playwright/test").Locator,
+) {
+  const rail = row.getByTestId("message-hover-rail");
+  await clearHoverRail(rail);
+  const box = await row.boundingBox();
+  if (box) {
+    // (0,0) can still sit on the first transcript row; leave below the row instead.
+    await page.mouse.move(Math.max(0, box.x) + 8, box.y + box.height + 32);
+  }
+  await expect(rail).toHaveCSS("opacity", "0");
+}
+
 test("message hover shows beside-bubble actions; reply links to parent", async ({
   page,
 }, testInfo) => {
@@ -33,9 +48,7 @@ test("message hover shows beside-bubble actions; reply links to parent", async (
   // Bot welcome (left bubble): rail hidden at rest, then beside on hover.
   const botRow = transcript.locator(`[data-message-id]`).first();
   await expect(botRow).toBeVisible();
-  await page.mouse.move(0, 0);
-  const botRailAtRest = botRow.getByTestId("message-hover-rail");
-  await expect(botRailAtRest).toBeHidden();
+  await expectRailAtRest(page, botRow);
   await captureScreenshot(page, testInfo, "message-actions-rest-desktop");
 
   const botRail = await revealHoverRail(botRow);
@@ -61,8 +74,7 @@ test("message hover shows beside-bubble actions; reply links to parent", async (
     })
     .toEqual({ beside: true, flush: true, centered: true, notBelow: true });
   await captureScreenshot(page, testInfo, "message-bot-actions-desktop");
-  await clearHoverRail(botRail);
-  await page.mouse.move(0, 0);
+  await expectRailAtRest(page, botRow);
 
   const parentText = `hover-parent-${stamp}`;
   const replyText = `hover-reply-${stamp}`;
@@ -149,9 +161,7 @@ test("message hover shows beside-bubble actions; reply links to parent", async (
   await expect(toolbar.getByRole("button", { name: "More" })).toBeFocused();
   await captureScreenshot(page, testInfo, "message-user-actions-hover-desktop");
   // Default transcript shot: rail at rest (no hover pin, mouse clear).
-  await clearHoverRail(rail);
-  await page.mouse.move(0, 0);
-  await expect(parentRow.getByTestId("message-hover-rail")).toBeHidden();
+  await expectRailAtRest(page, parentRow);
   await captureScreenshot(page, testInfo, "message-user-bubble-desktop");
 
   // Clip shot of bubble + rail for gallery geometry.
