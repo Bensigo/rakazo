@@ -10,6 +10,7 @@ import {
   CreateBotInput,
   CreateGroupInput,
   canReactToThreadMessage,
+  ExternalConversationSchema,
   McpServerConfigInput,
   MessageBlock,
   ModelOAuthBeginSchema,
@@ -19,6 +20,7 @@ import {
   RunActivityRowSchema,
   RunSchema,
   UpdateBotInput,
+  UpdateExternalConversationPolicyInput,
   UpdateGroupInput,
 } from "./index.js";
 
@@ -122,6 +124,60 @@ describe("contracts", () => {
         teamChatRules: "R".repeat(BOT_TEAM_CHAT_RULES_MAX_LENGTH + 1),
       }).success,
     ).toBe(false);
+  });
+
+  it("validates room-level team chat policies", () => {
+    expect(
+      UpdateExternalConversationPolicyInput.safeParse({
+        externalConversationId: "external-1",
+        teamChatAmbientEnabled: null,
+        teamChatRules: "Only engage when an owner or committed date changes.",
+        automatedSenderPolicies: {
+          "B-GITHUB": { name: "GitHub", mode: "action" },
+          "B-LINEAR": { name: "Linear", mode: "rollup", rollupHours: 6 },
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      UpdateExternalConversationPolicyInput.safeParse({
+        externalConversationId: "external-1",
+        teamChatRules: "R".repeat(BOT_TEAM_CHAT_RULES_MAX_LENGTH + 1),
+        automatedSenderPolicies: {},
+      }).success,
+    ).toBe(false);
+    expect(
+      UpdateExternalConversationPolicyInput.safeParse({
+        externalConversationId: "external-1",
+        automatedSenderPolicies: {
+          "B-LINEAR": { name: "Linear", mode: "rollup", rollupHours: 0 },
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("exposes inherited room policy and discovered automated senders", () => {
+    const parsed = ExternalConversationSchema.parse({
+      id: "external-1",
+      spaceId: "space-1",
+      botId: "bot-1",
+      provider: "slack",
+      displayName: "Team operations",
+      participantNames: ["William", "Liz", "Arthur"],
+      threadId: "thread-1",
+      preview: "Morning",
+      unread: false,
+      teamChatAmbientEnabled: null,
+      teamChatRules: null,
+      automatedSenderPolicies: { "B-GITHUB": { name: "GitHub", mode: "ignore" } },
+      automatedSenders: [{ id: "B-GITHUB", name: "GitHub" }],
+      updatedAt: "2026-09-03T12:00:00.000Z",
+    });
+
+    expect(parsed.automatedSenderPolicies["B-GITHUB"]).toEqual({
+      name: "GitHub",
+      mode: "ignore",
+    });
+    expect(appContract.externalConversations.updatePolicy).toBeTruthy();
   });
 
   it("normalizes group names and rejects duplicate members", () => {

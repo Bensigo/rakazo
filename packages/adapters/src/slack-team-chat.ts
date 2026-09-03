@@ -66,6 +66,7 @@ export async function slackConversationMetadata(
 export function parseSlackSocketEnvelope(
   value: unknown,
   botUserId: string,
+  ownBotId?: string,
 ): { envelopeId?: string; message?: TeamChatInboundMessage } {
   if (!isRecord(value)) return {};
   const envelopeId = stringValue(value.envelope_id);
@@ -82,17 +83,20 @@ export function parseSlackSocketEnvelope(
     (event.channel_type === "channel" ||
       event.channel_type === "group" ||
       event.channel_type === "mpim");
-  const senderId = stringValue(event.user);
+  const botId = stringValue(event.bot_id);
+  const senderIsBot = Boolean(botId);
+  const senderId = stringValue(event.user) ?? botId;
   const conversationId = stringValue(event.channel);
+  const subtype = stringValue(event.subtype);
   let content = stringValue(event.text)?.trim();
   if (
     (!direct && !mentioned && !ambient) ||
     !senderId ||
     !conversationId ||
     !content ||
-    event.bot_id ||
-    event.subtype ||
-    senderId === botUserId
+    (subtype && !(senderIsBot && subtype === "bot_message")) ||
+    senderId === botUserId ||
+    (Boolean(ownBotId) && botId === ownBotId)
   ) {
     return { envelopeId };
   }
@@ -117,7 +121,8 @@ export function parseSlackSocketEnvelope(
       conversationId,
       replyThreadId: direct ? (stringValue(event.thread_ts) ?? null) : rootThreadId,
       senderId,
-      senderName: senderId,
+      senderName: senderIsBot ? slackBotName(event) : senderId,
+      ...(senderIsBot ? { senderIsBot: true } : {}),
       content,
     },
   };
@@ -135,6 +140,7 @@ export class SlackTeamChatProvider implements TeamChatProvider {
   private reconnectAttempt = 0;
   private stopped = true;
   private botUserId = "";
+  private botId = "";
   private handle: ((message: TeamChatInboundMessage) => Promise<void>) | undefined;
   private readonly userNames = new Map<string, string>();
   private readonly conversationMetadata = new Map<
@@ -159,6 +165,7 @@ export class SlackTeamChatProvider implements TeamChatProvider {
     this.handle = handle;
     const auth = await this.call("auth.test", this.config.botToken);
     this.botUserId = requiredSlackString(auth, "user_id", "auth.test");
+    this.botId = stringValue(auth.bot_id) ?? "";
     await this.connect();
   }
 
@@ -216,7 +223,7 @@ export class SlackTeamChatProvider implements TeamChatProvider {
     } catch {
       return;
     }
-    const parsed = parseSlackSocketEnvelope(value, this.botUserId);
+    const parsed = parseSlackSocketEnvelope(value, this.botUserId, this.botId);
     if (parsed.envelopeId && this.socket?.readyState === WebSocket.OPEN) {
       this.socket.send(JSON.stringify({ envelope_id: parsed.envelopeId }));
     }
@@ -228,7 +235,9 @@ export class SlackTeamChatProvider implements TeamChatProvider {
 
   private async dispatch(message: TeamChatInboundMessage): Promise<void> {
     const [senderName, metadata] = await Promise.all([
-      this.resolveUserName(message.senderId),
+      message.senderIsBot
+        ? Promise.resolve(message.senderName)
+        : this.resolveUserName(message.senderId),
       message.kind === "direct"
         ? Promise.resolve(undefined)
         : this.resolveConversationMetadata(message.conversationId, message.conversationType),
@@ -360,6 +369,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value ? value : undefined;
+}
+
+function slackBotName(event: Record<string, unknown>): string {
+  const profile = isRecord(event.bot_profile) ? event.bot_profile : undefined;
+  return (
+    (profile && stringValue(profile.name)) ||
+    stringValue(event.username) ||
+    stringValue(event.bot_id) ||
+    "Slack app"
+  );
 }
 
 function requiredSlackString(value: Record<string, unknown>, key: string, method: string): string {

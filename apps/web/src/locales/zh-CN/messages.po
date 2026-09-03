@@ -3248,3 +3248,67 @@ msgstr "你的名字"
 #: src/pages/Welcome.tsx:21
 msgid "Your team of always-on agents<0/>that you can give real work to."
 msgstr "你的一支随时在线的 Agent 团队<0/>可以交给它们真正的工作。"
+
+#: src/pages/ExternalConversationSettings.tsx
+msgid "Always act"
+msgstr "Always act"
+
+#: src/pages/ExternalConversationSettings.tsx
+msgid "Arthur default"
+msgstr "Arthur default"
+
+#: src/pages/ExternalConversationSettings.tsx
+msgid "Arthur will still respond to direct mentions."
+msgstr "Arthur will still respond to direct mentions."
+
+#: src/pages/ExternalConversationSettings.tsx
+msgid "Automated senders"
+msgstr "Automated senders"
+
+#: src/pages/ExternalConversationSettings.tsx
+msgid "Automated senders will appear after they post here."
+msgstr "Automated senders will appear after they post here."
+
+#: src/pages/ExternalConversationSettings.tsx
+msgid "Conversation settings"
+msgstr "Conversation settings"
+
+#: src/pages/ExternalConversationSettings.tsx
+msgid "Default channel guidance"
+msgstr "Default channel guidance"
+
+#: src/pages/ExternalConversationSettings.tsx
+msgid "Default Slack listening"
+msgstr "Default Slack listening"
+
+#: src/pages/ExternalConversationSettings.tsx
+msgid "Group updates"
+msgstr "Group updates"
+
+#: src/pages/ExternalConversationSettings.tsx
+msgid "Ignore"
+msgstr "Ignore"
+
+#: src/pages/ExternalConversationSettings.tsx
+msgid "Listen"
+msgstr "Listen"
+
+#: src/pages/ExternalConversationSettings.tsx
+msgid "Listening"
+msgstr "Listening"
+
+#: src/pages/ExternalConversationSettings.tsx
+msgid "Mentions only"
+msgstr "Mentions only"
+
+#: src/pages/ExternalConversationSettings.tsx
+msgid "Room guidance"
+msgstr "Room guidance"
+
+#: src/pages/ExternalConversationSettings.tsx
+msgid "Treat like a person"
+msgstr "Treat like a person"
+
+#: src/pages/ExternalConversationSettings.tsx
+msgid "Use Arthur's default guidance"
+msgstr "Use Arthur's default guidance"

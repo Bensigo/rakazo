@@ -423,6 +423,18 @@ export function createRouter(deps: RouterDeps) {
         };
       }),
     },
+    externalConversations: {
+      updatePolicy: authed.externalConversations.updatePolicy.handler(
+        async ({ context, input }) => {
+          const { externalConversationId, ...policy } = input;
+          return externalConversationRepos.updatePolicy(
+            context.actor,
+            externalConversationId,
+            policy,
+          );
+        },
+      ),
+    },
     bootstrap: authed.bootstrap.handler(async ({ context, input }) => {
       const actor = context.actor;
       const [me, navigation, archivedBots, archivedGroups] = await Promise.all([

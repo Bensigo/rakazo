@@ -1,6 +1,6 @@
 import type { JobPublisher, TeamChatInboundMessage, TeamChatProvider } from "@rakazo/adapter-kit";
 import { runContinueJob } from "@rakazo/adapter-kit";
-import type { MessageBlock } from "@rakazo/contracts";
+import { AutomatedSenderPoliciesSchema, type MessageBlock } from "@rakazo/contracts";
 import { BOT_MESSAGE_MAX_HOPS } from "@rakazo/core";
 import type { PrismaClient, ThreadEvents } from "@rakazo/db";
 import type { TeamChatEngagementJudge } from "./team-chat-judge.js";
@@ -164,6 +164,7 @@ export class TeamChatBridge {
         kind: message.kind,
         senderId: message.senderId,
         senderName: message.senderName,
+        senderIsBot: message.senderIsBot ?? false,
         content: message.content,
         replyThreadId: message.replyThreadId,
         status: message.kind === "ambient" ? "observed" : "received",
@@ -408,16 +409,6 @@ export class TeamChatBridge {
       },
     });
     if (!policy) return;
-    if (!policy.teamChatAmbientEnabled || !this.deps.judge) {
-      await this.deps.prisma.externalMessage.updateMany({
-        where: {
-          id: { in: observed.map((message) => message.id) },
-          status: "observed",
-        },
-        data: { status: "ignored", judgedAt: now },
-      });
-      return;
-    }
     const byConversation = new Map<string, typeof observed>();
     for (const message of observed) {
       const batch = byConversation.get(message.externalConversationId) ?? [];
@@ -426,29 +417,68 @@ export class TeamChatBridge {
     }
     const cutoff = now.getTime() - (this.deps.ambientDebounceMs ?? DEFAULT_AMBIENT_DEBOUNCE_MS);
     for (const messages of byConversation.values()) {
-      const latest = messages.at(-1);
-      if (!latest || latest.createdAt.getTime() > cutoff) continue;
-      const judgedMessages = messages.slice(-AMBIENT_CONTEXT_MESSAGES);
-      const decision = await this.deps.judge.decide({
-        bot: policy,
-        channelId: latest.externalConversation.conversationId,
-        channelName: latest.externalConversation.displayName ?? undefined,
-        rules: policy.teamChatRules,
-        messages: judgedMessages.map((message) => ({
-          eventId: message.providerEventId,
-          senderId: message.senderId,
-          senderName: message.senderName,
-          content: message.content,
-        })),
+      const conversation = messages[0]?.externalConversation;
+      if (!conversation) continue;
+      const ambientEnabled = conversation.teamChatAmbientEnabled ?? policy.teamChatAmbientEnabled;
+      const rules = conversation.teamChatRules ?? policy.teamChatRules;
+      const parsedPolicies = AutomatedSenderPoliciesSchema.safeParse(
+        conversation.automatedSenderPolicies,
+      );
+      const automatedSenderPolicies = parsedPolicies.success ? parsedPolicies.data : {};
+      if (!ambientEnabled) {
+        await this.markAmbientIgnored(messages, now);
+        continue;
+      }
+
+      const ignored = messages.filter(
+        (message) =>
+          message.senderIsBot &&
+          (automatedSenderPolicies[message.senderId]?.mode ?? "ignore") === "ignore",
+      );
+      if (ignored.length > 0) await this.markAmbientIgnored(ignored, now);
+      const candidates = messages.filter((message) => !ignored.includes(message));
+      if (candidates.length === 0) continue;
+
+      const hasImmediateCandidate = candidates.some((message) => {
+        if (!message.senderIsBot) return true;
+        return automatedSenderPolicies[message.senderId]?.mode !== "rollup";
       });
+      const evaluated = hasImmediateCandidate
+        ? candidates
+        : await this.dueRollupMessages(candidates, automatedSenderPolicies, now);
+      const latest = evaluated.at(-1);
+      if (!latest || latest.createdAt.getTime() > cutoff) continue;
+      const judgedMessages = evaluated.slice(-AMBIENT_CONTEXT_MESSAGES);
+      const actionable = [...judgedMessages]
+        .reverse()
+        .find(
+          (message) =>
+            message.senderIsBot && automatedSenderPolicies[message.senderId]?.mode === "action",
+        );
+      const decision = actionable
+        ? {
+            act: true,
+            reason: `${actionable.senderName} is configured as actionable.`,
+            askedByEventId: actionable.providerEventId,
+          }
+        : this.deps.judge
+          ? await this.deps.judge.decide({
+              bot: policy,
+              channelId: latest.externalConversation.conversationId,
+              channelName: latest.externalConversation.displayName ?? undefined,
+              rules,
+              messages: judgedMessages.map((message) => ({
+                eventId: message.providerEventId,
+                senderId: message.senderId,
+                senderName: message.senderName,
+                content: message.content,
+              })),
+            })
+          : { act: false, reason: "Ambient engagement judge is unavailable." };
       const trigger =
         judgedMessages.find((message) => message.providerEventId === decision.askedByEventId) ??
         latest;
-      const ids = messages.map((message) => message.id);
-      await this.deps.prisma.externalMessage.updateMany({
-        where: { id: { in: ids }, status: "observed" },
-        data: { status: "ignored", judgedAt: now },
-      });
+      await this.markAmbientIgnored(evaluated, now);
       if (!decision.act) continue;
       await this.deps.prisma.externalMessage.update({
         where: { id: trigger.id },
@@ -460,7 +490,7 @@ export class TeamChatBridge {
             provider: this.deps.provider.id,
             channelId: latest.externalConversation.conversationId,
             channelName: latest.externalConversation.displayName,
-            rules: policy.teamChatRules,
+            rules,
             reason: decision.reason,
             messages: judgedMessages.map((message) => ({
               senderId: message.senderId,
@@ -471,6 +501,49 @@ export class TeamChatBridge {
         },
       });
     }
+  }
+
+  private async markAmbientIgnored(messages: Array<{ id: string }>, judgedAt: Date): Promise<void> {
+    if (messages.length === 0) return;
+    await this.deps.prisma.externalMessage.updateMany({
+      where: { id: { in: messages.map(({ id }) => id) }, status: "observed" },
+      data: { status: "ignored", judgedAt },
+    });
+  }
+
+  private async dueRollupMessages<
+    T extends {
+      externalConversationId: string;
+      senderId: string;
+      senderName: string;
+    },
+  >(
+    messages: T[],
+    policies: Record<string, { mode: string; rollupHours?: number }>,
+    now: Date,
+  ): Promise<T[]> {
+    const dueSenders = new Set<string>();
+    for (const senderId of new Set(messages.map((message) => message.senderId))) {
+      const hours = policies[senderId]?.rollupHours;
+      if (!hours) continue;
+      const latest = await this.deps.prisma.externalMessage.findFirst({
+        where: {
+          externalConversationId: messages[0]?.externalConversationId,
+          senderId,
+          senderIsBot: true,
+          judgedAt: { not: null },
+        },
+        orderBy: { judgedAt: "desc" },
+        select: { judgedAt: true },
+      });
+      if (
+        !latest?.judgedAt ||
+        latest.judgedAt.getTime() <= now.getTime() - hours * 60 * 60 * 1000
+      ) {
+        dueSenders.add(senderId);
+      }
+    }
+    return messages.filter((message) => dueSenders.has(message.senderId));
   }
 
   private async queue(message: {

@@ -1,4 +1,9 @@
-import type { Actor, ExternalConversation } from "@rakazo/contracts";
+import {
+  type Actor,
+  AutomatedSenderPoliciesSchema,
+  type ExternalConversation,
+  type ExternalConversationPolicy,
+} from "@rakazo/contracts";
 import type { PrismaClient } from "./client.js";
 import { IsolationError } from "./scope.js";
 import { previewFromBlocks } from "./thread-listing.js";
@@ -21,7 +26,16 @@ export function createExternalConversationRepos(prisma: PrismaClient) {
           provider: true,
           displayName: true,
           participantNames: true,
+          teamChatAmbientEnabled: true,
+          teamChatRules: true,
+          automatedSenderPolicies: true,
           updatedAt: true,
+          messages: {
+            where: { senderIsBot: true },
+            orderBy: { createdAt: "desc" },
+            take: 100,
+            select: { senderId: true, senderName: true },
+          },
           thread: {
             select: {
               id: true,
@@ -46,12 +60,41 @@ export function createExternalConversationRepos(prisma: PrismaClient) {
           provider: conversation.provider,
           displayName: conversation.displayName,
           participantNames: conversation.participantNames,
+          teamChatAmbientEnabled: conversation.teamChatAmbientEnabled,
+          teamChatRules: conversation.teamChatRules,
+          automatedSenderPolicies: AutomatedSenderPoliciesSchema.parse(
+            conversation.automatedSenderPolicies,
+          ),
+          automatedSenders: [
+            ...new Map(
+              conversation.messages.map(({ senderId, senderName }) => [
+                senderId,
+                { id: senderId, name: senderName },
+              ]),
+            ).values(),
+          ],
           threadId: conversation.thread.id,
           preview: previewFromBlocks(conversation.thread.messages[0]?.blocks),
           unread: conversation.thread.unread,
           updatedAt: conversation.updatedAt.toISOString(),
         };
       });
+    },
+    async updatePolicy(
+      actor: Actor,
+      externalConversationId: string,
+      policy: ExternalConversationPolicy,
+    ): Promise<ExternalConversationPolicy> {
+      const result = await prisma.externalConversation.updateMany({
+        where: {
+          id: externalConversationId,
+          spaceId: actor.spaceId,
+          userId: actor.userId,
+        },
+        data: policy,
+      });
+      if (result.count !== 1) throw new IsolationError();
+      return policy;
     },
   };
 }

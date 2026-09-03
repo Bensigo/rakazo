@@ -177,6 +177,7 @@ import {
 import { speaker } from "../lib/tts";
 import { ActivityList } from "./ActivityList";
 import type { ContextMenuPosition } from "./BotContextMenu";
+import { ExternalConversationSettings } from "./ExternalConversationSettings";
 import { CreateGroupForm, GroupSettings, memberName } from "./GroupPanel";
 import { HostComputerPrompt } from "./HostComputerPrompt";
 import {
@@ -255,6 +256,7 @@ type Panel =
   | "create"
   | "create-group"
   | "group-settings"
+  | "external-settings"
   | null;
 
 type PendingAttachment = {
@@ -532,6 +534,9 @@ export function ShellPage() {
   );
   const activeExternalParticipantNames =
     activeExternalConversation?.participantNames.join(", ") ?? "";
+  useEffect(() => {
+    if (!inExternalConversation && panel === "external-settings") setPanel(null);
+  }, [inExternalConversation, panel]);
   const active = inGroup
     ? undefined
     : (bots.find((bot) =>
@@ -3206,7 +3211,14 @@ export function ShellPage() {
               <Menu size={19} strokeWidth={1.7} />
             </button>
             {inExternalConversation ? (
-              <div className="app-no-drag flex min-w-0 items-center gap-3">
+              <button
+                type="button"
+                data-testid="conversation-settings-trigger"
+                title={t`Conversation settings`}
+                aria-label={t`Conversation settings`}
+                onClick={() => setPanel(panel === "external-settings" ? null : "external-settings")}
+                className="app-no-drag flex min-w-0 items-center gap-3"
+              >
                 <span className="grid h-[26px] w-[26px] shrink-0 place-items-center rounded-md bg-[var(--rk-elevated)] text-[var(--rk-soft)]">
                   <MessageSquare size={14} strokeWidth={1.8} aria-hidden="true" />
                 </span>
@@ -3223,7 +3235,13 @@ export function ShellPage() {
                     {activeExternalParticipantNames || `Slack · ${active?.name ?? ""}`}
                   </span>
                 </span>
-              </div>
+                <Settings
+                  size={15}
+                  strokeWidth={1.7}
+                  className="shrink-0 text-[var(--rk-muted-2)]"
+                  aria-hidden="true"
+                />
+              </button>
             ) : (
               <button
                 type="button"
@@ -3412,6 +3430,8 @@ export function ShellPage() {
                 <span className="text-[13.5px] text-[var(--rk-muted)]">
                   {panel === "settings" ? (
                     <Trans>Settings</Trans>
+                  ) : panel === "external-settings" ? (
+                    <Trans>Conversation settings</Trans>
                   ) : active ? (
                     (computer?.state ?? active.status)
                   ) : (
@@ -3419,7 +3439,7 @@ export function ShellPage() {
                   )}
                 </span>
                 <div className="flex gap-3.5">
-                  {active ? (
+                  {active && panel !== "external-settings" ? (
                     <button
                       type="button"
                       aria-label={panel === "settings" ? t`Show computer` : t`Show settings`}
@@ -3558,6 +3578,26 @@ export function ShellPage() {
                     replace: true,
                   });
                   await refreshBots().catch(() => undefined);
+                }}
+              />
+            ) : null}
+            {panel === "external-settings" && activeExternalConversation && active ? (
+              <ExternalConversationSettings
+                key={activeExternalConversation.id}
+                conversation={activeExternalConversation}
+                bot={active}
+                onSave={async (policy) => {
+                  const saved = await rpc.externalConversations.updatePolicy({
+                    externalConversationId: activeExternalConversation.id,
+                    ...policy,
+                  });
+                  setExternalConversations((current) =>
+                    current.map((conversation) =>
+                      conversation.id === activeExternalConversation.id
+                        ? { ...conversation, ...saved }
+                        : conversation,
+                    ),
+                  );
                 }}
               />
             ) : null}
@@ -6193,10 +6233,10 @@ function BotSettings({
               checked={teamChatAmbientEnabled}
               onChange={(event) => setTeamChatAmbientEnabled(event.target.checked)}
             />
-            <Trans>Listen in Slack channels</Trans>
+            <Trans>Default Slack listening</Trans>
           </label>
           <label className="mt-4 block text-[14px] text-[var(--rk-muted)]">
-            <Trans>Channel rules</Trans>
+            <Trans>Default channel guidance</Trans>
             <textarea
               value={teamChatRules}
               maxLength={4000}

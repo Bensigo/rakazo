@@ -605,6 +605,9 @@ model ExternalConversation {
   conversationId   String
   displayName      String?
   participantNames String[]          @default([])
+  teamChatAmbientEnabled Boolean?
+  teamChatRules          String?     @db.Text
+  automatedSenderPolicies Json       @default("{}")
   spaceId          String
   space            Space             @relation(fields: [spaceId], references: [id], onDelete: Cascade)
   botId            String
@@ -628,6 +631,7 @@ model ExternalMessage {
   kind                   String               @default("direct")
   senderId               String
   senderName             String
+  senderIsBot            Boolean              @default(false)
   content                String               @db.Text
   threadMessageId        String?              @unique
   threadMessage          Message?             @relation("ExternalTranscriptMessage", fields: [threadMessageId], references: [id], onDelete: SetNull)

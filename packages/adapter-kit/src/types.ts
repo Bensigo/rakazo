@@ -529,6 +529,8 @@ export interface TeamChatInboundMessage {
   replyThreadId: string | null;
   senderId: string;
   senderName: string;
+  /** True when the provider identifies the sender as an automated app or bot. */
+  senderIsBot?: boolean;
   content: string;
 }
 

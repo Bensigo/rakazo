@@ -477,6 +477,225 @@ describe("team chat bridge", () => {
     );
     expect(enqueue).toHaveBeenCalledTimes(1);
   });
+
+  it("uses room listening and guidance instead of Arthur's defaults", async () => {
+    const records: Array<Record<string, unknown>> = [];
+    const sendUserMessage = vi.fn(async (input: { createRun?: boolean }) =>
+      input.createRun === false
+        ? { messageId: "message-visible", taskId: null, runId: null }
+        : { messageId: "message-prompt", taskId: "task-room", runId: "run-room" },
+    );
+    const judge = {
+      decide: vi.fn(async () => ({ act: false, reason: "No action needed." })),
+    };
+    const conversation = {
+      id: "conversation-ambient",
+      provider: "slack",
+      workspaceId: "T-1",
+      externalKey: "channel:C-1",
+      conversationId: "C-1",
+      displayName: "launch",
+      spaceId: "space-1",
+      botId: "bot-1",
+      userId: "owner-1",
+      teamChatAmbientEnabled: true,
+      teamChatRules: "Only engage when the launch owner changes.",
+      automatedSenderPolicies: {},
+      thread: { id: "thread-ambient" },
+    };
+    const prisma = ambientPrisma(records, conversation, false) as unknown as PrismaClient;
+    const bridge = new TeamChatBridge({
+      prisma,
+      events: { sendUserMessage },
+      jobs: { enqueue: vi.fn(async () => undefined) },
+      provider: new FakeTeamChatProvider(),
+      judge,
+      botId: "bot-1",
+      ambientDebounceMs: 0,
+      reconcileIntervalMs: 60_000,
+    });
+
+    await bridge.start();
+    await bridge.receive(ambientMessage());
+    await bridge.stop();
+
+    expect(judge.decide).toHaveBeenCalledWith(
+      expect.objectContaining({ rules: "Only engage when the launch owner changes." }),
+    );
+  });
+
+  it("mirrors ignored automated posts without invoking the judge", async () => {
+    const records: Array<Record<string, unknown>> = [];
+    const sendUserMessage = vi.fn(async () => ({
+      messageId: "message-visible",
+      taskId: null,
+      runId: null,
+    }));
+    const judge = {
+      decide: vi.fn(async () => ({ act: true, reason: "Should not run." })),
+    };
+    const conversation = {
+      id: "conversation-ambient",
+      provider: "slack",
+      workspaceId: "T-1",
+      externalKey: "channel:C-1",
+      conversationId: "C-1",
+      displayName: "launch",
+      spaceId: "space-1",
+      botId: "bot-1",
+      userId: "owner-1",
+      teamChatAmbientEnabled: true,
+      teamChatRules: null,
+      automatedSenderPolicies: {
+        "B-GITHUB": { name: "GitHub", mode: "ignore" },
+      },
+      thread: { id: "thread-ambient" },
+    };
+    const prisma = ambientPrisma(records, conversation, true) as unknown as PrismaClient;
+    const bridge = new TeamChatBridge({
+      prisma,
+      events: { sendUserMessage },
+      jobs: { enqueue: vi.fn(async () => undefined) },
+      provider: new FakeTeamChatProvider(),
+      judge,
+      botId: "bot-1",
+      ambientDebounceMs: 0,
+      reconcileIntervalMs: 60_000,
+    });
+
+    await bridge.start();
+    await bridge.receive({
+      ...ambientMessage(),
+      eventId: "Ev-github",
+      senderId: "B-GITHUB",
+      senderName: "GitHub",
+      senderIsBot: true,
+      content: "Pull request #42 is ready for review.",
+    });
+    await bridge.stop();
+
+    expect(sendUserMessage).toHaveBeenCalledOnce();
+    expect(judge.decide).not.toHaveBeenCalled();
+    expect(records[0]?.status).toBe("ignored");
+  });
+
+  it("runs actionable automated posts without spending a judge call", async () => {
+    const records: Array<Record<string, unknown>> = [];
+    const sendUserMessage = vi.fn(async (input: { createRun?: boolean }) =>
+      input.createRun === false
+        ? { messageId: "message-visible", taskId: null, runId: null }
+        : { messageId: "message-prompt", taskId: "task-action", runId: "run-action" },
+    );
+    const enqueue = vi.fn(async () => undefined);
+    const judge = {
+      decide: vi.fn(async () => ({ act: false, reason: "Should not be consulted." })),
+    };
+    const conversation = {
+      id: "conversation-ambient",
+      provider: "slack",
+      workspaceId: "T-1",
+      externalKey: "channel:C-1",
+      conversationId: "C-1",
+      displayName: "launch",
+      spaceId: "space-1",
+      botId: "bot-1",
+      userId: "owner-1",
+      teamChatAmbientEnabled: true,
+      teamChatRules: null,
+      automatedSenderPolicies: {
+        "B-GITHUB": { name: "GitHub", mode: "action" },
+      },
+      thread: { id: "thread-ambient" },
+    };
+    const prisma = ambientPrisma(records, conversation, true) as unknown as PrismaClient;
+    const bridge = new TeamChatBridge({
+      prisma,
+      events: { sendUserMessage },
+      jobs: { enqueue },
+      provider: new FakeTeamChatProvider(),
+      judge,
+      botId: "bot-1",
+      ambientDebounceMs: 0,
+      reconcileIntervalMs: 60_000,
+    });
+
+    await bridge.start();
+    await bridge.receive({
+      ...ambientMessage(),
+      eventId: "Ev-github",
+      senderId: "B-GITHUB",
+      senderName: "GitHub",
+      senderIsBot: true,
+      content: "Production deployment failed.",
+    });
+    await bridge.stop();
+
+    expect(judge.decide).not.toHaveBeenCalled();
+    expect(sendUserMessage).toHaveBeenCalledTimes(2);
+    expect(sendUserMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining("configured as actionable"),
+        hiddenInTranscript: true,
+      }),
+    );
+    expect(enqueue).toHaveBeenCalledOnce();
+  });
+
+  it("holds rollup posts until their configured interval elapses", async () => {
+    const records: Array<Record<string, unknown>> = [];
+    const sendUserMessage = vi.fn(async () => ({
+      messageId: "message-visible",
+      taskId: null,
+      runId: null,
+    }));
+    const judge = {
+      decide: vi.fn(async () => ({ act: true, reason: "Should remain grouped." })),
+    };
+    const conversation = {
+      id: "conversation-ambient",
+      provider: "slack",
+      workspaceId: "T-1",
+      externalKey: "channel:C-1",
+      conversationId: "C-1",
+      displayName: "launch",
+      spaceId: "space-1",
+      botId: "bot-1",
+      userId: "owner-1",
+      teamChatAmbientEnabled: true,
+      teamChatRules: null,
+      automatedSenderPolicies: {
+        "B-LINEAR": { name: "Linear", mode: "rollup", rollupHours: 6 },
+      },
+      thread: { id: "thread-ambient" },
+    };
+    const prisma = ambientPrisma(records, conversation, true);
+    prisma.externalMessage.findFirst.mockResolvedValue({ judgedAt: new Date() });
+    const bridge = new TeamChatBridge({
+      prisma: prisma as unknown as PrismaClient,
+      events: { sendUserMessage },
+      jobs: { enqueue: vi.fn(async () => undefined) },
+      provider: new FakeTeamChatProvider(),
+      judge,
+      botId: "bot-1",
+      ambientDebounceMs: 0,
+      reconcileIntervalMs: 60_000,
+    });
+
+    await bridge.start();
+    await bridge.receive({
+      ...ambientMessage(),
+      eventId: "Ev-linear",
+      senderId: "B-LINEAR",
+      senderName: "Linear",
+      senderIsBot: true,
+      content: "Issue ENG-42 changed status.",
+    });
+    await bridge.stop();
+
+    expect(sendUserMessage).toHaveBeenCalledOnce();
+    expect(judge.decide).not.toHaveBeenCalled();
+    expect(records[0]?.status).toBe("observed");
+  });
 });
 
 function ambientMessage(): TeamChatInboundMessage {
@@ -563,6 +782,7 @@ function ambientPrisma(
           return record;
         },
       ),
+      findFirst: vi.fn(async () => null as { judgedAt: Date } | null),
     },
     run: { findMany: vi.fn(async () => []) },
     message: { findFirst: vi.fn(async () => null) },

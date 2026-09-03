@@ -21,6 +21,12 @@ test("opens a Slack conversation beneath its assigned agent as a read-only trans
     provider: "slack",
     displayName: "Leadership group",
     participantNames: ["Pat", "Slack Owner", "Chief"],
+    teamChatAmbientEnabled: null,
+    teamChatRules: null,
+    automatedSenderPolicies: {
+      "B-GITHUB": { name: "GitHub", mode: "ignore" as const },
+    },
+    automatedSenders: [{ id: "B-GITHUB", name: "GitHub" }],
     threadId: "external-thread-1",
     preview: "GROUP DM OK",
     unread: false,
@@ -118,6 +124,17 @@ test("opens a Slack conversation beneath its assigned agent as a read-only trans
       body: JSON.stringify({ json: snapshot }),
     });
   });
+  let savedPolicy: Record<string, unknown> | undefined;
+  await page.route("**/rpc/externalConversations/updatePolicy", async (route) => {
+    const input = route.request().postDataJSON() as { json: Record<string, unknown> };
+    savedPolicy = input.json;
+    const { externalConversationId: _, ...policy } = input.json;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ json: policy }),
+    });
+  });
 
   await page.reload({ waitUntil: "domcontentloaded" });
   const conversationButton = page.locator(`[data-external-conversation-id="${conversation.id}"]`);
@@ -140,6 +157,27 @@ test("opens a Slack conversation beneath its assigned agent as a read-only trans
   await expect(speakerMessages.nth(0)).toHaveText("@Pat: Can Chief confirm the launch date?");
   await expect(speakerMessages.nth(1)).toHaveText("@Slack Owner: It is still Friday.");
   await expect(speakerMessages.nth(0)).toHaveCSS("color", "rgb(46, 46, 50)");
+
+  await page.getByTestId("conversation-settings-trigger").click();
+  await expect(page.getByTestId("side-panel")).toHaveAttribute("data-panel", "external-settings");
+  await page.getByRole("button", { name: "Listen", exact: true }).click();
+  await page.getByLabel("Room guidance").fill("Engage when a launch owner or date changes.");
+  await page.getByLabel("GitHub handling").selectOption("action");
+  await page
+    .getByTestId("external-conversation-settings")
+    .getByRole("button", { name: "Save" })
+    .click();
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  expect(savedPolicy).toEqual({
+    externalConversationId: conversation.id,
+    teamChatAmbientEnabled: true,
+    teamChatRules: "Engage when a launch owner or date changes.",
+    automatedSenderPolicies: {
+      "B-GITHUB": { name: "GitHub", mode: "action" },
+    },
+  });
+  await captureScreenshot(page, testInfo, "slack-conversation-settings");
+  await page.getByRole("button", { name: "Close panel" }).click();
   await captureScreenshot(page, testInfo, "slack-conversation-transcript");
 
   await page.setViewportSize({ width: 390, height: 844 });

@@ -106,6 +106,38 @@ describe("Slack team chat adapter", () => {
     });
   });
 
+  it("keeps third-party bot posts for room policy evaluation", () => {
+    const parsed = parseSlackSocketEnvelope(
+      {
+        envelope_id: "env-bot",
+        type: "events_api",
+        payload: {
+          event_id: "Ev-bot",
+          team_id: "T-1",
+          event: {
+            type: "message",
+            subtype: "bot_message",
+            bot_id: "B-GITHUB",
+            bot_profile: { name: "GitHub" },
+            channel_type: "channel",
+            channel: "C-1",
+            text: "Pull request #42 is ready for review",
+            ts: "103.002",
+          },
+        },
+      },
+      "U-ARTHUR",
+    );
+
+    expect(parsed.message).toMatchObject({
+      kind: "ambient",
+      senderId: "B-GITHUB",
+      senderName: "GitHub",
+      senderIsBot: true,
+      content: "Pull request #42 is ready for review",
+    });
+  });
+
   it("does not mirror a mention through the ambient message event", () => {
     const parsed = parseSlackSocketEnvelope(
       {
@@ -130,7 +162,7 @@ describe("Slack team chat adapter", () => {
     expect(parsed.message).toBeUndefined();
   });
 
-  it("ignores bot messages, edited messages, and empty mentions", () => {
+  it("ignores Arthur's own messages, edited messages, and empty mentions", () => {
     const base = {
       envelope_id: "env-3",
       type: "events_api",
@@ -153,10 +185,36 @@ describe("Slack team chat adapter", () => {
           ...base,
           payload: {
             ...base.payload,
-            event: { ...base.payload.event, bot_id: "B-1" },
+            event: {
+              ...base.payload.event,
+              user: "U-ARTHUR",
+              bot_id: "B-ARTHUR",
+              subtype: "bot_message",
+            },
           },
         },
         "U-ARTHUR",
+      ).message,
+    ).toBeUndefined();
+    expect(
+      parseSlackSocketEnvelope(
+        {
+          ...base,
+          payload: {
+            ...base.payload,
+            event: {
+              ...base.payload.event,
+              type: "message",
+              channel_type: "channel",
+              user: undefined,
+              bot_id: "B-ARTHUR",
+              subtype: "bot_message",
+              text: "Arthur's reply",
+            },
+          },
+        },
+        "U-ARTHUR",
+        "B-ARTHUR",
       ).message,
     ).toBeUndefined();
     expect(
