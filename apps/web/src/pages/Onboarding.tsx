@@ -288,6 +288,7 @@ export function OnboardingPage() {
                     type="button"
                     aria-pressed={isSelected}
                     onClick={() => {
+                      if (isSelected) return;
                       cancelOAuthAttempt();
                       setProvider(entry.provider);
                       setModelId(
