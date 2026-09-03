@@ -79,9 +79,12 @@ test("first run asks whether to use a local or existing instance", async () => {
   await expect(setup.getByText("This computer")).toBeVisible();
   await expect(setup.getByText("Existing instance")).toBeVisible();
 
-  // A new instance is the default and points at the local development stack.
+  // A new instance is the default: the app runs the stack itself at the local address.
   await expect(setup.getByRole("radio", { name: /This computer/ })).toBeChecked();
-  await expect(setup.locator("#local-url")).toHaveValue("http://127.0.0.1:5173");
+  // The panel is empty until a start begins, so check the attribute rather than the box.
+  await expect(setup.locator("#panel-new")).toHaveJSProperty("hidden", false);
+  await expect(setup.locator("#stack")).toBeHidden();
+  await expect(setup.getByRole("button", { name: "Check connection" })).toBeHidden();
   await expect(setup.locator("#panel-existing")).toBeHidden();
 
   await setup.screenshot({
