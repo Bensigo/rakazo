@@ -882,6 +882,47 @@ describe("computer replacement", () => {
     expect(prisma.run.findFirst).not.toHaveBeenCalled();
   });
 
+  it("blocks reset while expired control revocation is still in progress", async () => {
+    const computer = {
+      id: "computer-1",
+      homeKey: "bot-1",
+      providerRef: "provider-1",
+      kind: "fake",
+      scope: "dedicated",
+      state: "running",
+      controlHolder: "user",
+      controlLeaseId: "lease-1",
+      controlLeaseExpiresAt: new Date(Date.now() - 60_000),
+      controlBotId: null,
+      spaceId: "space-1",
+      userId: "user-1",
+    };
+    const findUniqueOrThrow = vi.fn().mockResolvedValue(computer);
+    const findUnique = vi.fn().mockResolvedValue(computer);
+    const prisma = {
+      computer: { findUniqueOrThrow, findUnique, updateMany: vi.fn() },
+      run: { findFirst: vi.fn() },
+    } as unknown as PrismaClient;
+    const sandbox = new FakeSandboxProvider();
+    sandbox.setScreenControl = vi.fn().mockRejectedValue(new Error("provider unavailable"));
+
+    await expect(
+      replaceComputer(
+        {
+          prisma,
+          sandbox,
+          home: {} as AgentHomeStore,
+          jobs: {} as JobPublisher,
+          events: {} as ThreadEvents,
+        },
+        "computer-1",
+        "reset",
+        context,
+      ),
+    ).rejects.toThrow("computer control revocation is still in progress");
+    expect(prisma.computer.updateMany).not.toHaveBeenCalled();
+  });
+
   it("rejects replacement when control is claimed before the suspending lock", async () => {
     const prisma = {
       computer: {
