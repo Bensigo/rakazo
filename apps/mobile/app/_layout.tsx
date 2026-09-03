@@ -13,9 +13,7 @@ import {
   resumeLiveNotifications,
 } from "../lib/live-notifications";
 import { native, useResolvedAppearance } from "../lib/native";
-import { applyMobileUiDirection } from "../lib/ui-direction";
 
-applyMobileUiDirection();
 configureForegroundNotifications();
 
 const lightTheme = {

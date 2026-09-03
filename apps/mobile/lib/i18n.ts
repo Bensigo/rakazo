@@ -63,6 +63,8 @@ export function activateUiLocale(locale: UiLocale): UiLocale {
 
 async function applyDirection(locale: UiLocale): Promise<void> {
   try {
+    // Direction follows the active UI locale only (en / zh-CN → LTR), never the
+    // device language. Applying device RTL here would fight this and reload-loop.
     const { applyMobileUiDirection } = await import("./ui-direction");
     applyMobileUiDirection(htmlLangForLocale(locale));
   } catch {
