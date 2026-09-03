@@ -1299,7 +1299,9 @@ function Thread() {
           size={28}
           status={currentBotStatus}
         />
-        <Text style={{ color: "#85858A", fontSize: 13.5 }}>{currentBot.name} is working</Text>
+        <Text style={{ color: "#85858A", fontSize: 13.5 }}>
+          {t("{name} is working", { name: currentBot.name })}
+        </Text>
       </View>
     ) : inGroup && workingGroupBots.length > 0 ? (
       <View
