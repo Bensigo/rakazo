@@ -2470,7 +2470,9 @@ function MessageTextCard({
         </Text>
       ) : null}
       {message.role === "user" ? (
-        <Text style={{ color: mobileTokens().userBubbleInk, fontSize: 15.5, lineHeight: 23 }}>{contentText}</Text>
+        <Text style={{ color: mobileTokens().userBubbleInk, fontSize: 15.5, lineHeight: 23 }}>
+          {contentText}
+        </Text>
       ) : (
         <>
           <ChatMarkdown streaming={message.id.startsWith("progress:")}>{contentText}</ChatMarkdown>
