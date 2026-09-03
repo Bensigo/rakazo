@@ -1,5 +1,6 @@
 {
   "name": "@rakazo/desktop",
+  "productName": "Rakazo",
   "version": "0.1.1",
   "license": "Apache-2.0",
   "type": "module",
@@ -28,7 +29,6 @@
   },
   "build": {
     "appId": "dev.rakazo.desktop",
-    "productName": "Rakazo",
     "directories": {
       "output": "out",
       "buildResources": "assets"
