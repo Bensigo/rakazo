@@ -97,7 +97,11 @@ describe("account preferences", () => {
 });
 
 describe("model setup gate", () => {
-  function modelGateDeps(options: { agentRuntime: string; deploymentModelKey?: string }) {
+  function modelGateDeps(options: {
+    agentRuntime: string;
+    deploymentModelKey?: string;
+    deploymentModelCredentialCipher?: string;
+  }) {
     const prisma = {
       user: {
         findUniqueOrThrow: vi.fn().mockResolvedValue({
@@ -107,7 +111,15 @@ describe("model setup gate", () => {
         }),
       },
       spaceModelPreference: { findFirst: vi.fn().mockResolvedValue(null) },
-      deploymentSettings: { findUnique: vi.fn().mockResolvedValue(null) },
+      deploymentSettings: {
+        findUnique: vi
+          .fn()
+          .mockResolvedValue(
+            options.deploymentModelCredentialCipher
+              ? { deploymentModelCredentialCipher: options.deploymentModelCredentialCipher }
+              : null,
+          ),
+      },
     } as unknown as PrismaClient;
     const deps = {
       prisma,
@@ -182,6 +194,20 @@ describe("model setup gate", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       json: expect.objectContaining({ needsModel: false }),
+    });
+  });
+
+  it("does not accept a stored deployment cipher the executor cannot use", async () => {
+    const { actor, handler } = modelGateDeps({
+      agentRuntime: "pi",
+      deploymentModelCredentialCipher: "legacy-ciphertext",
+    });
+
+    const response = await call(handler, actor, "me", null);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      json: expect.objectContaining({ needsModel: true }),
     });
   });
 });

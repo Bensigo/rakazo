@@ -3704,9 +3704,7 @@ async function modelSetup(deps: RouterDeps, actor: Actor) {
     findDefaultModelCredential(deps.prisma, actor),
     deps.prisma.deploymentSettings.findUnique({ where: { id: "default" } }),
   ]);
-  const hasDeployment = Boolean(
-    settings?.deploymentModelCredentialCipher || deps.env.deploymentModelKey,
-  );
+  const hasDeployment = Boolean(deps.env.deploymentModelKey);
   return {
     credential,
     settings,
