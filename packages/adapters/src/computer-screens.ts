@@ -37,10 +37,11 @@ export class SingleScreenClaimTracker {
     });
   }
 
-  release(computerId: string, context?: AdapterContext): void {
+  /** Returns true when this call cleared the in-memory claim. */
+  release(computerId: string, context?: AdapterContext): boolean {
     if (!context) {
       this.owners.delete(computerId);
-      return;
+      return true;
     }
     const owner = this.owners.get(computerId);
     if (
@@ -48,7 +49,9 @@ export class SingleScreenClaimTracker {
       canReleaseScreenLease(owner.leaseId, context.screenLeaseId)
     ) {
       this.owners.delete(computerId);
+      return true;
     }
+    return false;
   }
 }
 

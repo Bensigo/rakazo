@@ -74,10 +74,10 @@ describe("Team Computer parallel screens", () => {
     claims.claim("computer-1", oldRun);
     claims.claim("computer-1", newRun);
 
-    claims.release("computer-1", oldRun);
+    expect(claims.release("computer-1", oldRun)).toBe(false);
     expect(() => claims.claim("computer-1", researcher)).toThrow(ComputerScreenUnavailableError);
 
-    claims.release("computer-1", newRun);
+    expect(claims.release("computer-1", newRun)).toBe(true);
     expect(() => claims.claim("computer-1", researcher)).not.toThrow();
   });
 
