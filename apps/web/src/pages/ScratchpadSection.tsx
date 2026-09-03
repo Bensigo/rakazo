@@ -106,7 +106,7 @@ export function ScratchpadSection({ botId }: { botId: string }) {
         <Trans>Open work</Trans>
       </div>
       {items.length === 0 ? (
-        <div className="px-2.5 py-1 text-[13.5px] text-muted-foreground/80">
+        <div className="py-1 text-[13.5px] text-muted-foreground/80">
           <Trans>None yet</Trans>
         </div>
       ) : (
@@ -173,7 +173,7 @@ export function ScratchpadSection({ botId }: { botId: string }) {
         ))
       )}
       <form
-        className="mt-2 flex items-center gap-2 px-2.5"
+        className="mt-2 flex items-center gap-2"
         onSubmit={(event) => {
           event.preventDefault();
           void addItem();
@@ -196,7 +196,7 @@ export function ScratchpadSection({ botId }: { botId: string }) {
           <Trans>Add</Trans>
         </Button>
       </form>
-      {error ? <div className="mt-2 px-2.5 text-[13px] text-destructive">{error}</div> : null}
+      {error ? <div className="mt-2 text-[13px] text-destructive">{error}</div> : null}
     </div>
   );
 }
