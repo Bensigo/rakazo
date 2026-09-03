@@ -82,6 +82,7 @@ import {
   resumeLiveNotifications,
   setOpenNotificationThread,
 } from "../lib/live-notifications";
+import { presentMessageActionSheet } from "../lib/message-action-sheet";
 import {
   hasVisibleMessagePresentation,
   isCenteredAgentEvent,
@@ -1236,46 +1237,50 @@ function Thread() {
             flexShrink: 1,
           }}
         >
-          <View
-            style={{
-              alignSelf: message.role === "user" ? "flex-end" : "flex-start",
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 12,
-              marginBottom: 4,
+          <Pressable
+            accessibilityHint={t("Long press for message actions")}
+            delayLongPress={350}
+            onLongPress={() => {
+              const copyText = copyableMobileMessageText(message);
+              presentMessageActionSheet({
+                canReact: canReactToThreadMessage(message),
+                reacted: Boolean(message.thumbsUp),
+                onReact: () => void reactToMessage(message),
+                onReply: () => setReplyTarget(message),
+                copyText,
+                timeLabel: message.createdAt
+                  ? new Date(message.createdAt).toLocaleTimeString(undefined, {
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })
+                  : t("Message"),
+                labels: {
+                  react: t("React"),
+                  removeReact: t("Remove reaction"),
+                  reply: t("Reply"),
+                  copy: t("Copy"),
+                  cancel: t("Cancel"),
+                },
+              });
             }}
           >
-            <Pressable accessibilityLabel={t("Reply")} onPress={() => setReplyTarget(message)}>
-              <Text style={{ color: "#6C6C70", fontSize: 12 }}>{t("Reply")}</Text>
-            </Pressable>
-            {canReactToThreadMessage(message) ? (
-              <Pressable
-                accessibilityLabel={message.thumbsUp ? t("Remove thumbs-up") : t("Add thumbs-up")}
-                accessibilityState={{ selected: Boolean(message.thumbsUp) }}
-                onPress={() => void reactToMessage(message)}
-              >
-                <Text style={{ color: message.thumbsUp ? "#E9C46A" : "#6C6C70", fontSize: 13 }}>
-                  👍
-                </Text>
-              </Pressable>
-            ) : null}
-          </View>
-          <MessageBubble
-            botId={botId ?? snap?.members?.[0]?.botId ?? ""}
-            groupId={groupId}
-            message={message}
-            botName={name}
-            bots={mentionBots}
-            members={snap?.members}
-            replyPreview={
-              message.replyToMessageId ? messagesById.get(message.replyToMessageId) : undefined
-            }
-            canAnswer={message.id === answerableAskMessageId}
-            onAnswer={answerMessage}
-            onOpenBot={openBot}
-            onPreviewMarkdown={setMarkdownPreview}
-            onSpeak={message.role === "bot" ? speak : undefined}
-          />
+            <MessageBubble
+              botId={botId ?? snap?.members?.[0]?.botId ?? ""}
+              groupId={groupId}
+              message={message}
+              botName={name}
+              bots={mentionBots}
+              members={snap?.members}
+              replyPreview={
+                message.replyToMessageId ? messagesById.get(message.replyToMessageId) : undefined
+              }
+              canAnswer={message.id === answerableAskMessageId}
+              onAnswer={answerMessage}
+              onOpenBot={openBot}
+              onPreviewMarkdown={setMarkdownPreview}
+              onSpeak={message.role === "bot" ? speak : undefined}
+            />
+          </Pressable>
         </View>
       </View>
     );
@@ -1958,6 +1963,22 @@ function previewMessageText(message: MobileMessage): string {
     return t("Attachment");
   }
   return t("Message");
+}
+
+function copyableMobileMessageText(message: MobileMessage): string {
+  return message.blocks
+    .map((block) => {
+      if (block.kind === "channel_message") {
+        return `${messagingProviderLabel(block.provider)} · ${block.fromLabel}: ${block.text}`;
+      }
+      if (block.kind === "text" || block.kind === "progress" || block.kind === "ask") {
+        return block.text;
+      }
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n")
+    .trim();
 }
 
 function memberName(

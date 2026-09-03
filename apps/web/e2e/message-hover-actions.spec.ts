@@ -30,9 +30,14 @@ test("message hover shows beside-bubble actions; reply links to parent", async (
 
   const transcript = page.getByTestId("transcript");
 
-  // Bot welcome (left bubble): icons sit to the right, vertically centered.
+  // Bot welcome (left bubble): rail hidden at rest, then beside on hover.
   const botRow = transcript.locator(`[data-message-id]`).first();
   await expect(botRow).toBeVisible();
+  await page.mouse.move(0, 0);
+  const botRailAtRest = botRow.getByTestId("message-hover-rail");
+  await expect(botRailAtRest).toBeHidden();
+  await captureScreenshot(page, testInfo, "message-actions-rest-desktop");
+
   const botRail = await revealHoverRail(botRow);
   const botToolbar = botRow.getByTestId("message-hover-actions");
   await expect(botToolbar.getByRole("button", { name: "Reply" })).toBeVisible();
@@ -57,6 +62,7 @@ test("message hover shows beside-bubble actions; reply links to parent", async (
     .toEqual({ beside: true, flush: true, centered: true, notBelow: true });
   await captureScreenshot(page, testInfo, "message-bot-actions-desktop");
   await clearHoverRail(botRail);
+  await page.mouse.move(0, 0);
 
   const parentText = `hover-parent-${stamp}`;
   const replyText = `hover-reply-${stamp}`;
@@ -135,8 +141,15 @@ test("message hover shows beside-bubble actions; reply links to parent", async (
   // Escape closes More and restores focus to the trigger so the rail stays up.
   await page.keyboard.press("Escape");
   await expect(toolbar.getByRole("button", { name: "More" })).toBeFocused();
+  await captureScreenshot(page, testInfo, "message-user-actions-hover-desktop");
+  // Default transcript shot: rail at rest (no hover pin, mouse clear).
+  await clearHoverRail(rail);
+  await page.mouse.move(0, 0);
+  await expect(parentRow.getByTestId("message-hover-rail")).toBeHidden();
   await captureScreenshot(page, testInfo, "message-user-bubble-desktop");
 
+  // Clip shot of bubble + rail for gallery geometry.
+  await revealHoverRail(parentRow);
   const railBox = await rail.boundingBox();
   const frameBox = await frame.boundingBox();
   if (!railBox || !frameBox) throw new Error("missing hover toolbar geometry");
