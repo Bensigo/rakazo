@@ -37,8 +37,8 @@ Opening the gate is an explicit operator choice. Public hostnames must
 resolve only to public addresses; redirects and DNS answers that reach
 private or link-local networks are rejected.
 
-Published-images `.env` templates do not set this variable. Add it yourself
-when you need public endpoints.
+Published-images `.env` templates leave this unset by default (commented
+example in `.env.images.example`). Set `=1` when you need public endpoints.
 
 ## Connect in the UI
 
