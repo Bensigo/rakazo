@@ -2699,6 +2699,10 @@ msgstr "Geteilt"
 msgid "Show computer"
 msgstr "Computer anzeigen"
 
+#: src/pages/PluginsOverlay.tsx:418
+msgid "Show more"
+msgstr "Mehr anzeigen"
+
 #: src/pages/Auth.tsx:161
 msgid "Show password"
 msgstr ""

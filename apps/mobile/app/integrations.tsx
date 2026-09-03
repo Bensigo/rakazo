@@ -2,8 +2,9 @@ import type { CapabilityInstall, Connection, ConnectionCatalogItem } from "@raka
 import {
   abortableDelay,
   buildFeaturedConnectorTiles,
+  CONNECTION_CATALOG_PAGE_SIZE,
   EMPTY_PLUGIN_CATALOG_MESSAGE,
-  matchFeaturedConnectorId,
+  filterConnectionCatalogItems,
 } from "@rakazo/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -32,6 +33,8 @@ export default function Integrations() {
   const { width } = useWindowDimensions();
   const catalogColumns = width >= 480 ? 2 : 1;
   const [catalog, setCatalog] = useState<ConnectionCatalogItem[]>([]);
+  const [query, setQuery] = useState("");
+  const [visibleCount, setVisibleCount] = useState(CONNECTION_CATALOG_PAGE_SIZE);
   const [sources, setSources] = useState<CapabilityInstall[]>([]);
   const [sourceKind, setSourceKind] = useState<SourceKind | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -47,15 +50,9 @@ export default function Integrations() {
   const connectionAttempt = useRef<AbortController | null>(null);
 
   const featuredTiles = useMemo(() => buildFeaturedConnectorTiles(catalog), [catalog]);
-  const catalogApps = useMemo(
-    () =>
-      catalog.filter(
-        (item) =>
-          matchFeaturedConnectorId(item.slug) === null &&
-          matchFeaturedConnectorId(item.name) === null,
-      ),
-    [catalog],
-  );
+  const showFeatured = !query.trim();
+  const catalogApps = useMemo(() => filterConnectionCatalogItems(catalog, query), [catalog, query]);
+  const renderedApps = catalogApps.slice(0, visibleCount);
 
   async function refresh() {
     const catalogResult = await rpc<ConnectionCatalogItem[]>("connections/catalog");
@@ -216,8 +213,23 @@ export default function Integrations() {
 
   return (
     <SafeAreaView edges={["bottom"]} style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
         <Text style={styles.explanation}>{t("Connect apps.")}</Text>
+
+        <TextInput
+          value={query}
+          onChangeText={(value) => {
+            setQuery(value);
+            setVisibleCount(CONNECTION_CATALOG_PAGE_SIZE);
+          }}
+          accessibilityLabel={t("Search apps")}
+          placeholder={t("Search apps")}
+          placeholderTextColor={native.tertiaryLabel}
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+          style={styles.input}
+        />
 
         {catalogError ? <Text style={styles.error}>{catalogError}</Text> : null}
 
@@ -229,48 +241,50 @@ export default function Integrations() {
 
         {catalogReady && catalog.length > 0 ? (
           <View style={catalogColumns === 2 ? styles.catalogGrid : styles.catalogStack}>
-            {featuredTiles.map((tile) => {
-              const item = tile.item;
-              const key = item ? `${item.connectorId}:${item.slug}` : tile.id;
-              const disabled = tile.missing || !item;
-              const connected = item?.connected ?? false;
-              return (
-                <View
-                  key={key}
-                  style={[
-                    styles.row,
-                    catalogColumns === 2 ? styles.catalogCell : null,
-                    disabled ? { opacity: 0.7 } : null,
-                  ]}
-                >
-                  <View style={styles.grow}>
-                    <Text numberOfLines={1} style={styles.title}>
-                      {tile.label}
-                    </Text>
-                    {disabled ? (
-                      <Text style={styles.secondary}>{t("Not in the plugin catalog")}</Text>
-                    ) : null}
-                  </View>
-                  {disabled || !item ? null : (
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={
-                        connected
-                          ? t("Remove {name}", { name: tile.label })
-                          : t("Add {name}", { name: tile.label })
-                      }
-                      disabled={pending === key}
-                      onPress={() => void (connected ? revoke(item) : connect(item))}
+            {showFeatured
+              ? featuredTiles.map((tile) => {
+                  const item = tile.item;
+                  const key = item ? `${item.connectorId}:${item.slug}` : tile.id;
+                  const disabled = tile.missing || !item;
+                  const connected = item?.connected ?? false;
+                  return (
+                    <View
+                      key={key}
+                      style={[
+                        styles.row,
+                        catalogColumns === 2 ? styles.catalogCell : null,
+                        disabled ? { opacity: 0.7 } : null,
+                      ]}
                     >
-                      <Text style={styles.link}>
-                        {pending === key ? t("Working…") : connected ? t("Remove") : t("Add")}
-                      </Text>
-                    </Pressable>
-                  )}
-                </View>
-              );
-            })}
-            {catalogApps.map((item) => {
+                      <View style={styles.grow}>
+                        <Text numberOfLines={1} style={styles.title}>
+                          {tile.label}
+                        </Text>
+                        {disabled ? (
+                          <Text style={styles.secondary}>{t("Not in the plugin catalog")}</Text>
+                        ) : null}
+                      </View>
+                      {disabled || !item ? null : (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={
+                            connected
+                              ? t("Remove {name}", { name: tile.label })
+                              : t("Add {name}", { name: tile.label })
+                          }
+                          disabled={pending === key}
+                          onPress={() => void (connected ? revoke(item) : connect(item))}
+                        >
+                          <Text style={styles.link}>
+                            {pending === key ? t("Working…") : connected ? t("Remove") : t("Add")}
+                          </Text>
+                        </Pressable>
+                      )}
+                    </View>
+                  );
+                })
+              : null}
+            {renderedApps.map((item) => {
               const key = `${item.connectorId}:${item.slug}`;
               return (
                 <View
@@ -300,6 +314,20 @@ export default function Integrations() {
               );
             })}
           </View>
+        ) : null}
+
+        {catalogReady && catalog.length > 0 && catalogApps.length === 0 && !showFeatured ? (
+          <Text style={styles.secondary}>{t("No apps match your search.")}</Text>
+        ) : null}
+
+        {renderedApps.length < catalogApps.length ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setVisibleCount((count) => count + CONNECTION_CATALOG_PAGE_SIZE)}
+            style={styles.smallButton}
+          >
+            <Text style={styles.buttonLabel}>{t("Show more")}</Text>
+          </Pressable>
         ) : null}
 
         <Pressable
