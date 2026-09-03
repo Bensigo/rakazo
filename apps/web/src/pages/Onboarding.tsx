@@ -10,7 +10,10 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { localizedProviderHint } from "../lib/localized-provider-hint";
 import type { ModelCatalogEntry } from "../lib/model-auth";
-import { featuredModelProviders, keepSelectedProviderVisible } from "../lib/onboarding-providers";
+import {
+  featuredModelProviders,
+  selectedProviderOutsideSearchResults,
+} from "../lib/onboarding-providers";
 import { rpc } from "../lib/rpc";
 import { useModelOAuthSignIn } from "../lib/use-model-oauth-signin";
 
@@ -98,12 +101,21 @@ export function OnboardingPage() {
   }, [catalog, providers, query]);
 
   const displayedProviders = useMemo(
-    () =>
-      showAllProviders
-        ? keepSelectedProviderVisible(filteredProviders, providers, provider)
-        : featuredModelProviders(providers, provider),
+    () => (showAllProviders ? filteredProviders : featuredModelProviders(providers, provider)),
     [filteredProviders, provider, providers, showAllProviders],
   );
+
+  const selectedProviderOutsideResults = useMemo(
+    () =>
+      showAllProviders
+        ? selectedProviderOutsideSearchResults(filteredProviders, providers, provider)
+        : undefined,
+    [filteredProviders, provider, providers, showAllProviders],
+  );
+
+  const providerRows = selectedProviderOutsideResults
+    ? [selectedProviderOutsideResults, ...displayedProviders]
+    : displayedProviders;
 
   const modelsForProvider = useMemo(
     () => catalog.filter((entry) => entry.provider === provider),
@@ -266,8 +278,10 @@ export function OnboardingPage() {
                 showAllProviders ? "max-h-64" : ""
               }`}
             >
-              {displayedProviders.map((entry) => {
+              {providerRows.map((entry) => {
                 const isSelected = entry.provider === provider;
+                const isOutsideSearchResults =
+                  entry.provider === selectedProviderOutsideResults?.provider;
                 return (
                   <button
                     key={entry.provider}
@@ -290,12 +304,19 @@ export function OnboardingPage() {
                       isSelected ? "bg-muted" : "hover:bg-accent"
                     }`}
                   >
-                    <span
-                      className={`min-w-0 flex-1 text-[15px] text-foreground ${isSelected ? "font-medium" : ""}`}
-                    >
-                      {entry.provider === "openai-codex"
-                        ? "ChatGPT"
-                        : (entry.providerName ?? entry.provider)}
+                    <span className="flex min-w-0 flex-1 items-center gap-2">
+                      <span
+                        className={`truncate text-[15px] text-foreground ${isSelected ? "font-medium" : ""}`}
+                      >
+                        {entry.provider === "openai-codex"
+                          ? "ChatGPT"
+                          : (entry.providerName ?? entry.provider)}
+                      </span>
+                      {isOutsideSearchResults ? (
+                        <span className="shrink-0 text-[11px] text-muted-foreground">
+                          <Trans>Selected</Trans>
+                        </span>
+                      ) : null}
                     </span>
                     <span className="text-[12px] text-muted-foreground">
                       {localizedProviderHint(entry)}

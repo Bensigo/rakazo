@@ -31,6 +31,13 @@ test("onboarding model list never labels an older model the latest one", async (
     "aria-pressed",
     "true",
   );
+  await page.getByPlaceholder("Search providers and models").fill("no-provider-or-model");
+  await expect(page.getByRole("button", { name: /Anthropic.*Selected/ })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.getByText("No providers found")).toBeVisible();
+  await page.getByPlaceholder("Search providers and models").fill("anthropic");
 
   const models = page.getByRole("combobox", { name: "Model", exact: true });
   const labels = await models.getByRole("option").allTextContents();

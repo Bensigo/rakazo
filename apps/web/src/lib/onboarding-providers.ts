@@ -31,15 +31,14 @@ export function featuredModelProviders(
   return [...featured.slice(0, DEFAULT_PROVIDER_COUNT - 1), selected];
 }
 
-/** Search results still show the active choice, even when its text does not match the query. */
-export function keepSelectedProviderVisible(
+/** Return the active choice separately when it is not one of the search results. */
+export function selectedProviderOutsideSearchResults(
   filteredProviders: readonly ModelCatalogEntry[],
   allProviders: readonly ModelCatalogEntry[],
   selectedProvider: string,
-): ModelCatalogEntry[] {
+): ModelCatalogEntry | undefined {
   if (filteredProviders.some((entry) => entry.provider === selectedProvider)) {
-    return [...filteredProviders];
+    return undefined;
   }
-  const selected = allProviders.find((entry) => entry.provider === selectedProvider);
-  return selected ? [selected, ...filteredProviders] : [...filteredProviders];
+  return allProviders.find((entry) => entry.provider === selectedProvider);
 }

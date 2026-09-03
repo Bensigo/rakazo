@@ -1,6 +1,9 @@
 import type { ModelCatalogEntry } from "@rakazo/contracts";
 import { describe, expect, it } from "vitest";
-import { featuredModelProviders, keepSelectedProviderVisible } from "./onboarding-providers";
+import {
+  featuredModelProviders,
+  selectedProviderOutsideSearchResults,
+} from "./onboarding-providers";
 
 function provider(provider: string): ModelCatalogEntry {
   return {
@@ -72,24 +75,20 @@ describe("featuredModelProviders", () => {
   });
 });
 
-describe("keepSelectedProviderVisible", () => {
-  it("pins the active provider above unrelated search results", () => {
+describe("selectedProviderOutsideSearchResults", () => {
+  it("returns the active provider separately from unrelated search results", () => {
     const providers = [provider("openrouter"), provider("anthropic"), provider("bedrock")];
 
     expect(
-      keepSelectedProviderVisible(providers.slice(1), providers, "openrouter").map(
-        (entry) => entry.provider,
-      ),
-    ).toEqual(["openrouter", "anthropic", "bedrock"]);
+      selectedProviderOutsideSearchResults(providers.slice(1), providers, "openrouter"),
+    ).toMatchObject({ provider: "openrouter" });
   });
 
-  it("does not duplicate an active provider that matches the search", () => {
+  it("returns nothing when the active provider matches the search", () => {
     const providers = [provider("openrouter"), provider("anthropic")];
 
     expect(
-      keepSelectedProviderVisible(providers, providers, "openrouter").map(
-        (entry) => entry.provider,
-      ),
-    ).toEqual(["openrouter", "anthropic"]);
+      selectedProviderOutsideSearchResults(providers, providers, "openrouter"),
+    ).toBeUndefined();
   });
 });
