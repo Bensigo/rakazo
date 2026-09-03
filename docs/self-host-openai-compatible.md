@@ -57,7 +57,7 @@ keeps it. It does **not** append another `/v1`. Bare origins such as
 `https://api.example.com` become `https://api.example.com/v1`.
 
 Do not put credentials in the URL. Use the API key field. When an API key
-is used, prefer HTTPS; `http` is fine for trusted private or loopback links.
+is used, use HTTPS; `http` is only for trusted private or loopback links.
 
 ## Private reverse proxy
 
