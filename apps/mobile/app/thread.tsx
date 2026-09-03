@@ -12,7 +12,6 @@ import {
   attachmentsForThread,
   buildComposerMentionOptions,
   type ComposerMention,
-  formatDurationMs,
   isApprovalAskBlock,
   isRunTerminalEvent,
   isSecretAskBlock,
@@ -2552,13 +2551,7 @@ function ExpandableToolBlock({
             : []),
           ...(block.pendingToolNames ?? []),
         ].filter(Boolean);
-  const durationMs = block.kind === "steps" ? block.durationMs : undefined;
-  const duration = formatDurationMs(durationMs);
-  const title = live
-    ? t("Working…")
-    : duration
-      ? t("Worked for {duration}", { duration })
-      : t("Worked");
+  const title = live ? t("Working…") : t("Done");
 
   return (
     <View
