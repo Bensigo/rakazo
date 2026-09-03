@@ -2300,7 +2300,7 @@ const MessageBubble = memo(function MessageBubble({
           borderRadius: 20,
           borderWidth: 1,
           borderColor: "#26262A",
-          backgroundColor: message.role === "user" ? "#F1F1EF" : "#1A1A1D",
+          backgroundColor: message.role === "user" ? mobileTokens().userBubble : "#1A1A1D",
           paddingHorizontal: 14,
           paddingVertical: 12,
           gap: 8,
@@ -2317,7 +2317,7 @@ const MessageBubble = memo(function MessageBubble({
         {caption ? (
           <Text
             style={{
-              color: message.role === "user" ? "#1A1A1A" : "#DFDFE2",
+              color: message.role === "user" ? mobileTokens().userBubbleInk : "#DFDFE2",
               fontSize: 15,
             }}
           >
@@ -2346,7 +2346,7 @@ const MessageBubble = memo(function MessageBubble({
             >
               <Text
                 style={{
-                  color: message.role === "user" ? "#1A1A1A" : "#DFDFE2",
+                  color: message.role === "user" ? mobileTokens().userBubbleInk : "#DFDFE2",
                   fontSize: 15,
                 }}
               >
@@ -2380,7 +2380,7 @@ const MessageBubble = memo(function MessageBubble({
             >
               <Text
                 style={{
-                  color: message.role === "user" ? "#1A1A1A" : "#DFDFE2",
+                  color: message.role === "user" ? mobileTokens().userBubbleInk : "#DFDFE2",
                   fontSize: 15,
                 }}
               >
@@ -2454,7 +2454,7 @@ function MessageTextCard({
         flexShrink: 1,
         minWidth: 0,
         maxWidth: "100%",
-        backgroundColor: message.role === "user" ? "#F1F1EF" : "#1A1A1D",
+        backgroundColor: message.role === "user" ? mobileTokens().userBubble : "#1A1A1D",
         padding: 12,
         borderRadius: 20,
       }}
@@ -2470,7 +2470,7 @@ function MessageTextCard({
         </Text>
       ) : null}
       {message.role === "user" ? (
-        <Text style={{ color: "#1A1A1A", fontSize: 15.5, lineHeight: 23 }}>{contentText}</Text>
+        <Text style={{ color: mobileTokens().userBubbleInk, fontSize: 15.5, lineHeight: 23 }}>{contentText}</Text>
       ) : (
         <>
           <ChatMarkdown streaming={message.id.startsWith("progress:")}>{contentText}</ChatMarkdown>
