@@ -81,17 +81,14 @@ export type BoxRemoteScreenLease =
 
 /** Decide whether cancel may stop Box browsers across API/worker processes. */
 export function shouldStopBoxBrowsersOnCancel(input: {
-  releasedLocally: boolean;
   remoteLease: BoxRemoteScreenLease;
   screenLeaseId?: string;
 }): boolean {
-  if (input.releasedLocally) return true;
   // Fail closed on transport/command errors so a stale cancel cannot kill a newer browser.
   if (input.remoteLease.status === "error") return false;
   // No remote fence: treat as orphaned work from this cancel path.
   if (input.remoteLease.status === "missing") return true;
-  // A remote fence requires a matching cancel lease so a stale API cancel cannot
-  // kill a newer worker-owned browser.
+  // A remote fence always wins over any local claim state.
   if (!input.screenLeaseId) return false;
   return canReleaseScreenLease(input.remoteLease.leaseId, input.screenLeaseId);
 }
@@ -490,20 +487,10 @@ export class BoxSandboxProvider implements SandboxProvider {
 
   async releaseScreen(computer: ComputerRef, context: AdapterContext): Promise<void> {
     const id = this.id(computer);
-    const releasedLocally = this.screens.release(id, context);
-    if (!context.cancelRunWork) return;
-    const remoteLease = await this.readScreenLease(id);
-    if (
-      !shouldStopBoxBrowsersOnCancel({
-        releasedLocally,
-        remoteLease,
-        screenLeaseId: context.screenLeaseId,
-      })
-    ) {
-      return;
-    }
-    await this.stopBrowsers(id);
-    await this.clearScreenLease(id);
+    this.screens.release(id, context);
+    if (!context.cancelRunWork || !context.screenLeaseId) return;
+    // Atomically re-check the remote fence under flock before stopping browsers.
+    await this.stopBrowsersIfLeaseAllows(id, context.screenLeaseId);
   }
 
   async stop(computer: ComputerRef, context: AdapterContext): Promise<void> {
@@ -647,43 +634,70 @@ export class BoxSandboxProvider implements SandboxProvider {
 
   private async claimScreen(id: string, context: AdapterContext): Promise<void> {
     this.screens.claim(id, context);
-    if (context.screenLeaseId) {
-      await this.writeScreenLease(id, context.screenLeaseId);
-    }
-  }
-
-  private async readScreenLease(id: string): Promise<BoxRemoteScreenLease> {
+    if (!context.screenLeaseId) return;
     try {
-      const result = await this.rawCommand(
-        id,
-        `if [ -f ${shellQuote(BOX_SCREEN_LEASE_PATH)} ]; then printf 'present '; cat -- ${shellQuote(BOX_SCREEN_LEASE_PATH)}; else printf 'missing'; fi`,
-        10,
-      );
-      if (result.exitCode !== 0 || result.timedOut) return { status: "error" };
-      const stdout = result.stdout.trim();
-      if (stdout === "missing") return { status: "missing" };
-      if (stdout.startsWith("present ")) {
-        const leaseId = stdout.slice("present ".length).trim();
-        return leaseId ? { status: "present", leaseId } : { status: "missing" };
-      }
-      return { status: "error" };
-    } catch {
-      return { status: "error" };
+      await this.writeScreenLease(id, context.screenLeaseId);
+    } catch (error) {
+      this.screens.release(id, context);
+      throw error;
     }
   }
 
   private async writeScreenLease(id: string, leaseId: string): Promise<void> {
-    await this.rawCommand(
-      id,
-      `printf '%s\n' ${shellQuote(leaseId)} > ${shellQuote(BOX_SCREEN_LEASE_PATH)}`,
-      10,
-    ).catch(() => undefined);
+    const lockPath = `${BOX_SCREEN_LEASE_PATH}.lock`;
+    const script = [
+      "set -eu",
+      `lease=${shellQuote(BOX_SCREEN_LEASE_PATH)}`,
+      `lock=${shellQuote(lockPath)}`,
+      `incoming=${shellQuote(leaseId)}`,
+      'exec 9>"$lock"',
+      "flock 9",
+      'current="$(cat -- "$lease" 2>/dev/null || true)"',
+      'current="$(printf "%s" "$current" | tr -d "\\r\\n")"',
+      'if [ -n "$current" ] && [ "$current" != "$incoming" ]; then',
+      '  current_fence="${current##*:}"',
+      '  incoming_fence="${incoming##*:}"',
+      "  case \"$current_fence\" in ''|*[!0-9]*) exit 1 ;; esac",
+      "  case \"$incoming_fence\" in ''|*[!0-9]*) exit 1 ;; esac",
+      '  if [ "$incoming_fence" -le "$current_fence" ]; then exit 2; fi',
+      "fi",
+      'printf "%s\\n" "$incoming" >"$lease"',
+    ].join("\n");
+    const result = await this.rawCommand(id, script, 10);
+    if (result.exitCode !== 0 || result.timedOut) {
+      throw new Error(result.stderr || result.stdout || "could not publish Box screen lease");
+    }
   }
 
-  private async clearScreenLease(id: string): Promise<void> {
-    await this.rawCommand(id, `rm -f -- ${shellQuote(BOX_SCREEN_LEASE_PATH)}`, 10).catch(
-      () => undefined,
-    );
+  private async stopBrowsersIfLeaseAllows(id: string, screenLeaseId: string): Promise<void> {
+    const lockPath = `${BOX_SCREEN_LEASE_PATH}.lock`;
+    const script = [
+      "set -eu",
+      `lease=${shellQuote(BOX_SCREEN_LEASE_PATH)}`,
+      `lock=${shellQuote(lockPath)}`,
+      `expected=${shellQuote(screenLeaseId)}`,
+      'exec 9>"$lock"',
+      "flock 9",
+      'current="$(cat -- "$lease" 2>/dev/null || true)"',
+      'current="$(printf "%s" "$current" | tr -d "\\r\\n")"',
+      'if [ -n "$current" ] && [ "$current" != "$expected" ]; then',
+      '  current_owner="${current%:*}"',
+      '  expected_owner="${expected%:*}"',
+      '  current_fence="${current##*:}"',
+      '  expected_fence="${expected##*:}"',
+      "  case \"$current_fence\" in ''|*[!0-9]*) exit 3 ;; esac",
+      "  case \"$expected_fence\" in ''|*[!0-9]*) exit 3 ;; esac",
+      '  if [ "$expected_owner" != "$current_owner" ] || [ "$expected_fence" -lt "$current_fence" ]; then',
+      "    exit 2",
+      "  fi",
+      "fi",
+      PORTABLE_BROWSER_STOP_COMMAND,
+      'rm -f -- "$lease"',
+    ].join("\n");
+    const result = await this.rawCommand(id, script, 30).catch(() => undefined);
+    // exit 2 = newer remote fence; treat as a successful no-op.
+    if (!result || result.timedOut) return;
+    if (result.exitCode === 0 || result.exitCode === 2) return;
   }
 
   private async stopBrowsers(id: string): Promise<void> {

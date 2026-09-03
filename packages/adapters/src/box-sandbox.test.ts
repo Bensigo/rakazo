@@ -329,40 +329,27 @@ function finished(overrides: Partial<Command200Response> = {}): Command200Respon
 }
 
 describe("shouldStopBoxBrowsersOnCancel", () => {
-  it("stops when the local claim was released", () => {
+  it("keeps a newer remote fence alive even if a local claim was released", () => {
     expect(
       shouldStopBoxBrowsersOnCancel({
-        releasedLocally: true,
-        remoteLease: { status: "present", leaseId: "run-2:2" },
-        screenLeaseId: "run-1:1",
-      }),
-    ).toBe(true);
-  });
-
-  it("stops cross-process cancel when the remote fence matches", () => {
-    expect(
-      shouldStopBoxBrowsersOnCancel({
-        releasedLocally: false,
-        remoteLease: { status: "present", leaseId: "run-1:1" },
-        screenLeaseId: "run-1:1",
-      }),
-    ).toBe(true);
-  });
-
-  it("keeps a newer remote fence alive for a stale cancel", () => {
-    expect(
-      shouldStopBoxBrowsersOnCancel({
-        releasedLocally: false,
         remoteLease: { status: "present", leaseId: "run-2:2" },
         screenLeaseId: "run-1:1",
       }),
     ).toBe(false);
   });
 
+  it("stops cross-process cancel when the remote fence matches", () => {
+    expect(
+      shouldStopBoxBrowsersOnCancel({
+        remoteLease: { status: "present", leaseId: "run-1:1" },
+        screenLeaseId: "run-1:1",
+      }),
+    ).toBe(true);
+  });
+
   it("stops orphaned browsers when no remote fence exists", () => {
     expect(
       shouldStopBoxBrowsersOnCancel({
-        releasedLocally: false,
         remoteLease: { status: "missing" },
         screenLeaseId: "run-1:1",
       }),
@@ -372,9 +359,16 @@ describe("shouldStopBoxBrowsersOnCancel", () => {
   it("fails closed when the remote lease cannot be read", () => {
     expect(
       shouldStopBoxBrowsersOnCancel({
-        releasedLocally: false,
         remoteLease: { status: "error" },
         screenLeaseId: "run-1:1",
+      }),
+    ).toBe(false);
+  });
+
+  it("fails closed when cancel has no screen lease id", () => {
+    expect(
+      shouldStopBoxBrowsersOnCancel({
+        remoteLease: { status: "present", leaseId: "run-1:1" },
       }),
     ).toBe(false);
   });

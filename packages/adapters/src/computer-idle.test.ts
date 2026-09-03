@@ -360,12 +360,13 @@ describe("background work launch and probe", () => {
 });
 
 describe("CANCEL_PRIMARY_BROWSER_WORK", () => {
-  it("targets the primary profile and skips chromium-screen processes", () => {
+  it("targets the primary profile and matches browser argv0 only", () => {
     expect(CANCEL_PRIMARY_BROWSER_WORK).toContain(".browser-profiles/chromium");
     expect(CANCEL_PRIMARY_BROWSER_WORK).toContain("chromium-screen-");
-    expect(CANCEL_PRIMARY_BROWSER_WORK).toContain("[g]oogle-chrome");
-    expect(CANCEL_PRIMARY_BROWSER_WORK).toContain("[c]hromium");
-    expect(CANCEL_PRIMARY_BROWSER_WORK).toContain("[f]irefox");
+    expect(CANCEL_PRIMARY_BROWSER_WORK).toContain('argv0=""; IFS= read -r -d "" argv0');
+    expect(CANCEL_PRIMARY_BROWSER_WORK).toContain("*/chromium|*/chromium-*|chromium|chromium-*");
+    expect(CANCEL_PRIMARY_BROWSER_WORK).toContain("*/firefox|*/firefox-*|firefox|firefox-*");
+    expect(CANCEL_PRIMARY_BROWSER_WORK).not.toContain("*[c]hromium*");
   });
 });
 
