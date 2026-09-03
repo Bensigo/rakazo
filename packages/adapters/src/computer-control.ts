@@ -150,7 +150,13 @@ export async function expireComputerControl(
       try {
         await deps.sandbox.setScreenControl?.(toComputerRef(computer), false, context, leaseId);
       } catch {
-        // Keep the lease id so reconciliation can retry provider revocation.
+        // Keep the lease id and reschedule; reconciler ignores leases without a control bot.
+        await scheduleComputerControlExpiry(
+          deps.jobs,
+          computer.id,
+          leaseId,
+          new Date(now.getTime() + 30_000),
+        );
         return false;
       }
     }

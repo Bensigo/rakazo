@@ -228,6 +228,7 @@ describe("computer control leases", () => {
       false,
     );
     expect(harness.prisma.computer.updateMany).not.toHaveBeenCalled();
+    expect(harness.enqueue).toHaveBeenCalled();
   });
 });
 
