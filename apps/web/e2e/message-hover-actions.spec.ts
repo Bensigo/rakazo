@@ -80,10 +80,16 @@ test("message hover shows beside-bubble actions; reply links to parent", async (
   await expect(toolbar.getByRole("button", { name: "More" })).toBeVisible();
   const thumbsUp = toolbar.getByRole("button", { name: "Add thumbs-up" });
   await expect(thumbsUp).toBeVisible();
-  // Default smile matches reply/more: muted gray, not yellow.
+  // Default reaction matches Reply/More: muted control color, not yellow.
   await expect
-    .poll(async () => thumbsUp.evaluate((el) => getComputedStyle(el).color))
-    .not.toMatch(/255,\s*2(0[0-9]|1[0-9]|2[0-9]|3[0-5])/); // not yellow-ish rgb
+    .poll(async () => {
+      const mutedColor = await toolbar
+        .getByRole("button", { name: "More" })
+        .evaluate((el) => getComputedStyle(el).color);
+      const reactionColor = await thumbsUp.evaluate((el) => getComputedStyle(el).color);
+      return reactionColor === mutedColor;
+    })
+    .toBe(true);
 
   // User bubble (right): icons sit to the left, vertically centered — not under the bubble.
   const frame = parentRow.getByTestId("message-bubble-frame");
