@@ -915,7 +915,7 @@ describe("computer replacement", () => {
           prisma,
           sandbox,
           home: {} as AgentHomeStore,
-          jobs: {} as JobPublisher,
+          jobs: { enqueue: vi.fn().mockResolvedValue(undefined) } as unknown as JobPublisher,
           events: {} as ThreadEvents,
         },
         "computer-1",
