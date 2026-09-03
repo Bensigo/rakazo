@@ -202,12 +202,7 @@ describe("computer control leases", () => {
     expect(harness.prisma.computer.updateMany).toHaveBeenCalledWith({
       where: {
         id: "computer-id",
-        controlHolder: "user",
-        OR: [
-          { controlLeaseId: null },
-          { controlLeaseExpiresAt: null },
-          { controlLeaseExpiresAt: { lte: expect.any(Date) } },
-        ],
+        controlLeaseId: "lease-1",
       },
       data: {
         controlHolder: "none",

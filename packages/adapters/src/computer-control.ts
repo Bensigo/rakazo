@@ -138,7 +138,16 @@ export async function expireComputerControl(
   if (!computer || computer.controlLeaseId !== leaseId) return false;
   const botId = computer.controlBotId;
   if (!botId) {
-    // Orphaned user control: still revoke the provider stream before clearing the lease id.
+    if (computer.controlLeaseExpiresAt && computer.controlLeaseExpiresAt.getTime() > now.getTime()) {
+      await scheduleComputerControlExpiry(
+        deps.jobs,
+        computer.id,
+        leaseId,
+        computer.controlLeaseExpiresAt,
+      );
+      return false;
+    }
+    // Orphaned user control: revoke the provider stream, then clear this lease id.
     if (computer.providerRef) {
       const context: AdapterContext = {
         operationId: "computer.control-expire",
@@ -150,8 +159,7 @@ export async function expireComputerControl(
       try {
         await deps.sandbox.setScreenControl?.(toComputerRef(computer), false, context, leaseId);
       } catch {
-        // Keep the lease id and try to reschedule. Reconciler ignores leases without a
-        // control bot, so a failed enqueue must not escape and clear the lease elsewhere.
+        // Keep the lease id and try to reschedule so reconciler/status can retry.
         try {
           await scheduleComputerControlExpiry(
             deps.jobs,
@@ -165,7 +173,17 @@ export async function expireComputerControl(
         return false;
       }
     }
-    return clearInactiveUserComputerControl(deps.prisma, computer.id, now);
+    const cleared = await deps.prisma.computer.updateMany({
+      where: { id: computer.id, controlLeaseId: leaseId },
+      data: {
+        controlHolder: "none",
+        controlLeaseId: null,
+        controlLeaseExpiresAt: null,
+        controlBotId: null,
+        controlRunId: null,
+      },
+    });
+    return cleared.count === 1;
   }
 
   if (computer.controlLeaseExpiresAt && computer.controlLeaseExpiresAt.getTime() > now.getTime()) {
