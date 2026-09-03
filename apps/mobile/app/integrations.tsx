@@ -213,7 +213,7 @@ export default function Integrations() {
 
   return (
     <SafeAreaView edges={["bottom"]} style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
         <Text style={styles.explanation}>{t("Connect apps.")}</Text>
 
         <TextInput
