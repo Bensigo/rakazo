@@ -372,6 +372,11 @@ export function isProtectedComputerLifecycleCommand(command: string): boolean {
 
 /** Cap the roster so a large Space cannot flood the prompt. */
 const BOT_DIRECTORY_LIMIT = 40;
+const MISSING_MODEL_MESSAGE = "Connect a model in Settings before running bots.";
+
+function runtimeFallbackModel(runtime: AgentRuntime) {
+  return runtime.describe().capabilities.scripted ? { provider: "scripted", id: "scripted" } : null;
+}
 
 export interface ExecutorDeps {
   prisma: PrismaClient;
@@ -551,18 +556,22 @@ export function createRunExecutor(deps: ExecutorDeps) {
       const useOverride = Boolean(hasOverride && overrideCredential);
       const credential = useOverride ? overrideCredential : defaultCredential;
       const deployment = deps.deploymentModelKey ? resolveDeploymentModel() : null;
-      const provider =
+      let provider =
         (useOverride ? override!.modelProvider : null) ??
         credential?.provider ??
         settings?.defaultModelProvider ??
-        deployment?.provider ??
-        "scripted";
-      const id =
+        deployment?.provider;
+      let id =
         (useOverride ? override!.modelId : null) ??
         credential?.defaultModel ??
         settings?.defaultModelId ??
-        deployment?.model ??
-        "scripted";
+        deployment?.model;
+      if (!provider || !id) {
+        const runtimeFallback = runtimeFallbackModel(deps.runtime);
+        provider ??= runtimeFallback?.provider;
+        id ??= runtimeFallback?.id;
+      }
+      if (!provider || !id) throw new Error(MISSING_MODEL_MESSAGE);
       // The key is resolved for the provider that won above, not before it is known.
       const resolved = await resolveModelKey(
         deps,
@@ -1034,18 +1043,58 @@ export function createRunExecutor(deps: ExecutorDeps) {
           );
         }
         const runDeployment = deps.deploymentModelKey ? resolveDeploymentModel() : null;
+        const runtimeFallback = runtimeFallbackModel(deps.runtime);
         const runModelProvider =
           (useModelOverride ? bot.modelProvider : null) ??
           credential?.provider ??
           settings?.defaultModelProvider ??
           runDeployment?.provider ??
-          "scripted";
+          runtimeFallback?.provider;
         const runModelId =
           (useModelOverride ? bot.modelId : null) ??
           credential?.defaultModel ??
           settings?.defaultModelId ??
           runDeployment?.model ??
-          "scripted";
+          runtimeFallback?.id;
+        if (!runModelProvider || !runModelId) {
+          const failed = await deps.events.finalizeRun({
+            spaceId: run.spaceId,
+            threadId: thread.id,
+            botId: bot.id,
+            runId,
+            taskId: run.taskId,
+            attemptId: attempt.id,
+            leaseOwner: workerId,
+            leaseFence: fence,
+            outcome: "failed",
+            error: MISSING_MODEL_MESSAGE,
+          });
+          if (!failed) return;
+          if (failed.continuationRunId) {
+            await deps.jobs
+              .enqueue(runContinueJob(failed.continuationRunId))
+              .catch((error) => console.error("steering continuation enqueue", error));
+          }
+          if (run.trigger === "bot_message") {
+            await returnBotMessageOutcome(
+              deps,
+              { ...run, sourceMessageId: run.sourceMessageId },
+              { id: bot.id, name: bot.name },
+              `Could not complete the delegated request: ${MISSING_MODEL_MESSAGE}`,
+              "status",
+            ).catch((error) => console.error("bot message failure return", error));
+          }
+          if (!failed.continuationRunId) {
+            await notifyRun(deps, run, {
+              kind: "failure",
+              title: `${bot.name} failed`,
+              body: MISSING_MODEL_MESSAGE,
+              botId: bot.id,
+              threadId: thread.id,
+            });
+          }
+          return;
+        }
         const resolved = await resolveModelKey(
           deps,
           run.userId,
