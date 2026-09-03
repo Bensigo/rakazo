@@ -142,7 +142,7 @@ msgid "Action confirmations"
 msgstr "작업 실행 전 확인"
 
 #. placeholder {0}: bot.name
-#: src/pages/BotContextMenu.tsx:85
+#: src/pages/BotContextMenu.tsx:82
 msgid "Actions for {0}"
 msgstr "{0} 작업 메뉴"
 
@@ -333,9 +333,9 @@ msgstr "API가 다시 작동하지만 업데이트가 완료되지 않았습니�
 #: src/pages/ModelSettingsOverlay.tsx:640
 #: src/pages/ModelSettingsOverlay.tsx:643
 #: src/pages/ModelSettingsOverlay.tsx:662
-#: src/pages/Onboarding.tsx:468
-#: src/pages/Onboarding.tsx:471
-#: src/pages/Onboarding.tsx:485
+#: src/pages/Onboarding.tsx:469
+#: src/pages/Onboarding.tsx:472
+#: src/pages/Onboarding.tsx:486
 #: src/pages/VoiceSettingsOverlay.tsx:258
 msgid "API key"
 msgstr "API 키"
@@ -363,7 +363,7 @@ msgstr "승인"
 msgid "Approve this server to let your agent use its tools."
 msgstr "이 서버를 승인하면 Bot이 제공되는 도구를 사용할 수 있습니다."
 
-#: src/pages/BotContextMenu.tsx:146
+#: src/pages/BotContextMenu.tsx:136
 msgid "Archive"
 msgstr "보관"
 
@@ -438,7 +438,7 @@ msgid "Attachment"
 msgstr "첨부 파일"
 
 #: src/pages/ModelSettingsOverlay.tsx:573
-#: src/pages/Onboarding.tsx:417
+#: src/pages/Onboarding.tsx:418
 msgid "Authorization code or callback URL"
 msgstr "인증 코드 또는 돌아온 페이지 주소"
 
@@ -459,7 +459,6 @@ msgstr "루틴을 저장한 후 사용할 수 있습니다"
 msgid "Avatars"
 msgstr "아바타"
 
-#: src/pages/BotContextMenu.tsx:94
 #: src/pages/RoutineEditor.tsx:231
 msgid "Back"
 msgstr "뒤로"
@@ -493,14 +492,14 @@ msgstr "{0}의 컴퓨터를 켜는 중"
 msgid "bot"
 msgstr "Bot"
 
-#: src/pages/Shell.tsx:1682
-msgid "Bot"
-msgstr "봇"
-
 #. js-lingui-explicit-id
 #: src/lib/browser-notifications.ts:71
 msgid "Bot"
 msgstr "Bot"
+
+#: src/pages/Shell.tsx:1682
+msgid "Bot"
+msgstr "봇"
 
 #: src/pages/Shell.tsx:3836
 msgid "Bot screen"
@@ -623,7 +622,7 @@ msgstr "체크아웃에 로컬 변경 사항이 있습니다. 업데이트하기
 msgid "Choose a bot…"
 msgstr "Bot 선택…"
 
-#: src/pages/Onboarding.tsx:262
+#: src/pages/Onboarding.tsx:263
 msgid "Choose a model to get started."
 msgstr "먼저 사용할 AI 모델을 선택하세요."
 
@@ -644,7 +643,7 @@ msgstr "비우기"
 msgid "Clear {0}’s conversation?"
 msgstr "{0}와의 대화 내용을 비울까요?"
 
-#: src/pages/BotContextMenu.tsx:142
+#: src/pages/BotContextMenu.tsx:132
 #: src/pages/shell/bot-panel.tsx:479
 msgid "Clear conversation"
 msgstr "대화 내용 비우기"
@@ -790,7 +789,7 @@ msgstr "비밀번호 확인"
 msgid "Connect"
 msgstr "연결"
 
-#: src/pages/Onboarding.tsx:259
+#: src/pages/Onboarding.tsx:260
 msgid "Connect a model"
 msgstr "AI 모델 연결"
 
@@ -861,8 +860,8 @@ msgstr "연결 중…"
 msgid "Connection to {0} is still pending. You can close this and check again."
 msgstr "{0} 연결이 아직 진행 중입니다. 이 창을 닫고 나중에 다시 확인할 수 있습니다."
 
-#: src/pages/Onboarding.tsx:512
-#: src/pages/Onboarding.tsx:546
+#: src/pages/Onboarding.tsx:513
+#: src/pages/Onboarding.tsx:547
 msgid "Continue"
 msgstr "계속"
 
@@ -951,7 +950,7 @@ msgstr "섹션을 만들지 못했습니다."
 msgid "Could not create space"
 msgstr "스페이스를 만들 수 없습니다"
 
-#: src/pages/Onboarding.tsx:244
+#: src/pages/Onboarding.tsx:245
 msgid "Could not create your bot"
 msgstr "Bot을 만들지 못했습니다."
 
@@ -1035,7 +1034,7 @@ msgid "Could not reach the server"
 msgstr "서버에 연결할 수 없습니다"
 
 #: src/pages/ModelSettingsOverlay.tsx:232
-#: src/pages/Onboarding.tsx:190
+#: src/pages/Onboarding.tsx:191
 msgid "Could not reach this model server"
 msgstr "모델 서버에 연결하지 못했습니다."
 
@@ -1083,7 +1082,7 @@ msgstr "자동 검토를 저장할 수 없습니다"
 msgid "Could not save group"
 msgstr "그룹을 저장하지 못했습니다."
 
-#: src/pages/Onboarding.tsx:217
+#: src/pages/Onboarding.tsx:218
 msgid "Could not save model"
 msgstr "AI 모델을 저장하지 못했습니다."
 
@@ -1192,7 +1191,7 @@ msgstr "자동 실행 만들기"
 msgid "Create space"
 msgstr "스페이스 만들기"
 
-#: src/pages/Onboarding.tsx:532
+#: src/pages/Onboarding.tsx:533
 msgid "Create your first bot"
 msgstr "첫 Bot 만들기"
 
@@ -1261,7 +1260,7 @@ msgstr "기본(보통)"
 msgid "Default scope"
 msgstr "기본 기억 범위"
 
-#: src/pages/BotContextMenu.tsx:150
+#: src/pages/BotContextMenu.tsx:140
 #: src/pages/McpServersOverlay.tsx:508
 #: src/pages/RoutineEditor.tsx:272
 #: src/pages/Shell.tsx:2744
@@ -1391,7 +1390,7 @@ msgstr "{name} 다운로드"
 msgid "Draft skill"
 msgstr "작업 기술 초안"
 
-#: src/pages/BotContextMenu.tsx:137
+#: src/pages/BotContextMenu.tsx:127
 msgid "Duplicate"
 msgstr "복제"
 
@@ -1403,7 +1402,7 @@ msgstr "이전 메시지"
 msgid "Edit first"
 msgstr "수정 후 보내기"
 
-#: src/pages/BotContextMenu.tsx:133
+#: src/pages/BotContextMenu.tsx:123
 msgid "Edit Profile"
 msgstr "Bot 정보 수정"
 
@@ -1413,7 +1412,7 @@ msgstr "이메일"
 
 #. placeholder {0}: oauth.verificationUri.replace(/^https:\/\//, "")
 #: src/pages/ModelSettingsOverlay.tsx:596
-#: src/pages/Onboarding.tsx:436
+#: src/pages/Onboarding.tsx:437
 msgid "Enter this code at <0>{0}</0>"
 msgstr "<0>{0}</0>에서 이 코드를 입력하세요"
 
@@ -1497,18 +1496,18 @@ msgid "Failure handling"
 msgstr "실패했을 때 처리"
 
 #: src/pages/ModelSettingsOverlay.tsx:444
-#: src/pages/Onboarding.tsx:314
+#: src/pages/Onboarding.tsx:315
 msgid "Find models"
 msgstr "모델 찾기"
 
 #: src/pages/ModelSettingsOverlay.tsx:444
-#: src/pages/Onboarding.tsx:314
+#: src/pages/Onboarding.tsx:315
 msgid "Finding…"
 msgstr "찾는 중…"
 
 #. placeholder {0}: new URL(oauth.verificationUri).hostname
 #: src/pages/ModelSettingsOverlay.tsx:556
-#: src/pages/Onboarding.tsx:400
+#: src/pages/Onboarding.tsx:401
 msgid "Finish signing in at <0>{0}</0>. The final page may not load; paste its URL or code here."
 msgstr "<0>{0}</0>에서 로그인을 마치세요. 마지막 페이지가 열리지 않아도 괜찮습니다. 그 페이지의 URL이나 코드를 여기에 붙여넣으세요."
 
@@ -1760,7 +1759,7 @@ msgid "Loading voice providers…"
 msgstr "음성 서비스를 불러오는 중…"
 
 #: src/App.tsx:54
-#: src/pages/Onboarding.tsx:253
+#: src/pages/Onboarding.tsx:254
 #: src/pages/PeerMessagesOverlay.tsx:99
 #: src/pages/Shell.tsx:4053
 msgid "Loading…"
@@ -1786,11 +1785,11 @@ msgstr "메시징 설정 관리"
 msgid "Manage the Space semantic memory provider."
 msgstr "작업공간에서 사용할 장기 기억 서비스를 관리합니다."
 
-#: src/pages/BotContextMenu.tsx:128
+#: src/pages/BotContextMenu.tsx:118
 msgid "Mark as Read"
 msgstr "읽음으로 표시"
 
-#: src/pages/BotContextMenu.tsx:128
+#: src/pages/BotContextMenu.tsx:118
 msgid "Mark as Unread"
 msgstr "읽지 않음으로 표시"
 
@@ -1828,13 +1827,13 @@ msgstr "기억 사용 범위"
 msgid "Mentions"
 msgstr "멘션"
 
-#: src/pages/Shell.tsx:4747
-#: src/pages/Shell.tsx:4861
+#. js-lingui-explicit-id
+#: src/lib/browser-notifications.ts:83
 msgid "Message"
 msgstr "메시지"
 
-#. js-lingui-explicit-id
-#: src/lib/browser-notifications.ts:83
+#: src/pages/Shell.tsx:4747
+#: src/pages/Shell.tsx:4861
 msgid "Message"
 msgstr "메시지"
 
@@ -1887,15 +1886,15 @@ msgstr "분"
 #: src/pages/ModelSettingsOverlay.tsx:449
 #: src/pages/ModelSettingsOverlay.tsx:503
 #: src/pages/ModelSettingsOverlay.tsx:932
-#: src/pages/Onboarding.tsx:319
-#: src/pages/Onboarding.tsx:368
-#: src/pages/Onboarding.tsx:379
+#: src/pages/Onboarding.tsx:320
+#: src/pages/Onboarding.tsx:369
+#: src/pages/Onboarding.tsx:380
 #: src/pages/shell/bot-panel.tsx:332
 msgid "Model"
 msgstr "모델"
 
 #: src/pages/ModelSettingsOverlay.tsx:483
-#: src/pages/Onboarding.tsx:348
+#: src/pages/Onboarding.tsx:349
 msgid "Model id"
 msgstr "모델 ID"
 
@@ -1917,7 +1916,7 @@ msgid "Models"
 msgstr "AI 모델"
 
 #: src/pages/ModelSettingsOverlay.tsx:462
-#: src/pages/Onboarding.tsx:333
+#: src/pages/Onboarding.tsx:334
 msgid "Models from server"
 msgstr "서버에서 찾은 모델"
 
@@ -1929,16 +1928,11 @@ msgstr "매월"
 msgid "More computer actions"
 msgstr "컴퓨터 작업 더보기"
 
-#. placeholder {0}: bot.name
-#: src/pages/BotContextMenu.tsx:85
-msgid "Move {0} to section"
-msgstr "{0} 섹션 이동"
-
 #: src/pages/shell/dialogs.tsx:260
 msgid "Move them to your shared memory."
 msgstr "공용 기억으로 옮깁니다."
 
-#: src/pages/BotContextMenu.tsx:123
+#: src/pages/BotContextMenu.tsx:94
 msgid "Move to"
 msgstr "섹션으로 이동"
 
@@ -1946,7 +1940,7 @@ msgstr "섹션으로 이동"
 #: src/pages/Auth.tsx:110
 #: src/pages/GroupPanel.tsx:119
 #: src/pages/GroupPanel.tsx:212
-#: src/pages/Onboarding.tsx:535
+#: src/pages/Onboarding.tsx:536
 #: src/pages/RoutineEditor.tsx:281
 #: src/pages/shell/bot-panel.tsx:122
 #: src/pages/shell/bot-panel.tsx:288
@@ -1955,7 +1949,7 @@ msgstr "섹션으로 이동"
 msgid "Name"
 msgstr "이름"
 
-#: src/pages/Onboarding.tsx:540
+#: src/pages/Onboarding.tsx:541
 #: src/pages/shell/bot-panel.tsx:128
 msgid "Name this bot"
 msgstr "Bot 이름"
@@ -2161,7 +2155,7 @@ msgid "Open work"
 msgstr "진행 중인 작업"
 
 #: src/pages/ModelSettingsOverlay.tsx:422
-#: src/pages/Onboarding.tsx:294
+#: src/pages/Onboarding.tsx:295
 msgid "OpenAI-compatible server URL"
 msgstr "OpenAI 호환 서버 주소"
 
@@ -2174,7 +2168,7 @@ msgid "Opening your Space…"
 msgstr "작업공간을 여는 중…"
 
 #: src/pages/ModelSettingsOverlay.tsx:646
-#: src/pages/Onboarding.tsx:474
+#: src/pages/Onboarding.tsx:475
 msgid "Optional"
 msgstr "선택 사항"
 
@@ -2190,7 +2184,7 @@ msgstr "선택 사항인 헤더 값"
 msgid "Or connect an API key"
 msgstr "또는 API 키 연결"
 
-#: src/pages/Onboarding.tsx:485
+#: src/pages/Onboarding.tsx:486
 msgid "Or paste an API key"
 msgstr "또는 API 키 붙여넣기"
 
@@ -2241,7 +2235,7 @@ msgid "Paste a replacement key"
 msgstr "새 API 키를 붙여넣으세요"
 
 #: src/pages/ModelSettingsOverlay.tsx:433
-#: src/pages/Onboarding.tsx:305
+#: src/pages/Onboarding.tsx:306
 msgid "Paste the OpenAI-compatible address from your server. Rakazo adds /v1 if needed."
 msgstr "서버의 OpenAI 호환 주소를 붙여넣으세요. 필요하면 Rakazo가 /v1을 추가합니다."
 
@@ -2262,7 +2256,7 @@ msgstr "내 인증 정보"
 msgid "Pick a voice"
 msgstr "목소리 선택"
 
-#: src/pages/BotContextMenu.tsx:119
+#: src/pages/BotContextMenu.tsx:89
 msgid "Pin"
 msgstr "고정"
 
@@ -2284,8 +2278,8 @@ msgid "Private"
 msgstr "Bot 전용"
 
 #: src/pages/MemorySettingsOverlay.tsx:216
-#: src/pages/Onboarding.tsx:266
-#: src/pages/Onboarding.tsx:273
+#: src/pages/Onboarding.tsx:267
+#: src/pages/Onboarding.tsx:274
 msgid "Provider"
 msgstr "서비스"
 
@@ -2625,7 +2619,7 @@ msgstr "서버 이름"
 
 #: src/pages/McpServersOverlay.tsx:329
 #: src/pages/ModelSettingsOverlay.tsx:417
-#: src/pages/Onboarding.tsx:289
+#: src/pages/Onboarding.tsx:290
 msgid "Server URL"
 msgstr "서버 URL"
 
@@ -2649,7 +2643,7 @@ msgid "Settings: Usage"
 msgstr "설정: 사용량"
 
 #: src/pages/ModelSettingsOverlay.tsx:430
-#: src/pages/Onboarding.tsx:302
+#: src/pages/Onboarding.tsx:303
 msgid "Setup help"
 msgstr "설정 도움말"
 
@@ -2700,7 +2694,7 @@ msgstr "작업 기술 {0}"
 msgid "Skip"
 msgstr "건너뛰기"
 
-#: src/pages/Onboarding.tsx:523
+#: src/pages/Onboarding.tsx:524
 msgid "Skip for now"
 msgstr "지금은 건너뛰기"
 
@@ -2762,7 +2756,7 @@ msgstr "시작 중"
 
 #: src/components/teach/TeachComputerOverlay.tsx:248
 #: src/pages/ModelSettingsOverlay.tsx:626
-#: src/pages/Onboarding.tsx:459
+#: src/pages/Onboarding.tsx:460
 msgid "Starting…"
 msgstr "시작하는 중…"
 
@@ -2807,7 +2801,7 @@ msgstr "보조 에이전트"
 
 #: src/components/AskCard.tsx:140
 #: src/pages/ModelSettingsOverlay.tsx:586
-#: src/pages/Onboarding.tsx:426
+#: src/pages/Onboarding.tsx:427
 msgid "Submit"
 msgstr "확인"
 
@@ -2905,7 +2899,7 @@ msgstr "이 Mac에서는 홈 폴더의 파일을 포함해 내 계정 권한으�
 msgid "This permanently removes every message and stops current work. The chat remains available."
 msgstr "모든 메시지를 영구적으로 삭제하고 진행 중인 작업을 중지합니다. 채팅은 계속 사용할 수 있습니다."
 
-#: src/pages/Onboarding.tsx:499
+#: src/pages/Onboarding.tsx:500
 msgid "This provider cannot paste a key here. Skip if this deployment already has credentials."
 msgstr "이 서비스는 여기에서 API 키를 입력할 수 없습니다. 서버에 이미 인증 정보가 있다면 건너뛰세요."
 
@@ -2966,7 +2960,7 @@ msgstr "사용할 수 없음"
 msgid "Unlink"
 msgstr "연결 해제"
 
-#: src/pages/BotContextMenu.tsx:119
+#: src/pages/BotContextMenu.tsx:89
 msgid "Unpin"
 msgstr "고정 해제"
 
@@ -3020,7 +3014,7 @@ msgid "Use {hostLabel}"
 msgstr "{hostLabel} 사용"
 
 #: src/pages/ModelSettingsOverlay.tsx:495
-#: src/pages/Onboarding.tsx:360
+#: src/pages/Onboarding.tsx:361
 msgid "Use a found model"
 msgstr "찾은 모델 중에서 선택"
 
@@ -3045,8 +3039,8 @@ msgstr "음성"
 
 #: src/pages/ModelSettingsOverlay.tsx:590
 #: src/pages/ModelSettingsOverlay.tsx:612
-#: src/pages/Onboarding.tsx:430
-#: src/pages/Onboarding.tsx:452
+#: src/pages/Onboarding.tsx:431
+#: src/pages/Onboarding.tsx:453
 msgid "Waiting for sign-in…"
 msgstr "로그인 완료를 기다리는 중…"
 

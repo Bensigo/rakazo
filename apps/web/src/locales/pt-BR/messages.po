@@ -142,7 +142,7 @@ msgid "Action confirmations"
 msgstr "Confirmações de ação"
 
 #. placeholder {0}: bot.name
-#: src/pages/BotContextMenu.tsx:85
+#: src/pages/BotContextMenu.tsx:82
 msgid "Actions for {0}"
 msgstr "Ações para {0}"
 
@@ -333,9 +333,9 @@ msgstr ""
 #: src/pages/ModelSettingsOverlay.tsx:640
 #: src/pages/ModelSettingsOverlay.tsx:643
 #: src/pages/ModelSettingsOverlay.tsx:662
-#: src/pages/Onboarding.tsx:468
-#: src/pages/Onboarding.tsx:471
-#: src/pages/Onboarding.tsx:485
+#: src/pages/Onboarding.tsx:469
+#: src/pages/Onboarding.tsx:472
+#: src/pages/Onboarding.tsx:486
 #: src/pages/VoiceSettingsOverlay.tsx:258
 msgid "API key"
 msgstr "Chave de API"
@@ -363,7 +363,7 @@ msgstr "Aprovar"
 msgid "Approve this server to let your agent use its tools."
 msgstr "Aprove este servidor para permitir que seu agente use suas ferramentas."
 
-#: src/pages/BotContextMenu.tsx:146
+#: src/pages/BotContextMenu.tsx:136
 msgid "Archive"
 msgstr "Arquivar"
 
@@ -438,7 +438,7 @@ msgid "Attachment"
 msgstr "Anexo"
 
 #: src/pages/ModelSettingsOverlay.tsx:573
-#: src/pages/Onboarding.tsx:417
+#: src/pages/Onboarding.tsx:418
 msgid "Authorization code or callback URL"
 msgstr "Código de autorização ou URL de retorno de chamada"
 
@@ -459,7 +459,6 @@ msgstr ""
 msgid "Avatars"
 msgstr ""
 
-#: src/pages/BotContextMenu.tsx:94
 #: src/pages/RoutineEditor.tsx:231
 msgid "Back"
 msgstr ""
@@ -493,14 +492,14 @@ msgstr "Inicializando o computador do {0}"
 msgid "bot"
 msgstr "bot"
 
-#: src/pages/Shell.tsx:1682
-msgid "Bot"
-msgstr "Bot"
-
 #. js-lingui-explicit-id
 #: src/lib/browser-notifications.ts:71
 msgid "Bot"
 msgstr ""
+
+#: src/pages/Shell.tsx:1682
+msgid "Bot"
+msgstr "Bot"
 
 #: src/pages/Shell.tsx:3836
 msgid "Bot screen"
@@ -623,7 +622,7 @@ msgstr ""
 msgid "Choose a bot…"
 msgstr ""
 
-#: src/pages/Onboarding.tsx:262
+#: src/pages/Onboarding.tsx:263
 msgid "Choose a model to get started."
 msgstr "Escolha um modelo para começar."
 
@@ -644,7 +643,7 @@ msgstr "Limpar"
 msgid "Clear {0}’s conversation?"
 msgstr "Limpar a conversa do {0}?"
 
-#: src/pages/BotContextMenu.tsx:142
+#: src/pages/BotContextMenu.tsx:132
 #: src/pages/shell/bot-panel.tsx:479
 msgid "Clear conversation"
 msgstr "Limpar conversa"
@@ -790,7 +789,7 @@ msgstr "Confirmar senha"
 msgid "Connect"
 msgstr "Conectar"
 
-#: src/pages/Onboarding.tsx:259
+#: src/pages/Onboarding.tsx:260
 msgid "Connect a model"
 msgstr "Conectar um modelo"
 
@@ -861,8 +860,8 @@ msgstr "Conectando…"
 msgid "Connection to {0} is still pending. You can close this and check again."
 msgstr "A conexão com o {0} ainda está pendente. Você pode fechar isso e verificar novamente."
 
-#: src/pages/Onboarding.tsx:512
-#: src/pages/Onboarding.tsx:546
+#: src/pages/Onboarding.tsx:513
+#: src/pages/Onboarding.tsx:547
 msgid "Continue"
 msgstr "Continuar"
 
@@ -951,7 +950,7 @@ msgstr "Não foi possível criar a seção"
 msgid "Could not create space"
 msgstr ""
 
-#: src/pages/Onboarding.tsx:244
+#: src/pages/Onboarding.tsx:245
 msgid "Could not create your bot"
 msgstr "Não foi possível criar o seu bot"
 
@@ -1035,7 +1034,7 @@ msgid "Could not reach the server"
 msgstr "Não foi possível acessar o servidor"
 
 #: src/pages/ModelSettingsOverlay.tsx:232
-#: src/pages/Onboarding.tsx:190
+#: src/pages/Onboarding.tsx:191
 msgid "Could not reach this model server"
 msgstr "Não foi possível acessar este servidor modelo"
 
@@ -1083,7 +1082,7 @@ msgstr ""
 msgid "Could not save group"
 msgstr "Não foi possível salvar o grupo"
 
-#: src/pages/Onboarding.tsx:217
+#: src/pages/Onboarding.tsx:218
 msgid "Could not save model"
 msgstr "Não foi possível salvar o modelo"
 
@@ -1192,7 +1191,7 @@ msgstr ""
 msgid "Create space"
 msgstr ""
 
-#: src/pages/Onboarding.tsx:532
+#: src/pages/Onboarding.tsx:533
 msgid "Create your first bot"
 msgstr "Crie seu primeiro bot"
 
@@ -1261,7 +1260,7 @@ msgstr "Padrão (médio)"
 msgid "Default scope"
 msgstr "Escopo padrão"
 
-#: src/pages/BotContextMenu.tsx:150
+#: src/pages/BotContextMenu.tsx:140
 #: src/pages/McpServersOverlay.tsx:508
 #: src/pages/RoutineEditor.tsx:272
 #: src/pages/Shell.tsx:2744
@@ -1391,7 +1390,7 @@ msgstr "Baixar {name}"
 msgid "Draft skill"
 msgstr "Habilidade de rascunho"
 
-#: src/pages/BotContextMenu.tsx:137
+#: src/pages/BotContextMenu.tsx:127
 msgid "Duplicate"
 msgstr "Duplicar"
 
@@ -1403,7 +1402,7 @@ msgstr ""
 msgid "Edit first"
 msgstr "Editar primeiro"
 
-#: src/pages/BotContextMenu.tsx:133
+#: src/pages/BotContextMenu.tsx:123
 msgid "Edit Profile"
 msgstr "Editar Perfil"
 
@@ -1413,7 +1412,7 @@ msgstr "E-mail"
 
 #. placeholder {0}: oauth.verificationUri.replace(/^https:\/\//, "")
 #: src/pages/ModelSettingsOverlay.tsx:596
-#: src/pages/Onboarding.tsx:436
+#: src/pages/Onboarding.tsx:437
 msgid "Enter this code at <0>{0}</0>"
 msgstr "Digite este código em <0>{0}</0>"
 
@@ -1497,18 +1496,18 @@ msgid "Failure handling"
 msgstr "Tratamento de falhas"
 
 #: src/pages/ModelSettingsOverlay.tsx:444
-#: src/pages/Onboarding.tsx:314
+#: src/pages/Onboarding.tsx:315
 msgid "Find models"
 msgstr "Encontrar modelos"
 
 #: src/pages/ModelSettingsOverlay.tsx:444
-#: src/pages/Onboarding.tsx:314
+#: src/pages/Onboarding.tsx:315
 msgid "Finding…"
 msgstr "Localizando…"
 
 #. placeholder {0}: new URL(oauth.verificationUri).hostname
 #: src/pages/ModelSettingsOverlay.tsx:556
-#: src/pages/Onboarding.tsx:400
+#: src/pages/Onboarding.tsx:401
 msgid "Finish signing in at <0>{0}</0>. The final page may not load; paste its URL or code here."
 msgstr "Conclua o login em <0>{0}</0>. A página final não pode ser carregada; cole seu URL ou código aqui."
 
@@ -1760,7 +1759,7 @@ msgid "Loading voice providers…"
 msgstr "Carregando provedores de voz..."
 
 #: src/App.tsx:54
-#: src/pages/Onboarding.tsx:253
+#: src/pages/Onboarding.tsx:254
 #: src/pages/PeerMessagesOverlay.tsx:99
 #: src/pages/Shell.tsx:4053
 msgid "Loading…"
@@ -1786,11 +1785,11 @@ msgstr ""
 msgid "Manage the Space semantic memory provider."
 msgstr "Gerencie o provedor de memória semântica do espaço de trabalho."
 
-#: src/pages/BotContextMenu.tsx:128
+#: src/pages/BotContextMenu.tsx:118
 msgid "Mark as Read"
 msgstr "Marcar como Lido"
 
-#: src/pages/BotContextMenu.tsx:128
+#: src/pages/BotContextMenu.tsx:118
 msgid "Mark as Unread"
 msgstr "Marcar como Não Lida"
 
@@ -1828,15 +1827,15 @@ msgstr "Escopo de memória"
 msgid "Mentions"
 msgstr ""
 
-#: src/pages/Shell.tsx:4747
-#: src/pages/Shell.tsx:4861
-msgid "Message"
-msgstr "Mensagem"
-
 #. js-lingui-explicit-id
 #: src/lib/browser-notifications.ts:83
 msgid "Message"
 msgstr ""
+
+#: src/pages/Shell.tsx:4747
+#: src/pages/Shell.tsx:4861
+msgid "Message"
+msgstr "Mensagem"
 
 #: src/pages/Shell.tsx:4743
 #: src/pages/Shell.tsx:4747
@@ -1887,15 +1886,15 @@ msgstr "minutos"
 #: src/pages/ModelSettingsOverlay.tsx:449
 #: src/pages/ModelSettingsOverlay.tsx:503
 #: src/pages/ModelSettingsOverlay.tsx:932
-#: src/pages/Onboarding.tsx:319
-#: src/pages/Onboarding.tsx:368
-#: src/pages/Onboarding.tsx:379
+#: src/pages/Onboarding.tsx:320
+#: src/pages/Onboarding.tsx:369
+#: src/pages/Onboarding.tsx:380
 #: src/pages/shell/bot-panel.tsx:332
 msgid "Model"
 msgstr "Modelo"
 
 #: src/pages/ModelSettingsOverlay.tsx:483
-#: src/pages/Onboarding.tsx:348
+#: src/pages/Onboarding.tsx:349
 msgid "Model id"
 msgstr "ID do modelo"
 
@@ -1917,7 +1916,7 @@ msgid "Models"
 msgstr "Modelos"
 
 #: src/pages/ModelSettingsOverlay.tsx:462
-#: src/pages/Onboarding.tsx:333
+#: src/pages/Onboarding.tsx:334
 msgid "Models from server"
 msgstr "Modelos do servidor"
 
@@ -1929,16 +1928,11 @@ msgstr "Mensalmente"
 msgid "More computer actions"
 msgstr ""
 
-#. placeholder {0}: bot.name
-#: src/pages/BotContextMenu.tsx:85
-msgid "Move {0} to section"
-msgstr "Mover {0} para a seção"
-
 #: src/pages/shell/dialogs.tsx:260
 msgid "Move them to your shared memory."
 msgstr "Mova-os para a sua memória compartilhada."
 
-#: src/pages/BotContextMenu.tsx:123
+#: src/pages/BotContextMenu.tsx:94
 msgid "Move to"
 msgstr "Mover para"
 
@@ -1946,7 +1940,7 @@ msgstr "Mover para"
 #: src/pages/Auth.tsx:110
 #: src/pages/GroupPanel.tsx:119
 #: src/pages/GroupPanel.tsx:212
-#: src/pages/Onboarding.tsx:535
+#: src/pages/Onboarding.tsx:536
 #: src/pages/RoutineEditor.tsx:281
 #: src/pages/shell/bot-panel.tsx:122
 #: src/pages/shell/bot-panel.tsx:288
@@ -1955,7 +1949,7 @@ msgstr "Mover para"
 msgid "Name"
 msgstr "Nome"
 
-#: src/pages/Onboarding.tsx:540
+#: src/pages/Onboarding.tsx:541
 #: src/pages/shell/bot-panel.tsx:128
 msgid "Name this bot"
 msgstr "Nomeie este bot"
@@ -2161,7 +2155,7 @@ msgid "Open work"
 msgstr "Trabalho aberto"
 
 #: src/pages/ModelSettingsOverlay.tsx:422
-#: src/pages/Onboarding.tsx:294
+#: src/pages/Onboarding.tsx:295
 msgid "OpenAI-compatible server URL"
 msgstr "URL do servidor compatível com OpenAI"
 
@@ -2174,7 +2168,7 @@ msgid "Opening your Space…"
 msgstr "Abrindo seu espaço de trabalho..."
 
 #: src/pages/ModelSettingsOverlay.tsx:646
-#: src/pages/Onboarding.tsx:474
+#: src/pages/Onboarding.tsx:475
 msgid "Optional"
 msgstr "Opcional"
 
@@ -2190,7 +2184,7 @@ msgstr "Valor de cabeçalho opcional"
 msgid "Or connect an API key"
 msgstr "Ou conecte uma chave de API"
 
-#: src/pages/Onboarding.tsx:485
+#: src/pages/Onboarding.tsx:486
 msgid "Or paste an API key"
 msgstr "Ou cole uma chave de API"
 
@@ -2241,7 +2235,7 @@ msgid "Paste a replacement key"
 msgstr "Cole uma chave de substituição"
 
 #: src/pages/ModelSettingsOverlay.tsx:433
-#: src/pages/Onboarding.tsx:305
+#: src/pages/Onboarding.tsx:306
 msgid "Paste the OpenAI-compatible address from your server. Rakazo adds /v1 if needed."
 msgstr "Cole o endereço compatível com OpenAI do seu servidor. Rakazo adiciona /v1 se necessário."
 
@@ -2262,7 +2256,7 @@ msgstr "Senha Pessoal"
 msgid "Pick a voice"
 msgstr "Escolha uma voz"
 
-#: src/pages/BotContextMenu.tsx:119
+#: src/pages/BotContextMenu.tsx:89
 msgid "Pin"
 msgstr "Fixar"
 
@@ -2284,8 +2278,8 @@ msgid "Private"
 msgstr "Privado"
 
 #: src/pages/MemorySettingsOverlay.tsx:216
-#: src/pages/Onboarding.tsx:266
-#: src/pages/Onboarding.tsx:273
+#: src/pages/Onboarding.tsx:267
+#: src/pages/Onboarding.tsx:274
 msgid "Provider"
 msgstr "Provedor"
 
@@ -2625,7 +2619,7 @@ msgstr "Nome do servidor"
 
 #: src/pages/McpServersOverlay.tsx:329
 #: src/pages/ModelSettingsOverlay.tsx:417
-#: src/pages/Onboarding.tsx:289
+#: src/pages/Onboarding.tsx:290
 msgid "Server URL"
 msgstr "URL do servidor"
 
@@ -2649,7 +2643,7 @@ msgid "Settings: Usage"
 msgstr "Configurações: Uso"
 
 #: src/pages/ModelSettingsOverlay.tsx:430
-#: src/pages/Onboarding.tsx:302
+#: src/pages/Onboarding.tsx:303
 msgid "Setup help"
 msgstr "Ajuda"
 
@@ -2700,7 +2694,7 @@ msgstr "Habilidade {0}"
 msgid "Skip"
 msgstr "Pular"
 
-#: src/pages/Onboarding.tsx:523
+#: src/pages/Onboarding.tsx:524
 msgid "Skip for now"
 msgstr "Ignorar por enquanto"
 
@@ -2762,7 +2756,7 @@ msgstr "Iniciando"
 
 #: src/components/teach/TeachComputerOverlay.tsx:248
 #: src/pages/ModelSettingsOverlay.tsx:626
-#: src/pages/Onboarding.tsx:459
+#: src/pages/Onboarding.tsx:460
 msgid "Starting…"
 msgstr "Iniciando…"
 
@@ -2807,7 +2801,7 @@ msgstr "subagente"
 
 #: src/components/AskCard.tsx:140
 #: src/pages/ModelSettingsOverlay.tsx:586
-#: src/pages/Onboarding.tsx:426
+#: src/pages/Onboarding.tsx:427
 msgid "Submit"
 msgstr "Enviar"
 
@@ -2905,7 +2899,7 @@ msgstr "Este Mac executa comandos do shell com sua conta, incluindo arquivos em 
 msgid "This permanently removes every message and stops current work. The chat remains available."
 msgstr ""
 
-#: src/pages/Onboarding.tsx:499
+#: src/pages/Onboarding.tsx:500
 msgid "This provider cannot paste a key here. Skip if this deployment already has credentials."
 msgstr "Este provedor não pode colar uma chave aqui. Ignore se esta implantação já tiver credenciais."
 
@@ -2966,7 +2960,7 @@ msgstr ""
 msgid "Unlink"
 msgstr ""
 
-#: src/pages/BotContextMenu.tsx:119
+#: src/pages/BotContextMenu.tsx:89
 msgid "Unpin"
 msgstr "Desafixar"
 
@@ -3020,7 +3014,7 @@ msgid "Use {hostLabel}"
 msgstr "Usar {hostLabel}"
 
 #: src/pages/ModelSettingsOverlay.tsx:495
-#: src/pages/Onboarding.tsx:360
+#: src/pages/Onboarding.tsx:361
 msgid "Use a found model"
 msgstr "Usar um modelo encontrado"
 
@@ -3045,8 +3039,8 @@ msgstr "Voz"
 
 #: src/pages/ModelSettingsOverlay.tsx:590
 #: src/pages/ModelSettingsOverlay.tsx:612
-#: src/pages/Onboarding.tsx:430
-#: src/pages/Onboarding.tsx:452
+#: src/pages/Onboarding.tsx:431
+#: src/pages/Onboarding.tsx:453
 msgid "Waiting for sign-in…"
 msgstr "Aguardando login..."
 

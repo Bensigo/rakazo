@@ -142,7 +142,7 @@ msgid "Action confirmations"
 msgstr "कार्रवाई की पुष्टि"
 
 #. placeholder {0}: bot.name
-#: src/pages/BotContextMenu.tsx:85
+#: src/pages/BotContextMenu.tsx:82
 msgid "Actions for {0}"
 msgstr "{0} के लिए कार्रवाइयां"
 
@@ -333,9 +333,9 @@ msgstr ""
 #: src/pages/ModelSettingsOverlay.tsx:640
 #: src/pages/ModelSettingsOverlay.tsx:643
 #: src/pages/ModelSettingsOverlay.tsx:662
-#: src/pages/Onboarding.tsx:468
-#: src/pages/Onboarding.tsx:471
-#: src/pages/Onboarding.tsx:485
+#: src/pages/Onboarding.tsx:469
+#: src/pages/Onboarding.tsx:472
+#: src/pages/Onboarding.tsx:486
 #: src/pages/VoiceSettingsOverlay.tsx:258
 msgid "API key"
 msgstr "API कुंजी"
@@ -363,7 +363,7 @@ msgstr "अनुमोदित करें"
 msgid "Approve this server to let your agent use its tools."
 msgstr "अपने एजेंट को इसके टूल उपयोग करने देने के लिए इस सर्वर को अनुमोदित करें।"
 
-#: src/pages/BotContextMenu.tsx:146
+#: src/pages/BotContextMenu.tsx:136
 msgid "Archive"
 msgstr "आर्काइव करें"
 
@@ -438,7 +438,7 @@ msgid "Attachment"
 msgstr "अटैचमेंट"
 
 #: src/pages/ModelSettingsOverlay.tsx:573
-#: src/pages/Onboarding.tsx:417
+#: src/pages/Onboarding.tsx:418
 msgid "Authorization code or callback URL"
 msgstr "ऑथराइज़ेशन कोड या कॉलबैक URL"
 
@@ -459,7 +459,6 @@ msgstr ""
 msgid "Avatars"
 msgstr ""
 
-#: src/pages/BotContextMenu.tsx:94
 #: src/pages/RoutineEditor.tsx:231
 msgid "Back"
 msgstr ""
@@ -493,14 +492,14 @@ msgstr "{0} का कंप्यूटर शुरू हो रहा है
 msgid "bot"
 msgstr "बॉट"
 
-#: src/pages/Shell.tsx:1682
-msgid "Bot"
-msgstr "बॉट"
-
 #. js-lingui-explicit-id
 #: src/lib/browser-notifications.ts:71
 msgid "Bot"
 msgstr ""
+
+#: src/pages/Shell.tsx:1682
+msgid "Bot"
+msgstr "बॉट"
 
 #: src/pages/Shell.tsx:3836
 msgid "Bot screen"
@@ -623,7 +622,7 @@ msgstr ""
 msgid "Choose a bot…"
 msgstr ""
 
-#: src/pages/Onboarding.tsx:262
+#: src/pages/Onboarding.tsx:263
 msgid "Choose a model to get started."
 msgstr "शुरू करने के लिए एक मॉडल चुनें।"
 
@@ -644,7 +643,7 @@ msgstr "साफ़ करें"
 msgid "Clear {0}’s conversation?"
 msgstr "{0} की बातचीत साफ़ करें?"
 
-#: src/pages/BotContextMenu.tsx:142
+#: src/pages/BotContextMenu.tsx:132
 #: src/pages/shell/bot-panel.tsx:479
 msgid "Clear conversation"
 msgstr "बातचीत साफ़ करें"
@@ -790,7 +789,7 @@ msgstr "पासवर्ड की पुष्टि करें"
 msgid "Connect"
 msgstr "कनेक्ट करें"
 
-#: src/pages/Onboarding.tsx:259
+#: src/pages/Onboarding.tsx:260
 msgid "Connect a model"
 msgstr "एक मॉडल कनेक्ट करें"
 
@@ -861,8 +860,8 @@ msgstr "कनेक्ट हो रहा है…"
 msgid "Connection to {0} is still pending. You can close this and check again."
 msgstr "{0} से कनेक्शन अभी लंबित है। आप इसे बंद करके बाद में जांच सकते हैं।"
 
-#: src/pages/Onboarding.tsx:512
-#: src/pages/Onboarding.tsx:546
+#: src/pages/Onboarding.tsx:513
+#: src/pages/Onboarding.tsx:547
 msgid "Continue"
 msgstr "जारी रखें"
 
@@ -951,7 +950,7 @@ msgstr "सेक्शन नहीं बनाया जा सका"
 msgid "Could not create space"
 msgstr ""
 
-#: src/pages/Onboarding.tsx:244
+#: src/pages/Onboarding.tsx:245
 msgid "Could not create your bot"
 msgstr "आपका बॉट नहीं बनाया जा सका"
 
@@ -1035,7 +1034,7 @@ msgid "Could not reach the server"
 msgstr "सर्वर से संपर्क नहीं हो सका"
 
 #: src/pages/ModelSettingsOverlay.tsx:232
-#: src/pages/Onboarding.tsx:190
+#: src/pages/Onboarding.tsx:191
 msgid "Could not reach this model server"
 msgstr "इस मॉडल सर्वर तक नहीं पहुंचा जा सका"
 
@@ -1083,7 +1082,7 @@ msgstr ""
 msgid "Could not save group"
 msgstr "समूह सहेजा नहीं जा सका"
 
-#: src/pages/Onboarding.tsx:217
+#: src/pages/Onboarding.tsx:218
 msgid "Could not save model"
 msgstr "मॉडल सहेजा नहीं जा सका"
 
@@ -1192,7 +1191,7 @@ msgstr ""
 msgid "Create space"
 msgstr ""
 
-#: src/pages/Onboarding.tsx:532
+#: src/pages/Onboarding.tsx:533
 msgid "Create your first bot"
 msgstr "अपना पहला बॉट बनाएं"
 
@@ -1261,7 +1260,7 @@ msgstr "डिफ़ॉल्ट (मध्यम)"
 msgid "Default scope"
 msgstr "डिफ़ॉल्ट स्कोप"
 
-#: src/pages/BotContextMenu.tsx:150
+#: src/pages/BotContextMenu.tsx:140
 #: src/pages/McpServersOverlay.tsx:508
 #: src/pages/RoutineEditor.tsx:272
 #: src/pages/Shell.tsx:2744
@@ -1391,7 +1390,7 @@ msgstr "{name} डाउनलोड करें"
 msgid "Draft skill"
 msgstr "ड्राफ़्ट स्किल"
 
-#: src/pages/BotContextMenu.tsx:137
+#: src/pages/BotContextMenu.tsx:127
 msgid "Duplicate"
 msgstr "डुप्लिकेट"
 
@@ -1403,7 +1402,7 @@ msgstr "पुराना संदेश"
 msgid "Edit first"
 msgstr "पहले संपादित करें"
 
-#: src/pages/BotContextMenu.tsx:133
+#: src/pages/BotContextMenu.tsx:123
 msgid "Edit Profile"
 msgstr "प्रोफ़ाइल संपादित करें"
 
@@ -1413,7 +1412,7 @@ msgstr "ईमेल"
 
 #. placeholder {0}: oauth.verificationUri.replace(/^https:\/\//, "")
 #: src/pages/ModelSettingsOverlay.tsx:596
-#: src/pages/Onboarding.tsx:436
+#: src/pages/Onboarding.tsx:437
 msgid "Enter this code at <0>{0}</0>"
 msgstr "यह कोड <0>{0}</0> पर दर्ज करें"
 
@@ -1497,18 +1496,18 @@ msgid "Failure handling"
 msgstr "विफलता प्रबंधन"
 
 #: src/pages/ModelSettingsOverlay.tsx:444
-#: src/pages/Onboarding.tsx:314
+#: src/pages/Onboarding.tsx:315
 msgid "Find models"
 msgstr "मॉडल खोजें"
 
 #: src/pages/ModelSettingsOverlay.tsx:444
-#: src/pages/Onboarding.tsx:314
+#: src/pages/Onboarding.tsx:315
 msgid "Finding…"
 msgstr "खोजा जा रहा है…"
 
 #. placeholder {0}: new URL(oauth.verificationUri).hostname
 #: src/pages/ModelSettingsOverlay.tsx:556
-#: src/pages/Onboarding.tsx:400
+#: src/pages/Onboarding.tsx:401
 msgid "Finish signing in at <0>{0}</0>. The final page may not load; paste its URL or code here."
 msgstr "<0>{0}</0> पर साइन इन पूरा करें। अंतिम पेज शायद लोड न हो; उसका URL या कोड यहां पेस्ट करें।"
 
@@ -1760,7 +1759,7 @@ msgid "Loading voice providers…"
 msgstr "आवाज़ प्रोवाइडर्स लोड हो रहे हैं…"
 
 #: src/App.tsx:54
-#: src/pages/Onboarding.tsx:253
+#: src/pages/Onboarding.tsx:254
 #: src/pages/PeerMessagesOverlay.tsx:99
 #: src/pages/Shell.tsx:4053
 msgid "Loading…"
@@ -1786,11 +1785,11 @@ msgstr ""
 msgid "Manage the Space semantic memory provider."
 msgstr "वर्कस्पेस के सिमेंटिक मेमोरी प्रोवाइडर को प्रबंधित करें।"
 
-#: src/pages/BotContextMenu.tsx:128
+#: src/pages/BotContextMenu.tsx:118
 msgid "Mark as Read"
 msgstr "पढ़ा हुआ चिह्नित करें"
 
-#: src/pages/BotContextMenu.tsx:128
+#: src/pages/BotContextMenu.tsx:118
 msgid "Mark as Unread"
 msgstr "अपठित चिह्नित करें"
 
@@ -1828,15 +1827,15 @@ msgstr "मेमोरी स्कोप"
 msgid "Mentions"
 msgstr ""
 
-#: src/pages/Shell.tsx:4747
-#: src/pages/Shell.tsx:4861
-msgid "Message"
-msgstr "संदेश"
-
 #. js-lingui-explicit-id
 #: src/lib/browser-notifications.ts:83
 msgid "Message"
 msgstr ""
+
+#: src/pages/Shell.tsx:4747
+#: src/pages/Shell.tsx:4861
+msgid "Message"
+msgstr "संदेश"
 
 #: src/pages/Shell.tsx:4743
 #: src/pages/Shell.tsx:4747
@@ -1887,15 +1886,15 @@ msgstr "मिनट"
 #: src/pages/ModelSettingsOverlay.tsx:449
 #: src/pages/ModelSettingsOverlay.tsx:503
 #: src/pages/ModelSettingsOverlay.tsx:932
-#: src/pages/Onboarding.tsx:319
-#: src/pages/Onboarding.tsx:368
-#: src/pages/Onboarding.tsx:379
+#: src/pages/Onboarding.tsx:320
+#: src/pages/Onboarding.tsx:369
+#: src/pages/Onboarding.tsx:380
 #: src/pages/shell/bot-panel.tsx:332
 msgid "Model"
 msgstr "मॉडल"
 
 #: src/pages/ModelSettingsOverlay.tsx:483
-#: src/pages/Onboarding.tsx:348
+#: src/pages/Onboarding.tsx:349
 msgid "Model id"
 msgstr "मॉडल आईडी"
 
@@ -1917,7 +1916,7 @@ msgid "Models"
 msgstr "मॉडल्स"
 
 #: src/pages/ModelSettingsOverlay.tsx:462
-#: src/pages/Onboarding.tsx:333
+#: src/pages/Onboarding.tsx:334
 msgid "Models from server"
 msgstr "सर्वर से मॉडल"
 
@@ -1929,16 +1928,11 @@ msgstr "मासिक"
 msgid "More computer actions"
 msgstr ""
 
-#. placeholder {0}: bot.name
-#: src/pages/BotContextMenu.tsx:85
-msgid "Move {0} to section"
-msgstr "{0} को सेक्शन में ले जाएं"
-
 #: src/pages/shell/dialogs.tsx:260
 msgid "Move them to your shared memory."
 msgstr "उन्हें अपनी साझा मेमोरी में ले जाएं।"
 
-#: src/pages/BotContextMenu.tsx:123
+#: src/pages/BotContextMenu.tsx:94
 msgid "Move to"
 msgstr "यहां ले जाएं"
 
@@ -1946,7 +1940,7 @@ msgstr "यहां ले जाएं"
 #: src/pages/Auth.tsx:110
 #: src/pages/GroupPanel.tsx:119
 #: src/pages/GroupPanel.tsx:212
-#: src/pages/Onboarding.tsx:535
+#: src/pages/Onboarding.tsx:536
 #: src/pages/RoutineEditor.tsx:281
 #: src/pages/shell/bot-panel.tsx:122
 #: src/pages/shell/bot-panel.tsx:288
@@ -1955,7 +1949,7 @@ msgstr "यहां ले जाएं"
 msgid "Name"
 msgstr "नाम"
 
-#: src/pages/Onboarding.tsx:540
+#: src/pages/Onboarding.tsx:541
 #: src/pages/shell/bot-panel.tsx:128
 msgid "Name this bot"
 msgstr "इस बॉट को नाम दें"
@@ -2161,7 +2155,7 @@ msgid "Open work"
 msgstr "खुला कार्य"
 
 #: src/pages/ModelSettingsOverlay.tsx:422
-#: src/pages/Onboarding.tsx:294
+#: src/pages/Onboarding.tsx:295
 msgid "OpenAI-compatible server URL"
 msgstr "OpenAI-संगत सर्वर URL"
 
@@ -2174,7 +2168,7 @@ msgid "Opening your Space…"
 msgstr "आपका वर्कस्पेस खुल रहा है…"
 
 #: src/pages/ModelSettingsOverlay.tsx:646
-#: src/pages/Onboarding.tsx:474
+#: src/pages/Onboarding.tsx:475
 msgid "Optional"
 msgstr "वैकल्पिक"
 
@@ -2190,7 +2184,7 @@ msgstr "वैकल्पिक हेडर मान"
 msgid "Or connect an API key"
 msgstr "या एक API कुंजी कनेक्ट करें"
 
-#: src/pages/Onboarding.tsx:485
+#: src/pages/Onboarding.tsx:486
 msgid "Or paste an API key"
 msgstr "या एक API कुंजी पेस्ट करें"
 
@@ -2241,7 +2235,7 @@ msgid "Paste a replacement key"
 msgstr "बदलने के लिए नई कुंजी पेस्ट करें"
 
 #: src/pages/ModelSettingsOverlay.tsx:433
-#: src/pages/Onboarding.tsx:305
+#: src/pages/Onboarding.tsx:306
 msgid "Paste the OpenAI-compatible address from your server. Rakazo adds /v1 if needed."
 msgstr "अपने सर्वर से OpenAI-संगत पता पेस्ट करें। ज़रूरत होने पर Rakazo /v1 जोड़ देता है।"
 
@@ -2262,7 +2256,7 @@ msgstr "व्यक्तिगत क्रेडेंशियल"
 msgid "Pick a voice"
 msgstr "एक आवाज़ चुनें"
 
-#: src/pages/BotContextMenu.tsx:119
+#: src/pages/BotContextMenu.tsx:89
 msgid "Pin"
 msgstr "पिन करें"
 
@@ -2284,8 +2278,8 @@ msgid "Private"
 msgstr "निजी"
 
 #: src/pages/MemorySettingsOverlay.tsx:216
-#: src/pages/Onboarding.tsx:266
-#: src/pages/Onboarding.tsx:273
+#: src/pages/Onboarding.tsx:267
+#: src/pages/Onboarding.tsx:274
 msgid "Provider"
 msgstr "प्रोवाइडर"
 
@@ -2625,7 +2619,7 @@ msgstr "सर्वर का नाम"
 
 #: src/pages/McpServersOverlay.tsx:329
 #: src/pages/ModelSettingsOverlay.tsx:417
-#: src/pages/Onboarding.tsx:289
+#: src/pages/Onboarding.tsx:290
 msgid "Server URL"
 msgstr "सर्वर URL"
 
@@ -2649,7 +2643,7 @@ msgid "Settings: Usage"
 msgstr "सेटिंग्स: उपयोग"
 
 #: src/pages/ModelSettingsOverlay.tsx:430
-#: src/pages/Onboarding.tsx:302
+#: src/pages/Onboarding.tsx:303
 msgid "Setup help"
 msgstr "सेटअप सहायता"
 
@@ -2700,7 +2694,7 @@ msgstr "स्किल {0}"
 msgid "Skip"
 msgstr "छोड़ें"
 
-#: src/pages/Onboarding.tsx:523
+#: src/pages/Onboarding.tsx:524
 msgid "Skip for now"
 msgstr "अभी के लिए छोड़ें"
 
@@ -2762,7 +2756,7 @@ msgstr "शुरू हो रहा है"
 
 #: src/components/teach/TeachComputerOverlay.tsx:248
 #: src/pages/ModelSettingsOverlay.tsx:626
-#: src/pages/Onboarding.tsx:459
+#: src/pages/Onboarding.tsx:460
 msgid "Starting…"
 msgstr "शुरू हो रहा है…"
 
@@ -2807,7 +2801,7 @@ msgstr "सबएजेंट"
 
 #: src/components/AskCard.tsx:140
 #: src/pages/ModelSettingsOverlay.tsx:586
-#: src/pages/Onboarding.tsx:426
+#: src/pages/Onboarding.tsx:427
 msgid "Submit"
 msgstr "सबमिट करें"
 
@@ -2905,7 +2899,7 @@ msgstr "यह Mac आपके खाते से शेल कमांड �
 msgid "This permanently removes every message and stops current work. The chat remains available."
 msgstr ""
 
-#: src/pages/Onboarding.tsx:499
+#: src/pages/Onboarding.tsx:500
 msgid "This provider cannot paste a key here. Skip if this deployment already has credentials."
 msgstr "यह प्रोवाइडर यहां कुंजी पेस्ट नहीं कर सकता। यदि इस डिप्लॉयमेंट में पहले से क्रेडेंशियल हैं तो छोड़ दें।"
 
@@ -2966,7 +2960,7 @@ msgstr ""
 msgid "Unlink"
 msgstr ""
 
-#: src/pages/BotContextMenu.tsx:119
+#: src/pages/BotContextMenu.tsx:89
 msgid "Unpin"
 msgstr "पिन हटाएं"
 
@@ -3020,7 +3014,7 @@ msgid "Use {hostLabel}"
 msgstr "{hostLabel} का उपयोग करें"
 
 #: src/pages/ModelSettingsOverlay.tsx:495
-#: src/pages/Onboarding.tsx:360
+#: src/pages/Onboarding.tsx:361
 msgid "Use a found model"
 msgstr "मिला हुआ मॉडल उपयोग करें"
 
@@ -3045,8 +3039,8 @@ msgstr "आवाज़"
 
 #: src/pages/ModelSettingsOverlay.tsx:590
 #: src/pages/ModelSettingsOverlay.tsx:612
-#: src/pages/Onboarding.tsx:430
-#: src/pages/Onboarding.tsx:452
+#: src/pages/Onboarding.tsx:431
+#: src/pages/Onboarding.tsx:453
 msgid "Waiting for sign-in…"
 msgstr "साइन-इन की प्रतीक्षा…"
 
