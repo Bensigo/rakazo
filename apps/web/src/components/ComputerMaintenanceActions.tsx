@@ -25,15 +25,10 @@ export function ComputerMaintenanceActions({
   botId,
   computer,
   onChanged,
-  compact = false,
-  variant = "panel",
 }: {
   botId: string;
   computer: ComputerStatus | null;
   onChanged: () => Promise<void>;
-  compact?: boolean;
-  /** `menu` hides Recover/Reset/Update behind a More control (full computer chrome). */
-  variant?: "panel" | "menu";
 }) {
   const { t } = useLingui();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -108,109 +103,55 @@ export function ComputerMaintenanceActions({
     </AlertDialog>
   );
 
-  if (variant === "menu") {
-    return (
-      <>
-        <DropdownMenu
-          open={menuOpen}
-          onOpenChange={(open) => {
-            if (open) setError(null);
-            setMenuOpen(open);
-          }}
-        >
-          <DropdownMenuTrigger
-            data-testid="computer-more-button"
-            aria-label={t`More computer actions`}
-            disabled={busy && pending === null}
-            render={<Button variant="ghost" size="icon" className="text-muted-foreground" />}
-          >
-            <MoreHorizontal />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="end"
-            data-testid="computer-more-menu"
-            className="w-auto min-w-44"
-          >
-            {showRecover ? (
-              <DropdownMenuItem
-                closeOnClick={false}
-                disabled={busy || pending !== null}
-                onClick={() => void run("recover")}
-              >
-                {pending === "recover" ? (
-                  <Trans>Recovering…</Trans>
-                ) : (
-                  <Trans>Recover computer</Trans>
-                )}
-              </DropdownMenuItem>
-            ) : null}
-            {showReset ? (
-              <DropdownMenuItem disabled={busy || pending !== null} onClick={openResetConfirm}>
-                {pending === "reset" ? <Trans>Resetting…</Trans> : <Trans>Reset computer</Trans>}
-              </DropdownMenuItem>
-            ) : null}
-            {showUpdate ? (
-              <DropdownMenuItem
-                closeOnClick={false}
-                disabled={busy || pending !== null}
-                onClick={() => void run("update")}
-              >
-                {pending === "update" ? <Trans>Updating…</Trans> : <Trans>Update computer</Trans>}
-              </DropdownMenuItem>
-            ) : null}
-            {error ? <p className="px-1.5 py-1 text-[12.5px] text-destructive">{error}</p> : null}
-          </DropdownMenuContent>
-        </DropdownMenu>
-        {resetDialog}
-      </>
-    );
-  }
-
   return (
-    <div className={compact ? "flex flex-col items-start gap-2" : "mt-4 flex flex-col gap-3"}>
-      <div className={compact ? "flex flex-wrap gap-2" : "flex flex-col gap-2"}>
-        {showRecover ? (
-          <Button
-            variant="secondary"
-            className="rounded-full"
-            disabled={busy || pending !== null}
-            onClick={() => void run("recover")}
-          >
-            {pending === "recover" ? <Trans>Recovering…</Trans> : <Trans>Recover computer</Trans>}
-          </Button>
-        ) : null}
-        {showReset ? (
-          <Button
-            variant="secondary"
-            className="rounded-full"
-            disabled={busy || pending !== null}
-            onClick={openResetConfirm}
-          >
-            {pending === "reset" ? <Trans>Resetting…</Trans> : <Trans>Reset computer</Trans>}
-          </Button>
-        ) : null}
-        {showUpdate ? (
-          <Button
-            variant="secondary"
-            className="rounded-full"
-            disabled={busy || pending !== null}
-            onClick={() => void run("update")}
-          >
-            {pending === "update" ? <Trans>Updating…</Trans> : <Trans>Update computer</Trans>}
-          </Button>
-        ) : null}
-      </div>
-      {!compact ? (
-        <p className="text-[13px] leading-[1.45] text-muted-foreground/80">
-          <Trans>
-            Recover replaces an unreachable computer and keeps files in the saved workspace. Reset
-            restores the last saved workspace and loses unsaved work. Update rebuilds with the
-            latest image and keeps the saved workspace.
-          </Trans>
-        </p>
-      ) : null}
-      {error && !confirmReset ? <p className="text-[13px] text-destructive">{error}</p> : null}
+    <>
+      <DropdownMenu
+        open={menuOpen}
+        onOpenChange={(open) => {
+          if (open) setError(null);
+          setMenuOpen(open);
+        }}
+      >
+        <DropdownMenuTrigger
+          data-testid="computer-more-button"
+          aria-label={t`More computer actions`}
+          disabled={busy && pending === null}
+          render={<Button variant="ghost" size="icon" className="text-muted-foreground" />}
+        >
+          <MoreHorizontal />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          data-testid="computer-more-menu"
+          className="w-auto min-w-44"
+        >
+          {showRecover ? (
+            <DropdownMenuItem
+              closeOnClick={false}
+              disabled={busy || pending !== null}
+              onClick={() => void run("recover")}
+            >
+              {pending === "recover" ? <Trans>Recovering…</Trans> : <Trans>Recover computer</Trans>}
+            </DropdownMenuItem>
+          ) : null}
+          {showReset ? (
+            <DropdownMenuItem disabled={busy || pending !== null} onClick={openResetConfirm}>
+              {pending === "reset" ? <Trans>Resetting…</Trans> : <Trans>Reset computer</Trans>}
+            </DropdownMenuItem>
+          ) : null}
+          {showUpdate ? (
+            <DropdownMenuItem
+              closeOnClick={false}
+              disabled={busy || pending !== null}
+              onClick={() => void run("update")}
+            >
+              {pending === "update" ? <Trans>Updating…</Trans> : <Trans>Update computer</Trans>}
+            </DropdownMenuItem>
+          ) : null}
+          {error ? <p className="px-1.5 py-1 text-[12.5px] text-destructive">{error}</p> : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
       {resetDialog}
-    </div>
+    </>
   );
 }

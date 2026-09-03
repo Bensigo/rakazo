@@ -3223,7 +3223,6 @@ export function ShellPage() {
               <BotSettings
                 key={active.id}
                 bot={active}
-                computer={computer}
                 memoryProviderConfigured={memoryProviderConfig != null}
                 onSave={async ({ computerMode, ...patch }) => {
                   if (computerMode !== active.computerMode) {
@@ -3248,9 +3247,6 @@ export function ShellPage() {
                   URL.revokeObjectURL(url);
                 }}
                 onClear={() => setClearTarget({ kind: "bot", chat: active })}
-                onComputerChanged={async () => {
-                  await refreshThread(active.id);
-                }}
               />
             ) : null}
             {panel === "routine" && active ? (
@@ -3773,7 +3769,6 @@ export function ShellPage() {
                 <ComputerMaintenanceActions
                   botId={active.id}
                   computer={computer}
-                  variant="menu"
                   onChanged={async () => {
                     await refreshThread(active.id);
                   }}
