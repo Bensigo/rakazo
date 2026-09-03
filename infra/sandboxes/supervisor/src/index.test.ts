@@ -515,6 +515,13 @@ describe("sandbox supervisor input containment", () => {
     expect(stopExtraScreenCommand(1)).not.toMatch(/6080/);
   });
 
+  it("on cancel, stops primary Chromium without tearing down the desktop", () => {
+    const stop = stopExtraScreenCommand(0, { cancelRunWork: true });
+    expect(stop).toContain("--user-data-dir=/home/rakazo/.browser-profiles/chromium$");
+    expect(stop).not.toContain("Xvfb");
+    expect(stop).not.toContain("fluxbox");
+  });
+
   it("parses a captured frame without trusting optional desktop metadata", () => {
     expect(
       parseObservation(

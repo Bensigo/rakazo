@@ -968,6 +968,7 @@ export function createRouter(deps: RouterDeps) {
                 spaceId: context.actor.spaceId,
                 userId: context.actor.userId,
                 botId: computer.executionBotId,
+                cancelRunWork: true,
                 signal: new AbortController().signal,
               })
               .catch(() => undefined);

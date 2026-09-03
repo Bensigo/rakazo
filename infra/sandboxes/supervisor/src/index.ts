@@ -534,7 +534,13 @@ app.delete("/computers/:id/screen", async (c) => {
     const index = assigned
       ? releaseAssignedScreen(assigned, screenId, c.req.header("x-rakazo-screen-lease-id"))
       : undefined;
-    const stop = index !== undefined ? stopExtraScreenCommand(index) : "";
+    const cancelRunWork = c.req.header("x-rakazo-cancel-run-work") === "1";
+    const stop =
+      index !== undefined
+        ? stopExtraScreenCommand(index, { cancelRunWork })
+        : cancelRunWork
+          ? stopExtraScreenCommand(0, { cancelRunWork: true })
+          : "";
     try {
       if (stop) {
         await runContainerCommand(container, ["bash", "-lc", stop]).catch(() => undefined);

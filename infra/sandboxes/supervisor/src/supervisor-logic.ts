@@ -248,8 +248,25 @@ export function clearComputerScreenRegistry(
   registry.delete(containerId);
 }
 
-export function stopExtraScreenCommand(index: number) {
-  if (index <= 0) return "";
+export function stopPrimaryBrowserCommand() {
+  const profile = `/home/rakazo/.browser-profiles/chromium`;
+  return [
+    `pkill -TERM -f -- '--user-data-dir=${profile}$' || true`,
+    `pkill -TERM -f -- '--user-data-dir=${profile} ' || true`,
+    "sleep 0.2",
+    `pkill -KILL -f -- '--user-data-dir=${profile}$' || true`,
+    `pkill -KILL -f -- '--user-data-dir=${profile} ' || true`,
+    `rm -f ${profile}/SingletonLock ${profile}/SingletonCookie ${profile}/SingletonSocket`,
+  ].join("; ");
+}
+
+export function stopExtraScreenCommand(
+  index: number,
+  options: { cancelRunWork?: boolean } = {},
+) {
+  if (index <= 0) {
+    return options.cancelRunWork ? stopPrimaryBrowserCommand() : "";
+  }
   const layout = screenPorts(index);
   const fluxHome = `/tmp/fluxbox-home-${layout.displayNumber}`;
   const profile = `/home/rakazo/.browser-profiles/chromium-screen-${layout.displayNumber}`;

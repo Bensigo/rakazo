@@ -747,6 +747,9 @@ function groupTarget() {
 describe("stopThreadRuns", () => {
   it("releases every active group member screen immediately", async () => {
     const releaseScreen = vi.fn().mockResolvedValue(undefined);
+    const execute = vi.fn(async function* () {
+      yield { type: "exit", code: 0 };
+    });
     const transaction = {
       $queryRaw: vi.fn(),
       run: {
@@ -765,16 +768,20 @@ describe("stopThreadRuns", () => {
       computer: {
         findMany: vi.fn().mockResolvedValue([
           {
+            id: "computer-db-a",
             homeKey: "home-a",
             kind: "fake",
             providerRef: "computer-a",
             executionBotId: "bot-a",
+            executionRunId: "run-a",
           },
           {
+            id: "computer-db-b",
             homeKey: "home-b",
             kind: "fake",
             providerRef: "computer-b",
             executionBotId: "bot-b",
+            executionRunId: "run-b",
           },
         ]),
         updateMany: vi.fn().mockResolvedValue({ count: 2 }),
@@ -796,19 +803,39 @@ describe("stopThreadRuns", () => {
     } satisfies ThreadTarget;
 
     await stopThreadRuns(
-      { prisma, sandbox: { releaseScreen } as unknown as SandboxProvider },
+      { prisma, sandbox: { releaseScreen, execute } as unknown as SandboxProvider },
       actor,
       target,
     );
 
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({ providerRef: "computer-a" }),
+      expect.objectContaining({
+        argv: expect.arrayContaining(["rakazo-cancel-run-work", "computer-db-a", "run-a"]),
+      }),
+      expect.objectContaining({ cancelRunWork: true, runId: "run-a" }),
+    );
     expect(releaseScreen).toHaveBeenCalledTimes(2);
     expect(releaseScreen).toHaveBeenCalledWith(
       expect.objectContaining({ providerRef: "computer-a" }),
-      expect.objectContaining({ spaceId: "workspace-1", userId: "user-1", botId: "bot-a" }),
+      expect.objectContaining({
+        spaceId: "workspace-1",
+        userId: "user-1",
+        botId: "bot-a",
+        cancelRunWork: true,
+        runId: "run-a",
+      }),
     );
     expect(releaseScreen).toHaveBeenCalledWith(
       expect.objectContaining({ providerRef: "computer-b" }),
-      expect.objectContaining({ spaceId: "workspace-1", userId: "user-1", botId: "bot-b" }),
+      expect.objectContaining({
+        spaceId: "workspace-1",
+        userId: "user-1",
+        botId: "bot-b",
+        cancelRunWork: true,
+        runId: "run-b",
+      }),
     );
     expect(prisma.computerExecutionLease.deleteMany).toHaveBeenCalledWith({
       where: { runId: { in: ["run-a", "run-b"] } },

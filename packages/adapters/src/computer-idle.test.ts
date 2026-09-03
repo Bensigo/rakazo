@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   BACKGROUND_WORK_LAUNCH,
   BACKGROUND_WORK_PROBE,
+  CANCEL_COMPUTER_RUN_WORK,
   DEFAULT_SANDBOX_IDLE_MS,
   sandboxIdleMs,
   sleepComputerIfIdle,
@@ -191,7 +192,7 @@ describe("background work launch and probe", () => {
       const databaseId = "computer-db-id";
       const providerRef = "provider-ref";
       const launchId = "active";
-      markers.add(`/tmp/rakazo-background-${databaseId}-${launchId}`);
+      markers.add(`/tmp/rakazo-background-${databaseId}-run-1-${launchId}`);
 
       const launched = spawn(
         "bash",
@@ -200,6 +201,7 @@ describe("background work launch and probe", () => {
           BACKGROUND_WORK_LAUNCH,
           "rakazo-background-launch",
           databaseId,
+          "run-1",
           launchId,
           "exec sleep 30",
         ],
@@ -217,13 +219,13 @@ describe("background work launch and probe", () => {
     "cleans a completed marker without blocking a later launch",
     async () => {
       const markerId = "computer-relaunch-id";
-      const completedMarker = `/tmp/rakazo-background-${markerId}-completed`;
-      const activeMarker = `/tmp/rakazo-background-${markerId}-active`;
+      const completedMarker = `/tmp/rakazo-background-${markerId}-run-1-completed`;
+      const activeMarker = `/tmp/rakazo-background-${markerId}-run-1-active`;
       markers.add(completedMarker);
       markers.add(activeMarker);
       const completed = spawn(
         "bash",
-        ["-c", BACKGROUND_WORK_LAUNCH, "rakazo-background-launch", markerId, "completed", "true"],
+        ["-c", BACKGROUND_WORK_LAUNCH, "rakazo-background-launch", markerId, "run-1", "completed", "true"],
         { stdio: "ignore" },
       );
       children.push(completed);
@@ -239,6 +241,7 @@ describe("background work launch and probe", () => {
           BACKGROUND_WORK_LAUNCH,
           "rakazo-background-launch",
           markerId,
+          "run-1",
           "active",
           "exec sleep 30",
         ],
@@ -253,7 +256,7 @@ describe("background work launch and probe", () => {
     "does not run the command when its marker cannot be opened",
     async () => {
       const markerId = "computer-marker-error";
-      const marker = `/tmp/rakazo-background-${markerId}-collision`;
+      const marker = `/tmp/rakazo-background-${markerId}-run-1-collision`;
       const commandRan = `/tmp/rakazo-background-command-ran-${markerId}`;
       markers.add(marker);
       markers.add(commandRan);
@@ -265,6 +268,7 @@ describe("background work launch and probe", () => {
           BACKGROUND_WORK_LAUNCH,
           "rakazo-background-launch",
           markerId,
+          "run-1",
           "collision",
           `touch ${commandRan}`,
         ],
@@ -281,7 +285,7 @@ describe("background work launch and probe", () => {
     "does not follow a pre-existing marker symlink",
     async () => {
       const markerId = "computer-marker-symlink";
-      const marker = `/tmp/rakazo-background-${markerId}-collision`;
+      const marker = `/tmp/rakazo-background-${markerId}-run-1-collision`;
       const commandRan = `/tmp/rakazo-background-command-ran-${markerId}`;
       markers.add(marker);
       markers.add(commandRan);
@@ -293,6 +297,7 @@ describe("background work launch and probe", () => {
           BACKGROUND_WORK_LAUNCH,
           "rakazo-background-launch",
           markerId,
+          "run-1",
           "collision",
           `touch ${commandRan}`,
         ],
@@ -304,6 +309,46 @@ describe("background work launch and probe", () => {
       expect(existsSync(commandRan)).toBe(false);
     },
   );
+
+  it.skipIf(process.platform === "win32")(
+    "cancel tears down background shell work for that run",
+    async () => {
+      const computerId = "computer-cancel-id";
+      const runId = "run-cancel-1";
+      const launchId = "active";
+      const marker = `/tmp/rakazo-background-${computerId}-${runId}-${launchId}`;
+      markers.add(marker);
+
+      const launched = spawn(
+        "bash",
+        [
+          "-c",
+          BACKGROUND_WORK_LAUNCH,
+          "rakazo-background-launch",
+          computerId,
+          runId,
+          launchId,
+          "exec sleep 30",
+        ],
+        { stdio: "ignore" },
+      );
+      children.push(launched);
+
+      await expect.poll(() => probeBackgroundWork(computerId)).toBe(0);
+
+      const launchedDone = processExit(launched);
+      const cancel = spawn(
+        "bash",
+        ["-c", CANCEL_COMPUTER_RUN_WORK, "rakazo-cancel-run-work", computerId, runId],
+        { stdio: "ignore" },
+      );
+      children.push(cancel);
+      expect(await processExit(cancel)).toBe(0);
+      await launchedDone;
+      expect(await probeBackgroundWork(computerId)).toBe(1);
+    },
+  );
+
 });
 
 describe("e2b create options", () => {
