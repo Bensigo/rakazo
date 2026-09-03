@@ -260,7 +260,8 @@ export function stopPrimaryBrowserCommand() {
   ].join("; ");
 }
 
-/** Choose the stop command for DELETE /screen cancel/release. */
+/** Choose the stop command for DELETE /screen cancel/release.
+ * Callers must hold the per-computer screen lock across this decision and any stop. */
 export function screenReleaseStopCommand(
   index: number | undefined,
   options: { hasRegistry: boolean; cancelRunWork: boolean },
