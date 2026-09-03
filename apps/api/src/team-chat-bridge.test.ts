@@ -48,7 +48,7 @@ describe("team chat bridge", () => {
       { kind: "meta", text: "internal metadata" },
     ];
     expect(teamChatResponseText(blocks)).toBe("The plan is ready.");
-    expect(teamChatResponseText([])).toBe("Arthur completed the request without a written reply.");
+    expect(teamChatResponseText([])).toBe("Bot completed the request without a written reply.");
   });
 
   it("creates one isolated run and one reply for duplicate provider events", async () => {

@@ -3254,12 +3254,12 @@ msgid "Always act"
 msgstr "Always act"
 
 #: src/pages/ExternalConversationSettings.tsx
-msgid "Arthur default"
-msgstr "Arthur default"
+msgid "{0} default"
+msgstr "{0} default"
 
 #: src/pages/ExternalConversationSettings.tsx
-msgid "Arthur will still respond to direct mentions."
-msgstr "Arthur will still respond to direct mentions."
+msgid "{0} will still respond to direct mentions."
+msgstr "{0} will still respond to direct mentions."
 
 #: src/pages/ExternalConversationSettings.tsx
 msgid "Automated senders"
@@ -3310,5 +3310,5 @@ msgid "Treat like a person"
 msgstr "Treat like a person"
 
 #: src/pages/ExternalConversationSettings.tsx
-msgid "Use Arthur's default guidance"
-msgstr "Use Arthur's default guidance"
+msgid "Use default guidance"
+msgstr "Use default guidance"

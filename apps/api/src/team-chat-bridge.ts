@@ -39,7 +39,7 @@ export function teamChatPrompt(provider: string, senderName: string, content: st
 
 export function teamChatResponseText(
   blocks: MessageBlock[],
-  botName = "Arthur",
+  botName = "Bot",
   allowSilence = false,
 ): string {
   const text = blocks

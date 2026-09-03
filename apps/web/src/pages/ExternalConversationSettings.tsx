@@ -94,7 +94,7 @@ export function ExternalConversationSettings({
         <div className="mt-2 grid grid-cols-3 gap-1 rounded-lg bg-[var(--rk-surface)] p-1">
           {(
             [
-              { value: "inherit" as const, label: t`Arthur default` },
+              { value: "inherit" as const, label: t`${bot.name} default` },
               { value: "listen" as const, label: t`Listen` },
               { value: "mentions" as const, label: t`Mentions only` },
             ] satisfies Array<{ value: ListenMode; label: string }>
@@ -125,8 +125,8 @@ export function ExternalConversationSettings({
           {rules !== null ? (
             <button
               type="button"
-              title={t`Use Arthur's default guidance`}
-              aria-label={t`Use Arthur's default guidance`}
+              title={t`Use default guidance`}
+              aria-label={t`Use default guidance`}
               onClick={() => {
                 setRules(null);
                 setSaved(false);
@@ -137,7 +137,7 @@ export function ExternalConversationSettings({
             </button>
           ) : (
             <span className="text-[11.5px] text-[var(--rk-muted-2)]">
-              <Trans>Arthur default</Trans>
+              <Trans>{bot.name} default</Trans>
             </span>
           )}
         </span>
@@ -228,7 +228,7 @@ export function ExternalConversationSettings({
 
       {!effectiveListening ? (
         <p className="mt-5 text-[12.5px] leading-5 text-[var(--rk-muted-2)]">
-          <Trans>Arthur will still respond to direct mentions.</Trans>
+          <Trans>{bot.name} will still respond to direct mentions.</Trans>
         </p>
       ) : null}
       {error ? <p className="mt-3 text-[13px] text-[var(--rk-danger)]">{error}</p> : null}
