@@ -59,8 +59,9 @@ describe("mobile appearance", () => {
   });
 
   it("flips userBubble tokens when appearance switches with an existing preference", async () => {
-    const { mobileTokens, setAppearancePreference, subscribeAppearance } =
-      await import("./appearance");
+    const { mobileTokens, setAppearancePreference, subscribeAppearance } = await import(
+      "./appearance"
+    );
     const listener = vi.fn();
     subscribeAppearance(listener);
 
