@@ -260,6 +260,20 @@ export function stopPrimaryBrowserCommand() {
   ].join("; ");
 }
 
+/** Choose the stop command for DELETE /screen cancel/release. */
+export function screenReleaseStopCommand(
+  index: number | undefined,
+  options: { hasRegistry: boolean; cancelRunWork: boolean },
+): string {
+  if (index !== undefined) {
+    return stopExtraScreenCommand(index, { cancelRunWork: options.cancelRunWork });
+  }
+  // Missing registry (supervisor restart): cancel still tears down primary Chromium.
+  // Present registry + rejected release: newer fence owns the screen — do not kill.
+  if (!options.hasRegistry && options.cancelRunWork) return stopPrimaryBrowserCommand();
+  return "";
+}
+
 export function stopExtraScreenCommand(index: number, options: { cancelRunWork?: boolean } = {}) {
   if (index <= 0) {
     return options.cancelRunWork ? stopPrimaryBrowserCommand() : "";
