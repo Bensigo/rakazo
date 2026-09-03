@@ -10,11 +10,23 @@ test("onboarding model list never labels an older model the latest one", async (
     timeout: 20_000,
   });
 
+  await expect(page.getByRole("button", { name: /OpenRouter/ })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.getByRole("button", { name: /ChatGPT.*ChatGPT Plus\/Pro/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Vercel AI Gateway/ })).toBeVisible();
+  await captureScreenshot(page, testInfo, "onboarding-popular-providers");
+  await page.getByRole("button", { name: "Show all providers" }).click();
   await page.getByPlaceholder("Search providers and models").fill("anthropic");
   await page
     .getByRole("button", { name: /Anthropic/ })
     .first()
     .click();
+  await expect(page.getByRole("button", { name: /Anthropic/ }).first()).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
 
   const models = page.getByRole("combobox", { name: "Model", exact: true });
   const labels = await models.getByRole("option").allTextContents();
