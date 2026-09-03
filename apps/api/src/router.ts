@@ -3756,10 +3756,12 @@ async function expireStaleComputerControl(
   if (!computer || hasActiveComputerControl(computer)) return false;
   if (computer.controlHolder !== "user") return false;
   const leaseId = computer.controlLeaseId;
+  // Keep a failed revoke's lease id so reconciliation can retry provider shutdown.
   if (leaseId) {
     await expireComputerControl(deps, computer.id, leaseId).catch(() => undefined);
+  } else {
+    await clearInactiveUserComputerControl(deps.prisma, computer.id).catch(() => undefined);
   }
-  await clearInactiveUserComputerControl(deps.prisma, computer.id).catch(() => undefined);
   return true;
 }
 
