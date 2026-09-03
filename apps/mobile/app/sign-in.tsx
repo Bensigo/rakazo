@@ -2,6 +2,7 @@ import { Redirect, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import {
+  AccessibilityInfo,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -69,6 +70,10 @@ export default function SignIn() {
     };
   }, [apiBase]);
 
+  useEffect(() => {
+    if (resetSent) AccessibilityInfo.announceForAccessibility(t("Check your email"));
+  }, [resetSent, t]);
+
   if (!ready) {
     return (
       <View style={{ flex: 1, backgroundColor: "#F7F7F4", justifyContent: "center", padding: 24 }}>
@@ -127,6 +132,7 @@ export default function SignIn() {
               keyboardShouldPersistTaps="handled"
             >
               <Text
+                accessibilityRole="header"
                 style={{
                   color: "#1B1B1E",
                   fontSize: 32,
