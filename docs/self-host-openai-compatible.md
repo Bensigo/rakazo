@@ -56,15 +56,19 @@ If the URL already ends with a versioned root (`/v1`, `/v4`, …), Rakazo
 keeps it. It does **not** append another `/v1`. Bare origins such as
 `https://api.example.com` become `https://api.example.com/v1`.
 
-Do not put credentials in the URL. Use the API key field.
+Do not put credentials in the URL. Use the API key field. When an API key
+is used, prefer HTTPS; `http` is fine for trusted private or loopback links.
 
 ## Private reverse proxy
 
 A reverse proxy on `127.0.0.1`, `localhost`, `*.localhost`,
 `host.docker.internal`, or an RFC1918 address does **not** need
 `RAKAZO_OPENAI_COMPAT_ALLOW_PUBLIC=1`. Point the base URL at that private
-listener. From Docker Compose, use a hostname the **containers** can reach
-(service name or `host.docker.internal`), not only the host's loopback.
+listener. From Docker Compose, use `host.docker.internal` or an RFC1918 /
+loopback address the **containers** can reach, not only the host's loopback.
+Bare Compose DNS hostnames (for example `ollama`) are treated as public and
+need `RAKAZO_OPENAI_COMPAT_ALLOW_PUBLIC=1`, or switch to a private IP /
+`host.docker.internal`.
 
 ## Probe failures
 
@@ -78,13 +82,9 @@ by hand and connect. Probe failure is not a classified provider outage.
 
 ## What this page is not
 
-- Not image-pull / registry-mirror help (see self-host docs for installer
-  and compose image overrides).
-- Not messaging setup (Slack, Telegram, or any other chat surface).
-- Not a change to the default SSRF gate, compose files, or installer.
-- Not a vendor integration, compliance statement, or regional SKU.
-  Connecting an operator-chosen endpoint does not make the deployment
-  “ready” for any particular market.
+- Not image-pull, registry-mirror, messaging, or installer help.
+- Not a change to the default SSRF gate or compose files.
+- Not a vendor integration or compliance statement.
 
 ## Related
 
