@@ -2,6 +2,7 @@ import { Redirect, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import {
+  AccessibilityInfo,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -69,6 +70,10 @@ export default function SignIn() {
     };
   }, [apiBase]);
 
+  useEffect(() => {
+    if (resetSent) AccessibilityInfo.announceForAccessibility(t("Check your email"));
+  }, [resetSent, t]);
+
   if (!ready) {
     return (
       <View style={{ flex: 1, backgroundColor: "#F7F7F4", justifyContent: "center", padding: 24 }}>
@@ -127,6 +132,7 @@ export default function SignIn() {
               keyboardShouldPersistTaps="handled"
             >
               <Text
+                accessibilityRole="header"
                 style={{
                   color: "#1B1B1E",
                   fontSize: 32,
@@ -138,23 +144,18 @@ export default function SignIn() {
                   ? t("Sign in to Rakazo")
                   : mode === "up"
                     ? t("Sign up for Rakazo")
-                    : t("Reset your password")}
+                    : resetSent
+                      ? t("Check your email")
+                      : t("Reset your password")}
               </Text>
               {resetSent ? (
                 <View style={{ alignItems: "center", marginTop: 28 }}>
-                  <Text style={{ color: "#1B1B1E", fontSize: 17 }}>{t("Check your email")}</Text>
-                  <Text
-                    style={{ color: "#6E6E68", fontSize: 15, marginTop: 10, textAlign: "center" }}
-                  >
-                    {t("If an account exists for that address, we sent a password reset link.")}
-                  </Text>
                   <Pressable
                     accessibilityRole="button"
                     onPress={() => {
                       setMode("in");
                       setResetSent(false);
                     }}
-                    style={{ marginTop: 22 }}
                   >
                     <Text style={{ color: "#1B1B1E", fontSize: 15, fontWeight: "600" }}>
                       {t("Back to sign in")}
