@@ -476,6 +476,13 @@ export function computerPanelAutoUsesBoot(
   return action === "boot" || action === "recover-screen";
 }
 
+export function computerPanelNeedsMaintenance(
+  state: ComputerStatus["state"] | undefined,
+  booting: boolean,
+): boolean {
+  return !booting && (state === "error" || state === "stopped");
+}
+
 export function reduceComputerStatus(
   prev: ComputerStatus | null,
   event: ProductEvent,

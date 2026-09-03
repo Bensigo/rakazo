@@ -3,7 +3,6 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import type {
   Bot,
   ComputerMode,
-  ComputerStatus,
   Me,
   ModelCatalogEntry,
   ModelCredential,
@@ -27,7 +26,6 @@ import {
 } from "@rakazo/ui-web";
 import { X } from "lucide-react";
 import { lazy, Suspense, useEffect, useId, useState } from "react";
-import { ComputerMaintenanceActions } from "../../components/ComputerMaintenanceActions";
 import { rpc } from "../../lib/rpc";
 
 const ScratchpadSection = lazy(() =>
@@ -168,15 +166,12 @@ export function CreateBotForm({
 
 export function BotSettings({
   bot,
-  computer,
   memoryProviderConfigured,
   onSave,
   onExport,
   onClear,
-  onComputerChanged,
 }: {
   bot: Bot;
-  computer: ComputerStatus | null;
   memoryProviderConfigured: boolean;
   onSave: (patch: {
     name?: string;
@@ -193,7 +188,6 @@ export function BotSettings({
   }) => Promise<void>;
   onExport: () => Promise<void>;
   onClear: () => void;
-  onComputerChanged: () => Promise<void>;
 }) {
   const { t } = useLingui();
   const ids = useId();
@@ -484,11 +478,6 @@ export function BotSettings({
         >
           <Trans>Clear conversation</Trans>
         </Button>
-        <ComputerMaintenanceActions
-          botId={bot.id}
-          computer={computer}
-          onChanged={onComputerChanged}
-        />
       </div>
     </div>
   );
