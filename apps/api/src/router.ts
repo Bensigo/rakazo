@@ -1539,13 +1539,15 @@ export function createRouter(deps: RouterDeps) {
           return { ok: true as const };
         }
         if (!hasActiveComputerControl(bot.computer) || !controlLeaseId) {
-          // Stale controlHolder=user: revoke provider control when a lease id remains, then clear.
+          // Stale controlHolder=user. Prefer expiry (revokes provider control). If a lease id
+          // remains after a failed revoke, keep it so reconciliation can retry.
           if (controlLeaseId) {
             await expireComputerControl(deps, bot.computer.id, controlLeaseId).catch(
               () => undefined,
             );
+          } else {
+            await clearInactiveUserComputerControl(deps.prisma, bot.computer.id);
           }
-          await clearInactiveUserComputerControl(deps.prisma, bot.computer.id);
           return { ok: true as const };
         }
         if (bot.computer.providerRef) {
