@@ -367,6 +367,8 @@ describe("CANCEL_PRIMARY_BROWSER_WORK", () => {
     expect(CANCEL_PRIMARY_BROWSER_WORK).toContain("*/chromium|*/chromium-*|chromium|chromium-*");
     expect(CANCEL_PRIMARY_BROWSER_WORK).toContain("*/firefox|*/firefox-*|firefox|firefox-*");
     expect(CANCEL_PRIMARY_BROWSER_WORK).not.toContain("*[c]hromium*");
+    expect(CANCEL_PRIMARY_BROWSER_WORK).not.toContain("*[f]irefox*");
+    expect(CANCEL_PRIMARY_BROWSER_WORK).not.toContain("*[g]oogle-chrome*");
   });
 });
 
