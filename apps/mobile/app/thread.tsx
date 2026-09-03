@@ -2024,7 +2024,7 @@ const MessageBubble = memo(function MessageBubble({
   onPreviewMarkdown: (target: MarkdownArtifactPreviewTarget) => void;
   onSpeak?: (message: MobileMessage) => void;
 }) {
-  // Subscribe here so memo() still refreshes userBubble colors on theme flips.
+  // Subscribe here so memo() still refreshes user bubble colors on theme flips.
   const appearance = useResolvedAppearance();
   const tokens = mobileTokens(appearance);
   const { t } = useI18n();
@@ -2324,7 +2324,7 @@ const MessageBubble = memo(function MessageBubble({
           borderRadius: 20,
           borderWidth: 1,
           borderColor: "#26262A",
-          backgroundColor: message.role === "user" ? tokens.userBubble : "#1A1A1D",
+          backgroundColor: message.role === "user" ? tokens.secondary : tokens.muted,
           paddingHorizontal: 14,
           paddingVertical: 12,
           gap: 8,
@@ -2341,7 +2341,7 @@ const MessageBubble = memo(function MessageBubble({
         {caption ? (
           <Text
             style={{
-              color: message.role === "user" ? tokens.userBubbleInk : "#DFDFE2",
+              color: message.role === "user" ? tokens.secondaryForeground : tokens.foreground,
               fontSize: 15,
             }}
           >
@@ -2370,7 +2370,7 @@ const MessageBubble = memo(function MessageBubble({
             >
               <Text
                 style={{
-                  color: message.role === "user" ? tokens.userBubbleInk : "#DFDFE2",
+                  color: message.role === "user" ? tokens.secondaryForeground : tokens.foreground,
                   fontSize: 15,
                 }}
               >
@@ -2404,7 +2404,7 @@ const MessageBubble = memo(function MessageBubble({
             >
               <Text
                 style={{
-                  color: message.role === "user" ? tokens.userBubbleInk : "#DFDFE2",
+                  color: message.role === "user" ? tokens.secondaryForeground : tokens.foreground,
                   fontSize: 15,
                 }}
               >
@@ -2480,7 +2480,7 @@ function MessageTextCard({
         flexShrink: 1,
         minWidth: 0,
         maxWidth: "100%",
-        backgroundColor: message.role === "user" ? tokens.userBubble : "#1A1A1D",
+        backgroundColor: message.role === "user" ? tokens.secondary : tokens.muted,
         padding: 12,
         borderRadius: 20,
       }}
@@ -2496,7 +2496,7 @@ function MessageTextCard({
         </Text>
       ) : null}
       {message.role === "user" ? (
-        <Text style={{ color: tokens.userBubbleInk, fontSize: 15.5, lineHeight: 23 }}>
+        <Text style={{ color: tokens.secondaryForeground, fontSize: 15.5, lineHeight: 23 }}>
           {contentText}
         </Text>
       ) : (

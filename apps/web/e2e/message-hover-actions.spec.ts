@@ -20,7 +20,7 @@ async function clearHoverRail(rail: import("@playwright/test").Locator) {
   await rail.evaluate((el) => el.removeAttribute("style"));
 }
 
-/** Park the pointer outside the message so group-hover clears; rail uses opacity-0 at rest. */
+/** Park the pointer outside the message and blur focus so the rail returns to opacity-0. */
 async function expectRailAtRest(
   page: import("@playwright/test").Page,
   row: import("@playwright/test").Locator,
@@ -32,6 +32,10 @@ async function expectRailAtRest(
     // (0,0) can still sit on the first transcript row; leave below the row instead.
     await page.mouse.move(Math.max(0, box.x) + 8, box.y + box.height + 32);
   }
+  // More keeps focus after Escape; blur so focus-within does not leave the rail visible.
+  await page.evaluate(() => {
+    (document.activeElement as HTMLElement | null)?.blur();
+  });
   await expect(rail).toHaveCSS("opacity", "0");
 }
 
@@ -126,7 +130,7 @@ test("message hover shows beside-bubble actions; reply links to parent", async (
   await expect(userSurface).toBeVisible();
   await expect
     .poll(async () => userSurface.evaluate((el) => getComputedStyle(el).backgroundColor))
-    .not.toMatch(/^rgb\(241,\s*241,\s*239\)$/); // not --rk-cream dark (#f1f1ef)
+    .not.toMatch(/^rgb\(241,\s*241,\s*239\)$/); // not cream primary foreground
 
   // Long user bubble: rail stays ~6px beside the bubble edge, not the full row width.
   const longText = `hover-long-${stamp}-${"x".repeat(220)}`;

@@ -58,7 +58,7 @@ describe("mobile appearance", () => {
     expect(resolveMobileAppearance()).toBe("light");
   });
 
-  it("flips userBubble tokens when appearance switches with an existing preference", async () => {
+  it("flips user bubble tokens when appearance switches with an existing preference", async () => {
     const { mobileTokens, setAppearancePreference, subscribeAppearance } = await import(
       "./appearance"
     );
@@ -66,14 +66,14 @@ describe("mobile appearance", () => {
     subscribeAppearance(listener);
 
     await setAppearancePreference("dark");
-    const darkBubble = mobileTokens("dark").userBubble;
-    const darkInk = mobileTokens("dark").userBubbleInk;
+    const darkBubble = mobileTokens("dark").secondary;
+    const darkInk = mobileTokens("dark").secondaryForeground;
 
     await setAppearancePreference("light");
     expect(listener).toHaveBeenCalled();
     // Same path memoized bubbles use after useResolvedAppearance invalidates.
-    expect(mobileTokens("light").userBubble).not.toBe(darkBubble);
-    expect(mobileTokens("light").userBubbleInk).not.toBe(darkInk);
-    expect(mobileTokens("light").userBubble).not.toBe(mobileTokens("light").cream);
+    expect(mobileTokens("light").secondary).not.toBe(darkBubble);
+    expect(mobileTokens("light").secondaryForeground).not.toBe(darkInk);
+    expect(mobileTokens("light").secondary).not.toBe(mobileTokens("light").primary);
   });
 });
