@@ -139,6 +139,33 @@ describe("createJobReconciler", () => {
     );
   });
 
+  it("restores expiry for orphaned user-control leases without a control bot", async () => {
+    const controlExpiresAt = new Date(Date.now() - 5_000);
+    const prisma = fakePrisma(
+      [],
+      [],
+      [
+        {
+          id: "computer-orphan",
+          controlBotId: null,
+          controlLeaseId: "lease-orphan",
+          controlLeaseExpiresAt: controlExpiresAt,
+          updatedAt: new Date(),
+        },
+      ],
+    );
+    const { jobs, enqueue } = publisher();
+
+    await createJobReconciler({ prisma, jobs }).reconcileOnce();
+
+    expect(enqueue).toHaveBeenCalledWith({
+      name: "computer.control-expire",
+      payload: { computerId: "computer-orphan", leaseId: "lease-orphan" },
+      availableAt: controlExpiresAt,
+      replaceKey: "computer.control-expire:computer-orphan:lease-orphan",
+    });
+  });
+
   it("finishes a frozen control scan before admitting leases ahead of its cursor", async () => {
     const firstExpiry = new Date(Date.now() + 10_000);
     const secondExpiry = new Date(Date.now() + 20_000);
