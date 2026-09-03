@@ -270,10 +270,9 @@ export class TeamChatBridge {
     for (const message of received)
       await this.queue(message).catch((error) => this.retry(message, error));
 
-    await this.recoverStaleDeliveries(now);
     const running = await this.deps.prisma.externalMessage.findMany({
       where: {
-        status: "running",
+        status: { in: ["running", "delivering"] },
         OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }],
         externalConversation: {
           provider: this.deps.provider.id,
@@ -660,21 +659,29 @@ export class TeamChatBridge {
   }
 
   private async reserveDelivery(id: string): Promise<boolean> {
-    const result = await this.deps.prisma.externalMessage.updateMany({
+    const now = new Date();
+    const leaseUntil = new Date(now.getTime() + DELIVERY_RESERVATION_MS);
+    const claimed = await this.deps.prisma.externalMessage.updateMany({
       where: { id, status: "running" },
       data: {
         status: "delivering",
-        nextAttemptAt: new Date(Date.now() + DELIVERY_RESERVATION_MS),
+        nextAttemptAt: leaseUntil,
       },
     });
-    return result.count === 1;
-  }
+    if (claimed.count === 1) return true;
 
-  private async recoverStaleDeliveries(now: Date): Promise<void> {
-    await this.deps.prisma.externalMessage.updateMany({
-      where: { status: "delivering", nextAttemptAt: { lte: now } },
-      data: { status: "running", nextAttemptAt: null },
+    const reclaimed = await this.deps.prisma.externalMessage.updateMany({
+      where: {
+        id,
+        status: "delivering",
+        OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }],
+      },
+      data: {
+        status: "delivering",
+        nextAttemptAt: leaseUntil,
+      },
     });
+    return reclaimed.count === 1;
   }
 
   private async markDelivered(id: string, handle: string): Promise<void> {

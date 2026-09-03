@@ -558,8 +558,24 @@ describe("team chat bridge", () => {
     );
   });
 
-  it("does not resend a completed run when delivery was already reserved", async () => {
+  it("does not resend when delivery is already reserved with a future lease", async () => {
     const provider = new FakeTeamChatProvider();
+    const futureLease = new Date(Date.now() + 60_000);
+    const record = {
+      id: "external-1",
+      status: "delivering",
+      attempts: 0,
+      kind: "mention",
+      runId: "run-1",
+      replyThreadId: "100.1",
+      nextAttemptAt: futureLease,
+      run: { id: "run-1", status: "completed" },
+      externalConversation: {
+        provider: "slack",
+        botId: "bot-1",
+        conversationId: "C-1",
+      },
+    };
     const prisma = {
       bot: {
         findFirst: vi.fn(async () => ({
@@ -570,27 +586,12 @@ describe("team chat bridge", () => {
         })),
       },
       externalMessage: {
-        findMany: vi.fn(async ({ where }: { where: { status?: { in: string[] } | string } }) =>
-          where.status && matchesStatus("delivering", where.status)
-            ? [
-                {
-                  id: "external-1",
-                  status: "delivering",
-                  attempts: 0,
-                  kind: "mention",
-                  runId: "run-1",
-                  replyThreadId: "100.1",
-                  run: { id: "run-1", status: "completed" },
-                  externalConversation: {
-                    provider: "slack",
-                    botId: "bot-1",
-                    conversationId: "C-1",
-                  },
-                },
-              ]
-            : [],
+        findMany: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
+          matchesDeliveryCandidate(record, where) ? [record] : [],
         ),
-        updateMany: vi.fn(async () => ({ count: 0 })),
+        updateMany: vi.fn(async ({ where }: { where: Record<string, unknown> }) => ({
+          count: matchesReserveWhere(record, where) ? 1 : 0,
+        })),
       },
       run: { findMany: vi.fn(async () => []) },
       message: {
@@ -612,6 +613,118 @@ describe("team chat bridge", () => {
     await bridge.stop();
 
     expect(provider.sent).toEqual([]);
+    expect(prisma.externalMessage.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("reclaims abandoned delivering messages with a past or null lease once", async () => {
+    const provider = new FakeTeamChatProvider();
+    for (const nextAttemptAt of [new Date(Date.now() - 60_000), null] as const) {
+      provider.sent.length = 0;
+      const record = {
+        id: "external-1",
+        status: "delivering",
+        attempts: 0,
+        kind: "mention",
+        runId: "run-1",
+        replyThreadId: "100.1",
+        nextAttemptAt: nextAttemptAt as Date | null,
+        run: { id: "run-1", status: "completed" },
+        externalConversation: {
+          provider: "slack",
+          botId: "bot-1",
+          conversationId: "C-1",
+        },
+      };
+      const prisma = {
+        bot: {
+          findFirst: vi.fn(async () => ({
+            id: "bot-1",
+            spaceId: "space-1",
+            userId: "owner-1",
+            name: "Arthur",
+          })),
+        },
+        externalMessage: {
+          findMany: vi.fn(async ({ where }: { where: Record<string, unknown> }) =>
+            matchesDeliveryCandidate(record, where) ? [record] : [],
+          ),
+          updateMany: vi.fn(
+            async ({
+              where,
+              data,
+            }: {
+              where: Record<string, unknown>;
+              data: Record<string, unknown>;
+            }) => {
+              if (!matchesReserveWhere(record, where)) return { count: 0 };
+              Object.assign(record, data);
+              return { count: 1 };
+            },
+          ),
+          update: vi.fn(
+            async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+              if (where.id === record.id) Object.assign(record, data);
+              return record;
+            },
+          ),
+        },
+        run: { findMany: vi.fn(async () => []) },
+        message: {
+          findFirst: vi.fn(async () => ({
+            blocks: [{ kind: "text", text: "Recovered send." }],
+          })),
+        },
+      } as unknown as PrismaClient;
+      const bridge = new TeamChatBridge({
+        prisma,
+        events: { sendUserMessage: vi.fn() },
+        jobs: { enqueue: vi.fn(async () => undefined) },
+        provider,
+        botId: "bot-1",
+        reconcileIntervalMs: 60_000,
+      });
+
+      await bridge.start();
+      await bridge.stop();
+
+      expect(provider.sent).toEqual([
+        {
+          conversationId: "C-1",
+          replyThreadId: "100.1",
+          content: "Recovered send.",
+          idempotencyKey: "external-message:external-1",
+        },
+      ]);
+      expect(prisma.externalMessage.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            id: "external-1",
+            status: "delivering",
+            OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: expect.any(Date) } }],
+          }),
+          data: expect.objectContaining({
+            status: "delivering",
+            nextAttemptAt: expect.any(Date),
+          }),
+        }),
+      );
+
+      // Simulate a second instance that already observed the row before the lease refresh:
+      // reclaim must fail while the fresh lease is held.
+      record.status = "delivering";
+      record.nextAttemptAt = new Date(Date.now() + 120_000);
+      (prisma.externalMessage.findMany as ReturnType<typeof vi.fn>).mockImplementation(
+        async ({ where }: { where: Record<string, unknown> }) =>
+          where.status &&
+          matchesStatus(record.status, where.status as string | { in: string[] } | undefined)
+            ? [record]
+            : [],
+      );
+      provider.sent.length = 0;
+      await bridge.start();
+      await bridge.stop();
+      expect(provider.sent).toEqual([]);
+    }
   });
 
   it("uses room listening and guidance instead of Arthur's defaults", async () => {
@@ -931,6 +1044,43 @@ function matchesStatus(value: unknown, status: string | { in: string[] } | undef
   if (!status) return true;
   const current = String(value);
   return typeof status === "string" ? current === status : status.in.includes(current);
+}
+
+function matchesNextAttemptAt(
+  value: Date | null | undefined,
+  where: Record<string, unknown>,
+): boolean {
+  const clause = where.OR as Array<Record<string, unknown>> | undefined;
+  if (!clause) return true;
+  const now = Date.now();
+  return clause.some((entry) => {
+    if ("nextAttemptAt" in entry && entry.nextAttemptAt === null) return value == null;
+    const lte = (entry.nextAttemptAt as { lte?: Date } | undefined)?.lte;
+    if (lte) return value != null && value.getTime() <= lte.getTime();
+    if (value == null) return true;
+    return value.getTime() <= now;
+  });
+}
+
+function matchesDeliveryCandidate(
+  record: { status: string; nextAttemptAt?: Date | null },
+  where: Record<string, unknown>,
+): boolean {
+  if (!where.status) return false;
+  return (
+    matchesStatus(record.status, where.status as string | { in: string[] } | undefined) &&
+    matchesNextAttemptAt(record.nextAttemptAt, where)
+  );
+}
+
+function matchesReserveWhere(
+  record: { id: string; status: string; nextAttemptAt?: Date | null },
+  where: Record<string, unknown>,
+): boolean {
+  if (where.id !== record.id) return false;
+  if (!matchesStatus(record.status, where.status as string | { in: string[] } | undefined))
+    return false;
+  return matchesNextAttemptAt(record.nextAttemptAt, where);
 }
 
 class FakeTeamChatProvider implements TeamChatProvider {
