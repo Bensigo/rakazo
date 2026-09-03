@@ -74,18 +74,26 @@ interface BoxCommandResult {
 }
 
 /** Decide whether cancel may stop Box browsers across API/worker processes. */
+export type BoxRemoteScreenLease =
+  | { status: "missing" }
+  | { status: "present"; leaseId: string }
+  | { status: "error" };
+
+/** Decide whether cancel may stop Box browsers across API/worker processes. */
 export function shouldStopBoxBrowsersOnCancel(input: {
   releasedLocally: boolean;
-  remoteLeaseId?: string;
+  remoteLease: BoxRemoteScreenLease;
   screenLeaseId?: string;
 }): boolean {
   if (input.releasedLocally) return true;
+  // Fail closed on transport/command errors so a stale cancel cannot kill a newer browser.
+  if (input.remoteLease.status === "error") return false;
   // No remote fence: treat as orphaned work from this cancel path.
-  if (input.remoteLeaseId === undefined) return true;
+  if (input.remoteLease.status === "missing") return true;
   // A remote fence requires a matching cancel lease so a stale API cancel cannot
   // kill a newer worker-owned browser.
   if (!input.screenLeaseId) return false;
-  return canReleaseScreenLease(input.remoteLeaseId, input.screenLeaseId);
+  return canReleaseScreenLease(input.remoteLease.leaseId, input.screenLeaseId);
 }
 
 export class BoxSandboxProvider implements SandboxProvider {
@@ -484,11 +492,11 @@ export class BoxSandboxProvider implements SandboxProvider {
     const id = this.id(computer);
     const releasedLocally = this.screens.release(id, context);
     if (!context.cancelRunWork) return;
-    const remoteLeaseId = await this.readScreenLease(id);
+    const remoteLease = await this.readScreenLease(id);
     if (
       !shouldStopBoxBrowsersOnCancel({
         releasedLocally,
-        remoteLeaseId,
+        remoteLease,
         screenLeaseId: context.screenLeaseId,
       })
     ) {
@@ -644,14 +652,24 @@ export class BoxSandboxProvider implements SandboxProvider {
     }
   }
 
-  private async readScreenLease(id: string): Promise<string | undefined> {
-    const result = await this.rawCommand(
-      id,
-      `if [ -f ${shellQuote(BOX_SCREEN_LEASE_PATH)} ]; then cat -- ${shellQuote(BOX_SCREEN_LEASE_PATH)}; fi`,
-      10,
-    ).catch(() => undefined);
-    const lease = result?.stdout?.trim();
-    return lease || undefined;
+  private async readScreenLease(id: string): Promise<BoxRemoteScreenLease> {
+    try {
+      const result = await this.rawCommand(
+        id,
+        `if [ -f ${shellQuote(BOX_SCREEN_LEASE_PATH)} ]; then printf 'present '; cat -- ${shellQuote(BOX_SCREEN_LEASE_PATH)}; else printf 'missing'; fi`,
+        10,
+      );
+      if (result.exitCode !== 0 || result.timedOut) return { status: "error" };
+      const stdout = result.stdout.trim();
+      if (stdout === "missing") return { status: "missing" };
+      if (stdout.startsWith("present ")) {
+        const leaseId = stdout.slice("present ".length).trim();
+        return leaseId ? { status: "present", leaseId } : { status: "missing" };
+      }
+      return { status: "error" };
+    } catch {
+      return { status: "error" };
+    }
   }
 
   private async writeScreenLease(id: string, leaseId: string): Promise<void> {

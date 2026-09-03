@@ -333,7 +333,7 @@ describe("shouldStopBoxBrowsersOnCancel", () => {
     expect(
       shouldStopBoxBrowsersOnCancel({
         releasedLocally: true,
-        remoteLeaseId: "run-2:2",
+        remoteLease: { status: "present", leaseId: "run-2:2" },
         screenLeaseId: "run-1:1",
       }),
     ).toBe(true);
@@ -343,7 +343,7 @@ describe("shouldStopBoxBrowsersOnCancel", () => {
     expect(
       shouldStopBoxBrowsersOnCancel({
         releasedLocally: false,
-        remoteLeaseId: "run-1:1",
+        remoteLease: { status: "present", leaseId: "run-1:1" },
         screenLeaseId: "run-1:1",
       }),
     ).toBe(true);
@@ -353,7 +353,7 @@ describe("shouldStopBoxBrowsersOnCancel", () => {
     expect(
       shouldStopBoxBrowsersOnCancel({
         releasedLocally: false,
-        remoteLeaseId: "run-2:2",
+        remoteLease: { status: "present", leaseId: "run-2:2" },
         screenLeaseId: "run-1:1",
       }),
     ).toBe(false);
@@ -363,8 +363,19 @@ describe("shouldStopBoxBrowsersOnCancel", () => {
     expect(
       shouldStopBoxBrowsersOnCancel({
         releasedLocally: false,
+        remoteLease: { status: "missing" },
         screenLeaseId: "run-1:1",
       }),
     ).toBe(true);
+  });
+
+  it("fails closed when the remote lease cannot be read", () => {
+    expect(
+      shouldStopBoxBrowsersOnCancel({
+        releasedLocally: false,
+        remoteLease: { status: "error" },
+        screenLeaseId: "run-1:1",
+      }),
+    ).toBe(false);
   });
 });
