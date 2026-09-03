@@ -25,7 +25,7 @@ import type {
   ScreenRequest,
   ScreenSession,
 } from "@rakazo/adapter-kit";
-import { boundedSandboxCommandTimeoutMs } from "@rakazo/core";
+import { boundedSandboxCommandTimeoutMs, canReleaseScreenLease } from "@rakazo/core";
 import { SingleScreenClaimTracker } from "./computer-screens.js";
 import {
   boundedComputerActions,
@@ -48,6 +48,7 @@ const BOX_READY_TIMEOUT_MS = 5 * 60_000;
 const BOX_API_COMMAND_TIMEOUT_SECONDS = 600;
 const BOX_TTL_SECONDS = 2 * 60 * 60;
 const BOX_EXPORT_CONCURRENCY = 16;
+const BOX_SCREEN_LEASE_PATH = "/tmp/rakazo-screen-lease";
 
 export type BoxSandboxSdk = Pick<
   BoxApi,
@@ -70,6 +71,21 @@ interface BoxCommandResult {
   stderr: string;
   exitCode: number;
   timedOut: boolean;
+}
+
+/** Decide whether cancel may stop Box browsers across API/worker processes. */
+export function shouldStopBoxBrowsersOnCancel(input: {
+  releasedLocally: boolean;
+  remoteLeaseId?: string;
+  screenLeaseId?: string;
+}): boolean {
+  if (input.releasedLocally) return true;
+  // No remote fence: treat as orphaned work from this cancel path.
+  if (input.remoteLeaseId === undefined) return true;
+  // A remote fence requires a matching cancel lease so a stale API cancel cannot
+  // kill a newer worker-owned browser.
+  if (!input.screenLeaseId) return false;
+  return canReleaseScreenLease(input.remoteLeaseId, input.screenLeaseId);
 }
 
 export class BoxSandboxProvider implements SandboxProvider {
@@ -253,7 +269,7 @@ export class BoxSandboxProvider implements SandboxProvider {
     context: AdapterContext,
   ): Promise<ScreenSession> {
     const id = this.id(computer);
-    this.screens.claim(id, context);
+    await this.claimScreen(id, context);
     try {
       const deadline = Date.now() + 60_000;
       while (true) {
@@ -294,7 +310,7 @@ export class BoxSandboxProvider implements SandboxProvider {
     context: AdapterContext,
     _controlToken?: string,
   ): Promise<void> {
-    if (interactive) this.screens.claim(this.id(computer), context);
+    if (interactive) await this.claimScreen(this.id(computer), context);
   }
 
   async sendInput(
@@ -304,13 +320,13 @@ export class BoxSandboxProvider implements SandboxProvider {
     context: AdapterContext,
   ): Promise<void> {
     const id = this.id(computer);
-    this.screens.claim(id, context);
+    await this.claimScreen(id, context);
     await this.applyAction(id, input, context);
   }
 
   async observe(computer: ComputerRef, context: AdapterContext): Promise<ComputerObservation> {
     const id = this.id(computer);
-    this.screens.claim(id, context);
+    await this.claimScreen(id, context);
     const imagePath = `/tmp/rakazo-observe-${randomUUID()}.png`;
     try {
       const result = await this.runCommand(
@@ -333,7 +349,7 @@ export class BoxSandboxProvider implements SandboxProvider {
 
   async act(computer: ComputerRef, request: ComputerActionRequest, context: AdapterContext) {
     const id = this.id(computer);
-    this.screens.claim(id, context);
+    await this.claimScreen(id, context);
     const actions = boundedComputerActions(request.actions);
     let completed = 0;
     for (const action of actions) {
@@ -466,11 +482,20 @@ export class BoxSandboxProvider implements SandboxProvider {
 
   async releaseScreen(computer: ComputerRef, context: AdapterContext): Promise<void> {
     const id = this.id(computer);
-    const released = this.screens.release(id, context);
-    // Only tear down browsers when this cancel actually owned the screen claim.
-    if (released && context.cancelRunWork) {
-      await this.stopBrowsers(id);
+    const releasedLocally = this.screens.release(id, context);
+    if (!context.cancelRunWork) return;
+    const remoteLeaseId = await this.readScreenLease(id);
+    if (
+      !shouldStopBoxBrowsersOnCancel({
+        releasedLocally,
+        remoteLeaseId,
+        screenLeaseId: context.screenLeaseId,
+      })
+    ) {
+      return;
     }
+    await this.stopBrowsers(id);
+    await this.clearScreenLease(id);
   }
 
   async stop(computer: ComputerRef, context: AdapterContext): Promise<void> {
@@ -609,6 +634,37 @@ export class BoxSandboxProvider implements SandboxProvider {
     }
     return parseBoxFileEntries(result.stdout).filter(
       (entry) => entry.kind === "file" && !shouldSkipPortableWorkspaceFile(entry.path),
+    );
+  }
+
+  private async claimScreen(id: string, context: AdapterContext): Promise<void> {
+    this.screens.claim(id, context);
+    if (context.screenLeaseId) {
+      await this.writeScreenLease(id, context.screenLeaseId);
+    }
+  }
+
+  private async readScreenLease(id: string): Promise<string | undefined> {
+    const result = await this.rawCommand(
+      id,
+      `if [ -f ${shellQuote(BOX_SCREEN_LEASE_PATH)} ]; then cat -- ${shellQuote(BOX_SCREEN_LEASE_PATH)}; fi`,
+      10,
+    ).catch(() => undefined);
+    const lease = result?.stdout?.trim();
+    return lease || undefined;
+  }
+
+  private async writeScreenLease(id: string, leaseId: string): Promise<void> {
+    await this.rawCommand(
+      id,
+      `printf '%s\n' ${shellQuote(leaseId)} > ${shellQuote(BOX_SCREEN_LEASE_PATH)}`,
+      10,
+    ).catch(() => undefined);
+  }
+
+  private async clearScreenLease(id: string): Promise<void> {
+    await this.rawCommand(id, `rm -f -- ${shellQuote(BOX_SCREEN_LEASE_PATH)}`, 10).catch(
+      () => undefined,
     );
   }
 
