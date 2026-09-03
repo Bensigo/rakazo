@@ -230,6 +230,21 @@ describe("computer control leases", () => {
     expect(harness.prisma.computer.updateMany).not.toHaveBeenCalled();
     expect(harness.enqueue).toHaveBeenCalled();
   });
+
+  it("keeps an orphaned lease when revoke and reschedule both fail", async () => {
+    const harness = controlHarness({
+      controlBotId: null,
+      revokeError: new Error("provider unavailable"),
+      enqueueError: new Error("queue unavailable"),
+    });
+    const logError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    await expect(expireComputerControl(harness.deps, "computer-id", "lease-1")).resolves.toBe(
+      false,
+    );
+    expect(harness.prisma.computer.updateMany).not.toHaveBeenCalled();
+    expect(logError).toHaveBeenCalled();
+    logError.mockRestore();
+  });
 });
 
 describe("teaching control lease extension", () => {

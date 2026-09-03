@@ -150,13 +150,18 @@ export async function expireComputerControl(
       try {
         await deps.sandbox.setScreenControl?.(toComputerRef(computer), false, context, leaseId);
       } catch {
-        // Keep the lease id and reschedule; reconciler ignores leases without a control bot.
-        await scheduleComputerControlExpiry(
-          deps.jobs,
-          computer.id,
-          leaseId,
-          new Date(now.getTime() + 30_000),
-        );
+        // Keep the lease id and try to reschedule. Reconciler ignores leases without a
+        // control bot, so a failed enqueue must not escape and clear the lease elsewhere.
+        try {
+          await scheduleComputerControlExpiry(
+            deps.jobs,
+            computer.id,
+            leaseId,
+            new Date(now.getTime() + 30_000),
+          );
+        } catch (error) {
+          console.error("orphan computer control expiry reschedule", error);
+        }
         return false;
       }
     }
