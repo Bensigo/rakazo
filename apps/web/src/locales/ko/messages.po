@@ -2699,6 +2699,10 @@ msgstr "함께 사용"
 msgid "Show computer"
 msgstr "컴퓨터 보기"
 
+#: src/pages/PluginsOverlay.tsx:418
+msgid "Show more"
+msgstr "더 보기"
+
 #: src/pages/Auth.tsx:161
 msgid "Show password"
 msgstr "비밀번호 표시"

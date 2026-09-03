@@ -2699,6 +2699,10 @@ msgstr "共享"
 msgid "Show computer"
 msgstr "显示电脑"
 
+#: src/pages/PluginsOverlay.tsx:418
+msgid "Show more"
+msgstr "显示更多"
+
 #: src/pages/Auth.tsx:161
 msgid "Show password"
 msgstr "显示密码"

@@ -2699,6 +2699,10 @@ msgstr "साझा"
 msgid "Show computer"
 msgstr "कंप्यूटर दिखाएं"
 
+#: src/pages/PluginsOverlay.tsx:418
+msgid "Show more"
+msgstr "और दिखाएँ"
+
 #: src/pages/Auth.tsx:161
 msgid "Show password"
 msgstr ""

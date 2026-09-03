@@ -3,8 +3,9 @@ import type { CapabilityInstall, ConnectionCatalogItem } from "@rakazo/contracts
 import {
   abortableDelay,
   buildFeaturedConnectorTiles,
+  CONNECTION_CATALOG_PAGE_SIZE,
   EMPTY_PLUGIN_CATALOG_MESSAGE,
-  matchFeaturedConnectorId,
+  filterConnectionCatalogItems,
 } from "@rakazo/core";
 import {
   Button,
@@ -53,6 +54,7 @@ export function PluginsOverlay({
 }) {
   const { t } = useLingui();
   const [query, setQuery] = useState("");
+  const [visibleCount, setVisibleCount] = useState(CONNECTION_CATALOG_PAGE_SIZE);
   const [catalog, setCatalog] = useState<ConnectionCatalogItem[]>([]);
   const [sources, setSources] = useState<CapabilityInstall[]>([]);
   const [sourceKind, setSourceKind] = useState<SourceKind | null>(null);
@@ -89,23 +91,8 @@ export function PluginsOverlay({
   const featuredTiles = useMemo(() => buildFeaturedConnectorTiles(catalog), [catalog]);
   const showFeatured = !query.trim();
 
-  const visible = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    const scoped = showFeatured
-      ? catalog.filter(
-          (item) =>
-            matchFeaturedConnectorId(item.slug) === null &&
-            matchFeaturedConnectorId(item.name) === null,
-        )
-      : catalog;
-    if (!needle) return scoped;
-    return scoped.filter(
-      (item) =>
-        item.name.toLowerCase().includes(needle) ||
-        item.slug.toLowerCase().includes(needle) ||
-        item.connectorId.toLowerCase().includes(needle),
-    );
-  }, [catalog, query, showFeatured]);
+  const visible = useMemo(() => filterConnectionCatalogItems(catalog, query), [catalog, query]);
+  const rendered = visible.slice(0, visibleCount);
 
   async function notifyAppConnected(item: ConnectionCatalogItem) {
     if (!activeBotId) return;
@@ -269,7 +256,10 @@ export function PluginsOverlay({
         <div className="px-8 pt-4">
           <Input
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setVisibleCount(CONNECTION_CATALOG_PAGE_SIZE);
+            }}
             aria-label={t`Search apps`}
             placeholder={t`Search apps`}
             className="h-11 rounded-xl px-4 md:text-[15px]"
@@ -308,6 +298,8 @@ export function PluginsOverlay({
                           <img
                             src={item.logo}
                             alt=""
+                            loading="lazy"
+                            decoding="async"
                             className="h-9 w-9 shrink-0 rounded-xl bg-accent object-contain"
                           />
                         ) : (
@@ -367,7 +359,7 @@ export function PluginsOverlay({
           ) : null}
           {visible.length > 0 ? (
             <div className="grid grid-cols-2 gap-2">
-              {visible.map((item) => {
+              {rendered.map((item) => {
                 const key = itemKey(item);
                 return (
                   <div key={key} className="flex min-w-0 items-center gap-3 rounded-xl px-2.5 py-2">
@@ -375,6 +367,8 @@ export function PluginsOverlay({
                       <img
                         src={item.logo}
                         alt=""
+                        loading="lazy"
+                        decoding="async"
                         className="h-9 w-9 shrink-0 rounded-xl bg-accent object-contain"
                       />
                     ) : (
@@ -410,6 +404,19 @@ export function PluginsOverlay({
                   </div>
                 );
               })}
+            </div>
+          ) : null}
+          {rendered.length < visible.length ? (
+            <div className="mt-4 flex justify-center">
+              <Button
+                type="button"
+                variant="secondary"
+                className="rounded-full"
+                size="sm"
+                onClick={() => setVisibleCount((count) => count + CONNECTION_CATALOG_PAGE_SIZE)}
+              >
+                <Trans>Show more</Trans>
+              </Button>
             </div>
           ) : null}
 
