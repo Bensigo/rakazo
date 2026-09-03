@@ -138,7 +138,22 @@ export async function expireComputerControl(
   if (!computer || computer.controlLeaseId !== leaseId) return false;
   const botId = computer.controlBotId;
   if (!botId) {
-    // Orphaned user control without a bot id cannot revoke the provider or emit events.
+    // Orphaned user control: still revoke the provider stream before clearing the lease id.
+    if (computer.providerRef) {
+      const context: AdapterContext = {
+        operationId: "computer.control-expire",
+        traceId: "computer.control-expire",
+        spaceId: computer.spaceId,
+        userId: computer.userId,
+        signal: new AbortController().signal,
+      };
+      try {
+        await deps.sandbox.setScreenControl?.(toComputerRef(computer), false, context, leaseId);
+      } catch {
+        // Keep the lease id so reconciliation can retry provider revocation.
+        return false;
+      }
+    }
     return clearInactiveUserComputerControl(deps.prisma, computer.id, now);
   }
 

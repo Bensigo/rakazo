@@ -190,9 +190,15 @@ describe("computer control leases", () => {
     });
   });
 
-  it("clears orphaned user control when expiry has no control bot id", async () => {
+  it("revokes then clears orphaned user control when expiry has no control bot id", async () => {
     const harness = controlHarness({ controlBotId: null });
     await expect(expireComputerControl(harness.deps, "computer-id", "lease-1")).resolves.toBe(true);
+    expect(harness.setScreenControl).toHaveBeenCalledWith(
+      expect.objectContaining({ providerRef: "computer" }),
+      false,
+      expect.objectContaining({ operationId: "computer.control-expire" }),
+      "lease-1",
+    );
     expect(harness.prisma.computer.updateMany).toHaveBeenCalledWith({
       where: {
         id: "computer-id",
@@ -211,7 +217,17 @@ describe("computer control leases", () => {
         controlRunId: null,
       },
     });
-    expect(harness.setScreenControl).not.toHaveBeenCalled();
+  });
+
+  it("keeps an orphaned lease when provider revocation fails", async () => {
+    const harness = controlHarness({
+      controlBotId: null,
+      revokeError: new Error("provider unavailable"),
+    });
+    await expect(expireComputerControl(harness.deps, "computer-id", "lease-1")).resolves.toBe(
+      false,
+    );
+    expect(harness.prisma.computer.updateMany).not.toHaveBeenCalled();
   });
 });
 
