@@ -138,7 +138,10 @@ export async function expireComputerControl(
   if (!computer || computer.controlLeaseId !== leaseId) return false;
   const botId = computer.controlBotId;
   if (!botId) {
-    if (computer.controlLeaseExpiresAt && computer.controlLeaseExpiresAt.getTime() > now.getTime()) {
+    if (
+      computer.controlLeaseExpiresAt &&
+      computer.controlLeaseExpiresAt.getTime() > now.getTime()
+    ) {
       await scheduleComputerControlExpiry(
         deps.jobs,
         computer.id,
