@@ -786,7 +786,13 @@ describe("stopThreadRuns", () => {
         ]),
         updateMany: vi.fn().mockResolvedValue({ count: 2 }),
       },
-      computerExecutionLease: { deleteMany: vi.fn().mockResolvedValue({ count: 2 }) },
+      computerExecutionLease: {
+        findMany: vi.fn().mockResolvedValue([
+          { computerId: "computer-db-a", runId: "run-a", fence: 2 },
+          { computerId: "computer-db-b", runId: "run-b", fence: 4 },
+        ]),
+        deleteMany: vi.fn().mockResolvedValue({ count: 2 }),
+      },
       event: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
     } as unknown as PrismaClient;
     const actor = {
@@ -825,6 +831,7 @@ describe("stopThreadRuns", () => {
         botId: "bot-a",
         cancelRunWork: true,
         runId: "run-a",
+        screenLeaseId: "run-a:2",
       }),
     );
     expect(releaseScreen).toHaveBeenCalledWith(
@@ -835,6 +842,7 @@ describe("stopThreadRuns", () => {
         botId: "bot-b",
         cancelRunWork: true,
         runId: "run-b",
+        screenLeaseId: "run-b:4",
       }),
     );
     expect(prisma.computerExecutionLease.deleteMany).toHaveBeenCalledWith({

@@ -465,7 +465,11 @@ export class BoxSandboxProvider implements SandboxProvider {
   }
 
   async releaseScreen(computer: ComputerRef, context: AdapterContext): Promise<void> {
-    this.screens.release(this.id(computer), context);
+    const id = this.id(computer);
+    this.screens.release(id, context);
+    if (context.cancelRunWork) {
+      await this.stopBrowsers(id);
+    }
   }
 
   async stop(computer: ComputerRef, context: AdapterContext): Promise<void> {

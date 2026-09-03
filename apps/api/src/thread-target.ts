@@ -1,5 +1,5 @@
 import { type JobPublisher, runContinueJob } from "@rakazo/adapter-kit";
-import { cancelComputerRunWork, toComputerRef } from "@rakazo/adapters";
+import { cancelComputerRunWork, screenLeaseIdForRun, toComputerRef } from "@rakazo/adapters";
 import {
   type Actor,
   GROUP_MEMBER_MIN,
@@ -878,6 +878,35 @@ export async function stopThreadRuns(
         },
       })
     : [];
+  // Keep the DB lease until after teardown so a replacement run cannot claim the
+  // screen while we still need the cancelled run's screenLeaseId to release it.
+  const leases = runIds.length
+    ? await deps.prisma.computerExecutionLease.findMany({
+        where: { runId: { in: runIds } },
+        select: { computerId: true, runId: true, fence: true },
+      })
+    : [];
+  const leaseByComputerId = new Map(leases.map((lease) => [lease.computerId, lease]));
+  await Promise.all(
+    computers.map(async (computer) => {
+      if (!computer.providerRef || !computer.executionBotId || !computer.executionRunId) return;
+      const lease = leaseByComputerId.get(computer.id) ?? null;
+      const context = {
+        operationId: "stop",
+        traceId: "stop",
+        spaceId: actor.spaceId,
+        userId: actor.userId,
+        botId: computer.executionBotId,
+        runId: computer.executionRunId,
+        screenLeaseId: screenLeaseIdForRun(lease, computer.executionRunId),
+        cancelRunWork: true,
+        signal: new AbortController().signal,
+      };
+      const ref = toComputerRef(computer);
+      await cancelComputerRunWork(deps.sandbox, ref, computer.id, computer.executionRunId, context);
+      await deps.sandbox.releaseScreen?.(ref, context).catch(() => undefined);
+    }),
+  );
   await deps.prisma.computerExecutionLease.deleteMany({ where: { runId: { in: runIds } } });
   await deps.prisma.computer.updateMany({
     where: { executionRunId: { in: runIds } },
@@ -887,24 +916,6 @@ export async function stopThreadRuns(
       executionLeaseExpiresAt: null,
     },
   });
-  await Promise.all(
-    computers.map(async (computer) => {
-      if (!computer.providerRef || !computer.executionBotId || !computer.executionRunId) return;
-      const context = {
-        operationId: "stop",
-        traceId: "stop",
-        spaceId: actor.spaceId,
-        userId: actor.userId,
-        botId: computer.executionBotId,
-        runId: computer.executionRunId,
-        cancelRunWork: true,
-        signal: new AbortController().signal,
-      };
-      const ref = toComputerRef(computer);
-      await cancelComputerRunWork(deps.sandbox, ref, computer.id, computer.executionRunId, context);
-      await deps.sandbox.releaseScreen?.(ref, context).catch(() => undefined);
-    }),
-  );
   await deps.prisma.event.deleteMany({
     where: {
       type: "thread.progress",

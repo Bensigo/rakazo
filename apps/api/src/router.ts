@@ -25,6 +25,7 @@ import {
   ComputerBusyError,
   type ComputerExecutionLease,
   type ConnectorRegistry,
+  cancelComputerRunWork,
   checkpointAndRecordComputerWorkspace,
   computerSupportsUpdate,
   createVoiceProvider,
@@ -960,18 +961,32 @@ export function createRouter(deps: RouterDeps) {
         );
         await Promise.all(
           archived.computers.map(async (computer) => {
-            if (!computer.providerRef || !computer.executionBotId) return;
-            await deps.sandbox
-              .releaseScreen?.(toComputerRef(computer), {
-                operationId: "stop",
-                traceId: "stop",
-                spaceId: context.actor.spaceId,
-                userId: context.actor.userId,
-                botId: computer.executionBotId,
-                cancelRunWork: true,
-                signal: new AbortController().signal,
-              })
-              .catch(() => undefined);
+            if (!computer.providerRef || !computer.executionBotId || !computer.executionRunId) {
+              return;
+            }
+            const adapterContext = {
+              operationId: "stop",
+              traceId: "stop",
+              spaceId: context.actor.spaceId,
+              userId: context.actor.userId,
+              botId: computer.executionBotId,
+              runId: computer.executionRunId,
+              screenLeaseId: screenLeaseIdForRun(
+                { runId: computer.executionRunId, fence: computer.executionFence },
+                computer.executionRunId,
+              ),
+              cancelRunWork: true,
+              signal: new AbortController().signal,
+            };
+            const ref = toComputerRef(computer);
+            await cancelComputerRunWork(
+              deps.sandbox,
+              ref,
+              computer.id,
+              computer.executionRunId,
+              adapterContext,
+            );
+            await deps.sandbox.releaseScreen?.(ref, adapterContext).catch(() => undefined);
           }),
         );
         return { ok: true as const };

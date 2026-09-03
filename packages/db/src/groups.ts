@@ -403,13 +403,26 @@ export function createGroupRepos(prisma: PrismaClient) {
           ? await tx.computer.findMany({
               where: { executionRunId: { in: runIds } },
               select: {
+                id: true,
                 homeKey: true,
                 kind: true,
                 providerRef: true,
                 executionBotId: true,
+                executionRunId: true,
               },
             })
           : [];
+        const leases = runIds.length
+          ? await tx.computerExecutionLease.findMany({
+              where: { runId: { in: runIds } },
+              select: { computerId: true, runId: true, fence: true },
+            })
+          : [];
+        const leaseByComputerId = new Map(leases.map((lease) => [lease.computerId, lease]));
+        const computersWithLease = computers.map((computer) => ({
+          ...computer,
+          executionFence: leaseByComputerId.get(computer.id)?.fence ?? 0,
+        }));
 
         if (runIds.length) {
           await tx.run.updateMany({
@@ -448,7 +461,7 @@ export function createGroupRepos(prisma: PrismaClient) {
           data: { archivedAt: now, pinned: false },
         });
 
-        return { cancelledRunIds: runIds, computers };
+        return { cancelledRunIds: runIds, computers: computersWithLease };
       });
     },
 

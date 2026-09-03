@@ -7,6 +7,7 @@ import {
   BACKGROUND_WORK_LAUNCH,
   BACKGROUND_WORK_PROBE,
   CANCEL_COMPUTER_RUN_WORK,
+  CANCEL_PRIMARY_BROWSER_WORK,
   DEFAULT_SANDBOX_IDLE_MS,
   sandboxIdleMs,
   sleepComputerIfIdle,
@@ -356,6 +357,16 @@ describe("background work launch and probe", () => {
       expect(await probeBackgroundWork(computerId)).toBe(1);
     },
   );
+});
+
+describe("CANCEL_PRIMARY_BROWSER_WORK", () => {
+  it("targets the primary profile and skips chromium-screen processes", () => {
+    expect(CANCEL_PRIMARY_BROWSER_WORK).toContain(".browser-profiles/chromium");
+    expect(CANCEL_PRIMARY_BROWSER_WORK).toContain("chromium-screen-");
+    expect(CANCEL_PRIMARY_BROWSER_WORK).toContain("[g]oogle-chrome");
+    expect(CANCEL_PRIMARY_BROWSER_WORK).toContain("[c]hromium");
+    expect(CANCEL_PRIMARY_BROWSER_WORK).toContain("[f]irefox");
+  });
 });
 
 describe("e2b create options", () => {

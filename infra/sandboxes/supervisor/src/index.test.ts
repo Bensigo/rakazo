@@ -522,6 +522,11 @@ describe("sandbox supervisor input containment", () => {
     expect(stop).not.toContain("fluxbox");
   });
 
+  it("does not stop the primary browser when no screen index was released", () => {
+    // DELETE /screen only runs stopExtraScreenCommand when releaseAssignedScreen returns an index.
+    expect(stopExtraScreenCommand(0)).toBe("");
+  });
+
   it("parses a captured frame without trusting optional desktop metadata", () => {
     expect(
       parseObservation(

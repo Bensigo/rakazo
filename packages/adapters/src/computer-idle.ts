@@ -64,13 +64,34 @@ export const CANCEL_COMPUTER_RUN_WORK = [
   'rm -f -- "$prefix"* 2>/dev/null || true',
 ].join("\n");
 
-/** Kill the primary Chromium profile without matching chromium-screen-* profiles. */
+/**
+ * Kill the primary browser session without matching chromium-screen-* profiles.
+ * Covers Docker (--user-data-dir=.../chromium) and portable launches that only
+ * use the symlinked primary profile (E2B desktop.launch / Daytona nohup).
+ */
 export const CANCEL_PRIMARY_BROWSER_WORK = [
   "pkill -TERM -f -- '--user-data-dir=.*/.browser-profiles/chromium$' || true",
   "pkill -TERM -f -- '--user-data-dir=.*/.browser-profiles/chromium ' || true",
+  // Portable primary browsers often omit --user-data-dir; skip screen-scoped profiles.
+  "if [ -d /proc ]; then for pid in /proc/[0-9]*; do",
+  '  cmdline="$(tr "\\0" " " <"$pid/cmdline" 2>/dev/null)" || continue',
+  '  case "$cmdline" in *chromium-screen-*) continue ;; esac',
+  '  case "$cmdline" in *[g]oogle-chrome*|*[c]hromium*|*[f]irefox*)',
+  '    kill -TERM "${pid#/proc/}" 2>/dev/null || true',
+  "    ;;",
+  "  esac",
+  "done; fi",
   "sleep 0.2",
   "pkill -KILL -f -- '--user-data-dir=.*/.browser-profiles/chromium$' || true",
   "pkill -KILL -f -- '--user-data-dir=.*/.browser-profiles/chromium ' || true",
+  "if [ -d /proc ]; then for pid in /proc/[0-9]*; do",
+  '  cmdline="$(tr "\\0" " " <"$pid/cmdline" 2>/dev/null)" || continue',
+  '  case "$cmdline" in *chromium-screen-*) continue ;; esac',
+  '  case "$cmdline" in *[g]oogle-chrome*|*[c]hromium*|*[f]irefox*)',
+  '    kill -KILL "${pid#/proc/}" 2>/dev/null || true',
+  "    ;;",
+  "  esac",
+  "done; fi",
   'rm -f "$HOME/.browser-profiles/chromium/SingletonLock" "$HOME/.browser-profiles/chromium/SingletonCookie" "$HOME/.browser-profiles/chromium/SingletonSocket" 2>/dev/null || true',
 ].join("; ");
 

@@ -535,12 +535,9 @@ app.delete("/computers/:id/screen", async (c) => {
       ? releaseAssignedScreen(assigned, screenId, c.req.header("x-rakazo-screen-lease-id"))
       : undefined;
     const cancelRunWork = c.req.header("x-rakazo-cancel-run-work") === "1";
-    const stop =
-      index !== undefined
-        ? stopExtraScreenCommand(index, { cancelRunWork })
-        : cancelRunWork
-          ? stopExtraScreenCommand(0, { cancelRunWork: true })
-          : "";
+    // Only stop processes for a lease we actually released. A missing index means the
+    // screen was already gone or a newer fence owns it; never fall back to primary kill.
+    const stop = index !== undefined ? stopExtraScreenCommand(index, { cancelRunWork }) : "";
     try {
       if (stop) {
         await runContainerCommand(container, ["bash", "-lc", stop]).catch(() => undefined);
