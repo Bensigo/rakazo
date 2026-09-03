@@ -158,7 +158,7 @@ export function AppConnectCard({
         ) : (
           <Button
             variant="secondary"
-            className="rounded-full hover:bg-primary hover:text-primary-foreground"
+            className="rounded-full hover:border-border hover:bg-accent hover:text-foreground"
             disabled={busy}
             onClick={() => void authorize()}
           >
