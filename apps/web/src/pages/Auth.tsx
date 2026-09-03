@@ -29,6 +29,8 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
       <Trans>Sign in to Rakazo</Trans>
     ) : mode === "up" ? (
       <Trans>Create your Rakazo</Trans>
+    ) : sent ? (
+      <Trans>Check your email</Trans>
     ) : (
       <Trans>Reset your password</Trans>
     );
@@ -95,14 +97,8 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
   return (
     <AuthFrame onSubmit={submit} title={title}>
       {sent ? (
-        <div role="status" className="w-full text-center">
-          <p className="text-lg text-foreground">
-            <Trans>Check your email</Trans>
-          </p>
-          <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
-            <Trans>If an account exists for that address, we sent a password reset link.</Trans>
-          </p>
-          <Link to="/sign-in" className="mt-6 inline-block font-medium text-foreground">
+        <div className="w-full text-center">
+          <Link to="/sign-in" className="font-medium text-foreground">
             <Trans>Back to sign in</Trans>
           </Link>
         </div>
@@ -321,7 +317,9 @@ function AuthFrame({
           <span className="h-5 w-[9px] rounded-full bg-primary" />
           <span className="h-5 w-[9px] rounded-full bg-primary" />
         </div>
-        <h1 className="mb-9 mt-7 text-4xl font-medium tracking-tight">{title}</h1>
+        <h1 aria-live="polite" className="mb-9 mt-7 text-4xl font-medium tracking-tight">
+          {title}
+        </h1>
         {children}
       </form>
     </div>

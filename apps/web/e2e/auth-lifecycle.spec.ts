@@ -125,7 +125,8 @@ test("changes and recovers an email password", async ({ page }, testInfo) => {
   await page.getByLabel("Email").fill(email);
   await expect(page.getByLabel("Email")).toHaveValue(email);
   await page.getByRole("button", { name: "Send reset link" }).click();
-  await expect(page.getByText("Check your email")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Reset your password" })).not.toBeVisible();
   await captureScreenshot(page, testInfo, "42-password-reset-requested");
 
   const emailApi = process.env.API_URL ?? "http://127.0.0.1:3110";
