@@ -416,7 +416,7 @@ msgstr "Perguntar antes de enviar e-mail externo"
 
 #: src/pages/Onboarding.tsx:40
 msgid "Assistant"
-msgstr ""
+msgstr "Assistente"
 
 #. placeholder {0}: preset.time
 #: src/pages/RoutineSchedule.tsx:91

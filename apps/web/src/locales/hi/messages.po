@@ -416,7 +416,7 @@ msgstr "बाहरी ईमेल भेजने से पहले पू�
 
 #: src/pages/Onboarding.tsx:40
 msgid "Assistant"
-msgstr ""
+msgstr "सहायक"
 
 #. placeholder {0}: preset.time
 #: src/pages/RoutineSchedule.tsx:91

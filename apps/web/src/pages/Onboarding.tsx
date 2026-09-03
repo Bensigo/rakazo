@@ -137,6 +137,7 @@ export function OnboardingPage() {
     if (!nextProvider || nextProvider === provider) return;
     cancelOAuthAttempt();
     setProvider(nextProvider);
+    setApiKey("");
     setModelId(
       nextProvider === OPENAI_COMPATIBLE_PROVIDER_ID
         ? ""

@@ -416,7 +416,7 @@ msgstr "외부 이메일을 보내기 전에 확인"
 
 #: src/pages/Onboarding.tsx:40
 msgid "Assistant"
-msgstr ""
+msgstr "어시스턴트"
 
 #. placeholder {0}: preset.time
 #: src/pages/RoutineSchedule.tsx:91

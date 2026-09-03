@@ -416,7 +416,7 @@ msgstr "发送外部邮件前询问"
 
 #: src/pages/Onboarding.tsx:40
 msgid "Assistant"
-msgstr ""
+msgstr "助手"
 
 #. placeholder {0}: preset.time
 #: src/pages/RoutineSchedule.tsx:91
