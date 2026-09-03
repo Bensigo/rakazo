@@ -93,10 +93,7 @@ export function BotContextMenu({
             <Folder />
             {t`Move to`}
           </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent
-            aria-label={t`Move ${bot.name} to section`}
-            className="max-h-[min(420px,calc(100vh-16px))] min-w-[180px] overflow-y-auto"
-          >
+          <DropdownMenuSubContent className="max-h-[min(420px,calc(100vh-16px))] min-w-[180px] overflow-y-auto">
             {sections.map((section) => (
               <DropdownMenuItem key={section.id} onClick={() => onMoveToSection(section.id)}>
                 <Folder />
