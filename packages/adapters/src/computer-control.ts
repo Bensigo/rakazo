@@ -96,6 +96,33 @@ export async function extendActiveComputerControl(
   return true;
 }
 
+/** Clears controlHolder=user when no live control lease remains (stale / orphaned rows). */
+export async function clearInactiveUserComputerControl(
+  prisma: PrismaClient,
+  computerId: string,
+  now = new Date(),
+): Promise<boolean> {
+  const cleared = await prisma.computer.updateMany({
+    where: {
+      id: computerId,
+      controlHolder: "user",
+      OR: [
+        { controlLeaseId: null },
+        { controlLeaseExpiresAt: null },
+        { controlLeaseExpiresAt: { lte: now } },
+      ],
+    },
+    data: {
+      controlHolder: "none",
+      controlLeaseId: null,
+      controlLeaseExpiresAt: null,
+      controlBotId: null,
+      controlRunId: null,
+    },
+  });
+  return cleared.count === 1;
+}
+
 export async function expireComputerControl(
   deps: {
     prisma: PrismaClient;
@@ -110,7 +137,10 @@ export async function expireComputerControl(
   const computer = await deps.prisma.computer.findUnique({ where: { id: computerId } });
   if (!computer || computer.controlLeaseId !== leaseId) return false;
   const botId = computer.controlBotId;
-  if (!botId) return false;
+  if (!botId) {
+    // Orphaned user control without a bot id cannot revoke the provider or emit events.
+    return clearInactiveUserComputerControl(deps.prisma, computer.id, now);
+  }
 
   if (computer.controlLeaseExpiresAt && computer.controlLeaseExpiresAt.getTime() > now.getTime()) {
     await scheduleComputerControlExpiry(

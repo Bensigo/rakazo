@@ -8,7 +8,11 @@ import type {
 } from "@rakazo/adapter-kit";
 import { ACTIVE_RUN_STATUSES, screenLeaseId } from "@rakazo/core";
 import { type PrismaClient, parseComputerMode, type ThreadEvents } from "@rakazo/db";
-import { expireComputerControl, hasActiveComputerControl } from "./computer-control.js";
+import {
+  clearInactiveUserComputerControl,
+  expireComputerControl,
+  hasActiveComputerControl,
+} from "./computer-control.js";
 import { toComputerRef } from "./computer-support.js";
 import {
   checkpointAndRecordComputerWorkspace,
@@ -410,7 +414,12 @@ export async function replaceComputer(
   if (existing.controlLeaseId && !hasActiveComputerControl(existing)) {
     await expireComputerControl(deps, existing.id, existing.controlLeaseId);
     existing = await deps.prisma.computer.findUniqueOrThrow({ where: { id: computerId } });
-    if (existing.controlLeaseId && !hasActiveComputerControl(existing)) {
+  }
+  // Stale controlHolder=user with an empty/expired lease must not block reset/recover.
+  if (existing.controlHolder === "user" && !hasActiveComputerControl(existing)) {
+    await clearInactiveUserComputerControl(deps.prisma, existing.id);
+    existing = await deps.prisma.computer.findUniqueOrThrow({ where: { id: computerId } });
+    if (existing.controlHolder === "user" && !hasActiveComputerControl(existing)) {
       throw new Error("computer control revocation is still in progress");
     }
   }

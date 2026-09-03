@@ -817,6 +817,71 @@ describe("computer replacement", () => {
     ).rejects.toBeInstanceOf(ComputerBusyError);
   });
 
+  it("does not treat stale user control without a lease as busy during reset", async () => {
+    const updateMany = vi
+      .fn()
+      .mockResolvedValueOnce({ count: 1 }) // clearInactiveUserComputerControl
+      .mockResolvedValueOnce({ count: 0 }); // suspending claim races
+    const findUniqueOrThrow = vi
+      .fn()
+      .mockResolvedValueOnce({
+        id: "computer-1",
+        homeKey: "bot-1",
+        providerRef: "provider-1",
+        kind: "fake",
+        scope: "dedicated",
+        state: "running",
+        controlHolder: "user",
+        controlLeaseId: null,
+        controlLeaseExpiresAt: null,
+        controlBotId: "bot-1",
+      })
+      .mockResolvedValueOnce({
+        id: "computer-1",
+        homeKey: "bot-1",
+        providerRef: "provider-1",
+        kind: "fake",
+        scope: "dedicated",
+        state: "running",
+        controlHolder: "none",
+        controlLeaseId: null,
+        controlLeaseExpiresAt: null,
+        controlBotId: null,
+      });
+    const prisma = {
+      computer: {
+        findUniqueOrThrow,
+        updateMany,
+      },
+      run: { findFirst: vi.fn() },
+    } as unknown as PrismaClient;
+
+    await expect(
+      replaceComputer(
+        {
+          prisma,
+          sandbox: new FakeSandboxProvider(),
+          home: {} as AgentHomeStore,
+          jobs: {} as JobPublisher,
+          events: {} as ThreadEvents,
+        },
+        "computer-1",
+        "reset",
+        context,
+      ),
+    ).rejects.toBeInstanceOf(ComputerBusyError);
+
+    expect(updateMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({ id: "computer-1", controlHolder: "user" }),
+        data: expect.objectContaining({ controlHolder: "none" }),
+      }),
+    );
+    expect(updateMany).toHaveBeenCalledTimes(2);
+    expect(prisma.run.findFirst).not.toHaveBeenCalled();
+  });
+
   it("rejects replacement when control is claimed before the suspending lock", async () => {
     const prisma = {
       computer: {

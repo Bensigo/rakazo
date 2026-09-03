@@ -26,6 +26,7 @@ import {
   type ComputerExecutionLease,
   type ConnectorRegistry,
   checkpointAndRecordComputerWorkspace,
+  clearInactiveUserComputerControl,
   computerSupportsUpdate,
   createVoiceProvider,
   deletePushToken,
@@ -1534,13 +1535,12 @@ export function createRouter(deps: RouterDeps) {
         if (!bot.computer) throw new IsolationError();
         const controlBotId = bot.computer.controlBotId;
         const controlLeaseId = bot.computer.controlLeaseId;
-        if (
-          !hasActiveComputerControl(bot.computer) ||
-          bot.computer.controlHolder !== "user" ||
-          !controlBotId ||
-          !controlLeaseId ||
-          controlBotId !== bot.id
-        ) {
+        if (bot.computer.controlHolder !== "user" || !controlBotId || controlBotId !== bot.id) {
+          return { ok: true as const };
+        }
+        if (!hasActiveComputerControl(bot.computer) || !controlLeaseId) {
+          // Stale controlHolder=user with no live lease: clear so reset/release recover without DB edits.
+          await clearInactiveUserComputerControl(deps.prisma, bot.computer.id);
           return { ok: true as const };
         }
         if (bot.computer.providerRef) {
@@ -3739,13 +3739,20 @@ async function runComputerReplace(
 async function expireStaleComputerControl(
   deps: RouterDeps,
   computer:
-    | (NonNullable<Parameters<typeof hasActiveComputerControl>[0]> & { id: string })
+    | (NonNullable<Parameters<typeof hasActiveComputerControl>[0]> & {
+        id: string;
+        controlHolder?: string;
+      })
     | null
     | undefined,
 ): Promise<boolean> {
-  const leaseId = computer?.controlLeaseId;
-  if (!leaseId || hasActiveComputerControl(computer)) return false;
-  await expireComputerControl(deps, computer.id, leaseId).catch(() => undefined);
+  if (!computer || hasActiveComputerControl(computer)) return false;
+  if (computer.controlHolder !== "user") return false;
+  const leaseId = computer.controlLeaseId;
+  if (leaseId) {
+    await expireComputerControl(deps, computer.id, leaseId).catch(() => undefined);
+  }
+  await clearInactiveUserComputerControl(deps.prisma, computer.id).catch(() => undefined);
   return true;
 }
 

@@ -2,6 +2,7 @@ import type { BackgroundJob, JobPublisher, SandboxProvider } from "@rakazo/adapt
 import type { PrismaClient, ThreadEvents } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
 import {
+  clearInactiveUserComputerControl,
   DEFAULT_TAKEOVER_LEASE_MS,
   expireComputerControl,
   extendActiveComputerControl,
@@ -162,6 +163,56 @@ describe("computer control leases", () => {
     expect(harness.setScreenControl).not.toHaveBeenCalled();
     expect(harness.prisma.computer.updateMany).not.toHaveBeenCalled();
   });
+
+  it("clears stale user control when the lease is empty or expired", async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const prisma = { computer: { updateMany } } as unknown as PrismaClient;
+    const now = new Date("2026-01-01T00:00:00.000Z");
+
+    await expect(clearInactiveUserComputerControl(prisma, "computer-1", now)).resolves.toBe(true);
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "computer-1",
+        controlHolder: "user",
+        OR: [
+          { controlLeaseId: null },
+          { controlLeaseExpiresAt: null },
+          { controlLeaseExpiresAt: { lte: now } },
+        ],
+      },
+      data: {
+        controlHolder: "none",
+        controlLeaseId: null,
+        controlLeaseExpiresAt: null,
+        controlBotId: null,
+        controlRunId: null,
+      },
+    });
+  });
+
+  it("clears orphaned user control when expiry has no control bot id", async () => {
+    const harness = controlHarness({ controlBotId: null });
+    await expect(expireComputerControl(harness.deps, "computer-id", "lease-1")).resolves.toBe(true);
+    expect(harness.prisma.computer.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "computer-id",
+        controlHolder: "user",
+        OR: [
+          { controlLeaseId: null },
+          { controlLeaseExpiresAt: null },
+          { controlLeaseExpiresAt: { lte: expect.any(Date) } },
+        ],
+      },
+      data: {
+        controlHolder: "none",
+        controlLeaseId: null,
+        controlLeaseExpiresAt: null,
+        controlBotId: null,
+        controlRunId: null,
+      },
+    });
+    expect(harness.setScreenControl).not.toHaveBeenCalled();
+  });
 });
 
 describe("teaching control lease extension", () => {
@@ -218,6 +269,7 @@ function controlHarness(
   options: {
     controlLeaseId?: string;
     controlLeaseExpiresAt?: Date | null;
+    controlBotId?: string | null;
     revokeError?: Error;
     finalizeError?: Error;
     enqueueError?: Error;
@@ -234,7 +286,7 @@ function controlHarness(
     state: "running",
     controlHolder: "user",
     controlLeaseId: options.controlLeaseId ?? "lease-1",
-    controlBotId: "bot",
+    controlBotId: options.controlBotId === undefined ? "bot" : options.controlBotId,
     controlRunId: options.controlRunId ?? options.waitingRunId ?? null,
     executionRunId: options.executionRunId ?? null,
     controlLeaseExpiresAt:
