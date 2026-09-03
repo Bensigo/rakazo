@@ -148,6 +148,7 @@ import {
   clearActiveThreadRuns,
   computerPanelAutoBoot,
   computerPanelAutoUsesBoot,
+  computerPanelNeedsMaintenance,
   computerTakeoverBlocked,
   isComputerStatusEvent,
   isThreadSnapshotEvent,
@@ -3074,6 +3075,17 @@ export function ShellPage() {
                   )}
                 </span>
                 <div className="flex gap-1">
+                  {active &&
+                  panel === "computer" &&
+                  computerPanelNeedsMaintenance(computer?.state, booting) ? (
+                    <ComputerMaintenanceActions
+                      botId={active.id}
+                      computer={computer}
+                      onChanged={async () => {
+                        await refreshThread(active.id);
+                      }}
+                    />
+                  ) : null}
                   {active ? (
                     <Button
                       variant="ghost"

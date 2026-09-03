@@ -116,7 +116,7 @@ export function ComputerMaintenanceActions({
           data-testid="computer-more-button"
           aria-label={t`More computer actions`}
           disabled={busy && pending === null}
-          render={<Button variant="ghost" size="icon" className="text-muted-foreground" />}
+          render={<Button variant="ghost" size="icon-sm" className="text-muted-foreground" />}
         >
           <MoreHorizontal />
         </DropdownMenuTrigger>
