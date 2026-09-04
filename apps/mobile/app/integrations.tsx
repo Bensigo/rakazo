@@ -33,6 +33,7 @@ export default function Integrations() {
   const { width } = useWindowDimensions();
   const catalogColumns = width >= 480 ? 2 : 1;
   const [catalog, setCatalog] = useState<ConnectionCatalogItem[]>([]);
+  const [connections, setConnections] = useState<Connection[]>([]);
   const [query, setQuery] = useState("");
   const [visibleCount, setVisibleCount] = useState(CONNECTION_CATALOG_PAGE_SIZE);
   const [sources, setSources] = useState<CapabilityInstall[]>([]);
@@ -58,6 +59,12 @@ export default function Integrations() {
     const catalogResult = await rpc<ConnectionCatalogItem[]>("connections/catalog");
     setCatalog(catalogResult);
     setCatalogReady(true);
+    try {
+      const rows = await rpc<Connection[]>("connections/list");
+      setConnections(rows);
+    } catch {
+      setConnections([]);
+    }
     try {
       const installs = await rpc<CapabilityInstall[]>("capabilities/list");
       setSources(installs.filter((item) => item.kind === "mcp" || item.kind === "api"));
@@ -92,6 +99,15 @@ export default function Integrations() {
     void rpc("onboarding/appConnected", { botId, provider: item.slug }).catch(() => undefined);
   }
 
+  function accountsFor(item: Pick<ConnectionCatalogItem, "connectorId" | "slug">) {
+    return connections.filter(
+      (row) =>
+        row.connectorId === item.connectorId &&
+        row.provider === item.slug &&
+        (row.status === "connected" || row.status === "pending"),
+    );
+  }
+
   async function connect(item: ConnectionCatalogItem) {
     connectionAttempt.current?.abort();
     const controller = new AbortController();
@@ -105,7 +121,10 @@ export default function Integrations() {
         {
           connectorId: item.connectorId,
           provider: item.slug,
-          displayName: item.name,
+          displayName: (() => {
+            const count = accountsFor(item).filter((row) => row.status === "connected").length;
+            return count <= 0 ? item.name : `${item.name} ${count + 1}`;
+          })(),
         },
       );
       if (started.authorizationUrl) await Linking.openURL(started.authorizationUrl);
@@ -138,21 +157,10 @@ export default function Integrations() {
     }
   }
 
-  async function revoke(item: ConnectionCatalogItem) {
-    const key = `${item.connectorId}:${item.slug}`;
-    setPending(key);
+  async function revokeAccount(row: Connection, _item: ConnectionCatalogItem) {
+    setPending(row.id);
     setCatalogError(null);
-    const connections = await rpc<Connection[]>("connections/list").catch(() => []);
-    const matches = connections.filter(
-      (connection) =>
-        connection.connectorId === item.connectorId && connection.provider === item.slug,
-    );
     try {
-      const row =
-        matches.find((connection) => connection.status === "connected") ??
-        matches.find((connection) => connection.status === "pending") ??
-        matches.find((connection) => connection.status === "error");
-      if (!row) throw new Error(t("No connection record found for {name}.", { name: item.name }));
       await rpc("connections/revoke", { connectionId: row.id });
       await refresh();
     } catch (reason) {
@@ -160,6 +168,20 @@ export default function Integrations() {
     } finally {
       setPending(null);
     }
+  }
+
+  async function revoke(item: ConnectionCatalogItem) {
+    const key = `${item.connectorId}:${item.slug}`;
+    const matches = accountsFor(item);
+    const row =
+      matches.find((connection) => connection.status === "connected") ??
+      matches.find((connection) => connection.status === "pending");
+    if (!row) {
+      setCatalogError(t("No connection record found for {name}.", { name: item.name }));
+      return;
+    }
+    setPending(key);
+    await revokeAccount(row, item);
   }
 
   function beginSource(kind: SourceKind) {
@@ -265,21 +287,56 @@ export default function Integrations() {
                         ) : null}
                       </View>
                       {disabled || !item ? null : (
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel={
-                            connected
-                              ? t("Remove {name}", { name: tile.label })
-                              : t("Add {name}", { name: tile.label })
-                          }
-                          disabled={pending === key}
-                          onPress={() => void (connected ? revoke(item) : connect(item))}
-                        >
-                          <Text style={styles.link}>
-                            {pending === key ? t("Working…") : connected ? t("Remove") : t("Add")}
-                          </Text>
-                        </Pressable>
+                        <View style={styles.accountActions}>
+                          {connected ? (
+                            <Pressable
+                              accessibilityRole="button"
+                              accessibilityLabel={t("Add another {name}", { name: tile.label })}
+                              disabled={pending === key}
+                              onPress={() => void connect(item)}
+                            >
+                              <Text style={styles.link}>
+                                {pending === key ? t("Working…") : t("Add another")}
+                              </Text>
+                            </Pressable>
+                          ) : null}
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={
+                              connected
+                                ? t("Remove {name}", { name: tile.label })
+                                : t("Add {name}", { name: tile.label })
+                            }
+                            disabled={pending === key}
+                            onPress={() => void (connected ? revoke(item) : connect(item))}
+                          >
+                            <Text style={styles.link}>
+                              {pending === key ? t("Working…") : connected ? t("Remove") : t("Add")}
+                            </Text>
+                          </Pressable>
+                        </View>
                       )}
+                      {item && accountsFor(item).length > 0 ? (
+                        <View style={styles.accountList}>
+                          {accountsFor(item).map((row) => (
+                            <View key={row.id} style={styles.accountRow}>
+                              <Text numberOfLines={1} style={styles.secondary}>
+                                {row.displayName}
+                              </Text>
+                              <Pressable
+                                accessibilityRole="button"
+                                accessibilityLabel={t("Remove {name}", { name: row.displayName })}
+                                disabled={pending === row.id}
+                                onPress={() => void revokeAccount(row, item)}
+                              >
+                                <Text style={styles.link}>
+                                  {pending === row.id ? t("Working…") : t("Remove")}
+                                </Text>
+                              </Pressable>
+                            </View>
+                          ))}
+                        </View>
+                      ) : null}
                     </View>
                   );
                 })
@@ -296,20 +353,55 @@ export default function Integrations() {
                       {item.name}
                     </Text>
                   </View>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={
-                      item.connected
-                        ? t("Remove {name}", { name: item.name })
-                        : t("Add {name}", { name: item.name })
-                    }
-                    disabled={pending === key}
-                    onPress={() => void (item.connected ? revoke(item) : connect(item))}
-                  >
-                    <Text style={styles.link}>
-                      {pending === key ? t("Working…") : item.connected ? t("Remove") : t("Add")}
-                    </Text>
-                  </Pressable>
+                  <View style={styles.accountActions}>
+                    {item.connected ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={t("Add another {name}", { name: item.name })}
+                        disabled={pending === key}
+                        onPress={() => void connect(item)}
+                      >
+                        <Text style={styles.link}>
+                          {pending === key ? t("Working…") : t("Add another")}
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        item.connected
+                          ? t("Remove {name}", { name: item.name })
+                          : t("Add {name}", { name: item.name })
+                      }
+                      disabled={pending === key}
+                      onPress={() => void (item.connected ? revoke(item) : connect(item))}
+                    >
+                      <Text style={styles.link}>
+                        {pending === key ? t("Working…") : item.connected ? t("Remove") : t("Add")}
+                      </Text>
+                    </Pressable>
+                  </View>
+                  {accountsFor(item).length > 0 ? (
+                    <View style={styles.accountList}>
+                      {accountsFor(item).map((row) => (
+                        <View key={row.id} style={styles.accountRow}>
+                          <Text numberOfLines={1} style={styles.secondary}>
+                            {row.displayName}
+                          </Text>
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={t("Remove {name}", { name: row.displayName })}
+                            disabled={pending === row.id}
+                            onPress={() => void revokeAccount(row, item)}
+                          >
+                            <Text style={styles.link}>
+                              {pending === row.id ? t("Working…") : t("Remove")}
+                            </Text>
+                          </Pressable>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
                 </View>
               );
             })}
@@ -346,7 +438,7 @@ export default function Integrations() {
 
         {advancedOpen ? (
           <View style={styles.advancedBody}>
-            <View style={styles.actions}>
+            <View style={styles.accountActions}>
               {(["mcp", "api", "treg"] as const).map((kind) => (
                 <Pressable
                   key={kind}
@@ -421,7 +513,7 @@ export default function Integrations() {
                     style={styles.input}
                   />
                 ) : null}
-                <View style={styles.actions}>
+                <View style={styles.accountActions}>
                   <Pressable
                     accessibilityRole="button"
                     disabled={pending === "source"}
@@ -513,6 +605,21 @@ function createIntegrationsStyles() {
     grow: { flex: 1, gap: 3, minWidth: 0 },
     title: { color: native.label, fontSize: 15, fontWeight: "600" },
     secondary: { color: native.secondaryLabel, fontSize: 13 },
+    accountActions: {
+      alignItems: "flex-end",
+      gap: 8,
+    },
+    accountList: {
+      marginTop: 6,
+      gap: 4,
+      width: "100%",
+    },
+    accountRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+    },
     link: { color: native.label, fontSize: 14, fontWeight: "600" },
     remove: { color: "#E96B6B", fontSize: 14, fontWeight: "600" },
     error: { color: "#E96B6B", fontSize: 14 },
