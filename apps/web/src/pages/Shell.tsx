@@ -181,6 +181,7 @@ import {
 } from "./RoutineEditor";
 import { SpaceSearchResults } from "./SpaceSearch";
 import { BotSettings, CreateBotForm } from "./shell/bot-panel";
+import { CommandPalette, isCommandPaletteHotkey } from "./shell/command-palette";
 import {
   ClearConversationDialog,
   DeleteBotDialog,
@@ -418,6 +419,7 @@ export function ShellPage() {
   const [draggedBotId, setDraggedBotId] = useState<string | null>(null);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [newSpaceOpen, setNewSpaceOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
   useEffect(() => {
     const desktop = window.matchMedia("(min-width: 768px)");
@@ -2328,6 +2330,16 @@ export function ShellPage() {
   }, [computerOpen]);
 
   useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (!isCommandPaletteHotkey(event)) return;
+      event.preventDefault();
+      setCommandPaletteOpen((open) => !open);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
     if ((panel !== "computer" && !computerOpen) || !active || computer?.state !== "running") return;
     const ping = () => void rpc.computer.heartbeat({ botId: active.id }).catch(() => undefined);
     ping();
@@ -3607,6 +3619,16 @@ export function ShellPage() {
             }}
           />
         ) : null}
+
+        <CommandPalette
+          open={commandPaletteOpen}
+          onOpenChange={setCommandPaletteOpen}
+          bots={bots}
+          onSelectBot={(id) => {
+            setMobileSidebarOpen(false);
+            navigate(`/app/${id}`);
+          }}
+        />
 
         {newSpaceOpen ? (
           <NewSpaceDialog
