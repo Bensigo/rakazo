@@ -22,6 +22,9 @@ export type AxiomFromEnv =
   | { sink?: undefined; warning: string }
   | { sink?: undefined; warning?: undefined };
 
+/** Hostname only (regional edge), e.g. eu-central-1.aws.edge.axiom.co */
+const EDGE_HOST = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/i;
+
 export function createAxiomSink(options: AxiomSinkOptions): LogSink {
   const client =
     options.client ??
@@ -54,12 +57,14 @@ export function createAxiomSinkFromEnv(
   const edgeUrl = source.AXIOM_EDGE_URL?.trim() || undefined;
   const partial = Boolean(token || dataset || edge || edgeUrl);
   if (token && dataset) {
+    const resolved = resolveAxiomEdge(edge, edgeUrl);
+    if (resolved.warning) return { warning: resolved.warning };
     return {
       sink: createAxiomSink({
         token,
         dataset,
-        edge,
-        edgeUrl,
+        edge: resolved.edge,
+        edgeUrl: resolved.edgeUrl,
         client,
       }),
     };
@@ -82,4 +87,39 @@ export function createRootLogger(service: string, env: NodeJS.ProcessEnv = proce
   if (axiom.warning) logger.warn(axiom.warning);
   installLogger(logger);
   return logger;
+}
+
+/** Validate optional edge settings. Invalid values disable Axiom rather than guess. */
+export function resolveAxiomEdge(
+  edge?: string,
+  edgeUrl?: string,
+): { edge?: string; edgeUrl?: string; warning?: string } {
+  if (edgeUrl) {
+    let url: URL;
+    try {
+      url = new URL(edgeUrl);
+    } catch {
+      return { warning: "Axiom logging is disabled; AXIOM_EDGE_URL is not a valid URL." };
+    }
+    if (url.protocol !== "https:") {
+      return { warning: "Axiom logging is disabled; AXIOM_EDGE_URL must use https." };
+    }
+    if (url.username || url.password) {
+      return { warning: "Axiom logging is disabled; AXIOM_EDGE_URL must not include credentials." };
+    }
+    if (!url.hostname) {
+      return { warning: "Axiom logging is disabled; AXIOM_EDGE_URL is not a valid URL." };
+    }
+    return { edgeUrl: url.toString().replace(/\/$/, "") };
+  }
+  if (edge) {
+    if (edge.includes("://") || edge.includes("/") || edge.includes("@") || !EDGE_HOST.test(edge)) {
+      return {
+        warning:
+          "Axiom logging is disabled; AXIOM_EDGE must be a hostname such as eu-central-1.aws.edge.axiom.co.",
+      };
+    }
+    return { edge };
+  }
+  return {};
 }

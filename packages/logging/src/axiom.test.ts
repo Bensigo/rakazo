@@ -74,4 +74,40 @@ describe("axiom sink", () => {
     expect(enabled.sink).toBeDefined();
     expect(enabled.warning).toBeUndefined();
   });
+
+  it("rejects non-https edge URLs and non-hostname edges", () => {
+    const client = new FakeAxiom();
+    const httpUrl = createAxiomSinkFromEnv(
+      {
+        AXIOM_TOKEN: "t",
+        AXIOM_DATASET: "logs",
+        AXIOM_EDGE_URL: "http://edge.example",
+      },
+      client,
+    );
+    expect(httpUrl.sink).toBeUndefined();
+    expect(httpUrl.warning).toMatch(/https/);
+
+    const badHost = createAxiomSinkFromEnv(
+      {
+        AXIOM_TOKEN: "t",
+        AXIOM_DATASET: "logs",
+        AXIOM_EDGE: "https://eu-central-1.aws.edge.axiom.co",
+      },
+      client,
+    );
+    expect(badHost.sink).toBeUndefined();
+    expect(badHost.warning).toMatch(/hostname/);
+
+    const withUser = createAxiomSinkFromEnv(
+      {
+        AXIOM_TOKEN: "t",
+        AXIOM_DATASET: "logs",
+        AXIOM_EDGE_URL: "https://user:pass@edge.example",
+      },
+      client,
+    );
+    expect(withUser.sink).toBeUndefined();
+    expect(withUser.warning).toMatch(/credentials/);
+  });
 });

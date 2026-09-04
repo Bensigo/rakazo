@@ -177,17 +177,16 @@ metadata, never reset tokens. The inbox route is not registered in test, staging
 ### Logging
 
 Backend services write structured logs to stdout. `LOG_LEVEL` is `debug`, `info`, `warn`, `error`,
-or `off` (default `info`). `LOG_FORMAT=json` is used in production; development defaults to a short
-pretty line unless you set `json` or `pretty` explicitly.
+or `off` (default `info`). Production defaults to `LOG_FORMAT=json`; development defaults to pretty
+unless you set `json` or `pretty`.
 
-Axiom is optional and never required to run Rakazo. Set both `AXIOM_TOKEN` and `AXIOM_DATASET` to
-enable ingest to one shared logs dataset. Services identify themselves with `service.name`
-(`rakazo-api`, `rakazo-worker`, `rakazo-sandbox-supervisor`, `rakazo-updater`). If only one of the
-two is set, Axiom stays off and the process logs a one-time warning. `AXIOM_EDGE` selects a regional
-edge hostname; `AXIOM_EDGE_URL` is a full URL and wins when both are set.
+Axiom is optional. Set both `AXIOM_TOKEN` and `AXIOM_DATASET` for ingest to one shared dataset.
+Services set `service.name` (`rakazo-api`, `rakazo-worker`, `rakazo-sandbox-supervisor`,
+`rakazo-updater`). A partial Axiom config logs a one-time warning and stays off. `AXIOM_EDGE` is a
+regional hostname; `AXIOM_EDGE_URL` must be https and wins when both are set.
 
-Compose passes these variables into the API, worker, supervisor, and updater. Sandbox computer
-containers and updater child commands do not receive them.
+Compose passes these into the API, worker, supervisor, and updater. Computer containers and updater
+child commands do not receive them.
 
 Optional:
 
