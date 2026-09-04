@@ -19,6 +19,7 @@ import {
   createGroupRepos,
   createRepos,
   createThreadMessageInTransaction,
+  expireComputerExecutionLeases,
   IsolationError,
   lockOwnedGroup,
   type Prisma,
@@ -907,7 +908,7 @@ export async function stopThreadRuns(
       await deps.sandbox.releaseScreen?.(ref, context).catch(() => undefined);
     }),
   );
-  await deps.prisma.computerExecutionLease.deleteMany({ where: { runId: { in: runIds } } });
+  await expireComputerExecutionLeases(deps.prisma, { runId: { in: runIds } });
   await deps.prisma.computer.updateMany({
     where: { executionRunId: { in: runIds } },
     data: {

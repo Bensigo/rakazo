@@ -219,6 +219,7 @@ export class PiAgentRuntime implements AgentRuntime {
             queue.push({
               type: "progress",
               text: describeToolActivity(event.toolName, event.args),
+              activity: true,
             });
           }
           if (
@@ -230,7 +231,7 @@ export class PiAgentRuntime implements AgentRuntime {
               if (toolActivityShowing) {
                 // Real text replaces the activity line instead of appending to it.
                 toolActivityShowing = false;
-                queue.push({ type: "progress", text: "" });
+                queue.push({ type: "progress", text: "", activity: true });
               }
               streamed += delta;
               queue.push({ type: "text", text: delta });

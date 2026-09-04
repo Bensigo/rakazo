@@ -1,4 +1,5 @@
 import { RPCHandler } from "@orpc/server/fetch";
+import { COMPUTER_SCREEN_UNAVAILABLE, ComputerScreenUnavailableError } from "@rakazo/adapters";
 import type { Actor } from "@rakazo/contracts";
 import type { PrismaClient } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
@@ -616,5 +617,19 @@ describe("computer screen url", () => {
     expect(response.status).toBe(500);
     expect(updateMany).not.toHaveBeenCalled();
     logError.mockRestore();
+  });
+
+  it("returns a recoverable conflict when the screen is temporarily busy", async () => {
+    const { response, updateMany } = await callScreenUrl(() =>
+      Promise.reject(new ComputerScreenUnavailableError()),
+    );
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      json: expect.objectContaining({
+        code: "CONFLICT",
+        message: COMPUTER_SCREEN_UNAVAILABLE,
+      }),
+    });
+    expect(updateMany).not.toHaveBeenCalled();
   });
 });
