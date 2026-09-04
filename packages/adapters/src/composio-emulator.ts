@@ -311,11 +311,28 @@ function githubReleaseTools(): ConnectorTool[] {
   ];
 }
 
+function providerSlug(connectionRef: string): string {
+  const separator = connectionRef.indexOf(":");
+  return separator === -1 ? connectionRef : connectionRef.slice(0, separator);
+}
+
+function refsForProvider(refs: readonly string[], provider: string): string[] {
+  return refs.filter((ref) => ref === provider || ref.startsWith(`${provider}:`));
+}
+
+function findAccountIndex(refs: readonly string[], connectionRef: string): number {
+  const exact = refs.indexOf(connectionRef);
+  if (exact >= 0) return exact;
+  // Bare provider slug: drop one matching account (unit-test helper path).
+  return refs.findIndex((ref) => ref === connectionRef || ref.startsWith(`${connectionRef}:`));
+}
+
 /** Deterministic, offline Composio catalog and connection emulator for product tests. */
 export class ComposioEmulator implements ComposioProvider {
   private readonly connectedByUser = new Map<string, string[]>();
   private readonly mailboxesByUser = new Map<string, Mailbox>();
   private githubReleases: EmulatedGithubRelease[] = [...DEFAULT_RAKAZO_EMULATED_RELEASES];
+  private nextAccountSeq = 0;
   readonly executions: Array<{
     userId: string;
     tool: string;
@@ -338,9 +355,12 @@ export class ComposioEmulator implements ComposioProvider {
   }
 
   async catalog(context: AdapterContext, query?: string) {
-    const connected = new Set(this.connectedByUser.get(context.userId) ?? []);
+    const refs = this.connectedByUser.get(context.userId) ?? [];
     return filterCatalog(
-      this.directory.map((item) => ({ ...item, connected: connected.has(item.slug) })),
+      this.directory.map((item) => ({
+        ...item,
+        connected: refsForProvider(refs, item.slug).length > 0,
+      })),
       query ?? "",
     ).map((item) => ({ ...item, connectorId: "composio" }));
   }
@@ -348,7 +368,8 @@ export class ComposioEmulator implements ComposioProvider {
   async warmDirectory(): Promise<void> {}
 
   async listConnectedSlugs(userId: string): Promise<string[]> {
-    return [...new Set(this.connectedByUser.get(userId) ?? [])];
+    const refs = this.connectedByUser.get(userId) ?? [];
+    return [...new Set(refs.map((ref) => providerSlug(ref)))];
   }
 
   async listConnectedExternalIds(context: AdapterContext): Promise<string[]> {
@@ -394,17 +415,19 @@ export class ComposioEmulator implements ComposioProvider {
     request: { provider: string; redirectUrl: string },
     context: AdapterContext,
   ): Promise<{ authorizationUrl: string | null; state: string }> {
-    // Track each connection reference independently so two Gmail begins share
-    // one mailbox until the last matching revoke.
+    // Account-scoped refs (provider:n) so API revoke treats each row as
+    // account-specific. Slug-only refs would skip remote revoke while siblings
+    // remain and leave the catalog stuck on Added after Uninstall.
     const connected = [...(this.connectedByUser.get(context.userId) ?? [])];
-    connected.push(request.provider);
+    const connectionRef = `${request.provider}:${++this.nextAccountSeq}`;
+    connected.push(connectionRef);
     this.connectedByUser.set(context.userId, connected);
     if (request.provider === "GMAIL") this.ensureMailbox(context.userId);
-    return { authorizationUrl: null, state: request.provider };
+    return { authorizationUrl: null, state: connectionRef };
   }
 
   async connectionReady(context: AdapterContext, slug: string): Promise<boolean> {
-    return (this.connectedByUser.get(context.userId) ?? []).includes(slug);
+    return refsForProvider(this.connectedByUser.get(context.userId) ?? [], slug).length > 0;
   }
 
   async complete(
@@ -416,12 +439,13 @@ export class ComposioEmulator implements ComposioProvider {
 
   async revoke(connectionRef: string, context: AdapterContext): Promise<void> {
     const connected = [...(this.connectedByUser.get(context.userId) ?? [])];
-    const index = connected.indexOf(connectionRef);
+    const index = findAccountIndex(connected, connectionRef);
     if (index >= 0) connected.splice(index, 1);
     if (connected.length > 0) this.connectedByUser.set(context.userId, connected);
     else this.connectedByUser.delete(context.userId);
     // Shared mailbox stays until the last Gmail connection reference is revoked.
-    if (connectionRef === "GMAIL" && !connected.includes("GMAIL")) {
+    const slug = providerSlug(connectionRef);
+    if (slug === "GMAIL" && refsForProvider(connected, "GMAIL").length === 0) {
       this.mailboxesByUser.delete(context.userId);
     }
   }

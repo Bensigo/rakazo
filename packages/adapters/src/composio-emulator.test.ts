@@ -75,17 +75,26 @@ describe("ComposioEmulator", () => {
 
   it("keeps the shared Gmail mailbox until the last connection is revoked", async () => {
     const emulator = new ComposioEmulator();
-    await emulator.begin({ provider: "GMAIL", redirectUrl: "http://example.test" }, context);
-    await emulator.begin({ provider: "GMAIL", redirectUrl: "http://example.test" }, context);
+    const first = await emulator.begin(
+      { provider: "GMAIL", redirectUrl: "http://example.test" },
+      context,
+    );
+    const second = await emulator.begin(
+      { provider: "GMAIL", redirectUrl: "http://example.test" },
+      context,
+    );
+    expect(first.state).not.toEqual(second.state);
+    expect(first.state.startsWith("GMAIL:")).toBe(true);
+    expect(second.state.startsWith("GMAIL:")).toBe(true);
 
     await expect(emulator.connectionReady(context, "GMAIL")).resolves.toBe(true);
     expect(emulator.mailboxFor(context.userId)?.messages.length).toBeGreaterThan(0);
 
-    await emulator.revoke("GMAIL", context);
+    await emulator.revoke(first.state, context);
     await expect(emulator.connectionReady(context, "GMAIL")).resolves.toBe(true);
     expect(emulator.mailboxFor(context.userId)).toBeDefined();
 
-    await emulator.revoke("GMAIL", context);
+    await emulator.revoke(second.state, context);
     await expect(emulator.connectionReady(context, "GMAIL")).resolves.toBe(false);
     expect(emulator.mailboxFor(context.userId)).toBeUndefined();
   });
