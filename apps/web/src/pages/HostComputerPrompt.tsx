@@ -59,8 +59,7 @@ export function HostComputerPrompt({ initialMe }: { initialMe?: Me }) {
             <Trans>Where should bots run?</Trans>
           </DialogTitle>
           <DialogDescription className="leading-relaxed">
-            <Trans>Docker is the default: bots use a shared Team Computer.</Trans>
-            {" "}
+            <Trans>Docker is the default: bots use a shared Team Computer.</Trans>{" "}
             {mac ? (
               <Trans>
                 macOS will not ask for extra permission if you let bots run on this Mac. They run as
