@@ -7,7 +7,12 @@ import type {
   SandboxProvider,
 } from "@rakazo/adapter-kit";
 import { ACTIVE_RUN_STATUSES, screenLeaseId } from "@rakazo/core";
-import { type PrismaClient, parseComputerMode, type ThreadEvents } from "@rakazo/db";
+import {
+  expireComputerExecutionLeases,
+  type PrismaClient,
+  parseComputerMode,
+  type ThreadEvents,
+} from "@rakazo/db";
 import {
   clearInactiveUserComputerControl,
   expireComputerControl,
@@ -403,14 +408,11 @@ export async function releaseComputerExecutionLease(
   // Keep the row as an expired tombstone so the next run for this bot increments
   // its fence. Deleting it resets the fence to 1, which lets a still-open screen
   // session from the previous run reject the new run as stale.
-  await prisma.computerExecutionLease.updateMany({
-    where: {
-      computerId: lease.computerId,
-      botId: lease.botId,
-      runId: lease.runId,
-      fence: lease.fence,
-    },
-    data: { expiresAt: RELEASED_EXECUTION_LEASE_AT },
+  await expireComputerExecutionLeases(prisma, {
+    computerId: lease.computerId,
+    botId: lease.botId,
+    runId: lease.runId,
+    fence: lease.fence,
   });
 }
 

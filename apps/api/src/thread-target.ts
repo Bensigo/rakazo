@@ -25,6 +25,7 @@ import {
   type PrismaClient,
   type ThreadEvents,
   touchGroupUpdatedAt,
+  expireComputerExecutionLeases,
 } from "@rakazo/db";
 import {
   buildSendPrompt,
@@ -907,10 +908,7 @@ export async function stopThreadRuns(
       await deps.sandbox.releaseScreen?.(ref, context).catch(() => undefined);
     }),
   );
-  await deps.prisma.computerExecutionLease.updateMany({
-    where: { runId: { in: runIds } },
-    data: { expiresAt: new Date(0) },
-  });
+  await expireComputerExecutionLeases(deps.prisma, { runId: { in: runIds } });
   await deps.prisma.computer.updateMany({
     where: { executionRunId: { in: runIds } },
     data: {

@@ -11,6 +11,7 @@ import {
   sanitizeJsonValue,
 } from "@rakazo/core";
 import type { Prisma, PrismaClient } from "./client.js";
+import { expireComputerExecutionLeases } from "./computers.js";
 import {
   assertRunCanWriteHistory,
   createThreadMessageInTransaction,
@@ -273,13 +274,8 @@ export async function clearThread(
         data: { status: "cancelled" },
       });
     }
-    // Preserve the fence even though the run is cancelled. A provider screen can
-    // outlive the transaction, and resetting the row would let the next run reuse
-    // fence 1 and be rejected as stale by that still-open screen.
-    await tx.computerExecutionLease.updateMany({
-      where: { runId: { in: runIds } },
-      data: { expiresAt: new Date(0) },
-    });
+    // Expire as tombstones so a still-open provider screen claim cannot reset fencing to 1.
+    await expireComputerExecutionLeases(tx, { runId: { in: runIds } });
     await tx.computer.updateMany({
       where: { executionRunId: { in: runIds } },
       data: {

@@ -38,7 +38,12 @@ import {
   type TeachRecordingEvent,
   teachRecordingTtlMs,
 } from "@rakazo/core";
-import { IsolationError, type PrismaClient, type ThreadEvents } from "@rakazo/db";
+import {
+  expireComputerExecutionLeases,
+  IsolationError,
+  type PrismaClient,
+  type ThreadEvents,
+} from "@rakazo/db";
 
 type TaughtSkillRow = {
   id: string;
@@ -115,10 +120,7 @@ async function cancelActiveRuns(
     where: { botId, status: { in: [...ACTIVE_RUN_STATUSES] } },
     data: { status: "cancelled", completedAt: new Date() },
   });
-  await deps.prisma.computerExecutionLease.updateMany({
-    where: { botId },
-    data: { expiresAt: new Date(0) },
-  });
+  await expireComputerExecutionLeases(deps.prisma, { botId });
   await deps.prisma.computer.updateMany({
     where: { executionBotId: botId },
     data: { executionRunId: null, executionBotId: null, executionLeaseExpiresAt: null },
