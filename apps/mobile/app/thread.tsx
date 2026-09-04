@@ -2412,11 +2412,9 @@ const MessageBubble = memo(function MessageBubble({
     <View style={{ gap: 8, width: "100%" }}>
       {segments.map((segment, index) =>
         segment.kind === "tool" ? (
-          <ExpandableToolBlock
-            key={`${message.id}-${message.id.startsWith("progress:") ? "working" : "actions"}-${index}`}
-            block={segment.block}
-            live={message.id.startsWith("progress:")}
-          />
+          message.id.startsWith("progress:") ? null : (
+            <ExpandableToolBlock key={`${message.id}-actions-${index}`} block={segment.block} />
+          )
         ) : (
           <MessageTextCard
             key={`${message.id}-content-${index}`}
@@ -2533,10 +2531,8 @@ function AgentEventLabel({
 
 function ExpandableToolBlock({
   block,
-  live,
 }: {
   block: Extract<MessageBlock, { kind: "progress" | "steps" }>;
-  live: boolean;
 }) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
@@ -2551,7 +2547,7 @@ function ExpandableToolBlock({
             : []),
           ...(block.pendingToolNames ?? []),
         ].filter(Boolean);
-  const title = live ? t("Working…") : t("Done");
+  const title = t("Done");
 
   return (
     <View
@@ -2575,9 +2571,7 @@ function ExpandableToolBlock({
           paddingVertical: 2,
         }}
       >
-        <Text style={{ color: live ? "#C9C9CE" : "#85858A", fontSize: 12.5, fontWeight: "600" }}>
-          {title}
-        </Text>
+        <Text style={{ color: "#85858A", fontSize: 12.5, fontWeight: "600" }}>{title}</Text>
         <Text style={{ color: "#6C6C70", fontSize: 12 }}>{expanded ? "⌃" : "⌄"}</Text>
       </Pressable>
       {expanded ? (

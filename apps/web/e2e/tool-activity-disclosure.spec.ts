@@ -6,11 +6,13 @@ const viewports = [
   { name: "mobile-390x844", width: 390, height: 844 },
 ];
 const states = [
-  { name: "active", live: true, label: "Working…" },
-  { name: "complete", live: false, label: "Done" },
+  { name: "active", live: true },
+  { name: "complete", live: false },
 ];
 
-test("tool activity stays collapsed until disclosed", async ({ page }, testInfo) => {
+test("live activity stays hidden and completed activity can be disclosed", async ({
+  page,
+}, testInfo) => {
   for (const viewport of viewports) {
     await page.setViewportSize(viewport);
     for (const state of states) {
@@ -19,10 +21,17 @@ test("tool activity stays collapsed until disclosed", async ({ page }, testInfo)
       const summary = details.locator("summary");
       const rows = page.getByTestId("tool-rows");
 
-      await expect(summary).toHaveText(state.label);
+      await expect(page.getByTestId("response")).toBeVisible();
+      if (state.live) {
+        await expect(details).toHaveCount(0);
+        await expect(page.getByText("Working…")).toHaveCount(0);
+        await captureScreenshot(page, testInfo, `${state.name}-${viewport.name}`);
+        continue;
+      }
+
+      await expect(summary).toHaveText("Done");
       await expect(details).not.toHaveAttribute("open", "");
       await expect(rows).not.toBeVisible();
-      await expect(page.getByTestId("final-response")).toHaveCount(state.live ? 0 : 1);
       await captureScreenshot(page, testInfo, `${state.name}-collapsed-${viewport.name}`);
 
       await summary.click();
@@ -34,13 +43,11 @@ test("tool activity stays collapsed until disclosed", async ({ page }, testInfo)
       await expect(rows).toBeVisible();
       await expect(summary).toBeFocused();
       await expect(page.locator("body")).toHaveJSProperty("scrollWidth", viewport.width);
-      if (!state.live) {
-        const rowBox = await rows.boundingBox();
-        const responseBox = await page.getByTestId("final-response").boundingBox();
-        expect(rowBox).not.toBeNull();
-        expect(responseBox).not.toBeNull();
-        expect(responseBox?.y).toBeGreaterThan((rowBox?.y ?? 0) + (rowBox?.height ?? 0));
-      }
+      const rowBox = await rows.boundingBox();
+      const responseBox = await page.getByTestId("response").boundingBox();
+      expect(rowBox).not.toBeNull();
+      expect(responseBox).not.toBeNull();
+      expect(responseBox?.y).toBeGreaterThan((rowBox?.y ?? 0) + (rowBox?.height ?? 0));
       await captureScreenshot(page, testInfo, `${state.name}-expanded-${viewport.name}`);
     }
   }

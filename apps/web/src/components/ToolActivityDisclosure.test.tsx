@@ -7,12 +7,9 @@ import { describe, expect, it } from "vitest";
 import { ToolActivityDisclosure } from "./ToolActivityDisclosure";
 
 describe("ToolActivityDisclosure", () => {
-  it.each([
-    [true, "Working…"],
-    [false, "Done"],
-  ])("defaults collapsed with the %s state label", (live, label) => {
+  it("defaults collapsed with its label", () => {
     const html = renderToStaticMarkup(
-      <ToolActivityDisclosure live={live} label={label}>
+      <ToolActivityDisclosure label="Done">
         <span>Shell ×2</span>
       </ToolActivityDisclosure>,
     );
@@ -20,28 +17,23 @@ describe("ToolActivityDisclosure", () => {
     expect(html).toContain("<details");
     expect(html).not.toMatch(/<details[^>]* open/);
     expect(html).toContain(`<summary`);
-    expect(html).toContain(label);
+    expect(html).toContain("Done");
     expect(html).toContain("Shell ×2");
   });
 
-  it("collapses again when live work completes", () => {
+  it("can be expanded to inspect completed activity", () => {
     const container = document.createElement("div");
     const root = createRoot(container);
-    const render = (live: boolean) =>
-      flushSync(() =>
-        root.render(
-          <ToolActivityDisclosure live={live} label={live ? "Working…" : "Done"}>
-            <span>Shell ×2</span>
-          </ToolActivityDisclosure>,
-        ),
-      );
+    flushSync(() =>
+      root.render(
+        <ToolActivityDisclosure label="Done">
+          <span>Shell ×2</span>
+        </ToolActivityDisclosure>,
+      ),
+    );
 
-    render(true);
     container.querySelector("summary")?.click();
     expect(container.querySelector("details")?.open).toBe(true);
-
-    render(false);
-    expect(container.querySelector("details")?.open).toBe(false);
     expect(container.querySelector("summary")?.textContent).toContain("Done");
     root.unmount();
   });

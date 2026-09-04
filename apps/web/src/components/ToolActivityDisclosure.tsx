@@ -37,26 +37,15 @@ export function ToolSteps({
 }
 
 export function ToolActivityDisclosure({
-  live,
   label,
   children,
 }: {
-  live: boolean;
   label: string;
   children: ReactNode;
 }) {
   return (
-    <details
-      key={live ? "working" : "actions"}
-      data-testid="tool-activity"
-      data-live={live || undefined}
-      className="group"
-    >
-      <summary
-        className={`flex min-h-6 w-fit cursor-pointer list-none items-center gap-1 rounded-md py-0.5 pe-1.5 text-[13px] font-medium outline-none hover:text-foreground/75 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
-          live ? "text-foreground/75" : "text-muted-foreground"
-        }`}
-      >
+    <details data-testid="tool-activity" className="group">
+      <summary className="flex min-h-6 w-fit cursor-pointer list-none items-center gap-1 rounded-md py-0.5 pe-1.5 text-[13px] font-medium text-muted-foreground outline-none hover:text-foreground/75 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
         <ChevronRight
           aria-hidden
           size={14}

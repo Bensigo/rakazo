@@ -5056,6 +5056,9 @@ const MessageView = memo(function MessageView({
       (block) => block.kind === "text" || block.kind === "progress" || block.kind === "steps",
     );
   const isLive = message.id.startsWith("progress:");
+  const visibleNarrationBlocks = isLive
+    ? message.blocks.filter((block) => block.kind !== "steps")
+    : message.blocks;
   const parentJumpId = replyPreview?.id ?? replyToMessageId;
   const messageContext = (
     <>
@@ -5079,6 +5082,7 @@ const MessageView = memo(function MessageView({
     </>
   );
   if (isNarration) {
+    if (visibleNarrationBlocks.length === 0) return null;
     return (
       <>
         {messageContext}
@@ -5087,19 +5091,11 @@ const MessageView = memo(function MessageView({
             className="max-w-[74%] space-y-2.5 rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90"
             dir="auto"
           >
-            {message.blocks.map((block, i) => {
+            {visibleNarrationBlocks.map((block, i) => {
               if (block.kind === "steps") {
-                const isCurrentBlock = isLive && i === message.blocks.length - 1;
                 return (
-                  <ToolActivityDisclosure
-                    key={i}
-                    live={isLive}
-                    label={isLive ? t`Working…` : t`Done`}
-                  >
-                    <ToolSteps
-                      steps={block.steps}
-                      currentIndex={isCurrentBlock ? block.steps.length - 1 : undefined}
-                    />
+                  <ToolActivityDisclosure key={i} label={t`Done`}>
+                    <ToolSteps steps={block.steps} />
                   </ToolActivityDisclosure>
                 );
               }
@@ -5198,17 +5194,15 @@ const MessageView = memo(function MessageView({
           );
         }
         if (block.kind === "steps") {
+          if (isLive) return null;
           return (
             <div key={i} className="flex justify-start">
               <div
                 className="max-w-[74%] space-y-1.5 rounded-[20px] bg-muted px-[18px] py-3"
                 dir="ltr"
               >
-                <ToolActivityDisclosure live={isLive} label={isLive ? t`Working…` : t`Done`}>
-                  <ToolSteps
-                    steps={block.steps}
-                    currentIndex={isLive ? block.steps.length - 1 : undefined}
-                  />
+                <ToolActivityDisclosure label={t`Done`}>
+                  <ToolSteps steps={block.steps} />
                 </ToolActivityDisclosure>
               </div>
             </div>

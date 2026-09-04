@@ -21,14 +21,18 @@
         { label: "Shell", count: 1 },
         { label: "Shell", count: 2 },
       ];
-      const disclosure = h(
-        ToolActivityDisclosure,
-        { live, label: live ? "Working…" : "Done" },
-        h(ToolSteps, { steps, currentIndex: live ? steps.length - 1 : undefined }),
-      );
-      const response = live
+      const disclosure = live
         ? null
-        : h("div", { "data-testid": "final-response" }, "Terminal is open and ready.");
+        : h(
+            ToolActivityDisclosure,
+            { label: "Done" },
+            h(ToolSteps, { steps }),
+          );
+      const response = h(
+        "div",
+        { "data-testid": "response" },
+        live ? "Opening the terminal now…" : "Terminal is open and ready.",
+      );
       const bubble = h(
         "div",
         {
