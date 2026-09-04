@@ -1,8 +1,6 @@
 import type { MessageBlock } from "@rakazo/contracts";
 
-export type ToolActivityBlock = Extract<MessageBlock, { kind: "progress" | "steps" }>;
-
-export function isToolActivityBlock(block: MessageBlock): block is ToolActivityBlock {
+export function isToolActivityBlock(block: MessageBlock): boolean {
   return (
     block.kind === "steps" ||
     (block.kind === "progress" &&

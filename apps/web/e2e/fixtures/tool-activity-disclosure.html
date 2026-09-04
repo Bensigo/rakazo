@@ -10,24 +10,9 @@
     <script type="module">
       import { createElement as h } from "react";
       import { createRoot } from "react-dom/client";
-      import { ToolActivityDisclosure, ToolSteps } from "../../src/components/ToolActivityDisclosure.tsx";
       import "../../src/styles.css";
 
       const live = new URLSearchParams(location.search).get("live") === "1";
-      const steps = [
-        { label: "Launch app", count: 1 },
-        { label: "Computer observe", count: 1 },
-        { label: "Computer act", count: 1 },
-        { label: "Shell", count: 1 },
-        { label: "Shell", count: 2 },
-      ];
-      const disclosure = live
-        ? null
-        : h(
-            ToolActivityDisclosure,
-            { label: "Done" },
-            h(ToolSteps, { steps }),
-          );
       const response = h(
         "div",
         { "data-testid": "response" },
@@ -39,7 +24,6 @@
           className:
             "max-w-[74%] space-y-2.5 rounded-[20px] bg-[#1A1A1D] px-[18px] py-3 text-[15.5px] leading-[1.5] text-[#DFDFE2]",
         },
-        disclosure,
         response,
       );
       createRoot(document.getElementById("root")).render(
