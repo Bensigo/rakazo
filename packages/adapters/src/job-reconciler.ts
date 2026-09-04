@@ -6,6 +6,7 @@ import {
 } from "@rakazo/adapter-kit";
 import type { MessageBlock } from "@rakazo/contracts";
 import type { Pool, PrismaClient, ThreadEvents } from "@rakazo/db";
+import { getLogger } from "@rakazo/logging";
 import type { PoolClient } from "pg";
 import { returnBotMessageOutcome } from "./bot-messages.js";
 import { scheduleComputerControlExpiry } from "./computer-control.js";
@@ -274,7 +275,7 @@ export function createJobReconciler(
               text,
               intent,
             ).catch((error) => {
-              console.error("bot message outcome reconciliation", error);
+              getLogger().error("bot message outcome reconciliation", error);
               return false;
             });
             if (!returned) {
@@ -332,7 +333,9 @@ export function createJobReconciler(
     return reconciling;
   };
   const reconcileSafely = () => {
-    void reconcileOnce().catch((error) => console.error("background job reconciliation", error));
+    void reconcileOnce().catch((error) =>
+      getLogger().error("background job reconciliation", error),
+    );
   };
 
   return {

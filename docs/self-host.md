@@ -171,8 +171,22 @@ EMAIL_EMULATOR=true
 
 The emulator is forcibly disabled when `NODE_ENV=production` and requires the API to bind to a
 loopback host. In `NODE_ENV=development`, captured messages are available from
-`http://127.0.0.1:3100/api/dev/emails` with cache disabled; the API console logs only delivery
+`http://127.0.0.1:3100/api/dev/emails` with cache disabled; the API logs only delivery
 metadata, never reset tokens. The inbox route is not registered in test, staging, or production.
+
+### Logging
+
+Backend services write structured logs to stdout. `LOG_LEVEL` is `debug`, `info`, `warn`, `error`,
+or `off` (default `info`). Production defaults to `LOG_FORMAT=json`; development defaults to pretty
+unless you set `json` or `pretty`.
+
+Axiom is optional. Set both `AXIOM_TOKEN` and `AXIOM_DATASET` for ingest to one shared dataset.
+Services set `service.name` (`rakazo-api`, `rakazo-worker`, `rakazo-sandbox-supervisor`,
+`rakazo-updater`). A partial Axiom config logs a one-time warning and stays off. `AXIOM_EDGE` is a
+regional hostname; `AXIOM_EDGE_URL` must be https and wins when both are set.
+
+Compose passes these into the API, worker, supervisor, and updater. Computer containers and updater
+child commands do not receive them.
 
 Optional:
 
