@@ -19,6 +19,7 @@ export const ZH_MESSAGES: Record<string, string> = {
   Activity: "动态",
   "Active model": "当前模型",
   "Add {name}": "添加 {name}",
+  "Account label": "账户标签",
   "Add another": "再添加一个",
   "Add another {name}": "再添加一个 {name}",
   "Add MCP server": "添加 MCP 服务器",
