@@ -150,4 +150,13 @@ describe("error serialization", () => {
       cause: { message: "inner", cause: { message: "root" } },
     });
   });
+
+  it("redacts secrets in error messages and stacks", async () => {
+    const { serializeError } = await import("./serialize-error.js");
+    const error = new Error("unauthorized Bearer supersecret for person@example.com");
+    const serialized = serializeError(error);
+    expect(JSON.stringify(serialized)).not.toContain("supersecret");
+    expect(JSON.stringify(serialized)).not.toContain("person@example.com");
+    expect(serialized.message).toContain("[Redacted]");
+  });
 });

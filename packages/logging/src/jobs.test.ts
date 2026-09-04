@@ -20,11 +20,22 @@ describe("job correlation envelope", () => {
       { runId: "run-1" },
       { jobId: "job-1", traceId: "a".repeat(32), parentSpanId: "b".repeat(16) },
     );
+    expect(wrapped).toMatchObject({ runId: "run-1" });
     expect(unwrapJobPayload(wrapped)).toEqual({
       payload: { runId: "run-1" },
       correlation: { jobId: "job-1", traceId: "a".repeat(32), parentSpanId: "b".repeat(16) },
     });
     expect(unwrapJobPayload({ runId: "legacy" })).toEqual({ payload: { runId: "legacy" } });
+    expect(
+      unwrapJobPayload({
+        v: 1,
+        correlation: { jobId: "job-old", traceId: "c".repeat(32) },
+        payload: { runId: "nested" },
+      }),
+    ).toEqual({
+      payload: { runId: "nested" },
+      correlation: { jobId: "job-old", traceId: "c".repeat(32) },
+    });
   });
 
   it("inherits the active trace and creates a job id", () => {

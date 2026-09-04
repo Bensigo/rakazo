@@ -45,6 +45,18 @@ export function redactBindings(bindings: Record<string, unknown>): Record<string
   return redactValue(bindings) as Record<string, unknown>;
 }
 
+const EMAIL = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
+const BEARER = /\bBearer\s+\S+/gi;
+const SECRET_ASSIGNMENT =
+  /\b([A-Za-z0-9_]*(?:password|secret|token|authorization|apikey|api_key)[A-Za-z0-9_]*)\s*[:=]\s*\S+/gi;
+
+export function redactSensitiveText(text: string): string {
+  return text
+    .replace(EMAIL, REDACTED)
+    .replace(BEARER, `Bearer ${REDACTED}`)
+    .replace(SECRET_ASSIGNMENT, (_match, key: string) => `${key}=${REDACTED}`);
+}
+
 function shouldRedactKey(key: string): boolean {
   const normalized = key.toLowerCase().replace(/[^a-z0-9_]/g, "");
   if (REDACT_KEYS.has(normalized)) return true;

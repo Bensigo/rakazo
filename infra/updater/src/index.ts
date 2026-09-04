@@ -763,8 +763,18 @@ function startUpdater() {
       "updater.deploy_dir": config.deployDir,
     });
   });
+  let stopping = false;
   const shutdown = async () => {
+    if (stopping) return;
+    stopping = true;
     await logger.flush({ timeoutMs: 2_000 });
+    await Promise.race([
+      new Promise<void>((resolve) => server.close(() => resolve())),
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, 2_000).unref?.();
+      }),
+    ]);
+    process.exit(0);
   };
   process.once("SIGTERM", () => void shutdown());
   process.once("SIGINT", () => void shutdown());

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { redactBindings } from "./redaction.js";
+import { redactBindings, redactSensitiveText } from "./redaction.js";
 
 describe("redaction", () => {
   it("redacts secrets, credentials, and message bodies", () => {
@@ -33,5 +33,15 @@ describe("redaction", () => {
     const redacted = redactBindings(cycle) as Record<string, unknown>;
     expect(redacted["request.id"]).toBe("r1");
     expect(redacted.self).toBe("[Circular]");
+  });
+
+  it("redacts secrets embedded in free text", () => {
+    const redacted = redactSensitiveText(
+      "user person@example.com used Bearer supersecret and token=abc123",
+    );
+    expect(redacted).toContain("[Redacted]");
+    expect(redacted).not.toContain("person@example.com");
+    expect(redacted).not.toContain("supersecret");
+    expect(redacted).not.toContain("abc123");
   });
 });

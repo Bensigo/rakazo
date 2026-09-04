@@ -259,4 +259,17 @@ describe("InMemoryJobQueue", () => {
     await queue.close();
     expect(target["run.continue"]).toHaveBeenCalledWith({ runId: "legacy-run" });
   });
+
+  it("keeps wrapped payloads readable by workers that do not unwrap envelopes", async () => {
+    const { wrapJobPayload } = await import("@rakazo/logging");
+    const { parseBackgroundJob } = await import("@rakazo/adapter-kit");
+    const wrapped = wrapJobPayload(
+      { runId: "run-rollback" },
+      { jobId: "job-1", traceId: "a".repeat(32) },
+    );
+    expect(parseBackgroundJob("run.continue", wrapped)).toEqual({
+      name: "run.continue",
+      payload: { runId: "run-rollback" },
+    });
+  });
 });

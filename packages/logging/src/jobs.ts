@@ -5,9 +5,14 @@ import { getLogger } from "./logger.js";
 import type { JobCorrelation, LogBindings } from "./types.js";
 import { JOB_CORRELATION_VERSION } from "./types.js";
 
-interface JobEnvelope {
+const CORRELATION_FIELD = "__rakazoLog";
+
+interface JobCorrelationMeta {
   v: typeof JOB_CORRELATION_VERSION;
   correlation: JobCorrelation;
+}
+
+interface NestedJobEnvelope extends JobCorrelationMeta {
   payload: unknown;
 }
 
@@ -38,19 +43,29 @@ export function createJobCorrelation(): JobCorrelation {
 }
 
 export function wrapJobPayload(payload: unknown, correlation = createJobCorrelation()): unknown {
-  return {
+  const meta: JobCorrelationMeta = {
     v: JOB_CORRELATION_VERSION,
     correlation,
-    payload,
-  } satisfies JobEnvelope;
+  };
+  if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
+    return { ...(payload as Record<string, unknown>), [CORRELATION_FIELD]: meta };
+  }
+  return { ...meta, payload } satisfies NestedJobEnvelope;
 }
 
 export function unwrapJobPayload(stored: unknown): {
   payload: unknown;
   correlation?: JobCorrelation;
 } {
-  if (!isEnvelope(stored)) return { payload: stored };
-  return { payload: stored.payload, correlation: stored.correlation };
+  const sidecar = sidecarMeta(stored);
+  if (sidecar) {
+    const { [CORRELATION_FIELD]: _meta, ...payload } = stored as Record<string, unknown>;
+    return { payload, correlation: sidecar.correlation };
+  }
+  if (isNestedEnvelope(stored)) {
+    return { payload: stored.payload, correlation: stored.correlation };
+  }
+  return { payload: stored };
 }
 
 export function jobPayloadBindings(payload: unknown): LogBindings {
@@ -98,15 +113,26 @@ export async function runCorrelatedJob<T>(options: {
   });
 }
 
-function isEnvelope(value: unknown): value is JobEnvelope {
+function sidecarMeta(value: unknown): JobCorrelationMeta | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
+  return asCorrelationMeta((value as Record<string, unknown>)[CORRELATION_FIELD]);
+}
+
+function isNestedEnvelope(value: unknown): value is NestedJobEnvelope {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
-  const candidate = value as Partial<JobEnvelope>;
-  if (candidate.v !== JOB_CORRELATION_VERSION) return false;
+  if (CORRELATION_FIELD in value) return false;
+  const candidate = value as Partial<NestedJobEnvelope>;
+  return asCorrelationMeta(candidate) !== undefined && "payload" in candidate;
+}
+
+function asCorrelationMeta(value: unknown): JobCorrelationMeta | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const candidate = value as Partial<JobCorrelationMeta>;
+  if (candidate.v !== JOB_CORRELATION_VERSION) return undefined;
   const correlation = candidate.correlation;
-  if (!correlation || typeof correlation !== "object") return false;
-  return (
-    typeof correlation.jobId === "string" &&
-    typeof correlation.traceId === "string" &&
-    "payload" in candidate
-  );
+  if (!correlation || typeof correlation !== "object") return undefined;
+  if (typeof correlation.jobId !== "string" || typeof correlation.traceId !== "string") {
+    return undefined;
+  }
+  return { v: JOB_CORRELATION_VERSION, correlation };
 }
