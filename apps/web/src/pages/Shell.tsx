@@ -3039,7 +3039,7 @@ export function ShellPage() {
         />
         {recordingSkill ? (
           <div className="px-6 pb-2 text-center text-[13px] text-destructive">
-            <Trans>Teaching in progress — stop teaching before sending a new message.</Trans>
+            <Trans>Teaching in progress. Stop teaching before sending a new message.</Trans>
           </div>
         ) : null}
         <Composer
