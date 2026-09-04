@@ -6,6 +6,8 @@ describe("tool activity", () => {
   it.each<MessageBlock>([
     { kind: "steps", steps: [{ label: "Browser", count: 1 }] },
     { kind: "progress", text: "Using browser" },
+    { kind: "progress", text: "Using shell" },
+    { kind: "progress", text: "Using destination_write" },
     { kind: "progress", text: "Using brex: list_expenses" },
     { kind: "progress", text: "Let me check", pendingToolNames: ["browser"] },
   ])("recognizes $kind activity", (block) => {
@@ -16,6 +18,18 @@ describe("tool activity", () => {
     expect(isToolActivityBlock({ kind: "progress", text: "I’m checking that now." })).toBe(false);
     expect(
       isToolActivityBlock({ kind: "progress", text: "Using the search results, I found it." }),
+    ).toBe(false);
+    expect(
+      isToolActivityBlock({
+        kind: "progress",
+        text: "Using the search results, I found…",
+      }),
+    ).toBe(false);
+    expect(
+      isToolActivityBlock({
+        kind: "progress",
+        text: "Using these notes, here is a summary.",
+      }),
     ).toBe(false);
     expect(isToolActivityBlock({ kind: "text", text: "Done." })).toBe(false);
   });
