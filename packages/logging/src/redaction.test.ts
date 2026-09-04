@@ -47,9 +47,11 @@ describe("redaction", () => {
 
   it("redacts bare API keys and JWTs in free text", () => {
     const redacted = redactSensitiveText(
-      "key sk-or-v1-abc123456789 and sk-live-secret99 jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig",
+      "key sk-or-v1-abc123456789 and sk-live-secret99 jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig ak_secretvaluehere",
     );
-    expect(redacted).not.toMatch(/sk-or-v1-abc123456789|sk-live-secret99|eyJhbGciOiJIUzI1NiJ9/);
+    expect(redacted).not.toMatch(
+      /sk-or-v1-abc123456789|sk-live-secret99|eyJhbGciOiJIUzI1NiJ9|ak_secretvaluehere/,
+    );
     expect(redacted).toContain("[Redacted]");
   });
 });

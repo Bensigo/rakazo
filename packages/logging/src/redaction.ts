@@ -52,6 +52,7 @@ const SECRET_ASSIGNMENT =
 /** OpenRouter/OpenAI-style keys and compact JWTs that appear bare in error text. */
 const API_KEY_PREFIX = /\bsk-(?:or-v1-)?[A-Za-z0-9_-]{8,}\b/g;
 const JWT = /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g;
+const COMPOSIO_KEY = /\b(?:ak_|ck_)[A-Za-z0-9]+\b/g;
 
 export function redactSensitiveText(text: string): string {
   return text
@@ -59,7 +60,8 @@ export function redactSensitiveText(text: string): string {
     .replace(BEARER, `Bearer ${REDACTED}`)
     .replace(SECRET_ASSIGNMENT, (_match, key: string) => `${key}=${REDACTED}`)
     .replace(API_KEY_PREFIX, REDACTED)
-    .replace(JWT, REDACTED);
+    .replace(JWT, REDACTED)
+    .replace(COMPOSIO_KEY, REDACTED);
 }
 
 function shouldRedactKey(key: string): boolean {
