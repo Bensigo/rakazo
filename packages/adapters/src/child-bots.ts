@@ -13,6 +13,7 @@ import {
   computerScopeKey,
   createRepos,
   createThreadMessageInTransaction,
+  expireComputerExecutionLeases,
   type Prisma,
   type PrismaClient,
   withTransactionRetry,
@@ -285,7 +286,7 @@ export async function archiveBot(
       where: { botId: bot.id },
       data: { active: false, nextRunAt: null },
     });
-    await tx.computerExecutionLease.deleteMany({ where: { botId: bot.id } });
+    await expireComputerExecutionLeases(tx, { botId: bot.id });
     await tx.computer.updateMany({
       where: {
         OR: [{ controlBotId: bot.id }, { executionBotId: bot.id }],
@@ -520,7 +521,7 @@ async function detachBotFromGroups(tx: Prisma.TransactionClient, botId: string) 
       where: { id: { in: activeRuns.map((run) => run.taskId) } },
       data: { status: "cancelled" },
     });
-    await tx.computerExecutionLease.deleteMany({ where: { runId: { in: runIds } } });
+    await expireComputerExecutionLeases(tx, { runId: { in: runIds } });
     await tx.computer.updateMany({
       where: { executionRunId: { in: runIds } },
       data: {

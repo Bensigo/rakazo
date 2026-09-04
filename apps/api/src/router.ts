@@ -39,6 +39,7 @@ import {
   expireComputerControl,
   hasActiveComputerControl,
   isAutoReviewCheckerConfigured,
+  isComputerScreenUnavailable,
   isSandboxGoneError,
   isScratchpadStatus,
   listPiCatalog,
@@ -1477,17 +1478,8 @@ export function createRouter(deps: RouterDeps) {
         ) {
           throw new ORPCError("CONFLICT", { message: "Stop the bot first" });
         }
-        const executionLeaseActive = Boolean(
-          executionLease && executionLease.expiresAt.getTime() > Date.now(),
-        );
-        const executionRunActive = Boolean(
-          executionRun && ACTIVE_RUN_STATUSES.some((status) => status === executionRun.status),
-        );
-        if (executionLease && !executionLeaseActive && !executionRunActive) {
-          await deps.prisma.computerExecutionLease.deleteMany({
-            where: { id: executionLease.id },
-          });
-        }
+        // Keep an inactive lease as a fencing tombstone. The next run reclaims it
+        // with a higher fence, even if this user's screen remains connected.
 
         const leaseId = randomUUID();
         const expiresAt = new Date(Date.now() + takeoverLeaseMs());
@@ -1728,6 +1720,9 @@ export function createRouter(deps: RouterDeps) {
             await computerScreenContext(deps.prisma, context.actor, computer.id, bot.id, "screen"),
           )
           .catch(async (error: unknown) => {
+            if (isComputerScreenUnavailable(error)) {
+              throw new ORPCError("CONFLICT", { message: error.message });
+            }
             if (!isSandboxGoneError(error)) throw error;
             // The provider killed this sandbox (idle timeout) while the row still says
             // running. Clear the dead ref so the UI offers a boot instead of 500ing.

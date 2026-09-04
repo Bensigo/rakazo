@@ -11,6 +11,7 @@ import {
   sanitizeJsonValue,
 } from "@rakazo/core";
 import type { Prisma, PrismaClient } from "./client.js";
+import { expireComputerExecutionLeases } from "./computers.js";
 import {
   assertRunCanWriteHistory,
   createThreadMessageInTransaction,
@@ -273,9 +274,8 @@ export async function clearThread(
         data: { status: "cancelled" },
       });
     }
-    await tx.computerExecutionLease.deleteMany({
-      where: { runId: { in: runIds } },
-    });
+    // Expire as tombstones so a still-open provider screen claim cannot reset fencing to 1.
+    await expireComputerExecutionLeases(tx, { runId: { in: runIds } });
     await tx.computer.updateMany({
       where: { executionRunId: { in: runIds } },
       data: {
