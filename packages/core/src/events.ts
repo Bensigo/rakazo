@@ -199,10 +199,13 @@ export function reduceLiveMessageBlocks(
     ...(tail?.kind === "progress" ? (tail.pendingToolNames ?? []) : []),
     ...(update.type === "tool" ? [update.name] : []),
   ];
-  const activity = update.type === "progress" && update.payload?.activity === true;
+  const activity =
+    update.type === "progress"
+      ? update.payload?.activity === true
+      : tail?.kind === "progress" && tail.activity === true;
 
   if (pendingToolNames.length > 0 && endsSentence(tailText)) {
-    let next = appendTextSegment(segments, tailText);
+    let next = activity ? [...segments] : appendTextSegment(segments, tailText);
     for (const name of pendingToolNames) next = appendToolCallSegment(next, name);
     return next;
   }

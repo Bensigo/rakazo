@@ -34,6 +34,17 @@ describe("reduceLiveMessageBlocks", () => {
       }),
     ).toEqual([{ kind: "progress", text: "Using browser", activity: true }]);
   });
+
+  it("replaces punctuated activity text with its tool step", () => {
+    const activity = reduceLiveMessageBlocks([], {
+      type: "progress",
+      payload: { text: "Running: echo done.", activity: true },
+    });
+
+    expect(reduceLiveMessageBlocks(activity, { type: "tool", name: "shell" })).toEqual([
+      { kind: "steps", steps: [{ label: "Shell", count: 1 }] },
+    ]);
+  });
 });
 
 describe("runFailureError", () => {
