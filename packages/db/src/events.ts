@@ -273,8 +273,12 @@ export async function clearThread(
         data: { status: "cancelled" },
       });
     }
-    await tx.computerExecutionLease.deleteMany({
+    // Preserve the fence even though the run is cancelled. A provider screen can
+    // outlive the transaction, and resetting the row would let the next run reuse
+    // fence 1 and be rejected as stale by that still-open screen.
+    await tx.computerExecutionLease.updateMany({
       where: { runId: { in: runIds } },
+      data: { expiresAt: new Date(0) },
     });
     await tx.computer.updateMany({
       where: { executionRunId: { in: runIds } },

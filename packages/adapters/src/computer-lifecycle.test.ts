@@ -7,7 +7,7 @@ import type {
   JobPublisher,
   SandboxProvider,
 } from "@rakazo/adapter-kit";
-import type { PrismaClient, ThreadEvents } from "@rakazo/db";
+import { clearThread, type PrismaClient, type ThreadEvents } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
 import {
   acquireComputerExecutionLease,
@@ -661,6 +661,93 @@ describe("computer execution leases", () => {
       }),
     ).resolves.toMatchObject({ activeWindow: expect.anything() });
     expect(prisma.create).toHaveBeenCalledOnce();
+  });
+
+  it("increments the screen fence after clearing a thread with an open screen", async () => {
+    const sandbox = new FakeSandboxProvider();
+    const computer = await sandbox.provision({ botId: "bot-1", homePath: "/tmp" }, context);
+    const lease = {
+      computerId: "computer-1",
+      botId: "bot-1",
+      runId: "run-1",
+      fence: 1,
+      expiresAt: new Date(Date.now() + 60_000),
+    };
+    const create = vi.fn().mockRejectedValue(Object.assign(new Error("unique"), { code: "P2002" }));
+    const client = {
+      thread: {
+        update: vi
+          .fn()
+          .mockResolvedValueOnce({ nextMessageSeq: 0, historyCompactionGeneration: 0 })
+          .mockResolvedValue({ nextEventSeq: 1 }),
+      },
+      run: {
+        findMany: vi.fn().mockResolvedValue([{ id: "run-1", taskId: "task-1" }]),
+        updateMany: vi.fn(),
+      },
+      attempt: { updateMany: vi.fn() },
+      task: { updateMany: vi.fn() },
+      computerExecutionLease: {
+        updateMany: vi.fn().mockImplementation(async ({ data }) => {
+          lease.expiresAt = data.expiresAt;
+          return { count: 1 };
+        }),
+        updateManyAndReturn: vi.fn().mockImplementation(async ({ data }) => {
+          if (lease.expiresAt >= new Date()) return [];
+          lease.runId = data.runId;
+          lease.expiresAt = data.expiresAt;
+          lease.fence += data.fence.increment;
+          return [{ fence: lease.fence }];
+        }),
+        create,
+      },
+      computer: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue({ scope: "team", state: "running" }),
+        updateMany: vi.fn(),
+      },
+      message: { deleteMany: vi.fn() },
+      event: {
+        deleteMany: vi.fn(),
+        create: vi.fn().mockResolvedValue({
+          id: "event-1",
+          spaceId: "workspace-1",
+          threadId: "thread-1",
+          botId: "bot-1",
+          seq: 0,
+          type: "thread.cleared",
+          payload: {},
+          runId: null,
+          createdAt: new Date(),
+        }),
+      },
+      bot: { update: vi.fn() },
+    };
+    const prisma = {
+      ...client,
+      $transaction: vi.fn(async (callback: (tx: typeof client) => unknown) => callback(client)),
+    } as unknown as PrismaClient;
+
+    await sandbox.observe(computer, { ...context, screenLeaseId: "run-1:1" });
+    await clearThread(prisma, {
+      spaceId: "workspace-1",
+      threadId: "thread-1",
+      botId: "bot-1",
+    });
+    const next = await acquireComputerExecutionLease(prisma, {
+      computerId: "computer-1",
+      runId: "run-2",
+      botId: "bot-1",
+    });
+
+    expect(next).toMatchObject({ runId: "run-2", fence: 2 });
+    await expect(
+      sandbox.observe(computer, {
+        ...context,
+        runId: "run-2",
+        screenLeaseId: screenLeaseIdForRun(next, "run-2"),
+      }),
+    ).resolves.toMatchObject({ activeWindow: expect.anything() });
+    expect(create).not.toHaveBeenCalled();
   });
 
   it("lets two Team bots hold leases at the same time", async () => {
