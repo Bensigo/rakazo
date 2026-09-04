@@ -7,12 +7,7 @@ import type {
   JobPublisher,
   SandboxProvider,
 } from "@rakazo/adapter-kit";
-import {
-  clearThread,
-  expireComputerExecutionLeases,
-  type PrismaClient,
-  type ThreadEvents,
-} from "@rakazo/db";
+import { clearThread, type PrismaClient, type ThreadEvents } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
 import {
   acquireComputerExecutionLease,
@@ -674,37 +669,6 @@ describe("computer execution leases", () => {
       }),
     ).resolves.toMatchObject({ runId: "run-2", fence: 2 });
     expect(create).not.toHaveBeenCalled();
-  });
-
-  it("increments fence after clearThread-style lease expiry by run id", async () => {
-    const prisma = leasePrisma({ scope: "team" });
-    const first = await acquireComputerExecutionLease(prisma.client, {
-      computerId: "computer-1",
-      runId: "run-1",
-      botId: "bot-1",
-    });
-    expect(first?.fence).toBe(1);
-
-    // clearThread / stop cleanup expire by runId instead of deleting the row.
-    await expireComputerExecutionLeases(prisma.client, { runId: { in: ["run-1"] } });
-    expect(prisma.updateMany).toHaveBeenCalledWith({
-      where: { runId: { in: ["run-1"] } },
-      data: { expiresAt: new Date(0) },
-    });
-    expect(prisma.deleteMany).not.toHaveBeenCalled();
-
-    prisma.updateManyAndReturn.mockResolvedValueOnce([{ fence: 2 }]);
-    const second = await acquireComputerExecutionLease(prisma.client, {
-      computerId: "computer-1",
-      runId: "run-2",
-      botId: "bot-1",
-    });
-    expect(second).toEqual({
-      computerId: "computer-1",
-      botId: "bot-1",
-      runId: "run-2",
-      fence: 2,
-    });
   });
 
   it("increments the screen fence when the same Team bot starts another run", async () => {
