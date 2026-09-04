@@ -75,6 +75,7 @@ import {
 import { mobileTokens } from "../lib/appearance";
 import { type MobileArtifactTarget, openMobileArtifact } from "../lib/artifact-open";
 import { confirmDeleteBot } from "../lib/bot-lifecycle";
+import { cancelFocusPrompt, focusPromptThreadActive } from "../lib/focus-prompt";
 import { t, useI18n } from "../lib/i18n";
 import { saveLastBotId } from "../lib/last-bot";
 import {
@@ -690,10 +691,25 @@ function Thread() {
     void dismissThreadNotifications({ threadId: notificationThreadId }).catch(() => undefined);
   }, [botId, navigation, notificationThreadId]);
 
+  // Cancel delayed setup only when leaving this bot's thread (unmount or botId
+  // change). Blur alone is not leave — settings/computer push must keep the timer.
+  useEffect(() => {
+    if (!botId) return;
+    return () => {
+      cancelFocusPrompt(botId);
+    };
+  }, [botId]);
+
   // Covers returning from a pushed screen; the AppState listener covers returning from background.
   useFocusEffect(
     useCallback(() => {
-      if (botId) void saveLastBotId(botId).catch(() => undefined);
+      if (botId) {
+        focusPromptThreadActive(botId);
+        void saveLastBotId(botId).catch(() => undefined);
+      } else {
+        // Group thread focus: prior bot screen may stay mounted, so clear any delayed setup.
+        cancelFocusPrompt();
+      }
       if (AppState.currentState === "active" && notificationThreadId) {
         void setOpenNotificationThread({
           botId,
@@ -924,6 +940,11 @@ function Thread() {
     const groupTarget = plan.rerouteGroupId ?? initialGroupTarget;
     const botTarget = reroutedToGroup ? undefined : initialBotTarget;
     const trimmed = plan.trimmed;
+    const dropDelayedSetup = () => {
+      // Only after successful engagement so a failed upload/send keeps the setup card.
+      // Covers group-mention reroute while the bot thread stays mounted underneath.
+      if (initialBotTarget) cancelFocusPrompt(initialBotTarget);
+    };
     setSending(true);
     setError(null);
     try {
@@ -951,6 +972,7 @@ function Thread() {
         setAttachmentNotice(null);
       };
       if (!plan.shouldSend) {
+        dropDelayedSetup();
         clearOriginComposer();
         if (reroutedToGroup && groupTarget) {
           router.push({
@@ -998,6 +1020,7 @@ function Thread() {
               replyToMessageId: replyTarget?.id,
             },
       );
+      dropDelayedSetup();
       void loadSessionToken()
         .then((token) => resumeLiveNotifications(currentApiBase(), token, selectedSpaceId() ?? ""))
         .catch(() => undefined);
