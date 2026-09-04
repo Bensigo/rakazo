@@ -17,14 +17,6 @@ msgstr ""
 msgid " (unread)"
 msgstr "（未读）"
 
-#: src/pages/HostComputerPrompt.tsx:64
-msgid " macOS will not ask for extra permission if you let bots run on this Mac. They run as you."
-msgstr " 若让 Bot 在这台 Mac 上运行，它们会使用你的账户权限，macOS 不会再逐项询问。"
-
-#: src/pages/HostComputerPrompt.tsx:70
-msgid " Your OS will not ask for extra permission if you let bots run on {hostLabel}. They run as you."
-msgstr " 若让 Bot 在 {hostLabel} 上运行，它们会使用你的账户权限，系统不会再逐项询问。"
-
 #. placeholder {0}: group.entries.length
 #: src/pages/ModelSettingsOverlay.tsx:387
 msgid "{0, plural, one {# model} other {# models}}"
@@ -1351,7 +1343,7 @@ msgstr "显示名称"
 msgid "Do not type passwords into the demo. Use Take control for credentials."
 msgstr "不要在示范中输入密码。凭据请用「接管」。"
 
-#: src/pages/HostComputerPrompt.tsx:81
+#: src/pages/HostComputerPrompt.tsx:80
 msgid "Docker (recommended)"
 msgstr "Docker（推荐）"
 
@@ -1768,6 +1760,10 @@ msgstr "退出登录"
 #: src/pages/shell/bot-panel.tsx:492
 msgid "Low"
 msgstr "低"
+
+#: src/pages/HostComputerPrompt.tsx:65
+msgid "macOS will not ask for extra permission if you let bots run on this Mac. They run as you."
+msgstr "若让 Bot 在这台 Mac 上运行，它们会使用你的账户权限，macOS 不会再逐项询问。"
 
 #: src/pages/AccountSettingsOverlay.tsx:143
 msgid "Manage messaging settings"
@@ -2895,7 +2891,7 @@ msgstr "此对话为只读"
 msgid "this computer"
 msgstr "这台电脑"
 
-#: src/pages/HostComputerPrompt.tsx:99
+#: src/pages/HostComputerPrompt.tsx:98
 msgid "This computer runs shell commands with your account, including files in your home folder. Do not turn it on for a shared or public server."
 msgstr "这台电脑会用你的账户运行 shell，包括主目录中的文件。不要在共享或公开服务器上开启。"
 
@@ -2907,7 +2903,7 @@ msgstr "此文件不是有效的 UTF-8 Markdown。"
 msgid "this Mac"
 msgstr "这台 Mac"
 
-#: src/pages/HostComputerPrompt.tsx:94
+#: src/pages/HostComputerPrompt.tsx:93
 msgid "This Mac runs shell commands with your account, including files in your home folder. Do not turn it on for a shared or public server."
 msgstr "这台 Mac 会用你的账户运行 shell，包括主目录中的文件。不要在共享或公开服务器上开启。"
 
@@ -3026,7 +3022,7 @@ msgstr "正在更新…"
 msgid "Usage"
 msgstr "用量"
 
-#: src/pages/HostComputerPrompt.tsx:89
+#: src/pages/HostComputerPrompt.tsx:88
 msgid "Use {hostLabel}"
 msgstr "使用 {hostLabel}"
 
@@ -3151,6 +3147,10 @@ msgstr "你的密钥或订阅令牌已安全存储，不会显示在这里。"
 #: src/pages/Auth.tsx:118
 msgid "Your name"
 msgstr "你的名字"
+
+#: src/pages/HostComputerPrompt.tsx:70
+msgid "Your OS will not ask for extra permission if you let bots run on {hostLabel}. They run as you."
+msgstr "若让 Bot 在 {hostLabel} 上运行，它们会使用你的账户权限，系统不会再逐项询问。"
 
 #: src/pages/Welcome.tsx:21
 msgid "Your team of always-on agents<0/>that you can give real work to."

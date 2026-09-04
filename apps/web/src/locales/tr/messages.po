@@ -17,14 +17,6 @@ msgstr ""
 msgid " (unread)"
 msgstr " (okunmadı)"
 
-#: src/pages/HostComputerPrompt.tsx:64
-msgid " macOS will not ask for extra permission if you let bots run on this Mac. They run as you."
-msgstr " Botların bu Mac'te çalışmasına izin verirsen macOS ek izin istemez. Botlar senin adına çalışır."
-
-#: src/pages/HostComputerPrompt.tsx:70
-msgid " Your OS will not ask for extra permission if you let bots run on {hostLabel}. They run as you."
-msgstr " Botların {hostLabel} üzerinde çalışmasına izin verirsen işletim sistemin ek izin istemez. Botlar senin adına çalışır."
-
 #. placeholder {0}: group.entries.length
 #: src/pages/ModelSettingsOverlay.tsx:387
 msgid "{0, plural, one {# model} other {# models}}"
@@ -1351,7 +1343,7 @@ msgstr "Görünen ad"
 msgid "Do not type passwords into the demo. Use Take control for credentials."
 msgstr "Demoya parola yazma. Kimlik bilgileri için Kontrolü al'ı kullan."
 
-#: src/pages/HostComputerPrompt.tsx:81
+#: src/pages/HostComputerPrompt.tsx:80
 msgid "Docker (recommended)"
 msgstr "Docker (önerilen)"
 
@@ -1768,6 +1760,10 @@ msgstr "Çıkış yap"
 #: src/pages/shell/bot-panel.tsx:492
 msgid "Low"
 msgstr "Düşük"
+
+#: src/pages/HostComputerPrompt.tsx:65
+msgid "macOS will not ask for extra permission if you let bots run on this Mac. They run as you."
+msgstr "Botların bu Mac'te çalışmasına izin verirsen macOS ek izin istemez. Botlar senin adına çalışır."
 
 #: src/pages/AccountSettingsOverlay.tsx:143
 msgid "Manage messaging settings"
@@ -2895,7 +2891,7 @@ msgstr "Bu sohbet yalnızca görüntülenebilir"
 msgid "this computer"
 msgstr "bu bilgisayar"
 
-#: src/pages/HostComputerPrompt.tsx:99
+#: src/pages/HostComputerPrompt.tsx:98
 msgid "This computer runs shell commands with your account, including files in your home folder. Do not turn it on for a shared or public server."
 msgstr "Bu bilgisayar kabuk komutlarını senin hesabınla çalıştırır; kullanıcı klasöründeki dosyalar buna dahildir. Ortak veya herkese açık bir sunucuda etkinleştirme."
 
@@ -2907,7 +2903,7 @@ msgstr "Bu dosya geçerli bir UTF-8 Markdown değil."
 msgid "this Mac"
 msgstr "bu Mac"
 
-#: src/pages/HostComputerPrompt.tsx:94
+#: src/pages/HostComputerPrompt.tsx:93
 msgid "This Mac runs shell commands with your account, including files in your home folder. Do not turn it on for a shared or public server."
 msgstr "Bu Mac kabuk komutlarını senin hesabınla çalıştırır; kullanıcı klasöründeki dosyalar buna dahildir. Ortak veya herkese açık bir sunucuda etkinleştirme."
 
@@ -3026,7 +3022,7 @@ msgstr ""
 msgid "Usage"
 msgstr "Kullanım"
 
-#: src/pages/HostComputerPrompt.tsx:89
+#: src/pages/HostComputerPrompt.tsx:88
 msgid "Use {hostLabel}"
 msgstr "{hostLabel} kullan"
 
@@ -3151,6 +3147,10 @@ msgstr "Anahtarın veya abonelik token'ın güvenle saklanır ve burada asla gö
 #: src/pages/Auth.tsx:118
 msgid "Your name"
 msgstr "Adın"
+
+#: src/pages/HostComputerPrompt.tsx:70
+msgid "Your OS will not ask for extra permission if you let bots run on {hostLabel}. They run as you."
+msgstr "Botların {hostLabel} üzerinde çalışmasına izin verirsen işletim sistemin ek izin istemez. Botlar senin adına çalışır."
 
 #: src/pages/Welcome.tsx:21
 msgid "Your team of always-on agents<0/>that you can give real work to."
