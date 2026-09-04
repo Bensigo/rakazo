@@ -142,7 +142,7 @@
   "Computer": "컴퓨터",
   "Computer failed to boot": "컴퓨터를 시작하지 못했습니다",
   "Computer is asleep": "컴퓨터가 절전 상태입니다",
-  "Computer is asleep. Take control to wake it.": "컴퓨터가 절전 상태입니다. 제어를 맡아 깨우세요",
+  "Computer is asleep. Take control to wake it.": "컴퓨터가 절전 상태입니다. 제어를 맡아 깨우세요.",
   "Computer is stopped": "컴퓨터가 중지됨",
   "Configured by deployment": "서버에서 설정됨",
   "Configured servers": "연결된 서버",
