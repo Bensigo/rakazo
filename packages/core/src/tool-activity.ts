@@ -6,6 +6,6 @@ export function isToolActivityBlock(block: MessageBlock): block is ToolActivityB
   return (
     block.kind === "steps" ||
     (block.kind === "progress" &&
-      ((block.pendingToolNames?.length ?? 0) > 0 || /^Using\s+/i.test(block.text)))
+      ((block.pendingToolNames?.length ?? 0) > 0 || /^Using\s+\S+(?::\s*\S+)?$/i.test(block.text)))
   );
 }
