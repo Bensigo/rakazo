@@ -19,11 +19,11 @@ msgstr " (sin leer)"
 
 #: src/pages/HostComputerPrompt.tsx:64
 msgid " macOS will not ask for extra permission if you let bots run on this Mac. They run as you."
-msgstr "MacOS no pedirá permisos extra si dejas que los bots se ejecuten en esta Mac: se ejecutan como tú."
+msgstr " MacOS no pedirá permisos extra si dejas que los bots se ejecuten en esta Mac: se ejecutan como tú."
 
 #: src/pages/HostComputerPrompt.tsx:70
 msgid " Your OS will not ask for extra permission if you let bots run on {hostLabel}. They run as you."
-msgstr "Tu sistema operativo no pedirá permisos extra si dejas que los bots se ejecuten en {hostLabel}: se ejecutan como tú."
+msgstr " Tu sistema operativo no pedirá permisos extra si dejas que los bots se ejecuten en {hostLabel}: se ejecutan como tú."
 
 #. placeholder {0}: group.entries.length
 #: src/pages/ModelSettingsOverlay.tsx:387

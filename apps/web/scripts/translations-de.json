@@ -1,7 +1,7 @@
 {
   " (unread)": " (ungelesen)",
-  " macOS will not ask for extra permission if you let bots run on this Mac. They run as you.": "Auf diesem Mac fragt macOS nicht nach zusätzlichen Berechtigungen, wenn Bots dort ausgeführt werden. Sie handeln mit deinen Rechten.",
-  " Your OS will not ask for extra permission if you let bots run on {hostLabel}. They run as you.": "Auf {hostLabel} fragt dein Betriebssystem nicht nach zusätzlichen Berechtigungen, wenn Bots dort ausgeführt werden. Sie handeln mit deinen Rechten.",
+  " macOS will not ask for extra permission if you let bots run on this Mac. They run as you.": " Auf diesem Mac fragt macOS nicht nach zusätzlichen Berechtigungen, wenn Bots dort ausgeführt werden. Sie handeln mit deinen Rechten.",
+  " Your OS will not ask for extra permission if you let bots run on {hostLabel}. They run as you.": " Auf {hostLabel} fragt dein Betriebssystem nicht nach zusätzlichen Berechtigungen, wenn Bots dort ausgeführt werden. Sie handeln mit deinen Rechten.",
   "Free": "Kostenlos",
   "No matching models": "Keine passenden Modelle",
   "Search models": "Modelle suchen",

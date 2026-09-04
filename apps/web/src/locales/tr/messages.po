@@ -19,11 +19,11 @@ msgstr " (okunmadı)"
 
 #: src/pages/HostComputerPrompt.tsx:64
 msgid " macOS will not ask for extra permission if you let bots run on this Mac. They run as you."
-msgstr "Botların bu Mac'te çalışmasına izin verirsen macOS ek izin istemez. Botlar senin adına çalışır."
+msgstr " Botların bu Mac'te çalışmasına izin verirsen macOS ek izin istemez. Botlar senin adına çalışır."
 
 #: src/pages/HostComputerPrompt.tsx:70
 msgid " Your OS will not ask for extra permission if you let bots run on {hostLabel}. They run as you."
-msgstr "Botların {hostLabel} üzerinde çalışmasına izin verirsen işletim sistemin ek izin istemez. Botlar senin adına çalışır."
+msgstr " Botların {hostLabel} üzerinde çalışmasına izin verirsen işletim sistemin ek izin istemez. Botlar senin adına çalışır."
 
 #. placeholder {0}: group.entries.length
 #: src/pages/ModelSettingsOverlay.tsx:387

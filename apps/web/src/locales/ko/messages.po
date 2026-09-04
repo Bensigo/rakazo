@@ -19,11 +19,11 @@ msgstr " (읽지 않음)"
 
 #: src/pages/HostComputerPrompt.tsx:64
 msgid " macOS will not ask for extra permission if you let bots run on this Mac. They run as you."
-msgstr "이 Mac에서 실행하면 Bot이 내 계정 권한으로 동작하며 macOS가 작업마다 별도 승인을 묻지 않습니다."
+msgstr " 이 Mac에서 실행하면 Bot이 내 계정 권한으로 동작하며 macOS가 작업마다 별도 승인을 묻지 않습니다."
 
 #: src/pages/HostComputerPrompt.tsx:70
 msgid " Your OS will not ask for extra permission if you let bots run on {hostLabel}. They run as you."
-msgstr "{hostLabel}에서 실행하면 Bot이 내 계정 권한으로 동작하며 운영체제가 작업마다 별도 승인을 묻지 않습니다."
+msgstr " {hostLabel}에서 실행하면 Bot이 내 계정 권한으로 동작하며 운영체제가 작업마다 별도 승인을 묻지 않습니다."
 
 #. placeholder {0}: group.entries.length
 #: src/pages/ModelSettingsOverlay.tsx:387
