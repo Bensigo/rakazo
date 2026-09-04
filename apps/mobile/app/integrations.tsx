@@ -171,9 +171,7 @@ export default function Integrations() {
   }
 
   function itemConnected(item: ConnectionCatalogItem) {
-    return (
-      item.connected || accountsFor(item).some((row) => row.status === "connected")
-    );
+    return item.connected || accountsFor(item).some((row) => row.status === "connected");
   }
 
   async function notifyAppConnected(item: ConnectionCatalogItem) {
@@ -454,9 +452,7 @@ export default function Integrations() {
                 disabled={pending === row.id || uninstalling}
                 onPress={() => void revokeAccount(row)}
               >
-                <Text style={styles.link}>
-                  {pending === row.id ? t("Working…") : t("Remove")}
-                </Text>
+                <Text style={styles.link}>{pending === row.id ? t("Working…") : t("Remove")}</Text>
               </Pressable>
             </View>
           ))}
@@ -467,9 +463,7 @@ export default function Integrations() {
             onPress={() => void connect(item)}
             style={styles.cardButton}
           >
-            <Text style={styles.buttonLabel}>
-              {connecting ? t("Working…") : t("Add another")}
-            </Text>
+            <Text style={styles.buttonLabel}>{connecting ? t("Working…") : t("Add another")}</Text>
           </Pressable>
         </View>
 
