@@ -1,4 +1,5 @@
 import type { MessageBlock } from "@rakazo/contracts";
+import { isToolActivityBlock } from "@rakazo/core";
 
 export function isCenteredAgentEvent(blocks: readonly MessageBlock[]): boolean {
   return blocks.some(
@@ -19,7 +20,7 @@ export type MessagePresentationSegment =
 export function toolBlocksForMessage(blocks: readonly MessageBlock[]): ToolBlock[] {
   const visible: ToolBlock[] = [];
   for (const block of blocks) {
-    if (!isToolBlock(block)) continue;
+    if (!isToolActivityBlock(block)) continue;
     if (block.kind === "steps") {
       const steps = block.steps.filter((step) => !isMessageBotName(step.label));
       if (steps.length > 0) visible.push({ ...block, steps });
@@ -48,7 +49,7 @@ export function messagePresentationSegments(
 
   for (const block of blocks) {
     if (block.kind === "app_connect") continue;
-    if (!isToolBlock(block)) {
+    if (!isToolActivityBlock(block)) {
       content.push(block);
       continue;
     }
@@ -69,14 +70,8 @@ export function toolOwnerId(
 }
 
 export function hasVisibleMessagePresentation(blocks: readonly MessageBlock[]): boolean {
-  return blocks.some((block) => !isToolBlock(block) || toolBlocksForMessage([block]).length > 0);
-}
-
-export function isToolBlock(block: MessageBlock): block is ToolBlock {
-  return (
-    block.kind === "steps" ||
-    (block.kind === "progress" &&
-      ((block.pendingToolNames?.length ?? 0) > 0 || /^Using\s+/i.test(block.text)))
+  return blocks.some(
+    (block) => !isToolActivityBlock(block) || toolBlocksForMessage([block]).length > 0,
   );
 }
 

@@ -41,6 +41,7 @@ import {
   isActive,
   isPeerReceiptBlocks,
   isRunTerminalEvent,
+  isToolActivityBlock,
   latestAnswerableAskMessageId,
   mentionChipKey,
   reorderBotTo,
@@ -5057,7 +5058,7 @@ const MessageView = memo(function MessageView({
     );
   const isLive = message.id.startsWith("progress:");
   const visibleNarrationBlocks = isLive
-    ? message.blocks.filter((block) => block.kind !== "steps")
+    ? message.blocks.filter((block) => !isToolActivityBlock(block))
     : message.blocks;
   const parentJumpId = replyPreview?.id ?? replyToMessageId;
   const messageContext = (
@@ -5127,6 +5128,7 @@ const MessageView = memo(function MessageView({
     <>
       {messageContext}
       {message.blocks.map((block, i) => {
+        if (isLive && isToolActivityBlock(block)) return null;
         if (block.kind === "handoff") {
           const from = memberName?.(block.fromBotId) ?? t`bot`;
           const to = memberName?.(block.toBotId) ?? t`bot`;
@@ -5194,7 +5196,6 @@ const MessageView = memo(function MessageView({
           );
         }
         if (block.kind === "steps") {
-          if (isLive) return null;
           return (
             <div key={i} className="flex justify-start">
               <div
