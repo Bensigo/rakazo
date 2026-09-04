@@ -10,6 +10,33 @@ const context = {
   signal: new AbortController().signal,
 };
 
+const gmailContext = {
+  ...context,
+  connectedConnections: [
+    {
+      id: "connection-gmail",
+      connectorId: "composio",
+      externalId: "GMAIL",
+      displayName: "Gmail",
+    },
+  ],
+};
+
+async function collectResults(
+  emulator: ComposioEmulator,
+  tool: string,
+  args: Record<string, unknown>,
+) {
+  const events = [];
+  for await (const event of emulator.execute(
+    { tool, args, executionId: `exec-${tool}` },
+    gmailContext,
+  )) {
+    events.push(event);
+  }
+  return events;
+}
+
 describe("ComposioEmulator", () => {
   it("remains registered when explicitly supplied without a live Composio key", () => {
     const emulator = new ComposioEmulator();
@@ -39,14 +66,16 @@ describe("ComposioEmulator", () => {
     await expect(emulator.catalog(context, "gmail")).resolves.toEqual([
       expect.objectContaining({ slug: "GMAIL", connected: true }),
     ]);
+    expect(emulator.mailboxFor(context.userId)?.messages.length).toBeGreaterThan(0);
 
     await emulator.revoke("GMAIL", context);
     await expect(emulator.connectionReady(context, "GMAIL")).resolves.toBe(false);
+    expect(emulator.mailboxFor(context.userId)).toBeUndefined();
   });
 
-  it("discovers and executes deterministic tools for connected apps", async () => {
+  it("discovers realistic Gmail tools and keeps thin actions for other apps", async () => {
     const emulator = new ComposioEmulator();
-    const connectedContext = {
+    const tools = await emulator.discoverTools({
       ...context,
       connectedConnections: [
         {
@@ -55,29 +84,109 @@ describe("ComposioEmulator", () => {
           externalId: "GMAIL",
           displayName: "Gmail",
         },
+        {
+          id: "connection-slack",
+          connectorId: "composio",
+          externalId: "SLACK",
+          displayName: "Slack",
+        },
       ],
-    };
-    await expect(emulator.discoverTools(connectedContext)).resolves.toContainEqual(
-      expect.objectContaining({ name: "GMAIL_EMULATED_ACTION" }),
+    });
+
+    expect(tools.map((tool) => tool.name)).toEqual([
+      "GMAIL_FETCH_EMAILS",
+      "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
+      "GMAIL_FETCH_MESSAGE_BY_THREAD_ID",
+      "GMAIL_SEND_EMAIL",
+      "GMAIL_CREATE_EMAIL_DRAFT",
+      "GMAIL_LIST_LABELS",
+      "SLACK_EMULATED_ACTION",
+    ]);
+    expect(tools.find((tool) => tool.name === "GMAIL_SEND_EMAIL")?.inputSchema).toMatchObject({
+      type: "object",
+      properties: expect.objectContaining({
+        recipient_email: expect.any(Object),
+        subject: expect.any(Object),
+        body: expect.any(Object),
+      }),
+      required: ["subject"],
+    });
+  });
+
+  it("round-trips Gmail fetch and send against in-memory mailbox state", async () => {
+    const emulator = new ComposioEmulator();
+    await emulator.begin({ provider: "GMAIL", redirectUrl: "http://example.test" }, context);
+
+    const fetchEvents = await collectResults(emulator, "GMAIL_FETCH_EMAILS", {
+      query: "from:teammate",
+      max_results: 5,
+    });
+    expect(fetchEvents).toContainEqual(
+      expect.objectContaining({
+        type: "result",
+        data: expect.objectContaining({
+          successful: true,
+          data: expect.objectContaining({
+            messages: [
+              expect.objectContaining({
+                messageId: "18c5f5d1a2b3c4d6",
+                subject: "Quarterly planning notes",
+                snippet: expect.stringContaining("planning"),
+              }),
+            ],
+            resultSizeEstimate: 1,
+          }),
+        }),
+      }),
     );
-    const events = [];
-    for await (const event of emulator.execute(
-      {
-        tool: "GMAIL_EMULATED_ACTION",
-        args: { value: "ok" },
-        executionId: "composio-emulator-execution",
+
+    const sendEvents = await collectResults(emulator, "GMAIL_SEND_EMAIL", {
+      recipient_email: "friend@example.test",
+      subject: "Hello from emulator",
+      body: "Deterministic send body",
+    });
+    expect(sendEvents).toContainEqual(
+      expect.objectContaining({
+        type: "result",
+        data: expect.objectContaining({
+          successful: true,
+          data: expect.objectContaining({
+            messageId: expect.any(String),
+            threadId: expect.any(String),
+            labelIds: ["SENT"],
+          }),
+        }),
+      }),
+    );
+
+    const sent = emulator.mailboxFor(context.userId)?.messages.find(
+      (message) => message.subject === "Hello from emulator",
+    );
+    expect(sent).toMatchObject({
+      to: "friend@example.test",
+      messageText: "Deterministic send body",
+      labelIds: ["SENT"],
+    });
+
+    const listed = await collectResults(emulator, "GMAIL_FETCH_EMAILS", {
+      query: "subject:Hello",
+      max_results: 10,
+    });
+    expect(listed[0]).toMatchObject({
+      type: "result",
+      data: {
+        successful: true,
+        data: {
+          messages: [expect.objectContaining({ subject: "Hello from emulator" })],
+          resultSizeEstimate: 1,
+        },
       },
-      connectedContext,
-    )) {
-      events.push(event);
-    }
-    expect(events).toContainEqual(expect.objectContaining({ type: "result" }));
-    expect(emulator.executions).toEqual([
-      {
-        userId: context.userId,
-        tool: "GMAIL_EMULATED_ACTION",
-        args: { value: "ok" },
-      },
+    });
+
+    expect(emulator.executions.map((entry) => entry.tool)).toEqual([
+      "GMAIL_FETCH_EMAILS",
+      "GMAIL_SEND_EMAIL",
+      "GMAIL_FETCH_EMAILS",
     ]);
   });
 });
