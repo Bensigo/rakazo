@@ -607,23 +607,14 @@ function startSupervisor() {
     logger.info("supervisor listening", { "http.host": hostname, "http.port": port });
   });
   let stopping = false;
-  const listening = server as typeof server & {
-    closeIdleConnections?: () => void;
-    closeAllConnections?: () => void;
-  };
+  const listening = server as typeof server & { closeIdleConnections?: () => void };
   const shutdown = async () => {
     if (stopping) return;
     stopping = true;
     listening.closeIdleConnections?.();
-    const closed = new Promise<void>((resolve) => {
+    await new Promise<void>((resolve) => {
       listening.close(() => resolve());
     });
-    const force = setTimeout(() => {
-      listening.closeAllConnections?.();
-    }, 2_000);
-    force.unref?.();
-    await closed;
-    clearTimeout(force);
     await logger.flush({ timeoutMs: 2_000 });
     process.exit(0);
   };
