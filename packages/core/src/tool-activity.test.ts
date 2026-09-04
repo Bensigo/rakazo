@@ -1,6 +1,6 @@
 import type { MessageBlock } from "@rakazo/contracts";
 import { describe, expect, it } from "vitest";
-import { isToolActivityBlock } from "./tool-activity";
+import { isToolActivityBlock } from "./tool-activity.js";
 
 describe("tool activity", () => {
   it.each<MessageBlock>([
