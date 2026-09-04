@@ -397,13 +397,17 @@ export async function releaseComputerExecutionLease(
   lease: ComputerExecutionLease | null,
 ): Promise<void> {
   if (!lease) return;
-  await prisma.computerExecutionLease.deleteMany({
+  // Keep the row as an expired tombstone so the next run for this bot increments
+  // its fence. Deleting it resets the fence to 1, which lets a still-open screen
+  // session from the previous run reject the new run as stale.
+  await prisma.computerExecutionLease.updateMany({
     where: {
       computerId: lease.computerId,
       botId: lease.botId,
       runId: lease.runId,
       fence: lease.fence,
     },
+    data: { expiresAt: new Date(0) },
   });
 }
 

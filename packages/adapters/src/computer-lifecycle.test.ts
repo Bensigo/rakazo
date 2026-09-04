@@ -577,7 +577,7 @@ describe("computer execution leases", () => {
     expect(prisma.create).not.toHaveBeenCalled();
   });
 
-  it("fences one Team bot's screen and releases only the matching lease", async () => {
+  it("fences one Team bot's screen and expires only the matching lease", async () => {
     const prisma = leasePrisma({ scope: "team" });
     const lease = await acquireComputerExecutionLease(prisma.client, {
       computerId: "computer-1",
@@ -615,14 +615,52 @@ describe("computer execution leases", () => {
       data: { expiresAt: expect.any(Date) },
     });
     await releaseComputerExecutionLease(prisma.client, lease);
-    expect(prisma.deleteMany).toHaveBeenCalledWith({
+    expect(prisma.updateMany).toHaveBeenLastCalledWith({
       where: {
         computerId: "computer-1",
         botId: "bot-1",
         runId: "run-1",
         fence: 1,
       },
+      data: { expiresAt: new Date(0) },
     });
+    expect(prisma.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("increments the screen fence when the same Team bot starts another run", async () => {
+    const prisma = leasePrisma({ scope: "team" });
+    const sandbox = new FakeSandboxProvider();
+    const computer = await sandbox.provision({ botId: "bot-1", homePath: "/tmp" }, context);
+    const first = await acquireComputerExecutionLease(prisma.client, {
+      computerId: "computer-1",
+      runId: "run-1",
+      botId: "bot-1",
+    });
+    await sandbox.observe(computer, {
+      ...context,
+      screenLeaseId: screenLeaseIdForRun(first, "run-1"),
+    });
+    await releaseComputerExecutionLease(prisma.client, first);
+    prisma.updateManyAndReturn.mockResolvedValueOnce([{ fence: 2 }]);
+
+    const second = await acquireComputerExecutionLease(prisma.client, {
+      computerId: "computer-1",
+      runId: "run-2",
+      botId: "bot-1",
+    });
+    expect(second).toEqual({
+      computerId: "computer-1",
+      botId: "bot-1",
+      runId: "run-2",
+      fence: 2,
+    });
+    await expect(
+      sandbox.observe(computer, {
+        ...context,
+        screenLeaseId: screenLeaseIdForRun(second, "run-2"),
+      }),
+    ).resolves.toMatchObject({ activeWindow: expect.anything() });
+    expect(prisma.create).toHaveBeenCalledOnce();
   });
 
   it("lets two Team bots hold leases at the same time", async () => {
@@ -716,13 +754,14 @@ describe("computer execution leases", () => {
         botId: "bot-1",
       }),
     ).rejects.toThrow("Computer is busy");
-    expect(prisma.deleteMany).toHaveBeenCalledWith({
+    expect(prisma.updateMany).toHaveBeenCalledWith({
       where: {
         computerId: "computer-1",
         botId: "bot-1",
         runId: "run-1",
         fence: 1,
       },
+      data: { expiresAt: new Date(0) },
     });
   });
 });
