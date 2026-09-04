@@ -285,7 +285,10 @@ export async function archiveBot(
       where: { botId: bot.id },
       data: { active: false, nextRunAt: null },
     });
-    await tx.computerExecutionLease.deleteMany({ where: { botId: bot.id } });
+    await tx.computerExecutionLease.updateMany({
+      where: { botId: bot.id },
+      data: { expiresAt: new Date(0) },
+    });
     await tx.computer.updateMany({
       where: {
         OR: [{ controlBotId: bot.id }, { executionBotId: bot.id }],
