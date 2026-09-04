@@ -41,6 +41,7 @@ import {
   isActive,
   isPeerReceiptBlocks,
   isRunTerminalEvent,
+  isToolActivityBlock,
   latestAnswerableAskMessageId,
   mentionChipKey,
   reorderBotTo,
@@ -120,7 +121,6 @@ import {
   computersAreUnavailable,
 } from "../components/ComputersUnavailableHint";
 import { MessageHoverMetadata } from "../components/MessageHoverMetadata";
-import { ToolActivityDisclosure, ToolSteps } from "../components/ToolActivityDisclosure";
 import { SkillDraftCard } from "../components/teach/SkillDraftCard";
 import { TeachCaptureOverlay } from "../components/teach/TeachCaptureOverlay";
 import { TeachComputerOverlayControl } from "../components/teach/TeachComputerOverlay";
@@ -4091,6 +4091,7 @@ const Transcript = memo(function Transcript({
           </button>
         ) : null}
         {messages.map((message) => {
+          if (!message.blocks.some((block) => !isToolActivityBlock(block))) return null;
           const peerReceipt = isPeerReceiptBlocks(message.blocks);
           return (
             <div
@@ -4148,8 +4149,10 @@ const Transcript = memo(function Transcript({
         !messages.some(
           (message) =>
             message.id.startsWith("progress:") &&
-            message.blocks[0]?.kind === "progress" &&
-            message.blocks[0].text,
+            message.blocks.some(
+              (block) =>
+                block.kind === "progress" && !isToolActivityBlock(block) && Boolean(block.text),
+            ),
         ) ? (
           <ActiveBotGlyph bots={workingBots} label={workingLabel} />
         ) : null}
@@ -5056,6 +5059,7 @@ const MessageView = memo(function MessageView({
       (block) => block.kind === "text" || block.kind === "progress" || block.kind === "steps",
     );
   const isLive = message.id.startsWith("progress:");
+  const visibleNarrationBlocks = message.blocks.filter((block) => !isToolActivityBlock(block));
   const parentJumpId = replyPreview?.id ?? replyToMessageId;
   const messageContext = (
     <>
@@ -5079,6 +5083,7 @@ const MessageView = memo(function MessageView({
     </>
   );
   if (isNarration) {
+    if (visibleNarrationBlocks.length === 0) return null;
     return (
       <>
         {messageContext}
@@ -5087,22 +5092,7 @@ const MessageView = memo(function MessageView({
             className="max-w-[74%] space-y-2.5 rounded-[20px] bg-muted px-[18px] py-3 text-[15.5px] leading-[1.5] text-foreground/90"
             dir="auto"
           >
-            {message.blocks.map((block, i) => {
-              if (block.kind === "steps") {
-                const isCurrentBlock = isLive && i === message.blocks.length - 1;
-                return (
-                  <ToolActivityDisclosure
-                    key={i}
-                    live={isLive}
-                    label={isLive ? t`Working…` : t`Done`}
-                  >
-                    <ToolSteps
-                      steps={block.steps}
-                      currentIndex={isCurrentBlock ? block.steps.length - 1 : undefined}
-                    />
-                  </ToolActivityDisclosure>
-                );
-              }
+            {visibleNarrationBlocks.map((block, i) => {
               if (block.kind === "text" || block.kind === "progress") {
                 return (
                   <div key={i}>
@@ -5131,6 +5121,7 @@ const MessageView = memo(function MessageView({
     <>
       {messageContext}
       {message.blocks.map((block, i) => {
+        if (isToolActivityBlock(block)) return null;
         if (block.kind === "handoff") {
           const from = memberName?.(block.fromBotId) ?? t`bot`;
           const to = memberName?.(block.toBotId) ?? t`bot`;
@@ -5193,23 +5184,6 @@ const MessageView = memo(function MessageView({
                 dir="auto"
               >
                 <ChatMarkdown streaming>{block.text}</ChatMarkdown>
-              </div>
-            </div>
-          );
-        }
-        if (block.kind === "steps") {
-          return (
-            <div key={i} className="flex justify-start">
-              <div
-                className="max-w-[74%] space-y-1.5 rounded-[20px] bg-muted px-[18px] py-3"
-                dir="ltr"
-              >
-                <ToolActivityDisclosure live={isLive} label={isLive ? t`Working…` : t`Done`}>
-                  <ToolSteps
-                    steps={block.steps}
-                    currentIndex={isLive ? block.steps.length - 1 : undefined}
-                  />
-                </ToolActivityDisclosure>
               </div>
             </div>
           );

@@ -20,6 +20,12 @@ import {
 } from "./index.js";
 
 describe("contracts", () => {
+  it("accepts structured live activity progress", () => {
+    expect(MessageBlock.parse({ kind: "progress", text: "Using browser", activity: true })).toEqual(
+      { kind: "progress", text: "Using browser", activity: true },
+    );
+  });
+
   it("accepts optional persisted duration only on valid steps blocks", () => {
     expect(
       MessageBlock.parse({
