@@ -33,6 +33,13 @@ describe("logger", () => {
     });
   });
 
+  it("keeps the configured service name when bindings try to overwrite it", () => {
+    const sink = createTestSink();
+    const logger = createLogger({ service: "rakazo-api", sinks: [sink] });
+    logger.info("svc", { "service.name": "spoofed" });
+    expect(sink.events[0]?.["service.name"]).toBe("rakazo-api");
+  });
+
   it("prefers explicit bindings over async context", () => {
     const sink = createTestSink();
     const logger = createLogger({ service: "rakazo-api", sinks: [sink] });
@@ -158,5 +165,13 @@ describe("error serialization", () => {
     expect(JSON.stringify(serialized)).not.toContain("supersecret");
     expect(JSON.stringify(serialized)).not.toContain("person@example.com");
     expect(serialized.message).toContain("[Redacted]");
+  });
+
+  it("redacts secrets interpolated into the log message", () => {
+    const sink = createTestSink();
+    const logger = createLogger({ service: "rakazo-api", sinks: [sink] });
+    logger.error("render_plot failed: Bearer supersecret for person@example.com");
+    expect(JSON.stringify(sink.events[0])).not.toContain("supersecret");
+    expect(JSON.stringify(sink.events[0])).not.toContain("person@example.com");
   });
 });

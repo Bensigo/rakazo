@@ -1,5 +1,5 @@
 import { enrichLogContext, getLogContext, runWithLogContext } from "./context.js";
-import { redactBindings } from "./redaction.js";
+import { redactBindings, redactSensitiveText } from "./redaction.js";
 import { serializeError } from "./serialize-error.js";
 import { guardedFlush, guardedWrite } from "./sink-guard.js";
 import type {
@@ -13,7 +13,7 @@ import type {
 } from "./types.js";
 import { LOG_LEVELS } from "./types.js";
 
-const RESERVED = new Set(["timestamp", "level", "message", "error"]);
+const RESERVED = new Set(["timestamp", "level", "message", "error", "service.name"]);
 const DEFAULT_FLUSH_MS = 2_000;
 
 class LoggerImpl implements Logger {
@@ -99,7 +99,7 @@ class LoggerImpl implements Logger {
     const event: LogEvent = {
       timestamp: this.now().toISOString(),
       level,
-      message,
+      message: redactSensitiveText(message),
       "service.name": this.service,
     };
     for (const [key, value] of Object.entries(merged)) {

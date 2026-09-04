@@ -764,12 +764,14 @@ function startUpdater() {
     });
   });
   let stopping = false;
+  const listening = server as typeof server & { closeIdleConnections?: () => void };
   const shutdown = async () => {
     if (stopping) return;
     stopping = true;
-    // Wait for in-flight apply/rollback handlers to finish before exiting.
+    // Finish in-flight apply/rollback; drop idle keep-alives so close cannot hang.
+    listening.closeIdleConnections?.();
     await new Promise<void>((resolve) => {
-      server.close(() => resolve());
+      listening.close(() => resolve());
     });
     await logger.flush({ timeoutMs: 2_000 });
     process.exit(0);
