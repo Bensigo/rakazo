@@ -73,6 +73,53 @@ describe("ComposioEmulator", () => {
     expect(emulator.mailboxFor(context.userId)).toBeUndefined();
   });
 
+  it("keeps the shared Gmail mailbox until the last connection is revoked", async () => {
+    const emulator = new ComposioEmulator();
+    await emulator.begin({ provider: "GMAIL", redirectUrl: "http://example.test" }, context);
+    await emulator.begin({ provider: "GMAIL", redirectUrl: "http://example.test" }, context);
+
+    await expect(emulator.connectionReady(context, "GMAIL")).resolves.toBe(true);
+    expect(emulator.mailboxFor(context.userId)?.messages.length).toBeGreaterThan(0);
+
+    await emulator.revoke("GMAIL", context);
+    await expect(emulator.connectionReady(context, "GMAIL")).resolves.toBe(true);
+    expect(emulator.mailboxFor(context.userId)).toBeDefined();
+
+    await emulator.revoke("GMAIL", context);
+    await expect(emulator.connectionReady(context, "GMAIL")).resolves.toBe(false);
+    expect(emulator.mailboxFor(context.userId)).toBeUndefined();
+  });
+
+  it("accepts BCC-only Gmail send recipients", async () => {
+    const emulator = new ComposioEmulator();
+    await emulator.begin({ provider: "GMAIL", redirectUrl: "http://example.test" }, context);
+
+    const events = await collectResults(emulator, "GMAIL_SEND_EMAIL", {
+      bcc: ["hidden@example.test"],
+      subject: "BCC only",
+      body: "Sent with bcc only",
+    });
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "result",
+        data: expect.objectContaining({
+          successful: true,
+          data: expect.objectContaining({
+            messageId: expect.any(String),
+          }),
+        }),
+      }),
+    );
+    const sent = emulator
+      .mailboxFor(context.userId)
+      ?.messages.find((message) => message.subject === "BCC only");
+    expect(sent).toMatchObject({
+      to: "hidden@example.test",
+      messageText: "Sent with bcc only",
+      labelIds: ["SENT"],
+    });
+  });
+
   it("discovers realistic Gmail tools and keeps thin actions for other apps", async () => {
     const emulator = new ComposioEmulator();
     const tools = await emulator.discoverTools({

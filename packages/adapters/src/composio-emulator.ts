@@ -276,7 +276,7 @@ function thinEmulatedTool(slug: string): ConnectorTool {
 
 /** Deterministic, offline Composio catalog and connection emulator for product tests. */
 export class ComposioEmulator implements ComposioProvider {
-  private readonly connectedByUser = new Map<string, Set<string>>();
+  private readonly connectedByUser = new Map<string, string[]>();
   private readonly mailboxesByUser = new Map<string, Mailbox>();
   readonly executions: Array<{
     userId: string;
@@ -300,7 +300,7 @@ export class ComposioEmulator implements ComposioProvider {
   }
 
   async catalog(context: AdapterContext, query?: string) {
-    const connected = this.connectedByUser.get(context.userId) ?? new Set<string>();
+    const connected = new Set(this.connectedByUser.get(context.userId) ?? []);
     return filterCatalog(
       this.directory.map((item) => ({ ...item, connected: connected.has(item.slug) })),
       query ?? "",
@@ -310,7 +310,7 @@ export class ComposioEmulator implements ComposioProvider {
   async warmDirectory(): Promise<void> {}
 
   async listConnectedSlugs(userId: string): Promise<string[]> {
-    return [...(this.connectedByUser.get(userId) ?? [])];
+    return [...new Set(this.connectedByUser.get(userId) ?? [])];
   }
 
   async listConnectedExternalIds(context: AdapterContext): Promise<string[]> {
@@ -349,15 +349,17 @@ export class ComposioEmulator implements ComposioProvider {
     request: { provider: string; redirectUrl: string },
     context: AdapterContext,
   ): Promise<{ authorizationUrl: string | null; state: string }> {
-    const connected = this.connectedByUser.get(context.userId) ?? new Set<string>();
-    connected.add(request.provider);
+    // Track each connection reference independently so two Gmail begins share
+    // one mailbox until the last matching revoke.
+    const connected = [...(this.connectedByUser.get(context.userId) ?? [])];
+    connected.push(request.provider);
     this.connectedByUser.set(context.userId, connected);
     if (request.provider === "GMAIL") this.ensureMailbox(context.userId);
     return { authorizationUrl: null, state: request.provider };
   }
 
   async connectionReady(context: AdapterContext, slug: string): Promise<boolean> {
-    return this.connectedByUser.get(context.userId)?.has(slug) ?? false;
+    return (this.connectedByUser.get(context.userId) ?? []).includes(slug);
   }
 
   async complete(
@@ -368,8 +370,15 @@ export class ComposioEmulator implements ComposioProvider {
   }
 
   async revoke(connectionRef: string, context: AdapterContext): Promise<void> {
-    this.connectedByUser.get(context.userId)?.delete(connectionRef);
-    if (connectionRef === "GMAIL") this.mailboxesByUser.delete(context.userId);
+    const connected = [...(this.connectedByUser.get(context.userId) ?? [])];
+    const index = connected.indexOf(connectionRef);
+    if (index >= 0) connected.splice(index, 1);
+    if (connected.length > 0) this.connectedByUser.set(context.userId, connected);
+    else this.connectedByUser.delete(context.userId);
+    // Shared mailbox stays until the last Gmail connection reference is revoked.
+    if (connectionRef === "GMAIL" && !connected.includes("GMAIL")) {
+      this.mailboxesByUser.delete(context.userId);
+    }
   }
 
   /** Test helper: inspect the in-memory mailbox for a user. */
@@ -478,7 +487,11 @@ export class ComposioEmulator implements ComposioProvider {
       }
       case "GMAIL_SEND_EMAIL": {
         const recipient =
-          asString(args.recipient_email) || asString(args.to) || asStringArray(args.cc)[0] || "";
+          asString(args.recipient_email) ||
+          asString(args.to) ||
+          asStringArray(args.cc)[0] ||
+          asStringArray(args.bcc)[0] ||
+          "";
         const subject = asString(args.subject);
         const body = asString(args.body);
         if (!recipient) {
