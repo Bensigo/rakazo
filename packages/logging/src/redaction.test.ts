@@ -54,4 +54,16 @@ describe("redaction", () => {
     );
     expect(redacted).toContain("[Redacted]");
   });
+
+  it("redacts quoted JSON credential fields", () => {
+    const redacted = redactSensitiveText(
+      '{"password":"hunter2","token":"abc","authorization":"Bearer secret"}',
+    );
+    expect(redacted).not.toContain("hunter2");
+    expect(redacted).not.toContain('"token":"abc"');
+    expect(redacted).not.toContain("Bearer secret");
+    expect(redacted).toContain('"password":"[Redacted]"');
+    expect(redacted).toContain('"token":"[Redacted]"');
+    expect(redacted).toContain('"authorization":"[Redacted]"');
+  });
 });

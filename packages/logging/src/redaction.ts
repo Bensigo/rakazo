@@ -46,9 +46,11 @@ export function redactBindings(bindings: Record<string, unknown>): Record<string
 }
 
 const EMAIL = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
-const BEARER = /\bBearer\s+\S+/gi;
+const BEARER = /\bBearer\s+[^\s"',;&]+/gi;
 const SECRET_ASSIGNMENT =
   /\b([A-Za-z0-9_]*(?:password|secret|token|authorization|apikey|api_key)[A-Za-z0-9_]*)\s*[:=]\s*\S+/gi;
+const JSON_SECRET_FIELD =
+  /"(password|passwd|secret|token|authorization|apikey|api_key|accesstoken|refreshtoken|email|cookie)"\s*:\s*"(?:\\.|[^"\\])*"/gi;
 /** OpenRouter/OpenAI-style keys and compact JWTs that appear bare in error text. */
 const API_KEY_PREFIX = /\bsk-(?:or-v1-)?[A-Za-z0-9_-]{8,}\b/g;
 const JWT = /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g;
@@ -57,6 +59,7 @@ const COMPOSIO_KEY = /\b(?:ak_|ck_)[A-Za-z0-9]+\b/g;
 export function redactSensitiveText(text: string): string {
   return text
     .replace(EMAIL, REDACTED)
+    .replace(JSON_SECRET_FIELD, `"$1":"${REDACTED}"`)
     .replace(BEARER, `Bearer ${REDACTED}`)
     .replace(SECRET_ASSIGNMENT, (_match, key: string) => `${key}=${REDACTED}`)
     .replace(API_KEY_PREFIX, REDACTED)

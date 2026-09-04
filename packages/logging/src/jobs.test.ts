@@ -38,6 +38,25 @@ describe("job correlation envelope", () => {
     });
   });
 
+  it("uses a nested envelope for reserved keys and non-plain objects", () => {
+    const correlation = { jobId: "job-2", traceId: "d".repeat(32) };
+    const reserved = wrapJobPayload({ runId: "run-2", __rakazoLog: "keep" }, correlation);
+    expect(reserved).toEqual({
+      v: 1,
+      correlation,
+      payload: { runId: "run-2", __rakazoLog: "keep" },
+    });
+    expect(unwrapJobPayload(reserved)).toEqual({
+      payload: { runId: "run-2", __rakazoLog: "keep" },
+      correlation,
+    });
+
+    const when = new Date("2026-01-02T03:04:05.000Z");
+    const nestedDate = wrapJobPayload(when, correlation);
+    expect(nestedDate).toEqual({ v: 1, correlation, payload: when });
+    expect(unwrapJobPayload(nestedDate)).toEqual({ payload: when, correlation });
+  });
+
   it("inherits the active trace and creates a job id", () => {
     const correlation = runWithLogContext(
       { "trace.id": "c".repeat(32), "span.id": "d".repeat(16) },

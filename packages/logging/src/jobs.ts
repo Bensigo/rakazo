@@ -47,8 +47,8 @@ export function wrapJobPayload(payload: unknown, correlation = createJobCorrelat
     v: JOB_CORRELATION_VERSION,
     correlation,
   };
-  if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
-    return { ...(payload as Record<string, unknown>), [CORRELATION_FIELD]: meta };
+  if (isSidecarPayload(payload)) {
+    return { ...payload, [CORRELATION_FIELD]: meta };
   }
   return { ...meta, payload } satisfies NestedJobEnvelope;
 }
@@ -111,6 +111,13 @@ export async function runCorrelatedJob<T>(options: {
       throw error;
     }
   });
+}
+
+function isSidecarPayload(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const proto = Object.getPrototypeOf(value);
+  if (proto !== Object.prototype && proto !== null) return false;
+  return !Object.hasOwn(value, CORRELATION_FIELD);
 }
 
 function sidecarMeta(value: unknown): JobCorrelationMeta | undefined {
