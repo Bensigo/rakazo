@@ -184,10 +184,12 @@ describeWithDatabase("Composio catalog reconciliation", () => {
       .spyOn(handles.prisma.connection, "findMany")
       .mockRejectedValueOnce(new Error("simulated reconciliation failure"));
 
+    // Scope to composio so a parallel managed provider cannot consume the one-shot findMany reject.
     const catalog = await rpc<Array<{ slug: string; connected: boolean }>>(
       app,
       cookie,
       "connections/catalog",
+      { connectorId: "composio" },
     );
 
     expect(catalog).toContainEqual(expect.objectContaining({ slug: "SLACK", connected: true }));
