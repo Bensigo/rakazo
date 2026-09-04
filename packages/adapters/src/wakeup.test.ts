@@ -221,4 +221,42 @@ describe("InMemoryJobQueue", () => {
     await queue.close();
     expect(target["computer.sleep"]).toHaveBeenCalledOnce();
   });
+
+  it("unwraps correlation envelopes and restores request traces", async () => {
+    const { createLogger, createTestSink, installLogger, runWithLogContext } = await import(
+      "@rakazo/logging"
+    );
+    const sink = createTestSink();
+    installLogger(createLogger({ service: "rakazo-worker", sinks: [sink] }));
+    const queue = new InMemoryJobQueue();
+    const target = handlers();
+    await queue.start(target);
+    await runWithLogContext(
+      { "trace.id": "a".repeat(32), "span.id": "b".repeat(16), "request.id": "req-1" },
+      async () => {
+        await queue.enqueue({ name: "run.continue", payload: { runId: "run-traced" } });
+      },
+    );
+    await queue.close();
+    expect(target["run.continue"]).toHaveBeenCalledWith({ runId: "run-traced" });
+    expect(sink.events.some((event) => event.message === "job.completed")).toBe(true);
+    expect(
+      sink.events.some(
+        (event) => event["trace.id"] === "a".repeat(32) && event["run.id"] === "run-traced",
+      ),
+    ).toBe(true);
+  });
+
+  it("still runs legacy payloads that have no envelope", async () => {
+    const queue = new InMemoryJobQueue();
+    const target = handlers();
+    await queue.start(target);
+    const { unwrapJobPayload } = await import("@rakazo/logging");
+    expect(unwrapJobPayload({ runId: "legacy-run" })).toEqual({
+      payload: { runId: "legacy-run" },
+    });
+    await queue.enqueue({ name: "run.continue", payload: { runId: "legacy-run" } });
+    await queue.close();
+    expect(target["run.continue"]).toHaveBeenCalledWith({ runId: "legacy-run" });
+  });
 });

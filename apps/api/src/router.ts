@@ -118,6 +118,7 @@ import {
   type ThreadEvents,
   touchGroupUpdatedAt,
 } from "@rakazo/db";
+import { getLogger } from "@rakazo/logging";
 import { createAgentSkillsService } from "./agent-skills.js";
 import { createOwnedArtifact, getOwnedArtifact, getSpaceArtifact } from "./artifacts.js";
 import {
@@ -1009,7 +1010,8 @@ export function createRouter(deps: RouterDeps) {
           ),
         );
         for (const result of cleanup) {
-          if (result.status === "rejected") console.error("group artifact cleanup", result.reason);
+          if (result.status === "rejected")
+            getLogger().error("group artifact cleanup", result.reason);
         }
         return { ok: true as const };
       }),
@@ -1096,12 +1098,12 @@ export function createRouter(deps: RouterDeps) {
         );
         if (result.eventSeq != null) {
           await deps.events.notify(target.threadId, result.eventSeq).catch((error) => {
-            console.error("thread reaction realtime notification", error);
+            getLogger().error("thread reaction realtime notification", error);
           });
         }
         if (result.runId) {
           await deps.jobs.enqueue(runContinueJob(result.runId)).catch((error) => {
-            console.error("thread reaction enqueue", error);
+            getLogger().error("thread reaction enqueue", error);
           });
         }
         return { ok: true as const };
@@ -1124,7 +1126,7 @@ export function createRouter(deps: RouterDeps) {
         const [configuredMemory] = await Promise.all([
           target.kind === "bot"
             ? deps.memoryProviders.resolve(context.actor.spaceId).catch((error) => {
-                console.error("semantic memory resolution after thread clear failed", error);
+                getLogger().error("semantic memory resolution after thread clear failed", error);
                 return null;
               })
             : Promise.resolve(null),
@@ -1152,10 +1154,10 @@ export function createRouter(deps: RouterDeps) {
               computerContext(context.actor, target.botId, `thread-clear:${target.threadId}`),
             );
             if (!purged.ok) {
-              console.error("semantic memory purge after thread clear failed", purged.error);
+              getLogger().error("semantic memory purge after thread clear failed", purged.error);
             }
           } catch (error) {
-            console.error("semantic memory purge after thread clear failed", error);
+            getLogger().error("semantic memory purge after thread clear failed", error);
           }
         }
         return { ok: true as const };
@@ -1175,7 +1177,7 @@ export function createRouter(deps: RouterDeps) {
           });
           if (sent.taskId && sent.runId) {
             await deps.jobs.enqueue(runContinueJob(sent.runId)).catch((error) => {
-              console.error("follow-up enqueue", error);
+              getLogger().error("follow-up enqueue", error);
             });
           }
           return { ok: true as const };
@@ -1255,11 +1257,11 @@ export function createRouter(deps: RouterDeps) {
           return { runId: run?.id, eventSeq: event.seq };
         });
         await deps.events.notify(target.threadId, committed.eventSeq).catch((error) => {
-          console.error("group follow-up realtime notification", error);
+          getLogger().error("group follow-up realtime notification", error);
         });
         if (committed.runId) {
           await deps.jobs.enqueue(runContinueJob(committed.runId)).catch((error) => {
-            console.error("group follow-up enqueue", error);
+            getLogger().error("group follow-up enqueue", error);
           });
         }
         return { ok: true as const };
@@ -1281,7 +1283,7 @@ export function createRouter(deps: RouterDeps) {
         }
         await deps.jobs.enqueue(runContinueJob(input.runId)).catch((error) => {
           // The answer and queued run are durable; the reconciler repairs a missed immediate wake.
-          console.error("thread answer enqueue", error);
+          getLogger().error("thread answer enqueue", error);
         });
         return { ok: true as const };
       }),
@@ -1587,7 +1589,7 @@ export function createRouter(deps: RouterDeps) {
           .catch((error) => {
             // The expired job is harmless after the lease is cleared, so do not report a
             // failed release after the transaction has committed.
-            console.error("computer control expiry cancellation", error);
+            getLogger().error("computer control expiry cancellation", error);
           });
 
         await enqueueTakeoverContinuation(deps.jobs, released.runId);
@@ -1728,7 +1730,10 @@ export function createRouter(deps: RouterDeps) {
             // running. Clear the dead ref so the UI offers a boot instead of 500ing.
             // Leave any active control lease alone — expireComputerControl owns that
             // release (provider screen-control, events, takeover continuation).
-            console.error(`computer ${computer.id} sandbox ${computer.providerRef} is gone`, error);
+            getLogger().error(
+              `computer ${computer.id} sandbox ${computer.providerRef} is gone`,
+              error,
+            );
             await deps.prisma.computer.updateMany({
               where: { id: computer.id, providerRef: computer.providerRef },
               data: { state: "stopped", providerRef: null },
@@ -2101,7 +2106,7 @@ export function createRouter(deps: RouterDeps) {
         // Keep enqueue outside the nonce-collision catch. The queued run is durable;
         // log enqueue failures and still return success — the reconciler repairs a missed wake.
         await deps.jobs.enqueue(runContinueJob(run.id)).catch((error) => {
-          console.error("routine testRun enqueue", error);
+          getLogger().error("routine testRun enqueue", error);
         });
         return { runId: run.id };
       }),
@@ -2782,7 +2787,7 @@ export function createRouter(deps: RouterDeps) {
                   provider.describe().id,
                   nowConnected,
                 ).catch((error) => {
-                  console.error(
+                  getLogger().error(
                     `${provider.describe().id} pending-connection reconciliation failed`,
                     error,
                   );
@@ -3153,7 +3158,7 @@ export function createRouter(deps: RouterDeps) {
           });
           if (notifyRequester) {
             await deps.jobs.enqueue(messagingDeliverJob()).catch((error) => {
-              console.error("messaging connection confirmation enqueue error", error);
+              getLogger().error("messaging connection confirmation enqueue error", error);
             });
           }
           return messagingConnectionDto(deps.prisma, myBotIds, updated);

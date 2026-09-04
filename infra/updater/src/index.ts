@@ -33,6 +33,9 @@ import {
   upsertEnvAssignments,
   validateUpdateRequest,
 } from "@rakazo/core";
+import { type Logger, SERVICE_NAMES } from "@rakazo/logging";
+import { createRootLogger } from "@rakazo/logging/axiom";
+import { requestLogging } from "@rakazo/logging/hono";
 import { type Context, Hono } from "hono";
 import {
   readTagState,
@@ -143,9 +146,10 @@ const runCommand: UpdaterCommandRunner = (
 
 export function createUpdaterApp(
   config: UpdaterConfig,
-  options: { run?: UpdaterCommandRunner } = {},
+  options: { run?: UpdaterCommandRunner; logger?: Logger } = {},
 ) {
   const app = new Hono();
+  app.use("*", requestLogging(options.logger));
   const run = options.run ?? runCommand;
   const composeTarget = {
     composeFile: config.composeFile,
@@ -749,11 +753,22 @@ export function createUpdaterApp(
 }
 
 function startUpdater() {
+  const logger = createRootLogger(SERVICE_NAMES.updater);
   const config = resolveUpdaterConfig(process.env);
-  const app = createUpdaterApp(config);
-  return serve({ fetch: app.fetch, hostname: config.host, port: config.port }, () => {
-    console.log(`rakazo updater on http://${config.host}:${config.port} for ${config.deployDir}`);
+  const app = createUpdaterApp(config, { logger });
+  const server = serve({ fetch: app.fetch, hostname: config.host, port: config.port }, () => {
+    logger.info("updater listening", {
+      "http.host": config.host,
+      "http.port": config.port,
+      "updater.deploy_dir": config.deployDir,
+    });
   });
+  const shutdown = async () => {
+    await logger.flush({ timeoutMs: 2_000 });
+  };
+  process.once("SIGTERM", () => void shutdown());
+  process.once("SIGINT", () => void shutdown());
+  return server;
 }
 
 /**

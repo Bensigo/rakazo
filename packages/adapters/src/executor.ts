@@ -77,6 +77,7 @@ import {
   SpaceLimitError,
   type ThreadEvents,
 } from "@rakazo/db";
+import { getLogger } from "@rakazo/logging";
 import { parse as parseShellCommand } from "shell-quote";
 import {
   connectAgent,
@@ -1054,7 +1055,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             recallSucceeded = true;
             recalledMemory = formatRecalledMemory(recalled.value);
           } else if (!recalled.ok) {
-            console.error("semantic memory recall failed", recalled.error);
+            getLogger().error("semantic memory recall failed", recalled.error);
           }
         }
         if (!compactedHistory.usedLocalSummary) {
@@ -1097,7 +1098,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           if (failed.continuationRunId) {
             await deps.jobs
               .enqueue(runContinueJob(failed.continuationRunId))
-              .catch((error) => console.error("steering continuation enqueue", error));
+              .catch((error) => getLogger().error("steering continuation enqueue", error));
           }
           if (run.trigger === "bot_message") {
             await returnBotMessageOutcome(
@@ -1106,7 +1107,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               { id: bot.id, name: bot.name },
               `Could not complete the delegated request: ${MISSING_MODEL_MESSAGE}`,
               "status",
-            ).catch((error) => console.error("bot message failure return", error));
+            ).catch((error) => getLogger().error("bot message failure return", error));
           }
           if (!failed.continuationRunId) {
             await notifyRun(deps, run, {
@@ -1976,7 +1977,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               return finish({ ok: true, path: outPath, attached });
             } catch (error) {
               const message = error instanceof Error ? error.message : String(error);
-              console.error(`render_plot failed for bot ${bot.id}: ${message}`);
+              getLogger().error(`render_plot failed for bot ${bot.id}: ${message}`);
               return finish({
                 error: message,
                 hint: 'Call render_plot with {"charts": true} for runnable example specs, or {"help": true} for the full guide.',
@@ -2368,7 +2369,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             }
             if (approvalEventSeq !== undefined) {
               await deps.events.notify(run.threadId, approvalEventSeq).catch((error) => {
-                console.error("MCP approval realtime notification", error);
+                getLogger().error("MCP approval realtime notification", error);
               });
             }
             return finish({
@@ -2631,7 +2632,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 payload: { childBotId: spawned.botId, name: spawned.name },
               });
             } catch (error) {
-              console.error("spawned bot notification", error);
+              getLogger().error("spawned bot notification", error);
             }
             return spawned;
           }
@@ -2737,7 +2738,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 payload: { childBotId: archived.botId, name: archived.name },
               });
             } catch (error) {
-              console.error("archived bot notification", error);
+              getLogger().error("archived bot notification", error);
             }
             return archived;
           }
@@ -3146,7 +3147,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 if (stopped.continuationRunId) {
                   await deps.jobs
                     .enqueue(runContinueJob(stopped.continuationRunId))
-                    .catch((error) => console.error("steering continuation enqueue", error));
+                    .catch((error) => getLogger().error("steering continuation enqueue", error));
                 }
                 if (run.trigger === "bot_message") {
                   await returnBotMessageOutcome(
@@ -3154,7 +3155,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                     { ...run, sourceMessageId: run.sourceMessageId },
                     { id: bot.id, name: bot.name },
                     stuckText,
-                  ).catch((error) => console.error("bot message loop-guard return", error));
+                  ).catch((error) => getLogger().error("bot message loop-guard return", error));
                 }
                 runAbortController?.abort();
                 return;
@@ -3302,7 +3303,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           if (completed.continuationRunId) {
             await deps.jobs
               .enqueue(runContinueJob(completed.continuationRunId))
-              .catch((error) => console.error("steering continuation enqueue", error));
+              .catch((error) => getLogger().error("steering continuation enqueue", error));
           }
           if (run.trigger === "bot_message" && text) {
             await returnBotMessageOutcome(
@@ -3310,7 +3311,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               { ...run, sourceMessageId: run.sourceMessageId },
               { id: bot.id, name: bot.name },
               text,
-            ).catch((error) => console.error("bot message result return", error));
+            ).catch((error) => getLogger().error("bot message result return", error));
           }
           if (text && !completed.continuationRunId) {
             await notifyRun(deps, run, {
@@ -3343,7 +3344,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               await deps.jobs.enqueue(historyCompactJob(thread.id));
             }
           } catch (error) {
-            console.error("history.compact enqueue failed", error);
+            getLogger().error("history.compact enqueue failed", error);
           }
         } catch (error) {
           if (!terminalCheckpointComplete) {
@@ -3369,7 +3370,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           if (failed.continuationRunId) {
             await deps.jobs
               .enqueue(runContinueJob(failed.continuationRunId))
-              .catch((error) => console.error("steering continuation enqueue", error));
+              .catch((error) => getLogger().error("steering continuation enqueue", error));
           }
           if (run.trigger === "bot_message") {
             await returnBotMessageOutcome(
@@ -3378,7 +3379,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               { id: bot.id, name: bot.name },
               `Could not complete the delegated request: ${message}`,
               "status",
-            ).catch((returnError) => console.error("bot message failure return", returnError));
+            ).catch((returnError) => getLogger().error("bot message failure return", returnError));
           }
           if (!failed.continuationRunId) {
             await notifyRun(deps, run, {
@@ -3399,7 +3400,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             setupError instanceof Error && setupError.cause instanceof Error
               ? `: ${setupError.cause.message}`
               : "";
-          console.error(
+          getLogger().error(
             "run setup failed",
             redactSecrets(
               setupError instanceof Error
@@ -3489,7 +3490,7 @@ async function notifyRun(
 ) {
   if (!deps.notifications) return;
   const enabled = await runNotificationsEnabled(deps.prisma, run).catch((error) => {
-    console.error("notification preference lookup", error);
+    getLogger().error("notification preference lookup", error);
     return false;
   });
   if (!enabled) return;
@@ -3503,7 +3504,7 @@ async function notifyRun(
       signal: new AbortController().signal,
     })
     .catch((error) => {
-      console.error("run notification", error);
+      getLogger().error("run notification", error);
     });
 }
 
@@ -3694,7 +3695,7 @@ async function publishMessage(
     persistMessageInTransaction(tx, run, role, blocks, markUnread),
   );
   await deps.events.notify(run.threadId, committed.eventSeq).catch((error) => {
-    console.error("thread message realtime notification", error);
+    getLogger().error("thread message realtime notification", error);
   });
   return committed.message;
 }

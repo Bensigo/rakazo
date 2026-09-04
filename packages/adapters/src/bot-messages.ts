@@ -15,6 +15,7 @@ import {
   type PrismaClient,
   withTransactionRetry,
 } from "@rakazo/db";
+import { getLogger } from "@rakazo/logging";
 import type { ExecutorDeps } from "./executor.js";
 
 /**
@@ -295,14 +296,14 @@ export async function messageBot(
   if (!committed.ok) return committed;
 
   await deps.events.notify(targetThreadId, committed.targetEventSeq).catch((error) => {
-    console.error("bot message realtime notification", error);
+    getLogger().error("bot message realtime notification", error);
   });
   await deps.events.notify(run.threadId, committed.senderEventSeq).catch((error) => {
-    console.error("bot message sender echo notification", error);
+    getLogger().error("bot message sender echo notification", error);
   });
   await deps.jobs.enqueue(runContinueJob(committed.runId)).catch((error) => {
     // The queued run is durable; the job reconciler repairs a missed wake.
-    console.error("bot message enqueue", error);
+    getLogger().error("bot message enqueue", error);
   });
   return {
     ok: true as const,
