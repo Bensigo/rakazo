@@ -94,6 +94,7 @@ export const lightTokens = {
   accentForeground: "#1A1A1A",
   destructive: "#DC2626",
   destructiveForeground: "#FFFFFF",
+  // Light dividers stay near the surface so chrome reads as hairlines, not boxes.
   border: "#F0F0ED",
   input: "#EAEAE6",
   ring: "#6C6C70",
