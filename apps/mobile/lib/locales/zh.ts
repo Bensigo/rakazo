@@ -20,6 +20,7 @@ export const ZH_MESSAGES: Record<string, string> = {
   "Active model": "当前模型",
   "Add {name}": "添加 {name}",
   "Account label": "账户标签",
+  "Could not rename connection": "无法重命名连接",
   "Add another": "再添加一个",
   "Add another {name}": "再添加一个 {name}",
   "Add MCP server": "添加 MCP 服务器",
