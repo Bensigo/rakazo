@@ -630,13 +630,22 @@ describe("computer execution leases", () => {
 
   it("does not let a late renewal resurrect a released lease", async () => {
     let expiresAt = new Date(Date.now() + 60_000);
+    const create = vi.fn();
+    const updateManyAndReturn = vi.fn().mockImplementation(async ({ data }) => {
+      if (expiresAt >= new Date()) return [];
+      expiresAt = data.expiresAt;
+      return [{ fence: 2 }];
+    });
     const updateMany = vi.fn().mockImplementation(async ({ where, data }) => {
       if (where.expiresAt?.gt && expiresAt <= where.expiresAt.gt) return { count: 0 };
       expiresAt = data.expiresAt;
       return { count: 1 };
     });
     const prisma = {
-      computerExecutionLease: { updateMany },
+      computer: {
+        findUniqueOrThrow: vi.fn().mockResolvedValue({ scope: "team", state: "running" }),
+      },
+      computerExecutionLease: { create, updateMany, updateManyAndReturn },
     } as unknown as PrismaClient;
     const lease = {
       computerId: "computer-1",
@@ -652,6 +661,14 @@ describe("computer execution leases", () => {
       where: { ...lease, expiresAt: { gt: new Date(0) } },
       data: { expiresAt: expect.any(Date) },
     });
+    await expect(
+      acquireComputerExecutionLease(prisma, {
+        computerId: "computer-1",
+        botId: "bot-1",
+        runId: "run-2",
+      }),
+    ).resolves.toMatchObject({ runId: "run-2", fence: 2 });
+    expect(create).not.toHaveBeenCalled();
   });
 
   it("increments the screen fence when the same Team bot starts another run", async () => {
