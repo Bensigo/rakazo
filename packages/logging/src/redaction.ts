@@ -49,12 +49,17 @@ const EMAIL = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
 const BEARER = /\bBearer\s+\S+/gi;
 const SECRET_ASSIGNMENT =
   /\b([A-Za-z0-9_]*(?:password|secret|token|authorization|apikey|api_key)[A-Za-z0-9_]*)\s*[:=]\s*\S+/gi;
+/** OpenRouter/OpenAI-style keys and compact JWTs that appear bare in error text. */
+const API_KEY_PREFIX = /\bsk-(?:or-v1-)?[A-Za-z0-9_-]{8,}\b/g;
+const JWT = /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g;
 
 export function redactSensitiveText(text: string): string {
   return text
     .replace(EMAIL, REDACTED)
     .replace(BEARER, `Bearer ${REDACTED}`)
-    .replace(SECRET_ASSIGNMENT, (_match, key: string) => `${key}=${REDACTED}`);
+    .replace(SECRET_ASSIGNMENT, (_match, key: string) => `${key}=${REDACTED}`)
+    .replace(API_KEY_PREFIX, REDACTED)
+    .replace(JWT, REDACTED);
 }
 
 function shouldRedactKey(key: string): boolean {
