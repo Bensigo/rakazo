@@ -63,6 +63,13 @@ describe("mobile message presentation", () => {
     expect(messagePresentationSegments([activity, narration])).toEqual([
       { kind: "content", blocks: [narration] },
     ]);
+
+    const mixed: Extract<MessageBlock, { kind: "progress" }> = {
+      kind: "progress",
+      text: "Let me check",
+      pendingToolNames: ["browser"],
+    };
+    expect(messagePresentationSegments([mixed])).toEqual([{ kind: "content", blocks: [mixed] }]);
   });
 
   it("keeps only response content around tool activity", () => {
