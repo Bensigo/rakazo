@@ -12,10 +12,6 @@ interface JobCorrelationMeta {
   correlation: JobCorrelation;
 }
 
-interface NestedJobEnvelope extends JobCorrelationMeta {
-  payload: unknown;
-}
-
 const PAYLOAD_IDS: Record<string, string> = {
   runId: "run.id",
   computerId: "computer.id",
@@ -50,28 +46,32 @@ export function wrapJobPayload(payload: unknown, correlation = createJobCorrelat
   if (isSidecarPayload(payload)) {
     return { ...payload, [CORRELATION_FIELD]: meta };
   }
-  return { ...meta, payload } satisfies NestedJobEnvelope;
+  return { ...meta, payload };
 }
 
 export function unwrapJobPayload(stored: unknown): {
   payload: unknown;
   correlation?: JobCorrelation;
 } {
-  const sidecar = sidecarMeta(stored);
-  if (sidecar) {
-    const { [CORRELATION_FIELD]: _meta, ...payload } = stored as Record<string, unknown>;
-    return { payload, correlation: sidecar.correlation };
-  }
-  if (isNestedEnvelope(stored)) {
-    return { payload: stored.payload, correlation: stored.correlation };
+  if (isPlainObject(stored)) {
+    const sidecar = asCorrelationMeta(stored[CORRELATION_FIELD]);
+    if (sidecar) {
+      const payload = { ...stored };
+      delete payload[CORRELATION_FIELD];
+      return { payload, correlation: sidecar.correlation };
+    }
+    const nested = asCorrelationMeta(stored);
+    if (nested && "payload" in stored) {
+      return { payload: stored.payload, correlation: nested.correlation };
+    }
   }
   return { payload: stored };
 }
 
 export function jobPayloadBindings(payload: unknown): LogBindings {
-  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) return {};
+  if (!isPlainObject(payload)) return {};
   const bindings: LogBindings = {};
-  for (const [key, value] of Object.entries(payload as Record<string, unknown>)) {
+  for (const [key, value] of Object.entries(payload)) {
     const field = PAYLOAD_IDS[key];
     if (field && typeof value === "string" && value.length > 0) bindings[field] = value;
   }
@@ -113,33 +113,31 @@ export async function runCorrelatedJob<T>(options: {
   });
 }
 
-function isSidecarPayload(value: unknown): value is Record<string, unknown> {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
   const proto = Object.getPrototypeOf(value);
-  if (proto !== Object.prototype && proto !== null) return false;
-  return !Object.hasOwn(value, CORRELATION_FIELD);
+  return proto === Object.prototype || proto === null;
 }
 
-function sidecarMeta(value: unknown): JobCorrelationMeta | undefined {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
-  return asCorrelationMeta((value as Record<string, unknown>)[CORRELATION_FIELD]);
-}
-
-function isNestedEnvelope(value: unknown): value is NestedJobEnvelope {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
-  if (CORRELATION_FIELD in value) return false;
-  const candidate = value as Partial<NestedJobEnvelope>;
-  return asCorrelationMeta(candidate) !== undefined && "payload" in candidate;
+function isSidecarPayload(value: unknown): value is Record<string, unknown> {
+  return isPlainObject(value) && !Object.hasOwn(value, CORRELATION_FIELD);
 }
 
 function asCorrelationMeta(value: unknown): JobCorrelationMeta | undefined {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const candidate = value as Partial<JobCorrelationMeta>;
-  if (candidate.v !== JOB_CORRELATION_VERSION) return undefined;
-  const correlation = candidate.correlation;
-  if (!correlation || typeof correlation !== "object") return undefined;
+  if (!isPlainObject(value) || value.v !== JOB_CORRELATION_VERSION) return undefined;
+  const correlation = value.correlation;
+  if (!isPlainObject(correlation)) return undefined;
   if (typeof correlation.jobId !== "string" || typeof correlation.traceId !== "string") {
     return undefined;
   }
-  return { v: JOB_CORRELATION_VERSION, correlation };
+  return {
+    v: JOB_CORRELATION_VERSION,
+    correlation: {
+      jobId: correlation.jobId,
+      traceId: correlation.traceId,
+      ...(typeof correlation.parentSpanId === "string"
+        ? { parentSpanId: correlation.parentSpanId }
+        : {}),
+    },
+  };
 }

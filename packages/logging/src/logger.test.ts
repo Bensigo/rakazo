@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createLogger } from "./logger.js";
+import { serializeError } from "./serialize-error.js";
 import { createTestSink } from "./test-sink.js";
 
 describe("logger", () => {
@@ -73,22 +74,6 @@ describe("logger", () => {
     );
   });
 
-  it("forwards events to an injected custom sink", () => {
-    const writes: string[] = [];
-    const logger = createLogger({
-      service: "rakazo-api",
-      sinks: [
-        {
-          write(event) {
-            writes.push(event.message);
-          },
-        },
-      ],
-    });
-    logger.info("custom");
-    expect(writes).toEqual(["custom"]);
-  });
-
   it("keeps logging when a sink throws", () => {
     const sink = createTestSink();
     const logger = createLogger({
@@ -135,22 +120,10 @@ describe("logger", () => {
     });
     await expect(hanging.flush({ timeoutMs: 20 })).resolves.toBeUndefined();
   });
-
-  it("uses a test clock for timestamps", () => {
-    const sink = createTestSink();
-    const logger = createLogger({
-      service: "rakazo-api",
-      sinks: [sink],
-      now: () => new Date("2026-01-02T03:04:05.000Z"),
-    });
-    logger.info("timed");
-    expect(sink.events[0]?.timestamp).toBe("2026-01-02T03:04:05.000Z");
-  });
 });
 
 describe("error serialization", () => {
-  it("records cause chains", async () => {
-    const { serializeError } = await import("./serialize-error.js");
+  it("records cause chains", () => {
     const error = new Error("outer", { cause: new Error("inner", { cause: new Error("root") }) });
     expect(serializeError(error)).toMatchObject({
       message: "outer",
@@ -158,8 +131,7 @@ describe("error serialization", () => {
     });
   });
 
-  it("redacts secrets in error messages and stacks", async () => {
-    const { serializeError } = await import("./serialize-error.js");
+  it("redacts secrets in error messages and stacks", () => {
     const error = new Error("unauthorized Bearer supersecret for person@example.com");
     const serialized = serializeError(error);
     expect(JSON.stringify(serialized)).not.toContain("supersecret");

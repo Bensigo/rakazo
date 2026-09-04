@@ -1,9 +1,5 @@
 import type { MiddlewareHandler } from "hono";
-import {
-  applyRequestCorrelation,
-  correlationBindings,
-  establishRequestCorrelation,
-} from "./correlation.js";
+import { correlationBindings, establishRequestCorrelation } from "./correlation.js";
 import { formatTraceparent } from "./ids.js";
 import { getLogger } from "./logger.js";
 import type { Logger } from "./types.js";
@@ -12,15 +8,13 @@ export function requestLogging(logger?: Logger): MiddlewareHandler {
   return async (c, next) => {
     const log = logger ?? getLogger();
     const correlation = establishRequestCorrelation({
-      requestId: c.req.header("x-request-id") ?? c.req.header("X-Request-ID"),
+      requestId: c.req.header("x-request-id"),
       traceparent: c.req.header("traceparent"),
     });
     c.header("x-request-id", correlation.requestId);
     c.header("traceparent", formatTraceparent(correlation.traceId, correlation.spanId));
     const started = performance.now();
-    const bindings = correlationBindings(correlation);
-    return log.withContext(bindings, async () => {
-      applyRequestCorrelation(correlation);
+    return log.withContext(correlationBindings(correlation), async () => {
       let thrown: unknown;
       try {
         await next();

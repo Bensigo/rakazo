@@ -764,21 +764,26 @@ function startUpdater() {
     });
   });
   let stopping = false;
-  const listening = server as typeof server & { closeIdleConnections?: () => void };
   const shutdown = async () => {
     if (stopping) return;
     stopping = true;
-    // Finish in-flight apply/rollback; drop idle keep-alives so close cannot hang.
-    listening.closeIdleConnections?.();
-    await new Promise<void>((resolve) => {
-      listening.close(() => resolve());
-    });
+    await closeListeningServer(server);
     await logger.flush({ timeoutMs: 2_000 });
     process.exit(0);
   };
   process.once("SIGTERM", () => void shutdown());
   process.once("SIGINT", () => void shutdown());
   return server;
+}
+
+function closeListeningServer(server: {
+  close(callback?: (err?: Error) => void): void;
+  closeIdleConnections?: () => void;
+}): Promise<void> {
+  server.closeIdleConnections?.();
+  return new Promise((resolve) => {
+    server.close(() => resolve());
+  });
 }
 
 /**

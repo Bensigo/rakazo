@@ -14,7 +14,7 @@ describe("redaction", () => {
       query: { q: "search" },
       apiKey: "sk-live",
       nested: { password: "hunter2", token: "abc", safe: true },
-    }) as Record<string, unknown>;
+    });
     expect(redacted["user.id"]).toBe("user-1");
     expect(redacted.email).toBe("[Redacted]");
     expect(redacted.authorization).toBe("[Redacted]");
@@ -30,7 +30,7 @@ describe("redaction", () => {
   it("replaces circular values", () => {
     const cycle: Record<string, unknown> = { "request.id": "r1" };
     cycle.self = cycle;
-    const redacted = redactBindings(cycle) as Record<string, unknown>;
+    const redacted = redactBindings(cycle);
     expect(redacted["request.id"]).toBe("r1");
     expect(redacted.self).toBe("[Circular]");
   });

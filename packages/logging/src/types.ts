@@ -42,7 +42,6 @@ export interface Logger {
   withContext<T>(bindings: LogBindings, fn: () => T): T;
   enrich(bindings: LogBindings): void;
   flush(options?: { timeoutMs?: number }): Promise<void>;
-  bindings(): LogBindings;
 }
 
 export interface CreateLoggerOptions {
@@ -50,7 +49,6 @@ export interface CreateLoggerOptions {
   level?: LogLevel;
   sinks: LogSink[];
   bindings?: LogBindings;
-  now?: () => Date;
 }
 
 export interface JobCorrelation {

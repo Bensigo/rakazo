@@ -17,12 +17,6 @@ export interface AxiomSinkOptions {
   client?: AxiomIngestClient;
 }
 
-export type AxiomFromEnv =
-  | { sink: LogSink; warning?: undefined }
-  | { sink?: undefined; warning: string }
-  | { sink?: undefined; warning?: undefined };
-
-/** Hostname only (regional edge), e.g. eu-central-1.aws.edge.axiom.co */
 const EDGE_HOST = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/i;
 
 export function createAxiomSink(options: AxiomSinkOptions): LogSink {
@@ -39,7 +33,7 @@ export function createAxiomSink(options: AxiomSinkOptions): LogSink {
     write(event: LogEvent) {
       guardedWrite(() => {
         client.ingest(dataset, [event]);
-      }, event);
+      });
     },
     flush() {
       return guardedFlush(() => client.flush());
@@ -50,7 +44,7 @@ export function createAxiomSink(options: AxiomSinkOptions): LogSink {
 export function createAxiomSinkFromEnv(
   source: NodeJS.ProcessEnv = process.env,
   client?: AxiomIngestClient,
-): AxiomFromEnv {
+): { sink?: LogSink; warning?: string } {
   const token = source.AXIOM_TOKEN?.trim();
   const dataset = source.AXIOM_DATASET?.trim();
   const edge = source.AXIOM_EDGE?.trim() || undefined;
@@ -89,8 +83,7 @@ export function createRootLogger(service: string, env: NodeJS.ProcessEnv = proce
   return logger;
 }
 
-/** Validate optional edge settings. Invalid values disable Axiom rather than guess. */
-export function resolveAxiomEdge(
+function resolveAxiomEdge(
   edge?: string,
   edgeUrl?: string,
 ): { edge?: string; edgeUrl?: string; warning?: string } {
@@ -106,9 +99,6 @@ export function resolveAxiomEdge(
     }
     if (url.username || url.password) {
       return { warning: "Axiom logging is disabled; AXIOM_EDGE_URL must not include credentials." };
-    }
-    if (!url.hostname) {
-      return { warning: "Axiom logging is disabled; AXIOM_EDGE_URL is not a valid URL." };
     }
     return { edgeUrl: url.toString().replace(/\/$/, "") };
   }

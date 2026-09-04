@@ -1,4 +1,3 @@
-import { guardedFlush, guardedWrite } from "./sink-guard.js";
 import type { LogEvent, LogFormat, LogSink } from "./types.js";
 
 const SKIP_PRETTY = new Set(["timestamp", "level", "message"]);
@@ -7,10 +6,7 @@ export function createConsoleSink(options: { format?: LogFormat } = {}): LogSink
   const format = options.format ?? "json";
   return {
     write(event) {
-      guardedWrite(() => emit(event, format), event);
-    },
-    flush() {
-      return guardedFlush();
+      emit(event, format);
     },
   };
 }

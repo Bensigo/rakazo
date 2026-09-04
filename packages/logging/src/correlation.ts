@@ -1,4 +1,4 @@
-import { enrichLogContext, getLogContext } from "./context.js";
+import { getLogContext } from "./context.js";
 import {
   formatTraceparent,
   generateRequestId,
@@ -41,10 +41,6 @@ export function correlationBindings(correlation: RequestCorrelation): Record<str
   return bindings;
 }
 
-export function applyRequestCorrelation(correlation: RequestCorrelation): void {
-  enrichLogContext(correlationBindings(correlation));
-}
-
 export function outgoingCorrelationHeaders(): Record<string, string> {
   const ctx = getLogContext();
   const traceId =
@@ -56,12 +52,4 @@ export function outgoingCorrelationHeaders(): Record<string, string> {
     "x-request-id": generateRequestId(),
     traceparent: formatTraceparent(traceId, spanId),
   };
-}
-
-export function currentTraceparent(): string | undefined {
-  const ctx = getLogContext();
-  const traceId = ctx["trace.id"];
-  const spanId = ctx["span.id"];
-  if (typeof traceId !== "string" || typeof spanId !== "string") return undefined;
-  return formatTraceparent(traceId, spanId);
 }

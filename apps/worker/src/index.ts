@@ -40,12 +40,13 @@ import {
 } from "@rakazo/adapters";
 import { resolveEncryptionKey, resolveSupervisorToken } from "@rakazo/core";
 import { createDb, createThreadEvents } from "@rakazo/db";
-import { getLogger, SERVICE_NAMES } from "@rakazo/logging";
+import { SERVICE_NAMES } from "@rakazo/logging";
 import { createRootLogger } from "@rakazo/logging/axiom";
 import { MarkdownMemoryStore } from "@rakazo/memory";
 
+const logger = createRootLogger(SERVICE_NAMES.worker);
+
 async function main() {
-  const logger = createRootLogger(SERVICE_NAMES.worker);
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) throw new Error("DATABASE_URL is required");
   const { prisma, pool } = createDb(databaseUrl);
@@ -187,7 +188,6 @@ async function main() {
 }
 
 main().catch(async (error) => {
-  const logger = getLogger();
   logger.error("worker startup failed", error);
   await logger.flush({ timeoutMs: 2_000 });
   process.exit(1);

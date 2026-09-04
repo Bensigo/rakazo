@@ -2,7 +2,6 @@ import type { LogEvent, LogSink } from "./types.js";
 
 export interface TestSink extends LogSink {
   events: LogEvent[];
-  reset(): void;
 }
 
 export function createTestSink(): TestSink {
@@ -11,10 +10,6 @@ export function createTestSink(): TestSink {
     events,
     write(event) {
       events.push(event);
-    },
-    flush() {},
-    reset() {
-      events.length = 0;
     },
   };
 }

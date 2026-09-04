@@ -5,8 +5,9 @@ import { requestLogging } from "./hono.js";
 import { outgoingCorrelationHeaders, parseTraceparent } from "./index.js";
 import { createLogger } from "./logger.js";
 import { createTestSink } from "./test-sink.js";
+import type { Logger } from "./types.js";
 
-function appWith(logger: ReturnType<typeof createLogger>) {
+function appWith(logger: Logger) {
   const app = new Hono();
   app.use("*", requestLogging(logger));
   app.get("/health", (c) => c.json({ ok: true }));

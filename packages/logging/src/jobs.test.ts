@@ -7,11 +7,10 @@ import {
   wrapJobPayload,
 } from "./jobs.js";
 import { createLogger, installLogger } from "./logger.js";
-import { createNoopSink } from "./noop-sink.js";
 import { createTestSink } from "./test-sink.js";
 
 afterEach(() => {
-  installLogger(createLogger({ service: "rakazo", level: "off", sinks: [createNoopSink()] }));
+  installLogger(createLogger({ service: "rakazo", level: "off", sinks: [] }));
 });
 
 describe("job correlation envelope", () => {

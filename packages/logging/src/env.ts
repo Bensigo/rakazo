@@ -8,9 +8,13 @@ export interface ResolvedLogEnv {
   format: LogFormat;
 }
 
+function isLogLevel(value: string): value is LogLevel {
+  return value in LOG_LEVELS;
+}
+
 export function resolveLogEnv(source: NodeJS.ProcessEnv = process.env): ResolvedLogEnv {
   const rawLevel = source.LOG_LEVEL?.trim().toLowerCase();
-  const level: LogLevel = rawLevel && rawLevel in LOG_LEVELS ? (rawLevel as LogLevel) : "info";
+  const level = rawLevel && isLogLevel(rawLevel) ? rawLevel : "info";
   const rawFormat = source.LOG_FORMAT?.trim().toLowerCase();
   const format: LogFormat =
     rawFormat === "json" || rawFormat === "pretty"

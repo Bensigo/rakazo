@@ -247,19 +247,6 @@ describe("InMemoryJobQueue", () => {
     ).toBe(true);
   });
 
-  it("still runs legacy payloads that have no envelope", async () => {
-    const queue = new InMemoryJobQueue();
-    const target = handlers();
-    await queue.start(target);
-    const { unwrapJobPayload } = await import("@rakazo/logging");
-    expect(unwrapJobPayload({ runId: "legacy-run" })).toEqual({
-      payload: { runId: "legacy-run" },
-    });
-    await queue.enqueue({ name: "run.continue", payload: { runId: "legacy-run" } });
-    await queue.close();
-    expect(target["run.continue"]).toHaveBeenCalledWith({ runId: "legacy-run" });
-  });
-
   it("keeps wrapped payloads readable by workers that do not unwrap envelopes", async () => {
     const { wrapJobPayload } = await import("@rakazo/logging");
     const { parseBackgroundJob } = await import("@rakazo/adapter-kit");

@@ -21,14 +21,12 @@ class LoggerImpl implements Logger {
   private readonly service: string;
   private readonly sinks: LogSink[];
   private readonly localBindings: LogBindings;
-  private readonly now: () => Date;
 
   constructor(options: CreateLoggerOptions) {
     this.service = options.service;
     this.level = options.level ?? "info";
     this.sinks = options.sinks;
     this.localBindings = options.bindings ?? {};
-    this.now = options.now ?? (() => new Date());
   }
 
   debug(message: string, bindings?: LogBindings): void {
@@ -49,8 +47,7 @@ class LoggerImpl implements Logger {
       return;
     }
     if (isPlainBindings(errorOrBindings)) {
-      const { err, error, ...rest } = errorOrBindings;
-      this.emit("error", message, { ...rest, ...bindings }, err ?? error);
+      this.emit("error", message, { ...errorOrBindings, ...bindings });
       return;
     }
     this.emit("error", message, bindings, errorOrBindings);
@@ -62,7 +59,6 @@ class LoggerImpl implements Logger {
       level: this.level,
       sinks: this.sinks,
       bindings: { ...this.localBindings, ...bindings },
-      now: this.now,
     });
   }
 
@@ -85,10 +81,6 @@ class LoggerImpl implements Logger {
     ]);
   }
 
-  bindings(): LogBindings {
-    return { ...this.localBindings, ...getLogContext() };
-  }
-
   private emit(level: EmitLevel, message: string, bindings?: LogBindings, error?: unknown): void {
     if (LOG_LEVELS[level] < LOG_LEVELS[this.level]) return;
     const merged = redactBindings({
@@ -97,7 +89,7 @@ class LoggerImpl implements Logger {
       ...bindings,
     });
     const event: LogEvent = {
-      timestamp: this.now().toISOString(),
+      timestamp: new Date().toISOString(),
       level,
       message: redactSensitiveText(message),
       "service.name": this.service,
@@ -108,7 +100,7 @@ class LoggerImpl implements Logger {
     }
     if (error !== undefined) event.error = serializeError(error);
     for (const sink of this.sinks) {
-      guardedWrite((next) => sink.write(next), event);
+      guardedWrite(() => sink.write(event));
     }
   }
 }

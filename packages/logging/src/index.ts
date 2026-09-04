@@ -5,9 +5,7 @@ export {
   runWithLogContext,
 } from "./context.js";
 export {
-  applyRequestCorrelation,
   correlationBindings,
-  currentTraceparent,
   establishRequestCorrelation,
   outgoingCorrelationHeaders,
   type RequestCorrelation,
@@ -29,8 +27,7 @@ export {
   wrapJobPayload,
 } from "./jobs.js";
 export { createLogger, getLogger, installLogger } from "./logger.js";
-export { createNoopSink } from "./noop-sink.js";
-export { redactBindings, redactValue } from "./redaction.js";
+export { redactBindings } from "./redaction.js";
 export { serializeError } from "./serialize-error.js";
 export { createTestSink, type TestSink } from "./test-sink.js";
 export type {
