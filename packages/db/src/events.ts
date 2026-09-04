@@ -109,7 +109,11 @@ interface FinalizeRunBase {
 
 export type FinalizeRunInput = FinalizeRunBase &
   (
-    | { outcome: "completed"; blocks: MessageBlock[]; markUnread?: boolean }
+    | {
+        outcome: "completed";
+        blocks: MessageBlock[];
+        markUnread?: boolean;
+      }
     | { outcome: "failed"; error: string }
   );
 
