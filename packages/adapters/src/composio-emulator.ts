@@ -196,8 +196,7 @@ function seedMailbox(): Mailbox {
         sender: "teammate@example.test",
         to: "me@example.test",
         snippet: "Here are the notes from Monday's planning session.",
-        messageText:
-          "Here are the notes from Monday's planning session.\n\nAction items attached.",
+        messageText: "Here are the notes from Monday's planning session.\n\nAction items attached.",
         labelIds: ["INBOX"],
         internalDate: String(base + 86_400_000),
       },

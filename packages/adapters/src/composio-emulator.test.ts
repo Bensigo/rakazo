@@ -159,9 +159,9 @@ describe("ComposioEmulator", () => {
       }),
     );
 
-    const sent = emulator.mailboxFor(context.userId)?.messages.find(
-      (message) => message.subject === "Hello from emulator",
-    );
+    const sent = emulator
+      .mailboxFor(context.userId)
+      ?.messages.find((message) => message.subject === "Hello from emulator");
     expect(sent).toMatchObject({
       to: "friend@example.test",
       messageText: "Deterministic send body",
