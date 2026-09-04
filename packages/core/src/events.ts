@@ -199,6 +199,7 @@ export function reduceLiveMessageBlocks(
     ...(tail?.kind === "progress" ? (tail.pendingToolNames ?? []) : []),
     ...(update.type === "tool" ? [update.name] : []),
   ];
+  const activity = update.type === "progress" && update.payload?.activity === true;
 
   if (pendingToolNames.length > 0 && endsSentence(tailText)) {
     let next = appendTextSegment(segments, tailText);
@@ -211,6 +212,7 @@ export function reduceLiveMessageBlocks(
     {
       kind: "progress",
       text: tailText,
+      ...(activity ? { activity: true as const } : {}),
       ...(pendingToolNames.length > 0 ? { pendingToolNames } : {}),
     },
   ];

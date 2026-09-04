@@ -58,13 +58,23 @@ describe("mobile message presentation", () => {
   it("attributes group tool usage to the bot that emitted the message", () => {
     const progress: { botId: string; blocks: MessageBlock[] } = {
       botId: "research",
-      blocks: [{ kind: "progress", text: "Using browser", pendingToolNames: ["browser"] }],
+      blocks: [{ kind: "progress", text: "Using browser", activity: true }],
     };
     expect(toolOwnerId(progress, true)).toBe("research");
     expect(toolOwnerId({ botId: "research", blocks: [{ kind: "text", text: "done" }] }, true)).toBe(
       undefined,
     );
     expect(toolOwnerId(progress, false)).toBe(undefined);
+  });
+
+  it("separates marked activity without treating Using narration as a tool", () => {
+    const activity = { kind: "progress", text: "Using browser", activity: true } as const;
+    const narration = { kind: "progress", text: "Using browser is optional." } as const;
+
+    expect(messagePresentationSegments([activity, narration])).toEqual([
+      { kind: "tool", block: { ...activity, pendingToolNames: [] } },
+      { kind: "content", blocks: [narration] },
+    ]);
   });
 
   it("keeps tool usage in its original place between response content", () => {

@@ -5,10 +5,8 @@ import { isToolActivityBlock } from "./tool-activity.js";
 describe("tool activity", () => {
   it.each<MessageBlock>([
     { kind: "steps", steps: [{ label: "Browser", count: 1 }] },
-    { kind: "progress", text: "Using browser" },
-    { kind: "progress", text: "Using shell" },
-    { kind: "progress", text: "Using destination_write" },
-    { kind: "progress", text: "Using brex: list_expenses" },
+    { kind: "progress", text: "Using browser", activity: true },
+    { kind: "progress", text: "Using brex: list_expenses", activity: true },
     { kind: "progress", text: "Let me check", pendingToolNames: ["browser"] },
   ])("recognizes $kind activity", (block) => {
     expect(isToolActivityBlock(block)).toBe(true);
@@ -16,6 +14,7 @@ describe("tool activity", () => {
 
   it("keeps assistant narration separate from tool activity", () => {
     expect(isToolActivityBlock({ kind: "progress", text: "I’m checking that now." })).toBe(false);
+    expect(isToolActivityBlock({ kind: "progress", text: "Using browser" })).toBe(false);
     expect(
       isToolActivityBlock({ kind: "progress", text: "Using the search results, I found it." }),
     ).toBe(false);

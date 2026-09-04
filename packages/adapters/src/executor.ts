@@ -3013,7 +3013,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 botId: bot.id,
                 type: "thread.progress",
                 runId,
-                payload: { text: redactSecrets(event.text, runSecrets) },
+                payload: {
+                  text: redactSecrets(event.text, runSecrets),
+                  ...(event.activity ? { activity: true } : {}),
+                },
               });
             } else if (event.type === "ask") {
               if (!(await renewRunLease(deps, runId, workerId, fence))) return;
