@@ -442,7 +442,10 @@ export function createGroupRepos(prisma: PrismaClient) {
             where: { id: { in: activeRuns.map((run) => run.taskId) } },
             data: { status: "cancelled" },
           });
-          await tx.computerExecutionLease.deleteMany({ where: { runId: { in: runIds } } });
+          await tx.computerExecutionLease.updateMany({
+            where: { runId: { in: runIds } },
+            data: { expiresAt: new Date(0) },
+          });
           await tx.computer.updateMany({
             where: { executionRunId: { in: runIds } },
             data: {

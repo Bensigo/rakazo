@@ -23,6 +23,7 @@ import { isUnrecoverableSandboxError } from "./e2b-sandbox.js";
 import { resolveAgentHomePath } from "./home.js";
 
 const EXECUTION_LEASE_MS = 5 * 60_000;
+const RELEASED_EXECUTION_LEASE_AT = new Date(0);
 const BOOT_WAIT_ATTEMPTS = 40;
 const BOOT_WAIT_MS = 250;
 
@@ -369,6 +370,7 @@ export async function renewComputerExecutionLease(
       botId: lease.botId,
       runId: lease.runId,
       fence: lease.fence,
+      expiresAt: { gt: RELEASED_EXECUTION_LEASE_AT },
     },
     data: { expiresAt: new Date(Date.now() + EXECUTION_LEASE_MS) },
   });
@@ -386,6 +388,7 @@ export async function holdComputerExecutionLeaseForTakeover(
       botId: lease.botId,
       runId: lease.runId,
       fence: lease.fence,
+      expiresAt: { gt: RELEASED_EXECUTION_LEASE_AT },
     },
     data: { expiresAt: new Date(Date.now() + 24 * 60 * 60_000) },
   });
@@ -407,7 +410,7 @@ export async function releaseComputerExecutionLease(
       runId: lease.runId,
       fence: lease.fence,
     },
-    data: { expiresAt: new Date(0) },
+    data: { expiresAt: RELEASED_EXECUTION_LEASE_AT },
   });
 }
 

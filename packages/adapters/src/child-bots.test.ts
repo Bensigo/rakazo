@@ -255,6 +255,7 @@ describe("destroyBot", () => {
     const cancelAttempts = vi.fn().mockResolvedValue({ count: 1 });
     const cancelTasks = vi.fn().mockResolvedValue({ count: 1 });
     const deleteExecutionLeases = vi.fn().mockResolvedValue({ count: 1 });
+    const expireExecutionLeases = vi.fn().mockResolvedValue({ count: 1 });
     const clearExecution = vi.fn().mockResolvedValue({ count: 1 });
     const queryRaw = vi.fn().mockResolvedValue([{ id: "group-1" }, { id: "group-2" }]);
     const findRuns = vi.fn().mockResolvedValue([
@@ -312,7 +313,10 @@ describe("destroyBot", () => {
           findMany: vi.fn().mockResolvedValue([]),
           deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
         },
-        computerExecutionLease: { deleteMany: deleteExecutionLeases },
+        computerExecutionLease: {
+          deleteMany: deleteExecutionLeases,
+          updateMany: expireExecutionLeases,
+        },
         computer: { updateMany: clearExecution },
         $executeRaw: vi.fn(),
         botDeletion: { create: vi.fn() },
@@ -374,9 +378,11 @@ describe("destroyBot", () => {
       where: { id: { in: ["group-task"] } },
       data: { status: "cancelled" },
     });
-    expect(deleteExecutionLeases).toHaveBeenCalledWith({
+    expect(expireExecutionLeases).toHaveBeenCalledWith({
       where: { runId: { in: ["group-run"] } },
+      data: { expiresAt: new Date(0) },
     });
+    expect(deleteExecutionLeases).toHaveBeenCalledWith({ where: { botId: "bot-1" } });
     expect(clearExecution).toHaveBeenCalledWith({
       where: { executionRunId: { in: ["group-run"] } },
       data: {
