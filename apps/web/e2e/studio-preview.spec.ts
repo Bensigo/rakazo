@@ -71,9 +71,11 @@ test.describe("Studio UI fixture", () => {
   test("disables apply while provisioning is pending", async ({ page }) => {
     await page.goto("/e2e/fixtures/studio-preview.html?slow-role");
 
-    await page.getByRole("combobox", { name: "Your job role" }).selectOption("fixture-job-role");
+    const jobRole = page.getByRole("combobox", { name: "Your job role" });
+    await jobRole.selectOption("fixture-job-role");
     const apply = page.getByRole("button", { name: "Apply and provision specialists" });
     await apply.click();
+    await expect(jobRole).toBeDisabled();
     await expect(page.getByRole("button", { name: "Provisioning…" })).toBeDisabled();
     await expect(page.getByText("1 specialists provisioned for you")).toBeVisible();
   });
