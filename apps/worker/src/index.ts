@@ -20,9 +20,7 @@ import {
   GraphileJobWorkerHost,
   InMemoryJobQueue,
   InstalledConnectorProvider,
-  isComposioEnabled,
   isMessagingSurfaceEnabled,
-  isPipedreamEnabled,
   LocalAgentHomeStore,
   LocalArtifactStore,
   loadStudioKnowledgeBridge,
@@ -31,9 +29,8 @@ import {
   messagingEnvFromProcess,
   messagingPlatformsFromEnv,
   PiAgentRuntime,
-  PipedreamConnector,
+  ManagedProviderMcpClient,
   PostgresRealtimeFanout,
-  pipedreamConfigFromEnv,
   resolveDeploymentModel,
   resolveSandboxProvider,
   ScriptedAgentRuntime,
@@ -90,16 +87,10 @@ async function main() {
     },
     mcpOAuth,
   );
-  const pipedreamConfig = pipedreamConfigFromEnv({
-    pipedreamClientId: process.env.PIPEDREAM_CLIENT_ID,
-    pipedreamClientSecret: process.env.PIPEDREAM_CLIENT_SECRET,
-    pipedreamProjectId: process.env.PIPEDREAM_PROJECT_ID,
-    pipedreamEnvironment: process.env.PIPEDREAM_ENVIRONMENT,
-    encryptionKey: resolveEncryptionKey(process.env),
-  });
-  const pipedream = isPipedreamEnabled(pipedreamConfig)
-    ? new PipedreamConnector(pipedreamConfig)
+  const managedProviderMcp = process.env.MANAGED_PROVIDER_MCP_URL && process.env.MANAGED_PROVIDER_MCP_TOKEN
+    ? (providerId: "composio" | "pipedream") => new ManagedProviderMcpClient({ providerId, endpoint: process.env.MANAGED_PROVIDER_MCP_URL!, token: process.env.MANAGED_PROVIDER_MCP_TOKEN!, allowInternalHttp: process.env.MANAGED_PROVIDER_MCP_ALLOW_INTERNAL_HTTP === "true" })
     : undefined;
+  const pipedream = managedProviderMcp?.("pipedream");
   const messagingPlatforms = messagingPlatformsFromEnv(messagingEnvFromProcess(process.env));
   const messaging = isMessagingSurfaceEnabled(messagingPlatforms, {
     deploymentModelKey,
@@ -107,7 +98,7 @@ async function main() {
   })
     ? new ChatSdkMessagingSurface(messagingPlatforms)
     : undefined;
-  const stack = createConnectorStack(isComposioEnabled(process.env.COMPOSIO_API_KEY), undefined, [
+  const stack = createConnectorStack(Boolean(managedProviderMcp), managedProviderMcp?.("composio"), [
     new InstalledConnectorProvider(prisma, secrets),
     ...(pipedream ? [pipedream] : []),
     mcp,
@@ -135,7 +126,7 @@ async function main() {
     connector: stack.connector,
     connectors: stack.connector,
     listConnectedPluginSlugs: stack.composio?.listConnectedSlugs.bind(stack.composio),
-    secrets: [deploymentModelKey ?? "", process.env.COMPOSIO_API_KEY ?? ""].filter(Boolean),
+    secrets: [deploymentModelKey ?? ""].filter(Boolean),
     secretStore: secrets,
     deploymentModelKey,
     dataDir,
