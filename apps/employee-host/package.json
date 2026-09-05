@@ -3,7 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "scripts": { "start": "tsx src/index.ts" },
-  "dependencies": { "@rakazo/adapters": "workspace:*" },
-  "devDependencies": { "tsx": "^4.19.0" }
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "check": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@rakazo/adapters": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.9.2"
+  }
 }
