@@ -85,7 +85,9 @@ export type EmployeeHostReceipt = EmployeeHostAcceptedReceipt | EmployeeHostTerm
 
 export class LocalEmployeeHostReceiptSpool {
   constructor(private readonly root: string) {}
-  private file(operationId: string) { return path.join(this.root, `${operationId}.json`); }
+  private file(operationId: string) {
+    return path.join(this.root, `${createHash("sha256").update(operationId).digest("hex")}.json`);
+  }
   async claim(operation: EmployeeHostOperation) {
     await mkdir(this.root, { recursive: true, mode: 0o700 });
     const handle = await open(this.file(operation.operationId), "wx", 0o600).catch(() => null);
@@ -112,7 +114,12 @@ export class LocalEmployeeHostReceiptSpool {
     const receipts: EmployeeHostTerminalReceipt[] = [];
     for (const name of await readdir(this.root)) {
       if (!name.endsWith(".json")) continue;
-      const value = JSON.parse(await readFile(path.join(this.root, name), "utf8")) as { receipt?: EmployeeHostTerminalReceipt; operation?: EmployeeHostOperation; state?: string };
+      let value: { receipt?: EmployeeHostTerminalReceipt; operation?: EmployeeHostOperation; state?: string };
+      try {
+        value = JSON.parse(await readFile(path.join(this.root, name), "utf8")) as typeof value;
+      } catch (error) {
+        throw new Error(`Employee host receipt spool entry ${name} is invalid; preserve it for inspection and repair or remove it before restarting.`, { cause: error });
+      }
       if (value.receipt) receipts.push(value.receipt);
       else if (value.operation) receipts.push({ operationId: value.operation.operationId, hostId: value.operation.hostId, lease: { computerId: value.operation.computerId, runId: value.operation.lease.runId, fence: value.operation.lease.fence }, acceptedAt: Date.now(), completedAt: Date.now(), status: "unknown", result: { stdout: "", stderr: "Execution claim existed before companion restart; result is unknown and was not replayed.", code: 125 } });
     }

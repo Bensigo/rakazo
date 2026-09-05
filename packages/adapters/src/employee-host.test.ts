@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { mkdtemp } from "node:fs/promises";
+import { access, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { PrismaClient } from "@rakazo/db";
-import { EmployeeHostRegistry, employeeHostWorkspaceCwd, LocalEmployeeHostCompanion, LocalEmployeeHostReceiptSpool, PrismaEmployeeHostTransport } from "./employee-host.js";
+import { EmployeeHostRegistry, employeeHostWorkspaceCwd, LocalEmployeeHostCompanion, LocalEmployeeHostReceiptSpool, PrismaEmployeeHostTransport, runEmployeeHostCompanion, type EmployeeHostOperation } from "./employee-host.js";
 
 const capabilities = {
   platform: "macos" as const,
@@ -80,5 +80,77 @@ describe("employee host protocol", () => {
     expect(pending[0]?.status).toBe("unknown");
     await spool.terminal({ ...pending[0]!, status: "completed", result: { stdout: "ok", stderr: "", code: 0 } });
     expect((await spool.pending())[0]?.status).toBe("completed");
+  });
+
+  it("keeps operation identifiers inside the spool and preserves malformed evidence", async () => {
+    const root = await mkdtemp(join(tmpdir(), "employee-host-spool-boundary-test-"));
+    const spoolRoot = join(root, "receipts");
+    const spool = new LocalEmployeeHostReceiptSpool(spoolRoot);
+    const operation = { operationId: "../../outside", hostId: "host-1", spaceId: "space-1", botId: "bot-1", computerId: "computer-1", lease: { hostId: "host-1", spaceId: "space-1", botId: "bot-1", computerId: "computer-1", runId: "run-1", fence: 1, expiresAt: Date.now() + 10_000 }, kind: "exec" as const, request: { argv: ["true"] } };
+    expect(await spool.claim(operation)).toBe("claimed");
+    expect(await readdir(spoolRoot)).toHaveLength(1);
+    await expect(access(join(root, "outside.json"))).rejects.toThrow();
+
+    const malformed = join(spoolRoot, "malformed.json");
+    await writeFile(malformed, "{", { mode: 0o600 });
+    await expect(spool.pending()).rejects.toThrow(/preserve it for inspection and repair or remove it/);
+    await expect(readFile(malformed, "utf8")).resolves.toBe("{");
+  });
+
+  it("reconciles a lost terminal receipt response after restart without rerunning", async () => {
+    const root = await mkdtemp(join(tmpdir(), "employee-host-restart-test-"));
+    const spoolRoot = join(root, "receipts");
+    const spool = new LocalEmployeeHostReceiptSpool(spoolRoot);
+    const markerPath = join(root, "marker.txt");
+    const operation: EmployeeHostOperation = {
+      operationId: "op-restart",
+      hostId: "host-1",
+      spaceId: "space-1",
+      botId: "bot-1",
+      computerId: "computer-1",
+      lease: { hostId: "host-1", spaceId: "space-1", botId: "bot-1", computerId: "computer-1", runId: "run-1", fence: 1, expiresAt: Date.now() + 10_000 },
+      kind: "exec",
+      request: { argv: [process.execPath, "-e", "require('node:fs').appendFileSync('marker.txt', 'once\\n')"], cwd: "." },
+    };
+    const first = new AbortController();
+    let polled = false;
+    let receiptCalls = 0;
+    await expect(runEmployeeHostCompanion({
+      hostId: operation.hostId,
+      enrollmentToken: "token",
+      companion: new LocalEmployeeHostCompanion(root),
+      client: {
+        heartbeat: async () => undefined,
+        poll: async () => polled ? undefined : (polled = true, operation),
+        receipt: async () => {
+          receiptCalls += 1;
+          first.abort(new Error("response lost after server commit"));
+          throw new TypeError("connection lost");
+        },
+      },
+      signal: first.signal,
+      heartbeatMs: 5,
+      spool,
+    })).rejects.toThrow("response lost after server commit");
+    expect(await readFile(markerPath, "utf8")).toBe("once\n");
+    expect(await spool.pending()).toEqual([expect.objectContaining({ operationId: operation.operationId, status: "completed" })]);
+
+    const second = new AbortController();
+    await runEmployeeHostCompanion({
+      hostId: operation.hostId,
+      enrollmentToken: "token",
+      companion: new LocalEmployeeHostCompanion(root),
+      client: {
+        heartbeat: async () => undefined,
+        poll: async () => { second.abort(); return undefined; },
+        receipt: async () => { receiptCalls += 1; },
+      },
+      signal: second.signal,
+      heartbeatMs: 5,
+      spool: new LocalEmployeeHostReceiptSpool(spoolRoot),
+    });
+    expect(receiptCalls).toBe(2);
+    expect(await readFile(markerPath, "utf8")).toBe("once\n");
+    expect(await readdir(spoolRoot)).toEqual([]);
   });
 });
