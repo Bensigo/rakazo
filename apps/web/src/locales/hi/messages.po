@@ -1179,9 +1179,9 @@ msgstr ""
 msgid "Create your first bot"
 msgstr "अपना पहला बॉट बनाएं"
 
-#: src/pages/Auth.tsx:31
-msgid "Create your Rakazo"
-msgstr "अपना Rakazo बनाएं"
+#: src/pages/Auth.tsx:35
+msgid "Create your Sunrise Studio account"
+msgstr "Create your Sunrise Studio account"
 
 #: src/components/AskCard.tsx:21
 msgid "Created"
@@ -2697,9 +2697,9 @@ msgstr "सेटिंग्स दिखाएं"
 msgid "Sign in"
 msgstr "साइन इन करें"
 
-#: src/pages/Auth.tsx:29
-msgid "Sign in to Rakazo"
-msgstr "Rakazo में साइन इन करें"
+#: src/pages/Auth.tsx:33
+msgid "Sign in to Sunrise Studio"
+msgstr "Sign in to Sunrise Studio"
 
 #: src/pages/Auth.tsx:199
 #: src/pages/Welcome.tsx:32
