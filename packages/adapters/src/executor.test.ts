@@ -350,6 +350,7 @@ describe("createRunExecutor", () => {
 
   it("deactivates one-shot routines after wake without scheduling another wakeup", async () => {
     const scheduledAt = new Date(Date.now() - 1_000);
+    const studioContext = { version: 1, organizationId: "org-1", sources: [] };
     const enqueue = vi.fn(async () => undefined);
     const cancel = vi.fn(async () => undefined);
     const append = vi.fn(async () => undefined);
@@ -369,6 +370,7 @@ describe("createRunExecutor", () => {
           active: true,
           nextRunAt: scheduledAt,
           threadId: "group-thread-1",
+          studioContext,
         })),
       },
       bot: {
@@ -408,10 +410,20 @@ describe("createRunExecutor", () => {
     expect(enqueue).toHaveBeenCalledTimes(1);
     expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ name: "run.continue" }));
     expect(taskCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ threadId: "group-thread-1" }) }),
+      expect.objectContaining({
+        data: expect.objectContaining({
+          threadId: "group-thread-1",
+          studioContext,
+        }),
+      }),
     );
     expect(runCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ threadId: "group-thread-1" }) }),
+      expect.objectContaining({
+        data: expect.objectContaining({
+          threadId: "group-thread-1",
+          studioContext,
+        }),
+      }),
     );
     expect(append).toHaveBeenCalledWith(
       expect.objectContaining({

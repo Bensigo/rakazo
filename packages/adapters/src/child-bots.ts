@@ -126,7 +126,7 @@ export async function spawnBot(
   };
 }
 
-async function ensureSpawnRun(
+export async function ensureSpawnRun(
   prisma: PrismaClient,
   input: {
     spaceId: string;
