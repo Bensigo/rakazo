@@ -9,9 +9,16 @@ const hash = (value: string) => createHash("sha256").update(value).digest("hex")
 const receiptSchema = z.object({
   operationId: z.string().min(1).max(256),
   hostId: z.string().min(1).max(256),
+  acceptedAt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  completedAt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  status: z.enum(["completed", "failed", "unknown"]),
   lease: z.object({ computerId: z.string().min(1).max(256), runId: z.string().min(1).max(256), fence: z.number().int().nonnegative() }),
   result: z.object({ stdout: z.string().max(1_000_000), stderr: z.string().max(1_000_000), code: z.number().int().min(-1_000_000).max(1_000_000) }),
-}).strict();
+}).strict().superRefine((receipt, context) => {
+  const expected = receipt.result.code === 0 ? "completed" : receipt.result.code === 125 ? "unknown" : "failed";
+  if (receipt.status !== expected) context.addIssue({ code: "custom", path: ["status"], message: "Receipt status does not match its process result" });
+  if (receipt.completedAt < receipt.acceptedAt) context.addIssue({ code: "custom", path: ["completedAt"], message: "Receipt completedAt precedes acceptedAt" });
+});
 
 export interface EmployeeHostActor {
   userId: string;
