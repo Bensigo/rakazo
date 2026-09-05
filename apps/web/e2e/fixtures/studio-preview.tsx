@@ -44,6 +44,7 @@ const routes: Record<string, unknown> = {
   "/rpc/bots/list": bots,
   "/rpc/studio/jobRoles": jobRoles,
   "/rpc/studio/jobRoleSelection": null,
+  "/rpc/studio/registeredRepositories": [],
   "/rpc/studio/assignments": [],
   "/rpc/studio/foundation": {
     currentRevision: {
@@ -76,7 +77,9 @@ window.fetch = async (input, init) => {
         { rolePresetId: "fixture-engineer-role", botId: "fixture-provisioned-engineer" },
       ],
     };
-    bots = [...bots, { id: "fixture-provisioned-engineer", name: "Engineer (yours)" }];
+    if (!bots.some((bot) => bot.id === "fixture-provisioned-engineer")) {
+      bots = [...bots, { id: "fixture-provisioned-engineer", name: "Engineer (yours)" }];
+    }
     routes["/rpc/bots/list"] = bots;
     routes["/rpc/studio/jobRoleSelection"] = selectedJobRole;
     return Response.json({ json: selectedJobRole });
