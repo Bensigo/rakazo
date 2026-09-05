@@ -252,18 +252,24 @@ export function StudioPage() {
     const pageRequest = ++wikiPageRequest.current;
     const projectId = sourceProjectId;
     const bindingId = sourceBindingId;
-    const page = await rpc.studio.projectWikiPage({
-      projectId,
-      bindingId,
-      pageId,
-    });
-    if (
-      request === sourceRequest.current &&
-      pageRequest === wikiPageRequest.current &&
-      projectId === sourceProjectId &&
-      bindingId === sourceBindingId
-    )
-      setWikiPage(page);
+    try {
+      const page = await rpc.studio.projectWikiPage({ projectId, bindingId, pageId });
+      if (
+        request === sourceRequest.current &&
+        pageRequest === wikiPageRequest.current &&
+        projectId === sourceProjectId &&
+        bindingId === sourceBindingId
+      )
+        setWikiPage(page);
+    } catch (e) {
+      if (
+        request === sourceRequest.current &&
+        pageRequest === wikiPageRequest.current &&
+        projectId === sourceProjectId &&
+        bindingId === sourceBindingId
+      )
+        setError(e instanceof Error ? e.message : "Could not read wiki page");
+    }
   }
   async function createAssignment() {
     const a = await rpc.studio.createAssignment({
@@ -523,6 +529,7 @@ export function StudioPage() {
               <select
                 aria-label="Your job role"
                 className="rounded-xl border border-border bg-background px-3 py-2 text-sm"
+                disabled={jobRoleApplyPending}
                 value={jobRoleSelectionId}
                 onChange={(e) => setJobRoleSelectionId(e.target.value)}
               >
