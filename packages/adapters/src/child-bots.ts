@@ -148,6 +148,16 @@ async function ensureSpawnRun(
   const existing = await prisma.run.findUnique({ where });
   if (existing) return existing;
 
+  const source = await prisma.run.findUnique({
+    where: { id: input.sourceRunId },
+    select: {
+      studioContext: true,
+      task: { select: { projectId: true, studioContext: true } },
+    },
+  });
+  if (!source) throw new Error("The source run for this delegation is unavailable");
+  const studioContext = source.studioContext ?? source.task.studioContext;
+
   try {
     return await prisma.$transaction(async (tx) => {
       await createThreadMessageInTransaction(tx, {
@@ -164,6 +174,8 @@ async function ensureSpawnRun(
           userId: input.userId,
           prompt: input.prompt,
           status: "queued",
+          projectId: source.task.projectId,
+          studioContext: studioContext ?? undefined,
         },
       });
       return tx.run.create({
@@ -176,6 +188,7 @@ async function ensureSpawnRun(
           status: "queued",
           trigger: "spawn",
           clientNonce,
+          studioContext: studioContext ?? undefined,
         },
       });
     });

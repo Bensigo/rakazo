@@ -68,6 +68,10 @@ export interface AppEnv {
   updaterToken: string | undefined;
   /** Current application image tag; used for compose manual-upgrade command selection. */
   imageTag: string | undefined;
+  /** Server-only module that exports createStudioKnowledgeBridge. */
+  sunriseKnowledgeModule: string | undefined;
+  /** Canonical Sunrise knowledge database, separate from the Rakazo application database. */
+  sunriseKnowledgeDatabaseUrl: string | undefined;
 }
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
@@ -138,6 +142,8 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     updaterUrl,
     updaterToken,
     imageTag: optional(source.RAKAZO_IMAGE_TAG),
+    sunriseKnowledgeModule: optional(source.SUNRISE_KNOWLEDGE_MODULE),
+    sunriseKnowledgeDatabaseUrl: optional(source.SUNRISE_KNOWLEDGE_DATABASE_URL),
   };
 }
 

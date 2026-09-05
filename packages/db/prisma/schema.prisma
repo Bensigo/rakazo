@@ -519,6 +519,7 @@ model Task {
   status     String
   projectId  String?
   project    StudioProject?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  studioContext Json?
   createdAt  DateTime            @default(now())
   updatedAt  DateTime            @updatedAt
   runs       Run[]
@@ -659,6 +660,7 @@ model Run {
   leaseFence           Int               @default(0)
   leaseExpiresAt       DateTime?
   checkpoint           String?
+  studioContext        Json?
   clientNonce          String?
   sourceMessageId      String?
   sourceMessage        Message?          @relation("RunSourceMessage", fields: [sourceMessageId], references: [id], onDelete: SetNull)
@@ -759,6 +761,7 @@ model Routine {
   webhookEnabled Boolean   @default(false)
   lastRunAt      DateTime?
   nextRunAt      DateTime?
+  studioContext  Json?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   runs           Run[]

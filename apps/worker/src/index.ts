@@ -25,6 +25,7 @@ import {
   isPipedreamEnabled,
   LocalAgentHomeStore,
   LocalArtifactStore,
+  loadStudioKnowledgeBridge,
   McpConnector,
   McpOAuthBroker,
   messagingEnvFromProcess,
@@ -116,6 +117,10 @@ async function main() {
   const memoryProviders = new SpaceMemoryProviderResolver(prisma, secrets);
   const home = new LocalAgentHomeStore(dataDir);
   const artifacts = new LocalArtifactStore(dataDir);
+  const studioKnowledge = await loadStudioKnowledgeBridge({
+    modulePath: process.env.SUNRISE_KNOWLEDGE_MODULE,
+    databaseUrl: process.env.SUNRISE_KNOWLEDGE_DATABASE_URL,
+  });
   const inMemoryJobs = process.env.WAKEUP_DRIVER === "memory" ? new InMemoryJobQueue() : undefined;
   const jobs: JobPublisher = inMemoryJobs ?? new GraphileJobPublisher(databaseUrl);
   const jobHost: JobWorkerHost = inMemoryJobs ?? new GraphileJobWorkerHost(databaseUrl);
@@ -139,6 +144,7 @@ async function main() {
     events,
     messaging: messaging ? createMessagingContextLoader(prisma) : undefined,
     web: createWebProvider(),
+    studioKnowledge,
   });
 
   const jobHandlers = createBackgroundJobHandlers({
@@ -175,6 +181,7 @@ async function main() {
       await realtime.close();
       await connector.stop();
       await mcp.close();
+      await studioKnowledge?.close();
       await prisma.$disconnect().catch(() => undefined);
       await pool.end().catch(() => undefined);
     } finally {

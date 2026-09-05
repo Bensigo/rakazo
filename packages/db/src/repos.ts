@@ -327,6 +327,7 @@ export function createRepos(prisma: PrismaClient) {
         modelProvider?: string | null;
         modelId?: string | null;
         thinkingLevel?: string | null;
+        rolePresetId?: string | null;
         initialMessage?: {
           role: "user" | "bot" | "system";
           blocks: MessageBlock[];
@@ -344,6 +345,12 @@ export function createRepos(prisma: PrismaClient) {
       let modelProvider = input.modelProvider ?? null;
       let modelId = input.modelId ?? null;
       let thinkingLevel = input.thinkingLevel ?? null;
+      const membership = await prisma.spaceMember.findUnique({
+        where: { spaceId_userId: { spaceId: actor.spaceId, userId: actor.userId } },
+        select: { organizationId: true },
+      });
+      if (!membership) throw new IsolationError();
+      let rolePresetId = input.rolePresetId ?? null;
       if (input.parentBotId) {
         const parent = await prisma.bot.findFirst({
           where: {
@@ -358,6 +365,21 @@ export function createRepos(prisma: PrismaClient) {
           modelId = parent.modelId ?? null;
         }
         if (thinkingLevel == null) thinkingLevel = parent.thinkingLevel ?? null;
+        if (!rolePresetId) rolePresetId = parent.rolePresetId ?? null;
+      }
+      if (rolePresetId) {
+        const role = await prisma.employeeRolePreset.findFirst({
+          where: { id: rolePresetId, organizationId: membership.organizationId },
+          select: { id: true },
+        });
+        if (!role) throw new IsolationError();
+      } else {
+        const defaultRole = await prisma.employeeRolePreset.findFirst({
+          where: { organizationId: membership.organizationId, isDefault: true },
+          select: { id: true },
+          orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+        });
+        rolePresetId = defaultRole?.id ?? null;
       }
       const settings = await prisma.deploymentSettings.findUnique({ where: { id: "default" } });
       const envKind = process.env.SANDBOX_PROVIDER ?? "docker";
@@ -391,6 +413,7 @@ export function createRepos(prisma: PrismaClient) {
             modelProvider,
             modelId,
             thinkingLevel,
+            rolePresetId,
           },
         });
         const thread = await tx.thread.create({

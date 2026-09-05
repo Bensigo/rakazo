@@ -226,6 +226,7 @@ import {
 } from "./scratchpad-tools.js";
 import { inferScript } from "./scripted-runtime.js";
 import type { EncryptedSecretStore } from "./secrets.js";
+import { resolveStudioRunContext, type StudioKnowledgeBridge } from "./studio-context.js";
 import {
   listAgentSkillRecords,
   skillCreateFromTool,
@@ -433,6 +434,8 @@ export interface ExecutorDeps {
   listConnectedPluginSlugs?: (userId: string) => Promise<string[]>;
   /** Builtin web_search / web_fetch. Defaults to keyless HTTP when omitted. */
   web?: WebProvider;
+  /** Canonical Sunrise knowledge; absent is valid only for work with no configured sources. */
+  studioKnowledge?: StudioKnowledgeBridge;
 }
 
 export async function deferFutureRoutine(
@@ -695,6 +698,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             userId: routine.userId,
             prompt: routinePrompt,
             status: "queued",
+            studioContext: routine.studioContext ?? undefined,
           },
         });
         return tx.run.create({
@@ -707,6 +711,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             status: "queued",
             trigger: "routine",
             routineId: routine.id,
+            studioContext: routine.studioContext ?? undefined,
           },
         });
       });
@@ -915,6 +920,17 @@ export function createRunExecutor(deps: ExecutorDeps) {
           }),
         ]);
         const hasModelOverride = Boolean(bot.modelProvider && bot.modelId);
+        const studioContext =
+          "studioFoundation" in deps.prisma
+            ? await resolveStudioRunContext(deps.prisma, deps.studioKnowledge, {
+                runId,
+                taskId: run.taskId,
+                botId: bot.id,
+                spaceId: run.spaceId,
+                userId: run.userId,
+                prompt: task.prompt,
+              })
+            : null;
         const overrideCredential =
           hasModelOverride && bot.modelProvider
             ? await findModelCredential(deps.prisma, run, bot.modelProvider)
@@ -2249,6 +2265,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 delayMinutes: args.delayMinutes,
                 delaySeconds: args.delaySeconds,
               },
+              studioContext: studioContext?.manifest as unknown as Prisma.InputJsonValue,
             });
             return finish(created);
           }
@@ -2938,6 +2955,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               sourceMessageId: run.sourceMessageId,
               prompt,
               instructions: [
+                studioContext?.instructions,
                 bot.instructions || `${bot.name}: ${bot.title}\n${bot.description}`,
                 groupContext,
                 messagingContext,

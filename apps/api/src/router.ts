@@ -724,6 +724,7 @@ export function createRouter(deps: RouterDeps) {
           modelProvider: source.modelProvider,
           modelId: source.modelId,
           thinkingLevel: source.thinkingLevel,
+          rolePresetId: source.rolePresetId,
         });
         const assignments = await deps.prisma.botMcpServer.findMany({
           where: {

@@ -37,6 +37,7 @@ import {
   isPipedreamEnabled,
   LocalAgentHomeStore,
   LocalArtifactStore,
+  loadStudioKnowledgeBridge,
   McpConnector,
   McpOAuthBroker,
   messagingPlatformsFromEnv,
@@ -50,6 +51,7 @@ import {
   ScriptedAgentRuntime,
   SmtpEmailProvider,
   SpaceMemoryProviderResolver,
+  type StudioKnowledgeBridge,
 } from "@rakazo/adapters";
 import { blockedAuthPaths, createAuth } from "@rakazo/auth";
 import { signupPolicyFromEnv } from "@rakazo/core";
@@ -103,6 +105,7 @@ export async function createApp(
     email?: TransactionalEmailProvider;
     remoteConnectors?: RemoteConnectorDependencies;
     logger?: Logger;
+    studioKnowledge?: StudioKnowledgeBridge;
   } = {},
 ): Promise<AppHandles> {
   const {
@@ -114,9 +117,16 @@ export async function createApp(
     email: emailOverride,
     remoteConnectors,
     logger: loggerOverride,
+    studioKnowledge: studioKnowledgeOverride,
     ...envOverrides
   } = overrides;
   const env = { ...loadEnv(process.env), ...envOverrides };
+  const studioKnowledge =
+    studioKnowledgeOverride ??
+    (await loadStudioKnowledgeBridge({
+      modulePath: env.sunriseKnowledgeModule,
+      databaseUrl: env.sunriseKnowledgeDatabaseUrl,
+    }));
   const logger = loggerOverride ?? createServiceLogger({ service: SERVICE_NAMES.api });
   installLogger(logger);
   const created = prismaOverride
@@ -296,6 +306,7 @@ export async function createApp(
     events,
     messaging: messaging ? createMessagingContextLoader(prisma) : undefined,
     web: createWebProvider(),
+    studioKnowledge,
   });
 
   const jobHandlers = createBackgroundJobHandlers({
@@ -488,6 +499,7 @@ export async function createApp(
       await realtime.close();
       await connector.stop();
       await mcp.close();
+      await studioKnowledge?.close();
       await prisma.$disconnect().catch(() => undefined);
       await created.pool?.end().catch(() => undefined);
       await logger.flush({ timeoutMs: 2_000 });
