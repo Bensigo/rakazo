@@ -38,7 +38,11 @@ export function createRunSandbox(
     });
   }
   const primary = createSandboxProvider(kind, opts);
-  if (kind !== "docker" || !opts.prisma) return primary;
+  if (!opts.prisma) return primary;
+  const employee = createSandboxProvider("employee-host", {
+    ...opts,
+    employeeHostTransport: new PrismaEmployeeHostTransport(opts.prisma),
+  });
   return new HostAwareSandbox(
     primary,
     new DesktopSandboxProvider({
@@ -46,11 +50,13 @@ export function createRunSandbox(
       hostRoots: [homedir()],
     }),
     async () => {
+      if (kind !== "docker") return false;
       const settings = await opts.prisma!.deploymentSettings.findUnique({
         where: { id: "default" },
       });
       return settings?.computerHost === "this-mac";
     },
+    employee,
   );
 }
 
@@ -59,6 +65,7 @@ export class HostAwareSandbox implements SandboxProvider {
     private readonly isolated: SandboxProvider,
     private readonly host: SandboxProvider,
     private readonly hostEnabled: () => Promise<boolean>,
+    private readonly employee?: SandboxProvider,
   ) {}
 
   describe() {
@@ -66,18 +73,27 @@ export class HostAwareSandbox implements SandboxProvider {
   }
 
   private route(computer: ComputerRef) {
+    if (computer.kind === "employee-host") {
+      if (!this.employee) throw new Error("Employee host transport is not configured");
+      return this.employee;
+    }
     return computer.kind === "desktop" ? this.host : this.isolated;
   }
 
   async provision(
     request: {
       botId: string;
+      computerId?: string;
       homePath: string;
       providerRef?: string;
       providerKind?: ComputerRef["kind"];
     },
     context: AdapterContext,
   ) {
+    if (request.providerKind === "employee-host") {
+      if (!this.employee) throw new Error("Employee host transport is not configured");
+      return this.employee.provision(request, context);
+    }
     const provider = (await this.hostEnabled()) ? this.host : this.isolated;
     const providerKind = provider.describe().id;
     return provider.provision(

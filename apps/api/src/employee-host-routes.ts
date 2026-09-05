@@ -25,6 +25,28 @@ export interface EmployeeHostActor {
   spaceId: string;
 }
 
+export class EmployeeHostEnrollmentConflictError extends Error {}
+
+export async function enrollEmployeeHost(
+  prisma: PrismaClient,
+  actor: EmployeeHostActor,
+  input: { hostId: string; name: string; platform: string; workspaceRoot: string; capabilities?: unknown },
+) {
+  const capabilities = (input.capabilities && typeof input.capabilities === "object" ? input.capabilities : {}) as Prisma.InputJsonValue;
+  const token = randomUUID();
+  const computerId = randomUUID();
+  const now = new Date();
+  try { await prisma.$transaction(async (tx) => {
+    await tx.computer.create({ data: { id: computerId, spaceId: actor.spaceId, userId: actor.userId, scope: "dedicated", scopeKey: `employee-host:${input.hostId}`, homeKey: `employee-host:${input.hostId}`, kind: "employee-host", providerRef: input.hostId, state: "running" } });
+    await tx.employeeHost.create({ data: { hostId: input.hostId, spaceId: actor.spaceId, ownerUserId: actor.userId, computerId, name: input.name, platform: input.platform, capabilities, workspaceRoot: input.workspaceRoot, tokenHash: hash(token), lastSeenAt: now, expiresAt: new Date(now.getTime() + TTL_MS) } });
+  }); }
+  catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "P2002") throw new EmployeeHostEnrollmentConflictError("Host already enrolled");
+    throw error;
+  }
+  return { hostId: input.hostId, enrollmentToken: token };
+}
+
 export function mountEmployeeHostRoutes(
   app: Hono,
   deps: { prisma: PrismaClient; actor: (request: Request) => Promise<EmployeeHostActor | null> },
@@ -39,27 +61,25 @@ export function mountEmployeeHostRoutes(
     if (!input?.hostId || !input.name || !input.platform || !input.workspaceRoot) return c.json({ error: "Invalid enrollment" }, 400);
     if ([input.hostId, input.name, input.platform, input.workspaceRoot].some((value) => value.length > 512)) return c.json({ error: "Invalid enrollment" }, 400);
     if (!/^[a-z0-9][a-z0-9._:-]{0,127}$/iu.test(input.hostId)) return c.json({ error: "Invalid enrollment" }, 400);
-    const existing = await deps.prisma.employeeHost.findUnique({ where: { hostId: input.hostId } });
-    if (existing) return c.json({ error: "Host already enrolled" }, 409);
-    const capabilities = (input.capabilities && typeof input.capabilities === "object" ? input.capabilities : {}) as Prisma.InputJsonValue;
-    const token = randomUUID();
-    const now = new Date();
-    try { await deps.prisma.employeeHost.create({ data: { hostId: input.hostId, spaceId: actor.spaceId, ownerUserId: actor.userId, name: input.name, platform: input.platform, capabilities, workspaceRoot: input.workspaceRoot, tokenHash: hash(token), lastSeenAt: now, expiresAt: new Date(now.getTime() + TTL_MS) } }); }
-    catch { return c.json({ error: "Host already enrolled" }, 409); }
-    return c.json({ hostId: input.hostId, enrollmentToken: token });
+    const { hostId, name, platform, workspaceRoot } = input;
+    try { return c.json(await enrollEmployeeHost(deps.prisma, actor, { hostId, name, platform, workspaceRoot, capabilities: input.capabilities })); }
+    catch (error) {
+      if (error instanceof EmployeeHostEnrollmentConflictError) return c.json({ error: error.message }, 409);
+      throw error;
+    }
   });
 
-  async function host(c: Context) {
+  async function host(c: Context, allowExpired = false) {
     const hostId = c.req.param("hostId");
     const authorization = c.req.header("authorization") ?? "";
     const token = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
     const record = await deps.prisma.employeeHost.findUnique({ where: { hostId } });
-    if (!record || !token || record.tokenHash !== hash(token) || record.expiresAt <= new Date()) return null;
+    if (!record || !token || record.tokenHash !== hash(token) || (!allowExpired && record.expiresAt <= new Date())) return null;
     return { record, token };
   }
 
   app.post("/employee-hosts/:hostId/heartbeat", async (c) => {
-    const authenticated = await host(c);
+    const authenticated = await host(c, true);
     if (!authenticated) return c.json({ error: "Unauthorized" }, 401);
     const input = (await c.req.json().catch(() => null)) as { capabilities?: unknown } | null;
     const now = new Date();
@@ -71,7 +91,7 @@ export function mountEmployeeHostRoutes(
   app.post("/employee-hosts/:hostId/poll", async (c) => {
     const authenticated = await host(c);
     if (!authenticated) return c.json({ error: "Unauthorized" }, 401);
-    const candidate = await deps.prisma.employeeHostOperation.findFirst({ where: { hostId: c.req.param("hostId"), status: "accepted", spaceId: authenticated.record.spaceId }, orderBy: { createdAt: "asc" } });
+    const candidate = await deps.prisma.employeeHostOperation.findFirst({ where: { hostId: c.req.param("hostId"), computerId: authenticated.record.computerId, status: "accepted", spaceId: authenticated.record.spaceId }, orderBy: { createdAt: "asc" } });
     const operation = candidate && (await deps.prisma.employeeHostOperation.updateMany({ where: { id: candidate.id, status: "accepted" }, data: { status: "dispatched" } })).count === 1 ? { ...candidate, status: "dispatched" } : null;
     if (!operation) return c.json({});
     return c.json({ operation: { operationId: operation.operationId, hostId: operation.hostId, spaceId: operation.spaceId, botId: operation.botId, computerId: operation.computerId, lease: { hostId: operation.hostId, spaceId: operation.spaceId, botId: operation.botId, runId: operation.runId, fence: operation.fence, expiresAt: operation.acceptedAt.getTime() + TTL_MS }, kind: "exec", request: operation.request } });
@@ -80,7 +100,7 @@ export function mountEmployeeHostRoutes(
   app.post("/employee-hosts/:hostId/receipts/:operationId", async (c) => {
     const authenticated = await host(c);
     if (!authenticated) return c.json({ error: "Unauthorized" }, 401);
-    const operation = await deps.prisma.employeeHostOperation.findFirst({ where: { hostId: c.req.param("hostId"), operationId: c.req.param("operationId"), spaceId: authenticated.record.spaceId } });
+    const operation = await deps.prisma.employeeHostOperation.findFirst({ where: { hostId: c.req.param("hostId"), operationId: c.req.param("operationId"), computerId: authenticated.record.computerId, spaceId: authenticated.record.spaceId } });
     if (!operation) return c.json({ error: "Not found" }, 404);
     if (operation.status !== "accepted" && operation.status !== "dispatched") return c.json({ ok: true, status: operation.status });
     const input = receiptSchema.safeParse(await c.req.json().catch(() => null));

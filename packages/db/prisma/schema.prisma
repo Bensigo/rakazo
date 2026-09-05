@@ -666,6 +666,8 @@ model AssignmentManifest {
   task                 Task                @relation(fields: [taskId], references: [id], onDelete: Cascade)
   botId                String
   bot                  Bot                 @relation(fields: [botId], references: [id], onDelete: Cascade)
+  computerId           String?
+  computer             Computer?            @relation("AssignmentComputer", fields: [computerId], references: [id], onDelete: Restrict)
   foundationRevisionId String?
   foundationRevision   FoundationRevision? @relation(fields: [foundationRevisionId], references: [id], onDelete: SetNull)
   rolePresetId         String?
@@ -681,6 +683,7 @@ model AssignmentManifest {
 
   @@index([projectId, status])
   @@index([botId, status])
+  @@index([computerId])
   @@map("assignment_manifests")
 }
 
@@ -690,6 +693,8 @@ model Run {
   space                Space             @relation(fields: [spaceId], references: [id], onDelete: Cascade)
   botId                String
   bot                  Bot               @relation(fields: [botId], references: [id], onDelete: Cascade)
+  computerId           String?
+  computer             Computer?         @relation("RunComputer", fields: [computerId], references: [id], onDelete: Restrict)
   threadId             String
   thread               Thread            @relation(fields: [threadId], references: [id], onDelete: Cascade)
   taskId               String
@@ -727,6 +732,7 @@ model Run {
   @@index([botOutcomeReturnedAt, status])
   @@index([trigger, status, messagingMirroredAt, updatedAt])
   @@index([spaceId, botId])
+  @@index([computerId])
   @@index([sourceMessageId])
   @@index([threadId, status, createdAt])
   @@index([routineId])
@@ -1006,6 +1012,9 @@ model Computer {
   bots                    Bot[]
   executionLeases         ComputerExecutionLease[]
   employeeHostOperations  EmployeeHostOperation[]
+  assignmentManifests     AssignmentManifest[]       @relation("AssignmentComputer")
+  runs                    Run[]                      @relation("RunComputer")
+  employeeHost            EmployeeHost?
 
   @@index([spaceId, scope])
   @@map("computers")
@@ -1035,6 +1044,8 @@ model EmployeeHost {
   space         Space                   @relation(fields: [spaceId], references: [id], onDelete: Cascade)
   ownerUserId   String
   owner         User                    @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  computerId    String                  @unique
+  computer      Computer                @relation(fields: [computerId], references: [id], onDelete: Cascade)
   name          String
   platform      String
   capabilities  Json

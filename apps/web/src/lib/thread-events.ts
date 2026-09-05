@@ -29,6 +29,7 @@ const runTriggers = new Set<Run["trigger"]>([
   "bot_message",
   "webhook",
   "messaging",
+  "assignment",
 ]);
 
 function runFromStartedEvent(event: ProductEvent, previous: Run | undefined): Run {
@@ -47,6 +48,10 @@ function runFromStartedEvent(event: ProductEvent, previous: Run | undefined): Ru
       typeof event.payload.routineId === "string"
         ? event.payload.routineId
         : (previous?.routineId ?? null),
+    computerId:
+      typeof event.payload.computerId === "string"
+        ? event.payload.computerId
+        : (previous?.computerId ?? null),
     modelProvider: previous?.modelProvider ?? null,
     modelId: previous?.modelId ?? null,
     error: null,
@@ -119,6 +124,7 @@ export function applyThreadSendReceipt(
     status: "queued",
     trigger: "user",
     routineId: null,
+    computerId: null,
     modelProvider: null,
     modelId: null,
     error: null,

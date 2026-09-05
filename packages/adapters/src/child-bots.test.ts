@@ -129,12 +129,22 @@ describe("spawned bot creation", () => {
       run: {
         findUnique,
         findFirst: vi.fn(async () => ({
+          computerId: "employee-computer",
           studioContext,
           task: { projectId: "project-1", studioContext },
         })),
       },
       $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
         callback({
+          computer: {
+            findFirst: vi.fn(async () => ({
+              kind: "employee-host",
+              providerRef: "host-1",
+            })),
+          },
+          employeeHost: {
+            findFirst: vi.fn(async () => ({ computerId: "employee-computer" })),
+          },
           thread: {
             update: vi.fn(async () => ({ nextMessageSeq: 1 })),
           },
@@ -160,7 +170,11 @@ describe("spawned bot creation", () => {
       data: expect.objectContaining({ projectId: "project-1", studioContext }),
     });
     expect(runCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({ studioContext, trigger: "spawn" }),
+      data: expect.objectContaining({
+        computerId: "employee-computer",
+        studioContext,
+        trigger: "spawn",
+      }),
     });
     expect(prisma.run.findFirst).toHaveBeenCalledWith({
       where: {
@@ -170,6 +184,7 @@ describe("spawned bot creation", () => {
         botId: "parent-bot",
       },
       select: {
+        computerId: true,
         studioContext: true,
         task: { select: { projectId: true, studioContext: true } },
       },

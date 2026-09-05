@@ -55,6 +55,7 @@ export async function restoreComputerWorkspace(
   computer: ComputerRef,
   context: AdapterContext,
 ): Promise<void> {
+  if (computer.kind === "employee-host") return;
   if (computer.kind === "docker" && home instanceof LocalAgentHomeStore) return;
   await sandbox.importWorkspace(computer, home.exportHome(homeKey, context), context);
 }
@@ -66,6 +67,7 @@ export async function ensureComputerWorkspaceLayout(
   botId: string | undefined,
   context: AdapterContext,
 ): Promise<void> {
+  if (computer.kind === "employee-host") return;
   if (scope !== "team" || !botId) return;
   let exitCode: number | undefined;
   let stderr = "";
@@ -105,10 +107,11 @@ export async function checkpointComputerWorkspace(
 
 export async function checkpointAndRecordComputerWorkspace(
   deps: { home: AgentHomeStore; sandbox: SandboxProvider; prisma: PrismaClient },
-  computerRecord: { id: string; homeKey: string },
+  computerRecord: { id: string; homeKey: string; homeRevision?: string },
   computer: ComputerRef,
   context: AdapterContext,
 ): Promise<string> {
+  if (computer.kind === "employee-host") return computerRecord.homeRevision ?? "empty";
   const revision = await checkpointComputerWorkspace(
     deps.home,
     deps.sandbox,

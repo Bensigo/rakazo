@@ -424,7 +424,7 @@ function isPermanentControlPlaneError(error: unknown) {
 
 /** Provider-facing transport seam; server composition owns authentication and durable storage. */
 export interface EmployeeHostTransport {
-  provision(request: { botId: string; homePath: string; providerRef?: string; providerKind?: ComputerRef["kind"] }, context: AdapterContext): Promise<ComputerRef>;
+  provision(request: { botId: string; computerId?: string; homePath: string; providerRef?: string; providerKind?: ComputerRef["kind"] }, context: AdapterContext): Promise<ComputerRef>;
   execute(computer: ComputerRef, request: CommandRequest, context: AdapterContext): AsyncIterable<ProcessEvent>;
 }
 
@@ -432,19 +432,19 @@ export interface EmployeeHostTransport {
 export class PrismaEmployeeHostTransport implements EmployeeHostTransport {
   constructor(private readonly prisma: PrismaClient, private readonly pollMs = 50) {}
 
-  async provision(request: { botId: string; homePath: string; providerRef?: string; providerKind?: ComputerRef["kind"] }, context: AdapterContext) {
-    const hostId = request.providerRef ?? request.botId;
-    const host = await this.prisma.employeeHost.findFirst({ where: { hostId, spaceId: context.spaceId, expiresAt: { gt: new Date() } } });
+  async provision(request: { botId: string; computerId?: string; homePath: string; providerRef?: string; providerKind?: ComputerRef["kind"] }, context: AdapterContext) {
+    if (!request.computerId || !request.providerRef) throw new Error("employee host computer identity is missing");
+    const host = await this.prisma.employeeHost.findFirst({ where: { hostId: request.providerRef, computerId: request.computerId, spaceId: context.spaceId, ownerUserId: context.userId, expiresAt: { gt: new Date() }, computer: { id: request.computerId, spaceId: context.spaceId, userId: context.userId, kind: "employee-host" } } });
     if (!host) throw new Error("employee host is unavailable");
-    return { id: `employee-${host.hostId}`, botId: request.botId, kind: "employee-host" as ComputerRef["kind"], providerRef: host.hostId, fresh: false };
+    return { id: host.computerId, botId: request.botId, kind: "employee-host" as ComputerRef["kind"], providerRef: host.hostId, fresh: false };
   }
 
   async *execute(computer: ComputerRef, request: CommandRequest, context: AdapterContext): AsyncIterable<ProcessEvent> {
     if (!context.botId || !context.runId) throw new Error("employee host execution requires bot and run context");
-    const host = await this.prisma.employeeHost.findFirst({ where: { hostId: computer.providerRef, spaceId: context.spaceId, expiresAt: { gt: new Date() } } });
+    const host = await this.prisma.employeeHost.findFirst({ where: { hostId: computer.providerRef, computerId: computer.id, spaceId: context.spaceId, ownerUserId: context.userId, expiresAt: { gt: new Date() } } });
     if (!host) throw new Error("employee host is unavailable");
     const lease = await this.prisma.computerExecutionLease.findUnique({ where: { computerId_botId: { computerId: computer.id, botId: context.botId } } });
-    if (!lease || lease.runId !== context.runId || lease.expiresAt <= new Date()) throw new Error("employee host execution lease is stale");
+    if (!lease || lease.runId !== context.runId || lease.fence !== context.computerLeaseFence || lease.expiresAt <= new Date()) throw new Error("employee host execution lease is stale");
     const operation = await this.prisma.employeeHostOperation.create({ data: { operationId: randomUUID(), hostId: host.hostId, computerId: computer.id, spaceId: context.spaceId, botId: context.botId, runId: context.runId, fence: lease.fence, request: request as unknown as Prisma.InputJsonValue } });
     while (!context.signal.aborted) {
       const current = await this.prisma.employeeHostOperation.findUnique({ where: { id: operation.id } });
@@ -466,7 +466,7 @@ export class EmployeeHostSandboxProvider implements SandboxProvider {
   describe() { return { id: "employee-host", contractVersion: "1", adapterVersion: "0.1.0", capabilities: { graphical: false, pty: true, snapshots: false, takeover: false, persistentHome: true, multiScreen: false } }; }
   provision(request: Parameters<EmployeeHostTransport["provision"]>[0], context: AdapterContext) { return this.transport.provision(request, context); }
   prepare() { return Promise.resolve(); }
-  execute(computer: ComputerRef, request: CommandRequest, context: AdapterContext) { return this.transport.execute(computer, request, context); }
+  execute(computer: ComputerRef, request: CommandRequest, context: AdapterContext) { return this.transport.execute(computer, { ...request, cwd: employeeHostWorkspaceCwd(request.cwd) }, context); }
   connectScreen(): Promise<ScreenSession> { return Promise.reject(new Error("employee host GUI is unsupported")); }
   sendInput(): Promise<void> { return Promise.reject(new Error("employee host input is unsupported")); }
   observe(): Promise<ComputerObservation> { return Promise.reject(new Error("employee host GUI observation is unsupported")); }
@@ -479,4 +479,21 @@ export class EmployeeHostSandboxProvider implements SandboxProvider {
   snapshot(): Promise<{ id: string; createdAt: string }> { return Promise.reject(new Error("employee host snapshots are unsupported")); }
   stop(): Promise<void> { return Promise.resolve(); }
   destroy(): Promise<void> { return Promise.resolve(); }
+}
+
+export function employeeHostWorkspaceCwd(cwd: string | undefined): string | undefined {
+  if (cwd === undefined || cwd === ".") return cwd;
+  const portable = cwd.replace(/\\/g, "/");
+  for (const root of ["/home/rakazo", "/home/user"]) {
+    if (portable === root) return ".";
+    if (portable.startsWith(`${root}/`)) return normalizeEmployeeWorkspacePath(portable.slice(root.length + 1));
+  }
+  if (portable.startsWith("/")) throw new Error("Employee host cwd is outside the enrolled workspace");
+  return normalizeEmployeeWorkspacePath(portable);
+}
+
+function normalizeEmployeeWorkspacePath(value: string) {
+  const segments = value.split("/").filter(Boolean);
+  if (segments.some((segment) => segment === "." || segment === "..")) throw new Error("Employee host cwd escapes the enrolled workspace");
+  return segments.join("/") || ".";
 }

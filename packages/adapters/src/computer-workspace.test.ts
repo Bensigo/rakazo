@@ -24,6 +24,29 @@ afterEach(async () => {
 });
 
 describe("provider-neutral computer workspace", () => {
+  it("does not restore or prepare server workspace state on an employee host", async () => {
+    const provider = new FakeSandboxProvider();
+    const execute = vi.spyOn(provider, "execute");
+    const importWorkspace = vi.spyOn(provider, "importWorkspace");
+    const employeeComputer = {
+      id: "computer-1",
+      botId: "employee-home",
+      kind: "employee-host" as const,
+      providerRef: "host-1",
+    };
+
+    await restoreComputerWorkspace(
+      {} as never,
+      provider,
+      "employee-home",
+      employeeComputer,
+      context,
+    );
+    await ensureComputerWorkspaceLayout(provider, employeeComputer, "team", "bot-1", context);
+
+    expect(importWorkspace).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+  });
   it("prepares shared and bot folders for a Team Computer", async () => {
     const provider = new FakeSandboxProvider();
     const computer = await provider.provision(

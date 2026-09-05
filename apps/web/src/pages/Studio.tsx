@@ -1,4 +1,6 @@
+import { ChatMarkdown } from "@rakazo/chat-ui/web";
 import type {
+  AssignmentComputer,
   AssignmentManifest,
   EmployeeJobRole,
   EmployeeRolePreset,
@@ -7,7 +9,6 @@ import type {
 import { Button, Input } from "@rakazo/ui-web";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChatMarkdown } from "@rakazo/chat-ui/web";
 import { rpc } from "../lib/rpc";
 
 export function StudioPage() {
@@ -51,6 +52,11 @@ export function StudioPage() {
   const [objective, setObjective] = useState("");
   const [scope, setScope] = useState<"studio" | "one" | "multi">("studio");
   const [botId, setBotId] = useState("");
+  const [assignmentComputers, setAssignmentComputers] = useState<AssignmentComputer[]>([]);
+  const [computerId, setComputerId] = useState("");
+  const [computersLoading, setComputersLoading] = useState(false);
+  const [computerName, setComputerName] = useState("");
+  const [workspaceRoot, setWorkspaceRoot] = useState("");
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [roleKey, setRoleKey] = useState("");
   const [roleName, setRoleName] = useState("");
@@ -62,6 +68,7 @@ export function StudioPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const sourceRequest = useRef(0);
   const wikiPageRequest = useRef(0);
+  const computerRequest = useRef(0);
   const load = async () => {
     try {
       const [p, perms, r, jr, selection, f, a, b, rr] = await Promise.all([
@@ -278,10 +285,58 @@ export function StudioPage() {
       projectIds: scope === "studio" ? [] : selectedProjects,
       objective,
       botId,
+      computerId: computerId || undefined,
       manifest: { objective },
     });
     setAssignments((all) => [a, ...all]);
     setObjective("");
+  }
+  async function selectAssignmentBot(nextBotId: string) {
+    const request = ++computerRequest.current;
+    setBotId(nextBotId);
+    setComputerId("");
+    setAssignmentComputers([]);
+    if (!nextBotId) return;
+    setComputersLoading(true);
+    setError(null);
+    try {
+      const computers = await rpc.studio.assignmentComputers({ botId: nextBotId });
+      if (request !== computerRequest.current) return;
+      setAssignmentComputers(computers);
+      setComputerId(
+        computers.find((computer) => computer.isDefault && computer.state !== "error")?.id ?? "",
+      );
+    } catch (e) {
+      if (request === computerRequest.current)
+        setError(e instanceof Error ? e.message : "Could not load computers");
+    } finally {
+      if (request === computerRequest.current) setComputersLoading(false);
+    }
+  }
+  async function enrollComputer() {
+    const hostId = `employee-${crypto.randomUUID()}`;
+    const enrollment = await rpc.studio.enrollEmployeeHost({
+      hostId,
+      name: computerName,
+      platform: navigator.platform || "unknown",
+      workspaceRoot,
+    });
+    const config = {
+      hostId: enrollment.hostId,
+      enrollmentToken: enrollment.enrollmentToken,
+      controlPlaneUrl: window.location.origin,
+      workspaceRoot,
+    };
+    const url = URL.createObjectURL(
+      new Blob([JSON.stringify(config, null, 2)], { type: "application/json" }),
+    );
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "rakazo-employee-host.json";
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setComputerName("");
+    setWorkspaceRoot("");
   }
   return (
     <main
@@ -570,6 +625,36 @@ export function StudioPage() {
           </div>
         </section>
         <section className="mt-4 rounded-2xl border border-border p-5">
+          <h2 className="text-lg font-medium">Register a computer</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Download a one-time companion configuration for an exec-only workspace on this computer.
+          </p>
+          <div className="mt-3 grid gap-2 md:grid-cols-[1fr_2fr_auto]">
+            <Input
+              aria-label="Computer name"
+              placeholder="Build Mac"
+              value={computerName}
+              onChange={(event) => setComputerName(event.target.value)}
+            />
+            <Input
+              aria-label="Workspace root"
+              placeholder="/Users/me/work/project"
+              value={workspaceRoot}
+              onChange={(event) => setWorkspaceRoot(event.target.value)}
+            />
+            <Button
+              disabled={!computerName.trim() || !workspaceRoot.trim()}
+              onClick={() => void run(enrollComputer)}
+            >
+              Register
+            </Button>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            The token is downloaded once. Save the file with owner-only permissions before starting
+            the companion.
+          </p>
+        </section>
+        <section className="mt-4 rounded-2xl border border-border p-5">
           <h2 className="text-lg font-medium">Project sources &amp; wiki</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Connect an authorized repository to a project and inspect its cited pages.
@@ -715,7 +800,7 @@ export function StudioPage() {
             value={objective}
             onChange={(e) => setObjective(e.target.value)}
           />
-          <div className="mt-3 grid gap-2 md:grid-cols-3">
+          <div className="mt-3 grid gap-2 md:grid-cols-4">
             <select
               aria-label="Assignment scope"
               className="rounded-xl border border-border bg-background px-3 text-sm"
@@ -734,7 +819,7 @@ export function StudioPage() {
               aria-label="Specialist"
               className="rounded-xl border border-border bg-background px-3 text-sm"
               value={botId}
-              onChange={(e) => setBotId(e.target.value)}
+              onChange={(e) => void selectAssignmentBot(e.target.value)}
             >
               <option value="">Choose a specialist</option>
               {bots.map((b) => (
@@ -743,10 +828,27 @@ export function StudioPage() {
                 </option>
               ))}
             </select>
+            <select
+              aria-label="Computer"
+              className="rounded-xl border border-border bg-background px-3 text-sm"
+              value={computerId}
+              disabled={!botId || computersLoading}
+              onChange={(event) => setComputerId(event.target.value)}
+            >
+              <option value="">
+                {computersLoading ? "Loading computers…" : "Choose a computer"}
+              </option>
+              {assignmentComputers.map((computer) => (
+                <option key={computer.id} value={computer.id} disabled={computer.state === "error"}>
+                  {computer.name} · {computer.kind} · {computer.state}
+                </option>
+              ))}
+            </select>
             <Button
               disabled={
                 !objective.trim() ||
                 !botId ||
+                !computerId ||
                 (scope === "one" && selectedProjects.length !== 1) ||
                 (scope === "multi" && selectedProjects.length < 2)
               }

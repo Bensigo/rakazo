@@ -15,6 +15,11 @@ test.describe("Studio UI fixture", () => {
 
     await objective.fill("Review the next mobile game slice and return evidence.");
     await specialist.selectOption({ label: "Engineer" });
+    const computer = page.getByLabel("Computer", { exact: true });
+    await expect(computer).toHaveValue("fixture-server-computer");
+    await expect(computer.locator("option:checked")).toContainText("Specialist computer · docker");
+    await computer.selectOption("fixture-build-mac");
+    await expect(computer.locator("option:checked")).toContainText("Build Mac · employee-host");
     await scope.selectOption("one");
     await expect(assign).toBeDisabled();
 
@@ -35,6 +40,7 @@ test.describe("Studio UI fixture", () => {
     await expect(assign).toBeEnabled();
     await expect(garden).not.toBeChecked();
     await expect(page.getByRole("button", { name: "Edit" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Register" })).toBeDisabled();
   });
 
   test("selects an employee job role and refreshes specialist options", async ({ page }) => {

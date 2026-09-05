@@ -1,7 +1,8 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import type { SandboxProvider } from "@rakazo/adapter-kit";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { DesktopSandboxProvider } from "./desktop-sandbox.js";
 import { FakeSandboxProvider } from "./fake-sandbox.js";
 import { HostAwareSandbox, sandboxKindForBot } from "./host-aware-sandbox.js";
@@ -70,6 +71,41 @@ describe("host-aware sandbox", () => {
     const computer = await sandbox.provision({ botId: "iso", homePath: "/tmp/iso" }, ctx);
     expect(computer.kind).toBe("fake");
     await sandbox.destroy(computer, ctx);
+  });
+
+  it("routes a selected employee computer independently of the deployment default", async () => {
+    const employeeRef = {
+      id: "computer-1",
+      botId: "employee-home",
+      kind: "employee-host" as const,
+      providerRef: "host-1",
+    };
+    const employee = {
+      provision: vi.fn(async () => employeeRef),
+      prepare: vi.fn(async () => undefined),
+    } as unknown as SandboxProvider;
+    const sandbox = new HostAwareSandbox(
+      new FakeSandboxProvider(),
+      new DesktopSandboxProvider(),
+      async () => false,
+      employee,
+    );
+
+    const computer = await sandbox.provision(
+      {
+        botId: "employee-home",
+        computerId: "computer-1",
+        homePath: "/server-home",
+        providerKind: "employee-host",
+        providerRef: "host-1",
+      },
+      ctx,
+    );
+    await sandbox.prepare(computer, ctx);
+
+    expect(computer).toEqual(employeeRef);
+    expect(employee.provision).toHaveBeenCalledOnce();
+    expect(employee.prepare).toHaveBeenCalledWith(employeeRef, ctx);
   });
 
   it("maps the Linux bot home cwd onto the desktop home", async () => {

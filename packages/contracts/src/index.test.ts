@@ -183,6 +183,7 @@ describe("contracts", () => {
     const run = {
       id: "run-1",
       botId: "bot-1",
+      computerId: null,
       threadId: "thread-1",
       taskId: "task-1",
       status: "running",

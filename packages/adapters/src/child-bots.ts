@@ -21,6 +21,7 @@ import {
 import { getLogger } from "@rakazo/logging";
 import { toComputerRef } from "./computer-support.js";
 import { checkpointAndRecordComputerWorkspace } from "./computer-workspace.js";
+import { revalidateDelegatedComputer } from "./delegated-computer.js";
 import { resolveAgentHomePath } from "./home.js";
 
 export function confirmSpawnedBotName(confirmName: string, botName: string) {
@@ -158,6 +159,7 @@ export async function ensureSpawnRun(
       botId: input.sourceBotId,
     },
     select: {
+      computerId: true,
       studioContext: true,
       task: { select: { projectId: true, studioContext: true } },
     },
@@ -167,6 +169,11 @@ export async function ensureSpawnRun(
 
   try {
     return await prisma.$transaction(async (tx) => {
+      const computerId = await revalidateDelegatedComputer(tx, {
+        computerId: source.computerId,
+        spaceId: input.spaceId,
+        userId: input.userId,
+      });
       await createThreadMessageInTransaction(tx, {
         threadId: input.threadId,
         role: "user",
@@ -189,6 +196,7 @@ export async function ensureSpawnRun(
         data: {
           spaceId: input.spaceId,
           botId: input.botId,
+          computerId,
           threadId: input.threadId,
           taskId: task.id,
           userId: input.userId,

@@ -4,13 +4,14 @@ import type { ComputerAction, ComputerObservation, ComputerRef } from "@rakazo/a
 import type { ComputerMode } from "@rakazo/contracts";
 
 export function toComputerRef(computer: {
+  id?: string;
   homeKey: string;
   kind: string;
   providerRef: string | null;
 }): ComputerRef {
   if (!computer.providerRef) throw new Error("computer provider reference is missing");
   return {
-    id: computer.providerRef,
+    id: computer.kind === "employee-host" && computer.id ? computer.id : computer.providerRef,
     botId: computer.homeKey,
     kind: computer.kind as ComputerRef["kind"],
     providerRef: computer.providerRef,

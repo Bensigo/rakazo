@@ -86,6 +86,16 @@ describeWithDatabase("API authorization and resource isolation", () => {
       ["studio/updateRole", { roleId: "missing-role", name: "Nope" }],
       ["studio/assignment", { assignmentId: "missing-assignment" }],
       ["studio/assignments"],
+      ["studio/assignmentComputers", { botId: "missing-bot" }],
+      [
+        "studio/enrollEmployeeHost",
+        {
+          hostId: "missing-host",
+          name: "Nope",
+          platform: "test",
+          workspaceRoot: "/tmp/nope",
+        },
+      ],
       [
         "studio/createAssignment",
         {

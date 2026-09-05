@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { EmployeeHostRegistry, LocalEmployeeHostCompanion, LocalEmployeeHostReceiptSpool } from "./employee-host.js";
+import type { PrismaClient } from "@rakazo/db";
+import { EmployeeHostRegistry, employeeHostWorkspaceCwd, LocalEmployeeHostCompanion, LocalEmployeeHostReceiptSpool, PrismaEmployeeHostTransport } from "./employee-host.js";
 
 const capabilities = {
   platform: "macos" as const,
@@ -19,6 +20,24 @@ function host(registry: EmployeeHostRegistry) {
 }
 
 describe("employee host protocol", () => {
+  it("preserves the server computer identity and scopes it to its owner", async () => {
+    const findFirst = vi.fn(async () => ({ hostId: "host-1", computerId: "computer-1" }));
+    const transport = new PrismaEmployeeHostTransport({ employeeHost: { findFirst } } as unknown as PrismaClient);
+    const context = { operationId: "op-1", traceId: "op-1", spaceId: "space-1", userId: "user-1", signal: new AbortController().signal };
+    await expect(transport.provision({ botId: "employee-home", computerId: "computer-1", homePath: "/server-home", providerKind: "employee-host", providerRef: "host-1" }, context)).resolves.toMatchObject({ id: "computer-1", kind: "employee-host", providerRef: "host-1", fresh: false });
+    expect(findFirst).toHaveBeenCalledWith({ where: expect.objectContaining({ computerId: "computer-1", hostId: "host-1", ownerUserId: "user-1", spaceId: "space-1" }) });
+    await expect(transport.provision({ botId: "employee-home", homePath: "/server-home", providerKind: "employee-host" }, context)).rejects.toThrow(/identity is missing/);
+  });
+
+  it("maps only the virtual agent home into the enrolled workspace", () => {
+    expect(employeeHostWorkspaceCwd(undefined)).toBeUndefined();
+    expect(employeeHostWorkspaceCwd("/home/rakazo")).toBe(".");
+    expect(employeeHostWorkspaceCwd("/home/user/project/src")).toBe("project/src");
+    expect(employeeHostWorkspaceCwd("project/src")).toBe("project/src");
+    expect(() => employeeHostWorkspaceCwd("/etc")).toThrow(/outside/);
+    expect(() => employeeHostWorkspaceCwd("../outside")).toThrow(/escapes/);
+  });
+
   it("authenticates outbound poll and expires missed heartbeats", () => {
     const registry = new EmployeeHostRegistry(100);
     const enrollment = host(registry);
