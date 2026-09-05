@@ -3168,3 +3168,7 @@ msgstr "Botların {hostLabel} üzerinde çalışmasına izin verirsen işletim s
 #: src/pages/Welcome.tsx:21
 msgid "Your team of always-on agents<0/>that you can give real work to."
 msgstr "Gerçek işler verebileceğin,<0/>her zaman açık agent takımın."
+
+#: src/pages/Shell.tsx:3129
+msgid "Studio"
+msgstr "Studio"
