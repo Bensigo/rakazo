@@ -31,7 +31,7 @@ describe("employee host protocol", () => {
   it("rejects a wrong-space operation and stale fenced replay", () => {
     const registry = new EmployeeHostRegistry(10_000);
     const enrollment = host(registry);
-    const lease = registry.acquireLease({ hostId: "host-1", spaceId: "space-1", botId: "bot-1", runId: "run-1" }, 1001)!;
+    const lease = registry.acquireLease({ hostId: "host-1", spaceId: "space-1", botId: "bot-1", computerId: "computer-1", runId: "run-1" }, 1001)!;
     expect(() => registry.enqueue({ hostId: "host-1", spaceId: "space-2", botId: "bot-1", computerId: "computer-1", lease, kind: "exec", request: { argv: ["true"] } }, 1002)).toThrow(/unavailable/);
     const operation = registry.enqueue({ hostId: "host-1", spaceId: "space-1", botId: "bot-1", computerId: "computer-1", lease, kind: "exec", request: { argv: ["true"] } }, 1002);
     expect(() => registry.enqueue({ hostId: operation.hostId, spaceId: operation.spaceId, botId: operation.botId, computerId: operation.computerId, lease: { ...lease, fence: lease.fence - 1 }, kind: operation.kind, request: operation.request }, 1003)).toThrow(/stale/);
@@ -54,7 +54,7 @@ describe("employee host protocol", () => {
   it("spools terminal receipts and never reruns an uncertain claim", async () => {
     const root = await mkdtemp(join(tmpdir(), "employee-host-test-"));
     const spool = new LocalEmployeeHostReceiptSpool(root);
-    const operation = { operationId: "op-1", hostId: "host-1", spaceId: "space-1", botId: "bot-1", lease: { hostId: "host-1", spaceId: "space-1", botId: "bot-1", runId: "run-1", fence: 1, expiresAt: Date.now() + 10_000 }, kind: "exec" as const, request: { argv: ["true"] } };
+    const operation = { operationId: "op-1", hostId: "host-1", spaceId: "space-1", botId: "bot-1", computerId: "computer-1", lease: { hostId: "host-1", spaceId: "space-1", botId: "bot-1", computerId: "computer-1", runId: "run-1", fence: 1, expiresAt: Date.now() + 10_000 }, kind: "exec" as const, request: { argv: ["true"] } };
     expect(await spool.claim(operation)).toBe("claimed");
     expect(await spool.claim(operation)).toBe("existing");
     const pending = await spool.pending();

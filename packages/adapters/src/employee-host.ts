@@ -104,7 +104,7 @@ export class LocalEmployeeHostReceiptSpool {
       if (!name.endsWith(".json")) continue;
       const value = JSON.parse(await readFile(path.join(this.root, name), "utf8")) as { receipt?: EmployeeHostReceipt; operation?: EmployeeHostOperation; state?: string };
       if (value.receipt) receipts.push(value.receipt);
-      else if (value.operation) receipts.push({ operationId: value.operation.operationId, hostId: value.operation.hostId, lease: { runId: value.operation.lease.runId, fence: value.operation.lease.fence }, acceptedAt: Date.now(), completedAt: Date.now(), status: "unknown", result: { stdout: "", stderr: "Execution claim existed before companion restart; result is unknown and was not replayed.", code: 125 } });
+      else if (value.operation) receipts.push({ operationId: value.operation.operationId, hostId: value.operation.hostId, lease: { computerId: value.operation.computerId, runId: value.operation.lease.runId, fence: value.operation.lease.fence }, acceptedAt: Date.now(), completedAt: Date.now(), status: "unknown", result: { stdout: "", stderr: "Execution claim existed before companion restart; result is unknown and was not replayed.", code: 125 } });
     }
     return receipts;
   }
@@ -166,7 +166,7 @@ export class EmployeeHostRegistry {
     return host ? { ...host } : undefined;
   }
 
-  acquireLease(input: { hostId: string; spaceId: string; botId: string; runId: string }, now = Date.now()): EmployeeHostLease | null {
+  acquireLease(input: { hostId: string; spaceId: string; botId: string; computerId: string; runId: string }, now = Date.now()): EmployeeHostLease | null {
     const host = this.get(input.hostId, now);
     if (!host || !host.connected || host.spaceId !== input.spaceId) return null;
     const key = `${input.hostId}:${input.botId}`;
