@@ -34,6 +34,7 @@ function failedSnapshot(id: string): ThreadSnapshot {
       status: "failed",
       trigger: "user",
       routineId: null,
+      computerId: null,
       modelProvider: null,
       modelId: null,
       error: "connection refused",

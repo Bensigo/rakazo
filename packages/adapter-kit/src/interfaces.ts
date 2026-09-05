@@ -67,6 +67,8 @@ export interface SandboxProvider {
   provision(
     request: {
       botId: string;
+      /** Server-owned database identity for providers backed by a durable Computer row. */
+      computerId?: string;
       homePath: string;
       providerRef?: string;
       providerKind?: ComputerRef["kind"];

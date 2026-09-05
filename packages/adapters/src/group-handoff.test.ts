@@ -13,6 +13,7 @@ const run = {
 function harness(
   sourceBlocks: unknown,
   existing?: { sourceRuns: { id: string; botId: string }[] },
+  computerId?: string,
 ) {
   const runCreate = vi.fn(async () => ({ id: "run-b" }));
   const messageCreate = vi.fn(async () => ({ id: "message-1" }));
@@ -30,6 +31,7 @@ function harness(
     run: {
       findFirst: vi.fn(async () => ({
         id: run.id,
+        computerId: computerId ?? null,
         sourceMessage: { blocks: sourceBlocks },
       })),
       findUnique: vi.fn(async () => ({ status: "running" })),
@@ -48,6 +50,14 @@ function harness(
     event: {
       findFirst: vi.fn(async () => ({ seq: 1 })),
       create: vi.fn(async () => ({ seq: 1 })),
+    },
+    computer: {
+      findFirst: vi.fn(async () =>
+        computerId ? { id: computerId, kind: "employee-host", providerRef: "host-1" } : null,
+      ),
+    },
+    employeeHost: {
+      findFirst: vi.fn(async () => (computerId ? { computerId } : null)),
     },
   };
   const prisma = {
@@ -91,6 +101,25 @@ describe("group handoff ownership", () => {
     );
     expect(runCreate).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ trigger: "follow_up" }) }),
+    );
+  });
+
+  it("inherits a revalidated selected computer for a group stage", async () => {
+    const { deps, runCreate } = harness(
+      [{ kind: "text", text: "user request" }],
+      undefined,
+      "employee-computer",
+    );
+
+    await handoffToGroupBot(deps as never, run, "group-1", {
+      bot_id: "bot-b",
+      message: "Do this stage locally",
+    });
+
+    expect(runCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ computerId: "employee-computer" }),
+      }),
     );
   });
 

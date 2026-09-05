@@ -491,6 +491,7 @@ function messagesWithLiveEvents(
 function mapRun(run: {
   id: string;
   botId: string;
+  computerId: string | null;
   threadId: string;
   taskId: string;
   status: string;
@@ -506,6 +507,7 @@ function mapRun(run: {
   return {
     id: run.id,
     botId: run.botId,
+    computerId: run.computerId,
     threadId: run.threadId,
     taskId: run.taskId,
     status: run.status as never,

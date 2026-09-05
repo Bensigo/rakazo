@@ -384,6 +384,79 @@ export function createStudioDomain(prisma: PrismaClient) {
         orderBy: { createdAt: "desc" },
       });
     },
+    async assignmentComputers(actor: Actor, botId: string) {
+      await organizationIdFor(prisma, actor);
+      const bot = await prisma.bot.findFirst({
+        where: { id: botId, spaceId: actor.spaceId, userId: actor.userId, archivedAt: null },
+        select: { computerId: true },
+      });
+      if (!bot) throw new IsolationError("Bot is outside this space");
+      const computers = await prisma.computer.findMany({
+        where: {
+          spaceId: actor.spaceId,
+          userId: actor.userId,
+          OR: [
+            ...(bot.computerId ? [{ id: bot.computerId }] : []),
+            { scope: "team" },
+            { kind: "employee-host" },
+          ],
+        },
+        select: { id: true, kind: true, state: true, scope: true, providerRef: true },
+        orderBy: { createdAt: "asc" },
+      });
+      const hostComputerIds = computers
+        .filter((computer) => computer.kind === "employee-host")
+        .map((computer) => computer.id);
+      const hosts = hostComputerIds.length
+        ? await prisma.employeeHost.findMany({
+            where: {
+              computerId: { in: hostComputerIds },
+              spaceId: actor.spaceId,
+              ownerUserId: actor.userId,
+              expiresAt: { gt: new Date() },
+            },
+            select: { computerId: true, name: true },
+          })
+        : [];
+      const hostNames = new Map(hosts.map((host) => [host.computerId, host.name]));
+      return computers.flatMap((computer) => {
+        if (computer.kind === "employee-host") {
+          const name = hostNames.get(computer.id);
+          return name
+            ? [
+                {
+                  id: computer.id,
+                  name,
+                  kind: computer.kind as "employee-host",
+                  state: computer.state as
+                    | "stopped"
+                    | "booting"
+                    | "running"
+                    | "suspended"
+                    | "error",
+                  isDefault: computer.id === bot.computerId,
+                },
+              ]
+            : [];
+        }
+        return [
+          {
+            id: computer.id,
+            name: computer.scope === "team" ? "Team computer" : "Specialist computer",
+            kind: computer.kind as
+              | "docker"
+              | "e2b"
+              | "daytona"
+              | "box"
+              | "desktop"
+              | "employee-host"
+              | "fake",
+            state: computer.state as "stopped" | "booting" | "running" | "suspended" | "error",
+            isDefault: computer.id === bot.computerId,
+          },
+        ];
+      });
+    },
     async createAssignment(
       actor: Actor,
       input: {
@@ -392,6 +465,7 @@ export function createStudioDomain(prisma: PrismaClient) {
         taskId?: string;
         objective?: string;
         botId: string;
+        computerId?: string | null;
         foundationRevisionId?: string | null;
         rolePresetId?: string | null;
         reviewerUserId?: string | null;
@@ -406,8 +480,10 @@ export function createStudioDomain(prisma: PrismaClient) {
         throw new IsolationError("One-project assignments require one project");
       if (input.scope === "multi" && projectIds.length < 2)
         throw new IsolationError("Multi-project assignments require at least two projects");
+      if (input.taskId && input.computerId)
+        throw new IsolationError("A computer can only be selected for a new assignment");
       return prisma.$transaction(async (tx) => {
-        const [projects, existingTask, bot, reviewerMembership] = await Promise.all([
+        const [projects, existingTask, bot, reviewerMembership, computer] = await Promise.all([
           tx.studioProject.findMany({
             where: { id: { in: projectIds }, organizationId },
             select: { id: true },
@@ -420,7 +496,7 @@ export function createStudioDomain(prisma: PrismaClient) {
             : Promise.resolve(null),
           tx.bot.findFirst({
             where: { id: input.botId, spaceId: actor.spaceId, userId: actor.userId },
-            select: { id: true, thread: { select: { id: true } } },
+            select: { id: true, computerId: true, thread: { select: { id: true } } },
           }),
           input.reviewerUserId
             ? tx.spaceMember.findUnique({
@@ -431,6 +507,16 @@ export function createStudioDomain(prisma: PrismaClient) {
                   },
                 },
                 select: { userId: true },
+              })
+            : Promise.resolve(null),
+          input.computerId
+            ? tx.computer.findFirst({
+                where: {
+                  id: input.computerId,
+                  spaceId: actor.spaceId,
+                  userId: actor.userId,
+                },
+                select: { id: true, kind: true, scope: true, providerRef: true },
               })
             : Promise.resolve(null),
         ]);
@@ -444,6 +530,31 @@ export function createStudioDomain(prisma: PrismaClient) {
             "Task and bot must belong to this space and task must be unassigned",
           );
         if (!bot?.thread) throw new IsolationError("Bot is outside this space");
+        if (input.computerId && !computer)
+          throw new IsolationError("Computer is outside this space");
+        if (
+          computer &&
+          computer.kind !== "employee-host" &&
+          computer.scope !== "team" &&
+          computer.id !== bot.computerId
+        ) {
+          throw new IsolationError("Dedicated computer belongs to another bot");
+        }
+        if (computer?.kind === "employee-host") {
+          if (!computer.providerRef)
+            throw new IsolationError("Employee computer is not registered");
+          const host = await tx.employeeHost.findFirst({
+            where: {
+              computerId: computer.id,
+              hostId: computer.providerRef,
+              spaceId: actor.spaceId,
+              ownerUserId: actor.userId,
+              expiresAt: { gt: new Date() },
+            },
+            select: { hostId: true },
+          });
+          if (!host) throw new IsolationError("Employee computer is unavailable");
+        }
         if (input.reviewerUserId && !reviewerMembership)
           throw new IsolationError("Reviewer is outside this space");
         if (input.foundationRevisionId) {
@@ -481,6 +592,7 @@ export function createStudioDomain(prisma: PrismaClient) {
             projectIds,
             taskId: task.id,
             botId: input.botId,
+            computerId: computer?.id ?? null,
             foundationRevisionId: input.foundationRevisionId ?? null,
             rolePresetId: input.rolePresetId ?? null,
             manifest: input.manifest as Prisma.InputJsonValue,
@@ -494,6 +606,7 @@ export function createStudioDomain(prisma: PrismaClient) {
               data: {
                 spaceId: actor.spaceId,
                 botId: input.botId,
+                computerId: computer?.id ?? null,
                 threadId: bot.thread.id,
                 taskId: task.id,
                 userId: actor.userId,

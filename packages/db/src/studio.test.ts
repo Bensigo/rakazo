@@ -310,6 +310,62 @@ describe("studio domain", () => {
     ).rejects.toThrow("Reviewer is outside this space");
     expect(assignmentCreate).not.toHaveBeenCalled();
   });
+
+  it("snapshots an owned active employee computer on the assignment and run", async () => {
+    const assignmentCreate = vi.fn(async ({ data }) => ({
+      id: "assignment-new",
+      status: "draft",
+      ...data,
+    }));
+    const runCreate = vi.fn(async () => ({ id: "run-new" }));
+    const prisma = {
+      spaceMember: { findUnique: vi.fn(async () => membership) },
+      $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
+        callback({
+          studioProject: { findMany: vi.fn(async () => []) },
+          spaceMember: { findUnique: vi.fn(async () => null) },
+          bot: {
+            findFirst: vi.fn(async () => ({
+              id: "bot-1",
+              computerId: "default-computer",
+              thread: { id: "thread-1" },
+            })),
+          },
+          computer: {
+            findFirst: vi.fn(async () => ({
+              id: "employee-computer",
+              kind: "employee-host",
+              scope: "dedicated",
+              providerRef: "host-1",
+            })),
+          },
+          employeeHost: {
+            findFirst: vi.fn(async () => ({ hostId: "host-1" })),
+          },
+          task: { create: vi.fn(async () => ({ id: "task-new" })) },
+          assignmentManifest: { create: assignmentCreate },
+          run: { create: runCreate },
+        }),
+      ),
+    } as any;
+
+    await createStudioDomain(prisma).createAssignment(actor, {
+      scope: "studio",
+      projectIds: [],
+      objective: "Build locally",
+      botId: "bot-1",
+      computerId: "employee-computer",
+      manifest: {},
+    });
+
+    expect(assignmentCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ computerId: "employee-computer" }),
+    });
+    expect(runCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ computerId: "employee-computer" }),
+      select: { id: true },
+    });
+  });
 });
 
 function privacyPrisma(input: {

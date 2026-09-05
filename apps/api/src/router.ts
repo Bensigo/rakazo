@@ -131,6 +131,7 @@ import {
   resolveBusyBotName,
   toComputerStatus,
 } from "./computer-status.js";
+import { EmployeeHostEnrollmentConflictError, enrollEmployeeHost } from "./employee-host-routes.js";
 import { buildMcpUpdateMaterial } from "./mcp-material.js";
 import {
   chooseFocus,
@@ -703,6 +704,21 @@ export function createRouter(deps: RouterDeps) {
       assignments: authed.studio.assignments.handler(async ({ context }) =>
         (await studio.assignments(context.actor)).map(assignmentDto),
       ),
+      assignmentComputers: authed.studio.assignmentComputers.handler(async ({ context, input }) =>
+        studio.assignmentComputers(context.actor, input.botId),
+      ),
+      enrollEmployeeHost: authed.studio.enrollEmployeeHost.handler(async ({ context, input }) => {
+        try {
+          return await enrollEmployeeHost(deps.prisma, context.actor, {
+            ...input,
+            capabilities: { exec: true },
+          });
+        } catch (error) {
+          if (error instanceof EmployeeHostEnrollmentConflictError)
+            throw new ORPCError("CONFLICT", { message: error.message });
+          throw error;
+        }
+      }),
       createAssignment: authed.studio.createAssignment.handler(async ({ context, input }) => {
         const created = await studio.createAssignment(context.actor, input);
         if (created.runId) {

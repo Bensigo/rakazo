@@ -9,6 +9,7 @@ import {
   AppBootstrapSchema,
   ArtifactSchema,
   ArtifactWithContentSchema,
+  AssignmentComputerSchema,
   AssignmentManifestSchema,
   AvatarStyleSchema,
   BotMcpServerSchema,
@@ -26,6 +27,7 @@ import {
   CreateRoutineInput,
   CreateScratchpadItemInput,
   DeploymentSettingsSchema,
+  EmployeeHostEnrollmentSchema,
   EmployeeJobRoleSchema,
   EmployeeJobRoleSelectionSchema,
   EmployeeRolePresetSchema,
@@ -221,6 +223,19 @@ export const appContract = {
     selectJobRole: oc.input(z.object({ jobRoleId: Id })).output(EmployeeJobRoleSelectionSchema),
     assignment: oc.input(z.object({ assignmentId: Id })).output(AssignmentManifestSchema),
     assignments: oc.output(z.array(AssignmentManifestSchema)),
+    assignmentComputers: oc
+      .input(z.object({ botId: Id }))
+      .output(z.array(AssignmentComputerSchema)),
+    enrollEmployeeHost: oc
+      .input(
+        z.object({
+          hostId: Id,
+          name: z.string().trim().min(1).max(512),
+          platform: z.string().trim().min(1).max(512),
+          workspaceRoot: z.string().trim().min(1).max(512),
+        }),
+      )
+      .output(EmployeeHostEnrollmentSchema),
     createAssignment: oc
       .input(
         z
@@ -230,6 +245,7 @@ export const appContract = {
             taskId: Id.optional(),
             objective: z.string().trim().min(1).max(20000).optional(),
             botId: Id,
+            computerId: Id.nullable().optional(),
             foundationRevisionId: Id.nullable().optional(),
             rolePresetId: Id.nullable().optional(),
             reviewerUserId: Id.nullable().optional(),
@@ -238,6 +254,12 @@ export const appContract = {
           .superRefine((value, context) => {
             if (!value.taskId && !value.objective) {
               context.addIssue({ code: "custom", message: "objective is required" });
+            }
+            if (value.taskId && value.computerId) {
+              context.addIssue({
+                code: "custom",
+                message: "computerId is only available when launching a new assignment",
+              });
             }
             if (value.scope === "studio" && value.projectIds.length !== 0) {
               context.addIssue({

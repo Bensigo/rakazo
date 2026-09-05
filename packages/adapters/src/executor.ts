@@ -813,22 +813,45 @@ export function createRunExecutor(deps: ExecutorDeps) {
         data: { status: "running", startedAt: current.startedAt ?? new Date() },
       });
       if (started.count !== 1) return;
-      const leaseTarget = await deps.prisma.bot.findUniqueOrThrow({
+      const botLeaseTarget = await deps.prisma.bot.findUniqueOrThrow({
         where: { id: run.botId },
         select: { computerId: true, computerSwitching: true },
       });
-      if (!leaseTarget.computerId) throw new Error("Bot has no computer");
-      if (leaseTarget.computerSwitching) {
+      if (!run.computerId && !botLeaseTarget.computerId) throw new Error("Bot has no computer");
+      if (!run.computerId && botLeaseTarget.computerSwitching) {
         await requeueComputerRun(deps, runId, workerId, fence, resumeCheckpoint);
         return;
+      }
+      const selectedComputerId = run.computerId ?? botLeaseTarget.computerId!;
+      const selectedComputer = run.computerId
+        ? await deps.prisma.computer.findFirst({
+            where: { id: selectedComputerId, spaceId: run.spaceId, userId: run.userId },
+            select: { id: true, kind: true, providerRef: true },
+          })
+        : null;
+      if (run.computerId && !selectedComputer) throw new Error("Run computer is unavailable");
+      if (run.computerId && selectedComputer?.kind === "employee-host") {
+        if (!selectedComputer.providerRef) throw new Error("Employee computer is unavailable");
+        const host = await deps.prisma.employeeHost.findFirst({
+          where: {
+            computerId: selectedComputer.id,
+            hostId: selectedComputer.providerRef,
+            spaceId: run.spaceId,
+            ownerUserId: run.userId,
+            expiresAt: { gt: new Date() },
+          },
+          select: { hostId: true },
+        });
+        if (!host) throw new Error("Employee computer is unavailable");
       }
       let computerLease: ComputerExecutionLease | null = null;
       try {
         computerLease = await acquireComputerExecutionLease(deps.prisma, {
-          computerId: leaseTarget.computerId,
+          computerId: selectedComputerId,
           runId,
           botId: run.botId,
           resumeHeldLease: resumeFromTakeover,
+          force: Boolean(run.computerId),
         });
       } catch (error) {
         if (!(error instanceof ComputerBusyError)) throw error;
@@ -970,6 +993,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           userId: run.userId,
           botId: bot.id,
           runId,
+          computerLeaseFence: computerLease?.fence,
           screenLeaseId: screenLeaseIdForRun(computerLease, runId, fence),
           signal: runAbortController.signal,
           connectedConnections: connectedPlugins.map((row) => ({
@@ -992,7 +1016,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
           botId: bot.id,
           type: "run.started",
           runId,
-          payload: { trigger: run.trigger, routineId: run.routineId },
+          payload: {
+            trigger: run.trigger,
+            routineId: run.routineId,
+            computerId: run.computerId,
+          },
         });
 
         const discoveredPromise = deps.connector
@@ -1157,14 +1185,18 @@ export function createRunExecutor(deps: ExecutorDeps) {
           where: { id: runId, status: "running", leaseOwner: workerId, leaseFence: fence },
           data: { modelProvider: runModelProvider, modelId: runModelId },
         });
-        if (!bot.computer) throw new Error("Bot has no computer");
-        const storedComputer = bot.computer;
+        const storedComputer = run.computerId
+          ? await deps.prisma.computer.findUniqueOrThrow({ where: { id: run.computerId } })
+          : bot.computer;
+        if (!storedComputer) throw new Error("Bot has no computer");
         const computerMode = parseComputerMode(storedComputer.scope);
         const computer = await provisionComputer(deps, storedComputer.id, context, "bot");
         screenRelease = { computer, context };
         scheduleComputerSleep(deps.jobs, storedComputer.id);
         const workspaceCheckpoint = createRunWorkspaceCheckpoint(() =>
-          checkpointAndRecordComputerWorkspace(deps, storedComputer, computer, context),
+          computer.kind === "employee-host"
+            ? Promise.resolve()
+            : checkpointAndRecordComputerWorkspace(deps, storedComputer, computer, context),
         );
         let currentTurnFiles: Awaited<ReturnType<typeof materializeCurrentTurnFiles>>;
         try {
@@ -1186,7 +1218,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
         }
         const attachedFilesPrompt = currentTurnFilesInstruction(currentTurnFiles);
         const graphical =
-          computer.kind !== "desktop" && deps.sandbox.describe().capabilities.graphical;
+          computer.kind !== "desktop" &&
+          computer.kind !== "employee-host" &&
+          deps.sandbox.describe().capabilities.graphical;
         // Gate on the model this run will actually call — the pair written to the run row
         // above. Deriving it a second time here dropped the deployment fallback, so a
         // vision-capable default was gated as "scripted" and lost its screenshot tools.

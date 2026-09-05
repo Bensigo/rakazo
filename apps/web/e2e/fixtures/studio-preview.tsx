@@ -23,6 +23,23 @@ const routes: Record<string, unknown> = {
   "/rpc/studio/roles": roles,
   "/rpc/bots/list": [{ id: "fixture-engineer", name: "Engineer" }],
   "/rpc/studio/assignments": [],
+  "/rpc/studio/registeredRepositories": [],
+  "/rpc/studio/assignmentComputers": [
+    {
+      id: "fixture-server-computer",
+      name: "Specialist computer",
+      kind: "docker",
+      state: "running",
+      isDefault: true,
+    },
+    {
+      id: "fixture-build-mac",
+      name: "Build Mac",
+      kind: "employee-host",
+      state: "running",
+      isDefault: false,
+    },
+  ],
   "/rpc/studio/foundation": {
     currentRevision: {
       revision: 3,

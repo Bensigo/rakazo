@@ -159,6 +159,7 @@ export const AssignmentManifestSchema = z.object({
   projectIds: z.array(Id),
   taskId: Id,
   botId: Id,
+  computerId: Id.nullable(),
   foundationRevisionId: Id.nullable(),
   rolePresetId: Id.nullable(),
   manifest: z.record(z.string(), z.unknown()),
@@ -171,6 +172,21 @@ export const AssignmentManifestSchema = z.object({
   updatedAt: z.string(),
 });
 export type AssignmentManifest = z.infer<typeof AssignmentManifestSchema>;
+
+export const AssignmentComputerSchema = z.object({
+  id: Id,
+  name: z.string().min(1),
+  kind: SandboxKind,
+  state: z.enum(["stopped", "booting", "running", "suspended", "error"]),
+  isDefault: z.boolean(),
+});
+export type AssignmentComputer = z.infer<typeof AssignmentComputerSchema>;
+
+export const EmployeeHostEnrollmentSchema = z.object({
+  hostId: Id,
+  enrollmentToken: z.string().min(1),
+});
+export type EmployeeHostEnrollment = z.infer<typeof EmployeeHostEnrollmentSchema>;
 
 export const StudioFoundationSchema = z.object({
   id: Id,
@@ -812,6 +828,7 @@ export type MessagingAgentConnection = z.infer<typeof MessagingAgentConnectionSc
 export const RunSchema = z.object({
   id: Id,
   botId: Id,
+  computerId: Id.nullable(),
   threadId: Id,
   taskId: Id,
   status: RunStatus,

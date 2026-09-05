@@ -10,6 +10,7 @@ import {
   touchGroupUpdatedAt,
 } from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
+import { revalidateDelegatedComputer } from "./delegated-computer.js";
 import type { ExecutorDeps } from "./executor.js";
 
 export async function handoffToGroupBot(
@@ -53,7 +54,7 @@ export async function handoffToGroupBot(
           userId: run.userId,
           status: "running",
         },
-        select: { id: true, sourceMessage: { select: { blocks: true } } },
+        select: { id: true, computerId: true, sourceMessage: { select: { blocks: true } } },
       }),
     ]);
     if (!group || !activeSource) return { error: "source run is no longer active" } as const;
@@ -133,6 +134,11 @@ export async function handoffToGroupBot(
       runId: run.id,
       clientNonce: deliveryKey,
     });
+    const computerId = await revalidateDelegatedComputer(tx, {
+      computerId: activeSource.computerId,
+      spaceId: run.spaceId,
+      userId: run.userId,
+    });
     const task = await tx.task.create({
       data: {
         spaceId: run.spaceId,
@@ -147,6 +153,7 @@ export async function handoffToGroupBot(
       data: {
         spaceId: run.spaceId,
         botId: targetId,
+        computerId,
         threadId: run.threadId,
         taskId: task.id,
         userId: run.userId,
