@@ -34,7 +34,9 @@ function jsonResponse(value: unknown) {
   return { status: 200, contentType: "application/json", body: JSON.stringify({ json: value }) };
 }
 
-test("ignores out-of-order source and wiki responses and de-duplicates connects", async ({ page }) => {
+test("ignores out-of-order source and wiki responses and de-duplicates connects", async ({
+  page,
+}) => {
   const stamp = Date.now();
   await signup(page, `studio-source-race-${stamp}@rakazo.test`, "password12", "Source Race");
   await page.waitForURL(/\/(onboarding|app)/);
@@ -61,7 +63,8 @@ test("ignores out-of-order source and wiki responses and de-duplicates connects"
     route.fulfill(jsonResponse([{ id: "game", label: "Game repository" }])),
   );
   await page.route("**/rpc/studio/projectSources", async (route) => {
-    const projectId = (route.request().postDataJSON() as { json: { projectId: string } }).json.projectId;
+    const projectId = (route.request().postDataJSON() as { json: { projectId: string } }).json
+      .projectId;
     if (projectId === "project-a") {
       await projectAReady;
       return route.fulfill(jsonResponse([]));
@@ -97,8 +100,15 @@ test("ignores out-of-order source and wiki responses and de-duplicates connects"
   });
   await page.route("**/rpc/studio/projectWikiPage", async (route) => {
     const pageId = (route.request().postDataJSON() as { json: { pageId: string } }).json.pageId;
-    if (pageId === "a-page") await pageAReady;
-    else await pageBReady;
+    if (pageId === "a-page") {
+      await pageAReady;
+      return route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Synthetic stale page failure" }),
+      });
+    }
+    await pageBReady;
     return route.fulfill(
       jsonResponse({
         pageId,
