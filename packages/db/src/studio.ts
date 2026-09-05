@@ -1,5 +1,5 @@
-import type { Actor } from "@rakazo/contracts";
 import { createHash } from "node:crypto";
+import type { Actor } from "@rakazo/contracts";
 import type { Prisma, PrismaClient } from "./client.js";
 import { IsolationError } from "./scope.js";
 

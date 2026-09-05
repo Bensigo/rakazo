@@ -163,9 +163,7 @@ export const appContract = {
     addProjectSource: oc
       .input(z.object({ projectId: Id, repositoryId: Id }))
       .output(ProjectSourceBindingSchema),
-    syncProjectSource: oc
-      .input(z.object({ bindingId: Id }))
-      .output(ProjectSourceBindingSchema),
+    syncProjectSource: oc.input(z.object({ bindingId: Id })).output(ProjectSourceBindingSchema),
     projectWikiPages: oc
       .input(z.object({ projectId: Id, bindingId: Id }))
       .output(z.array(StudioWikiPageSummarySchema)),

@@ -71,7 +71,7 @@ export interface StudioWikiPageRead {
     id: string;
     projectId: string;
     commit: string;
-    localOverlay: boolean;
+    overlay: "temporary-local-overlay" | "shared-commit";
   };
 }
 
@@ -81,14 +81,14 @@ export interface StudioKnowledgeBridge {
     sources: PinnedStudioSource[];
     question: string;
   }): Promise<{ instructions: string }>;
-  sync(input: AuthorizedStudioSource & {
-    checkoutPath: string;
-    expectedSnapshotId?: string;
-  }): Promise<StudioSourceSyncResult>;
+  sync(
+    input: AuthorizedStudioSource & {
+      checkoutPath: string;
+      expectedSnapshotId?: string | null;
+    },
+  ): Promise<StudioSourceSyncResult>;
   listWiki(input: AuthorizedStudioSource): Promise<{ pages: StudioWikiPageSummary[] }>;
-  getWikiPage(
-    input: AuthorizedStudioSource & { pageId: string },
-  ): Promise<StudioWikiPageRead>;
+  getWikiPage(input: AuthorizedStudioSource & { pageId: string }): Promise<StudioWikiPageRead>;
   close(): Promise<void>;
 }
 

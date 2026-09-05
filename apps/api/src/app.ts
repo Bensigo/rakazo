@@ -38,7 +38,6 @@ import {
   LocalAgentHomeStore,
   LocalArtifactStore,
   loadStudioKnowledgeBridge,
-  parseRegisteredStudioRepositories,
   McpConnector,
   McpOAuthBroker,
   messagingPlatformsFromEnv,
@@ -46,14 +45,15 @@ import {
   PiOAuthLogins,
   PipedreamConnector,
   PostgresRealtimeFanout,
+  parseRegisteredStudioRepositories,
   pipedreamConfigFromEnv,
   pushTokenPath,
+  type RegisteredStudioRepository,
   type RemoteConnectorDependencies,
   ScriptedAgentRuntime,
   SmtpEmailProvider,
   SpaceMemoryProviderResolver,
   type StudioKnowledgeBridge,
-  type RegisteredStudioRepository,
 } from "@rakazo/adapters";
 import { blockedAuthPaths, createAuth } from "@rakazo/auth";
 import { signupPolicyFromEnv } from "@rakazo/core";
@@ -76,9 +76,9 @@ import { requestLogging } from "@rakazo/logging/hono";
 import { MarkdownMemoryStore } from "@rakazo/memory";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { mountEmployeeHostRoutes } from "./employee-host-routes.js";
 import { type AppEnv, loadEnv } from "./env.js";
 import { createMessagingInboundHandler } from "./messaging-inbound.js";
-import { mountEmployeeHostRoutes } from "./employee-host-routes.js";
 import { mountMessagingWebhookRoutes } from "./messaging-webhook.js";
 import { createRouter } from "./router.js";
 import { mountVoiceHttpRoutes } from "./voice.js";
@@ -126,14 +126,14 @@ export async function createApp(
     ...envOverrides
   } = overrides;
   const env = { ...loadEnv(process.env), ...envOverrides };
+  const studioRepositories =
+    studioRepositoriesOverride ?? parseRegisteredStudioRepositories(env.sunriseStudioRepositories);
   const studioKnowledge =
     studioKnowledgeOverride ??
     (await loadStudioKnowledgeBridge({
       modulePath: env.sunriseKnowledgeModule,
       databaseUrl: env.sunriseKnowledgeDatabaseUrl,
     }));
-  const studioRepositories =
-    studioRepositoriesOverride ?? parseRegisteredStudioRepositories(env.sunriseStudioRepositories);
   const logger = loggerOverride ?? createServiceLogger({ service: SERVICE_NAMES.api });
   installLogger(logger);
   const created = prismaOverride
@@ -479,7 +479,11 @@ export async function createApp(
     actor: async (request) => {
       const session = await auth.api.getSession({ headers: sessionHeaders(request) });
       if (!session?.user) return null;
-      const actor = await requireMembership(prisma, session.user.id, request.headers.get("x-rakazo-space-id")).catch(() => null);
+      const actor = await requireMembership(
+        prisma,
+        session.user.id,
+        request.headers.get("x-rakazo-space-id"),
+      ).catch(() => null);
       return actor ? { userId: actor.userId, spaceId: actor.spaceId } : null;
     },
   });

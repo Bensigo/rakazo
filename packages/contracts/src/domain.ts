@@ -125,7 +125,7 @@ export const StudioWikiPageReadSchema = z.object({
     id: z.string().min(1),
     projectId: z.string().min(1),
     commit: z.string(),
-    localOverlay: z.boolean(),
+    overlay: z.enum(["temporary-local-overlay", "shared-commit"]),
   }),
 });
 export type StudioWikiPageRead = z.infer<typeof StudioWikiPageReadSchema>;

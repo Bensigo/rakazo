@@ -54,14 +54,15 @@ import {
   prepareMemoryProviderConnection,
   probeOpenAiCompatibleModels,
   provisionComputer,
-  type RemoteConnectorDependencies,
   type RegisteredStudioRepository,
+  type RemoteConnectorDependencies,
   registeredRepositoryForOrganization,
-  repositoriesForOrganization,
   releaseComputerExecutionLease,
   replaceComputer,
+  repositoriesForOrganization,
   resolveAutoReviewChecker,
   resolveBotWorkspacePath,
+  type StudioKnowledgeBridge,
   sanitizeComposioError,
   savePushToken,
   scheduleComputerControlExpiry,
@@ -72,7 +73,6 @@ import {
   takeoverLeaseMs,
   toComputerRef,
   toStringRecord,
-  type StudioKnowledgeBridge,
   touchRunningComputer,
   verifyMcpInstall,
 } from "@rakazo/adapters";
@@ -427,9 +427,7 @@ export function createRouter(deps: RouterDeps) {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   });
-  const projectSourceDto = (
-    row: Awaited<ReturnType<typeof studio.projectSources>>[number],
-  ) => ({
+  const projectSourceDto = (row: Awaited<ReturnType<typeof studio.projectSources>>[number]) => ({
     id: row.id,
     projectId: row.projectId,
     kind: row.kind,
@@ -599,15 +597,10 @@ export function createRouter(deps: RouterDeps) {
       createProject: authed.studio.createProject.handler(async ({ context, input }) =>
         studioProjectDto(await studio.createProject(context.actor, input)),
       ),
-      registeredRepositories: authed.studio.registeredRepositories.handler(
-        async ({ context }) => {
-          const organizationId = await studio.organizationId(context.actor);
-          return repositoriesForOrganization(
-            deps.studioRepositories ?? [],
-            organizationId,
-          );
-        },
-      ),
+      registeredRepositories: authed.studio.registeredRepositories.handler(async ({ context }) => {
+        const organizationId = await studio.organizationId(context.actor);
+        return repositoriesForOrganization(deps.studioRepositories ?? [], organizationId);
+      }),
       projectSources: authed.studio.projectSources.handler(async ({ context, input }) =>
         (await studio.projectSources(context.actor, input.projectId)).map(projectSourceDto),
       ),
@@ -652,19 +645,11 @@ export function createRouter(deps: RouterDeps) {
         );
       }),
       projectWikiPages: authed.studio.projectWikiPages.handler(async ({ context, input }) => {
-        const source = await authorizedWikiSource(
-          context.actor,
-          input.projectId,
-          input.bindingId,
-        );
+        const source = await authorizedWikiSource(context.actor, input.projectId, input.bindingId);
         return (await knowledgeBridge().listWiki(source)).pages;
       }),
       projectWikiPage: authed.studio.projectWikiPage.handler(async ({ context, input }) => {
-        const source = await authorizedWikiSource(
-          context.actor,
-          input.projectId,
-          input.bindingId,
-        );
+        const source = await authorizedWikiSource(context.actor, input.projectId, input.bindingId);
         return knowledgeBridge().getWikiPage({ ...source, pageId: input.pageId });
       }),
       roles: authed.studio.roles.handler(async ({ context }) =>

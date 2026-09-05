@@ -5,18 +5,21 @@ const stableIdentity = z
   .string()
   .min(1)
   .max(512)
-  .refine((value) => !/[\s\u0000-\u001f\u007f]/u.test(value), "must be a stable identity");
+  .refine(
+    (value) =>
+      ![...value].some((character) => {
+        const code = character.codePointAt(0) ?? 0;
+        return /\s/u.test(character) || code < 32 || code === 127;
+      }),
+    "must be a stable identity",
+  );
 
 const registeredStudioRepositorySchema = z
   .object({
     id: stableIdentity,
     organizationId: stableIdentity,
     label: z.string().trim().min(1).max(160),
-    checkoutPath: z
-      .string()
-      .min(1)
-      .max(4096)
-      .refine(isAbsolute, "must be an absolute server path"),
+    checkoutPath: z.string().min(1).max(4096).refine(isAbsolute, "must be an absolute server path"),
     sourceId: stableIdentity,
     refKey: stableIdentity,
   })
@@ -67,7 +70,9 @@ export function repositoriesForOrganization(
   return repositories
     .filter((repository) => repository.organizationId === organizationId)
     .map(({ id, label }) => ({ id, label }))
-    .sort((left, right) => left.label.localeCompare(right.label) || left.id.localeCompare(right.id));
+    .sort(
+      (left, right) => left.label.localeCompare(right.label) || left.id.localeCompare(right.id),
+    );
 }
 
 export function registeredRepositoryForOrganization(
