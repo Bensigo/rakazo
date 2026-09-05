@@ -211,14 +211,19 @@ export async function createApp(
   const managedProviderRpc = env.managedProviderMcpUrl && env.managedProviderMcpToken
     ? new ManagedProviderMcpClient({ providerId: "composio", endpoint: env.managedProviderMcpUrl, token: env.managedProviderMcpToken, allowInternalHttp: env.managedProviderMcpAllowInternalHttp })
     : undefined;
+  const managedCapabilities = managedProviderRpc ? await managedProviderRpc.capabilities() : undefined;
   const pipedream =
     pipedreamOverride ??
     managedProviderMcp?.("pipedream");
+  const managedMessaging = managedProviderRpc && managedCapabilities?.messaging
+    ? new ManagedMessagingMcpClient(managedProviderRpc)
+    : undefined;
+  if (managedMessaging) await managedMessaging.refreshPlatforms();
   const messaging =
     messagingOverride ??
-    (managedProviderRpc ? new ManagedMessagingMcpClient(managedProviderRpc) : undefined);
+    managedMessaging;
   const localEmailEmulator =
-    !emailOverride && !env.smtpUrl && env.emailEmulator
+    !emailOverride && !managedCapabilities?.email && env.emailEmulator
       ? new EmailEmulator((message) => {
           getLogger().info("email emulator captured message", {
             "email.subject": message.subject,
@@ -230,7 +235,7 @@ export async function createApp(
   }
   const email: TransactionalEmailProvider | undefined =
     emailOverride ??
-    (managedProviderRpc
+    (managedProviderRpc && managedCapabilities?.email
       ? new ManagedEmailMcpClient(managedProviderRpc)
       : localEmailEmulator);
   const installed = new InstalledConnectorProvider(prisma, secrets, remoteConnectors);

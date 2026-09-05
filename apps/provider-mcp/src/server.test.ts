@@ -56,6 +56,7 @@ test("rejects malformed provider output and normalizes void lifecycle results", 
   const port = (service.http.address() as AddressInfo).port;
   try {
     const client = new ManagedProviderMcpClient({ providerId: "composio", endpoint: `http://127.0.0.1:${port}/mcp`, token });
+    assert.deepEqual(await client.capabilities(), { messaging: false, email: false, push: false, composio: true, pipedream: false });
     await assert.rejects(() => client.catalog(context), /invalid response|invalid catalog/i);
     await client.revoke("github", context);
   } finally {
@@ -76,6 +77,7 @@ test("disabled providers have empty read capabilities but fail closed for mutati
   const port = (service.http.address() as AddressInfo).port;
   try {
     const client = new ManagedProviderMcpClient({ providerId: "composio", endpoint: `http://127.0.0.1:${port}/mcp`, token });
+    assert.deepEqual(await client.capabilities(), { messaging: false, email: false, push: false, composio: false, pipedream: false });
     assert.deepEqual(await client.catalog(context), []);
     assert.deepEqual(await client.listConnectedExternalIds(context), []);
     assert.deepEqual(await client.discoverTools(context), []);

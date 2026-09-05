@@ -91,8 +91,11 @@ async function main() {
   const managedProviderRpc = process.env.MANAGED_PROVIDER_MCP_URL && process.env.MANAGED_PROVIDER_MCP_TOKEN
     ? new ManagedProviderMcpClient({ providerId: "composio", endpoint: process.env.MANAGED_PROVIDER_MCP_URL, token: process.env.MANAGED_PROVIDER_MCP_TOKEN, allowInternalHttp: process.env.MANAGED_PROVIDER_MCP_ALLOW_INTERNAL_HTTP === "true" })
     : undefined;
+  const managedCapabilities = managedProviderRpc ? await managedProviderRpc.capabilities() : undefined;
   const pipedream = managedProviderMcp?.("pipedream");
-  const messaging = managedProviderRpc ? new ManagedMessagingMcpClient(managedProviderRpc) : undefined;
+  const managedMessaging = managedProviderRpc && managedCapabilities?.messaging ? new ManagedMessagingMcpClient(managedProviderRpc) : undefined;
+  if (managedMessaging) await managedMessaging.refreshPlatforms();
+  const messaging = managedMessaging;
   const stack = createConnectorStack(Boolean(managedProviderMcp), managedProviderMcp?.("composio"), [
     new InstalledConnectorProvider(prisma, secrets),
     ...(pipedream ? [pipedream] : []),

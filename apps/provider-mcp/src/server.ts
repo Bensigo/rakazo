@@ -118,6 +118,7 @@ export function createProviderMcpServer(map: ProviderMap = providers(), services
     return { content: [], structuredContent: response(events) };
   });
   server.registerTool("messaging_platforms", { description: "List configured messaging platforms.", inputSchema: {} }, async () => ok({ value: services.messagingFactory?.().platforms() ?? [] }));
+  server.registerTool("capabilities", { description: "Report configured managed delivery capabilities.", inputSchema: {} }, async () => ok({ value: { messaging: Boolean(services.messagingFactory), email: Boolean(services.email), push: Boolean(services.push || services.notifications), composio: Boolean(map.composio), pipedream: Boolean(map.pipedream) } }));
   server.registerTool("messaging_send", { description: "Send a message to an existing provider thread.", inputSchema: MessagingSendSchema.shape }, async (input, extra) => {
     if (!services.messagingFactory) throw new Error("Messaging provider is not configured");
     return ok({ value: await services.messagingFactory().sendToThread(input.request, context(input.context, extra.signal)) });

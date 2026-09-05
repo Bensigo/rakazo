@@ -63,6 +63,9 @@ export class ManagedProviderMcpClient implements ManagedConnectorProvider {
   describe() {
     return { id: this.config.providerId, contractVersion: "1", adapterVersion: "0.1.0", capabilities: { discover: true, oauth: true, secretsBrokered: true } };
   }
+  async capabilities(signal = new AbortController().signal): Promise<{ messaging: boolean; email: boolean; push: boolean; composio: boolean; pipedream: boolean }> {
+    return parse(z.object({ messaging: z.boolean(), email: z.boolean(), push: z.boolean(), composio: z.boolean(), pipedream: z.boolean() }), await this.call("capabilities", {}, signal));
+  }
 
   async catalog(ctx: AdapterContext, query?: string): Promise<ConnectorCatalogItem[]> {
     return this.call("catalog", { provider: this.config.providerId, context: context(ctx), query }, ctx.signal).then((value) => parse(z.array(z.object({ connectorId: z.string(), slug: z.string(), name: z.string(), logo: z.string().nullable(), connected: z.boolean(), noAuth: z.boolean() })), value));
@@ -121,7 +124,14 @@ export class ManagedMessagingMcpClient implements MessagingSurface {
   private descriptors: MessagingPlatformDescriptor[] = [];
   private sink?: (event: import("@rakazo/adapter-kit").MessagingInboundEvent) => Promise<void>;
   constructor(private readonly rpc: ManagedProviderMcpClient) {}
-  describe() { return { id: "managed-messaging-mcp", contractVersion: "1", adapterVersion: "0.1.0", capabilities: { providers: [] } }; }
+  describe() {
+    return {
+      id: "managed-messaging-mcp",
+      contractVersion: "1",
+      adapterVersion: "0.1.0",
+      capabilities: { providers: this.descriptors.map(({ provider }) => provider) },
+    };
+  }
   platforms(): MessagingPlatformDescriptor[] { return this.descriptors; }
   async refreshPlatforms(signal = new AbortController().signal): Promise<void> { this.descriptors = parse(z.array(z.object({ provider: z.string(), capabilities: z.object({ direct: z.boolean(), groups: z.boolean(), typing: z.boolean() }) })), await this.rpc.call("messaging_platforms", {}, signal)); }
   onInbound(sink: (event: import("@rakazo/adapter-kit").MessagingInboundEvent) => Promise<void>): void { this.sink = sink; }
