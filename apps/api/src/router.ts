@@ -375,6 +375,7 @@ export interface RouterDeps {
     defaultProvider: string;
     defaultModel: string;
     deploymentModelKey?: string;
+    apiUrl?: string;
     webOrigin: string;
     screenProxySecret: string;
     sandboxProvider: string;
@@ -709,10 +710,14 @@ export function createRouter(deps: RouterDeps) {
       ),
       enrollEmployeeHost: authed.studio.enrollEmployeeHost.handler(async ({ context, input }) => {
         try {
-          return await enrollEmployeeHost(deps.prisma, context.actor, {
+          const enrollment = await enrollEmployeeHost(deps.prisma, context.actor, {
             ...input,
             capabilities: { exec: true },
           });
+          return {
+            ...enrollment,
+            controlPlaneUrl: deps.env.apiUrl ?? deps.env.webOrigin,
+          };
         } catch (error) {
           if (error instanceof EmployeeHostEnrollmentConflictError)
             throw new ORPCError("CONFLICT", { message: error.message });

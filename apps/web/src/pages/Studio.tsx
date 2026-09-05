@@ -262,7 +262,7 @@ export function StudioPage() {
     const config = {
       hostId: enrollment.hostId,
       enrollmentToken: enrollment.enrollmentToken,
-      controlPlaneUrl: window.location.origin,
+      controlPlaneUrl: enrollment.controlPlaneUrl,
       workspaceRoot,
     };
     const url = URL.createObjectURL(

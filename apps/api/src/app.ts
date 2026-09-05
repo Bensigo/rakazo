@@ -365,6 +365,7 @@ export async function createApp(
       defaultProvider: env.defaultProvider,
       defaultModel: env.defaultModel,
       deploymentModelKey: env.deploymentModelKey,
+      apiUrl: env.apiUrl,
       webOrigin: env.webOrigin,
       screenProxySecret: env.screenProxySecret,
       sandboxProvider: env.sandboxProvider,
