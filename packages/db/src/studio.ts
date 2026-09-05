@@ -60,6 +60,12 @@ async function validatedRolePresets(
 
 export function createStudioDomain(prisma: PrismaClient) {
   return {
+    async permissions(actor: Actor) {
+      const membership = await organizationFor(prisma, actor);
+      const memberRole = membership.member.role;
+      const canManage = actor.isDeploymentOwner || ["owner", "admin"].includes(memberRole);
+      return { memberRole, canManageJobRoles: canManage, canManageFoundation: canManage };
+    },
     async jobRoles(actor: Actor) {
       const organizationId = await organizationIdFor(prisma, actor);
       return prisma.employeeJobRole.findMany({

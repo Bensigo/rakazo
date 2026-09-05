@@ -670,6 +670,9 @@ export function createRouter(deps: RouterDeps) {
         const source = await authorizedWikiSource(context.actor, input.projectId, input.bindingId);
         return knowledgeBridge().getWikiPage({ ...source, pageId: input.pageId });
       }),
+      permissions: authed.studio.permissions.handler(async ({ context }) =>
+        studio.permissions(context.actor),
+      ),
       roles: authed.studio.roles.handler(async ({ context }) =>
         (await studio.roles(context.actor)).map(roleDto),
       ),

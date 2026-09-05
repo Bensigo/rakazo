@@ -53,4 +53,28 @@ test.describe("Studio UI fixture", () => {
     await page.getByRole("button", { name: "Apply and provision specialists" }).click();
     await expect(page.getByText("1 specialists provisioned for you")).toHaveCount(1);
   });
+
+  test("keeps the prior provisioned team after a failed apply", async ({ page }) => {
+    await page.goto("/e2e/fixtures/studio-preview.html?fail-after-first");
+
+    const jobRole = page.getByRole("combobox", { name: "Your job role" });
+    const apply = page.getByRole("button", { name: "Apply and provision specialists" });
+    await jobRole.selectOption("fixture-job-role");
+    await apply.click();
+    await expect(page.getByText("1 specialists provisioned for you")).toBeVisible();
+
+    await apply.click();
+    await expect(page.getByRole("alert")).toContainText("Synthetic role provisioning failure");
+    await expect(page.getByText("1 specialists provisioned for you")).toBeVisible();
+  });
+
+  test("disables apply while provisioning is pending", async ({ page }) => {
+    await page.goto("/e2e/fixtures/studio-preview.html?slow-role");
+
+    await page.getByRole("combobox", { name: "Your job role" }).selectOption("fixture-job-role");
+    const apply = page.getByRole("button", { name: "Apply and provision specialists" });
+    await apply.click();
+    await expect(page.getByRole("button", { name: "Provisioning…" })).toBeDisabled();
+    await expect(page.getByText("1 specialists provisioned for you")).toBeVisible();
+  });
 });

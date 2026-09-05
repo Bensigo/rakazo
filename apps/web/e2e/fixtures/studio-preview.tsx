@@ -31,7 +31,14 @@ const jobRoles = [
 ];
 let selectedJobRole: unknown = null;
 let bots = [{ id: "fixture-engineer", name: "Engineer" }];
+const fixtureMode = new URLSearchParams(window.location.search);
+let roleSelectionCalls = 0;
 const routes: Record<string, unknown> = {
+  "/rpc/studio/permissions": {
+    memberRole: "admin",
+    canManageJobRoles: true,
+    canManageFoundation: true,
+  },
   "/rpc/studio/projects": projects,
   "/rpc/studio/roles": roles,
   "/rpc/bots/list": bots,
@@ -56,6 +63,13 @@ window.fetch = async (input, init) => {
   const pathname = new URL(request.url).pathname;
   if (!pathname.startsWith("/rpc/")) return realFetch(input, init);
   if (pathname === "/rpc/studio/selectJobRole") {
+    roleSelectionCalls += 1;
+    if (fixtureMode.has("fail-after-first") && roleSelectionCalls > 1) {
+      return new Response("Synthetic role provisioning failure", { status: 503 });
+    }
+    if (fixtureMode.has("slow-role")) {
+      await new Promise((resolve) => window.setTimeout(resolve, 150));
+    }
     selectedJobRole = {
       jobRole: jobRoles[0],
       specialists: [
