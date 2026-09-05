@@ -1,13 +1,19 @@
 import { createHash } from "node:crypto";
 import type { Actor } from "@rakazo/contracts";
 import type { Prisma, PrismaClient } from "./client.js";
+import { createBotInTransaction } from "./repos.js";
 import { IsolationError } from "./scope.js";
-import { createRepos } from "./repos.js";
+import { withTransactionRetry } from "./transaction-retry.js";
 
 async function organizationFor(prisma: PrismaClient, actor: Actor) {
   const membership = await prisma.spaceMember.findUnique({
     where: { spaceId_userId: { spaceId: actor.spaceId, userId: actor.userId } },
-    select: { organizationId: true, member: { select: { role: true } } },
+    select: {
+      id: true,
+      organizationId: true,
+      jobRoleId: true,
+      member: { select: { role: true } },
+    },
   });
   if (!membership) throw new IsolationError();
   return membership;
@@ -22,44 +28,155 @@ async function requireAdmin(prisma: PrismaClient, actor: Actor) {
   return membership.organizationId;
 }
 
+function parseRolePresetIds(value: Prisma.JsonValue): string[] {
+  if (
+    !Array.isArray(value) ||
+    value.some((id) => typeof id !== "string" || id.trim().length === 0) ||
+    new Set(value).size !== value.length
+  ) {
+    throw new IsolationError("Job role has invalid specialist presets");
+  }
+  return value as string[];
+}
+
+async function validatedRolePresets(
+  prisma: Pick<Prisma.TransactionClient, "employeeRolePreset">,
+  organizationId: string,
+  presetIds: string[],
+) {
+  if (new Set(presetIds).size !== presetIds.length) {
+    throw new IsolationError("Duplicate specialist preset");
+  }
+  const presets = await prisma.employeeRolePreset.findMany({
+    where: { id: { in: presetIds }, organizationId },
+    select: { id: true, name: true, description: true },
+  });
+  if (presets.length !== presetIds.length) {
+    throw new IsolationError("Specialist preset is outside this organization");
+  }
+  const byId = new Map(presets.map((preset) => [preset.id, preset]));
+  return presetIds.map((id) => byId.get(id)!);
+}
+
 export function createStudioDomain(prisma: PrismaClient) {
-  const repos = createRepos(prisma);
   return {
     async jobRoles(actor: Actor) {
       const organizationId = await organizationIdFor(prisma, actor);
-      return prisma.employeeJobRole.findMany({ where: { organizationId }, orderBy: { name: "asc" } });
+      return prisma.employeeJobRole.findMany({
+        where: { organizationId },
+        orderBy: { name: "asc" },
+      });
     },
-    async createJobRole(actor: Actor, input: { key: string; name: string; description?: string; defaultRolePresetIds: string[] }) {
+    async createJobRole(
+      actor: Actor,
+      input: {
+        key: string;
+        name: string;
+        description?: string;
+        defaultRolePresetIds: string[];
+      },
+    ) {
       const organizationId = await requireAdmin(prisma, actor);
-      const presetIds = [...new Set(input.defaultRolePresetIds)];
-      if (presetIds.length !== input.defaultRolePresetIds.length) throw new IsolationError("Duplicate specialist preset");
-      const count = await prisma.employeeRolePreset.count({ where: { id: { in: presetIds }, organizationId } });
-      if (count !== presetIds.length) throw new IsolationError("Specialist preset is outside this organization");
-      return prisma.employeeJobRole.create({ data: { organizationId, key: input.key.trim(), name: input.name.trim(), description: input.description?.trim() ?? "", defaultRolePresetIds: presetIds } });
+      await validatedRolePresets(prisma, organizationId, input.defaultRolePresetIds);
+      return prisma.employeeJobRole.create({
+        data: {
+          organizationId,
+          key: input.key.trim(),
+          name: input.name.trim(),
+          description: input.description?.trim() ?? "",
+          defaultRolePresetIds: input.defaultRolePresetIds,
+        },
+      });
     },
-    async updateJobRole(actor: Actor, id: string, input: { name?: string; description?: string; defaultRolePresetIds?: string[] }) {
+    async updateJobRole(
+      actor: Actor,
+      id: string,
+      input: { name?: string; description?: string; defaultRolePresetIds?: string[] },
+    ) {
       const organizationId = await requireAdmin(prisma, actor);
       const existing = await prisma.employeeJobRole.findFirst({ where: { id, organizationId } });
       if (!existing) throw new IsolationError();
-      const presetIds = input.defaultRolePresetIds ? [...new Set(input.defaultRolePresetIds)] : undefined;
-      if (presetIds && presetIds.length !== input.defaultRolePresetIds!.length) throw new IsolationError("Duplicate specialist preset");
-      if (presetIds) { const count = await prisma.employeeRolePreset.count({ where: { id: { in: presetIds }, organizationId } }); if (count !== presetIds.length) throw new IsolationError("Specialist preset is outside this organization"); }
-      return prisma.employeeJobRole.update({ where: { id }, data: { ...(input.name === undefined ? {} : { name: input.name.trim() }), ...(input.description === undefined ? {} : { description: input.description.trim() }), ...(presetIds ? { defaultRolePresetIds: presetIds } : {}) } });
+      if (input.defaultRolePresetIds) {
+        await validatedRolePresets(prisma, organizationId, input.defaultRolePresetIds);
+      }
+      return prisma.employeeJobRole.update({
+        where: { id },
+        data: {
+          ...(input.name === undefined ? {} : { name: input.name.trim() }),
+          ...(input.description === undefined ? {} : { description: input.description.trim() }),
+          ...(input.defaultRolePresetIds === undefined
+            ? {}
+            : { defaultRolePresetIds: input.defaultRolePresetIds }),
+        },
+      });
+    },
+    async jobRoleSelection(actor: Actor) {
+      const membership = await organizationFor(prisma, actor);
+      if (!membership.jobRoleId) return null;
+      const role = await prisma.employeeJobRole.findFirst({
+        where: { id: membership.jobRoleId, organizationId: membership.organizationId },
+      });
+      if (!role) return null;
+      const presetIds = parseRolePresetIds(role.defaultRolePresetIds);
+      const bindings = await prisma.employeeJobRoleSpecialist.findMany({
+        where: { spaceMemberId: membership.id, rolePresetId: { in: presetIds } },
+        select: { rolePresetId: true, botId: true },
+      });
+      const byPresetId = new Map(bindings.map((binding) => [binding.rolePresetId, binding]));
+      return {
+        jobRole: role,
+        specialists: presetIds.flatMap((id) => {
+          const binding = byPresetId.get(id);
+          return binding ? [binding] : [];
+        }),
+      };
     },
     async selectJobRole(actor: Actor, jobRoleId: string) {
-      const membership = await organizationFor(prisma, actor);
-      const role = await prisma.employeeJobRole.findFirst({ where: { id: jobRoleId, organizationId: membership.organizationId }, select: { id: true } });
-      if (!role) throw new IsolationError();
-      const member = await prisma.spaceMember.update({ where: { spaceId_userId: { spaceId: actor.spaceId, userId: actor.userId } }, data: { jobRoleId } });
-      const presetIds = await prisma.employeeJobRole.findUniqueOrThrow({ where: { id: jobRoleId }, select: { defaultRolePresetIds: true } });
-      const ids = Array.isArray(presetIds.defaultRolePresetIds) ? presetIds.defaultRolePresetIds.filter((id): id is string => typeof id === "string") : [];
-      for (const rolePresetId of ids) {
-        const existing = await prisma.employeeJobRoleSpecialist.findUnique({ where: { spaceMemberId_rolePresetId: { spaceMemberId: member.id, rolePresetId } } });
-        if (existing) continue;
-        const bot = await repos.createBot(actor, { name: `Specialist ${rolePresetId}`, title: "Studio specialist", description: "Provisioned from employee job role", instructions: "", notifyOnFinish: true, rolePresetId });
-        await prisma.employeeJobRoleSpecialist.create({ data: { spaceMemberId: member.id, rolePresetId, botId: bot.id } });
-      }
-      return member;
+      return withTransactionRetry(() =>
+        prisma.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT id FROM space_members WHERE "spaceId" = ${actor.spaceId} AND "userId" = ${actor.userId} FOR UPDATE`;
+          const membership = await tx.spaceMember.findUnique({
+            where: { spaceId_userId: { spaceId: actor.spaceId, userId: actor.userId } },
+            select: { id: true, organizationId: true },
+          });
+          if (!membership) throw new IsolationError();
+          const role = await tx.employeeJobRole.findFirst({
+            where: { id: jobRoleId, organizationId: membership.organizationId },
+          });
+          if (!role) throw new IsolationError();
+          const presetIds = parseRolePresetIds(role.defaultRolePresetIds);
+          const presets = await validatedRolePresets(tx, membership.organizationId, presetIds);
+          const existing = await tx.employeeJobRoleSpecialist.findMany({
+            where: { spaceMemberId: membership.id, rolePresetId: { in: presetIds } },
+            select: { rolePresetId: true, botId: true },
+          });
+          const byPresetId = new Map(existing.map((binding) => [binding.rolePresetId, binding]));
+          for (const preset of presets) {
+            if (byPresetId.has(preset.id)) continue;
+            const bot = await createBotInTransaction(tx, actor, {
+              name: preset.name,
+              title: "Studio specialist",
+              description: preset.description,
+              instructions: "",
+              notifyOnFinish: true,
+              rolePresetId: preset.id,
+            });
+            const binding = await tx.employeeJobRoleSpecialist.create({
+              data: { spaceMemberId: membership.id, rolePresetId: preset.id, botId: bot.id },
+              select: { rolePresetId: true, botId: true },
+            });
+            byPresetId.set(preset.id, binding);
+          }
+          await tx.spaceMember.update({
+            where: { id: membership.id },
+            data: { jobRoleId: role.id },
+          });
+          return {
+            jobRole: role,
+            specialists: presetIds.map((id) => byPresetId.get(id)!),
+          };
+        }),
+      );
     },
     async organizationId(actor: Actor) {
       return organizationIdFor(prisma, actor);

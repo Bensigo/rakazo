@@ -26,6 +26,8 @@ import {
   CreateRoutineInput,
   CreateScratchpadItemInput,
   DeploymentSettingsSchema,
+  EmployeeJobRoleSchema,
+  EmployeeJobRoleSelectionSchema,
   EmployeeRolePresetSchema,
   ExportManifestSchema,
   GroupDetailSchema,
@@ -194,6 +196,29 @@ export const appContract = {
         }),
       )
       .output(EmployeeRolePresetSchema),
+    jobRoles: oc.output(z.array(EmployeeJobRoleSchema)),
+    jobRoleSelection: oc.output(EmployeeJobRoleSelectionSchema.nullable()),
+    createJobRole: oc
+      .input(
+        z.object({
+          key: z.string().trim().min(1).max(80),
+          name: z.string().trim().min(1).max(160),
+          description: z.string().max(4000).default(""),
+          defaultRolePresetIds: z.array(Id).max(20),
+        }),
+      )
+      .output(EmployeeJobRoleSchema),
+    updateJobRole: oc
+      .input(
+        z.object({
+          jobRoleId: Id,
+          name: z.string().trim().min(1).max(160).optional(),
+          description: z.string().max(4000).optional(),
+          defaultRolePresetIds: z.array(Id).max(20).optional(),
+        }),
+      )
+      .output(EmployeeJobRoleSchema),
+    selectJobRole: oc.input(z.object({ jobRoleId: Id })).output(EmployeeJobRoleSelectionSchema),
     assignment: oc.input(z.object({ assignmentId: Id })).output(AssignmentManifestSchema),
     assignments: oc.output(z.array(AssignmentManifestSchema)),
     createAssignment: oc

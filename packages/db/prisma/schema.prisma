@@ -212,6 +212,7 @@ model SpaceMember {
   specialistBindings EmployeeJobRoleSpecialist[]
 
   @@unique([spaceId, userId])
+  @@index([jobRoleId])
   @@index([organizationId, userId])
   @@index([userId, createdAt])
   @@map("space_members")
@@ -228,8 +229,6 @@ model EmployeeJobRole {
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
   spaceMembers         SpaceMember[]
-  specialists          EmployeeJobRoleSpecialist[]
-
   @@unique([organizationId, key])
   @@index([organizationId, name])
   @@map("employee_job_roles")

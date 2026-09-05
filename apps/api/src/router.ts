@@ -417,6 +417,30 @@ export function createRouter(deps: RouterDeps) {
     isDefault: row.isDefault,
     foundationRevisionId: row.foundationRevisionId,
   });
+  const jobRoleDto = (row: Awaited<ReturnType<typeof studio.jobRoles>>[number]) => {
+    if (
+      !Array.isArray(row.defaultRolePresetIds) ||
+      row.defaultRolePresetIds.some((id) => typeof id !== "string")
+    ) {
+      throw new IsolationError("Job role has invalid specialist presets");
+    }
+    const defaultRolePresetIds = row.defaultRolePresetIds as string[];
+    return {
+      id: row.id,
+      key: row.key,
+      name: row.name,
+      description: row.description,
+      defaultRolePresetIds,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  };
+  const jobRoleSelectionDto = (
+    row: NonNullable<Awaited<ReturnType<typeof studio.jobRoleSelection>>>,
+  ) => ({
+    jobRole: jobRoleDto(row.jobRole),
+    specialists: row.specialists,
+  });
   const assignmentDto = (row: NonNullable<Awaited<ReturnType<typeof studio.assignment>>>) => ({
     ...row,
     scope: row.scope as "studio" | "one" | "multi",
@@ -654,6 +678,22 @@ export function createRouter(deps: RouterDeps) {
       ),
       updateRole: authed.studio.updateRole.handler(async ({ context, input }) =>
         roleDto(await studio.updateRole(context.actor, input.roleId, input)),
+      ),
+      jobRoles: authed.studio.jobRoles.handler(async ({ context }) =>
+        (await studio.jobRoles(context.actor)).map(jobRoleDto),
+      ),
+      jobRoleSelection: authed.studio.jobRoleSelection.handler(async ({ context }) => {
+        const selected = await studio.jobRoleSelection(context.actor);
+        return selected ? jobRoleSelectionDto(selected) : null;
+      }),
+      createJobRole: authed.studio.createJobRole.handler(async ({ context, input }) =>
+        jobRoleDto(await studio.createJobRole(context.actor, input)),
+      ),
+      updateJobRole: authed.studio.updateJobRole.handler(async ({ context, input }) =>
+        jobRoleDto(await studio.updateJobRole(context.actor, input.jobRoleId, input)),
+      ),
+      selectJobRole: authed.studio.selectJobRole.handler(async ({ context, input }) =>
+        jobRoleSelectionDto(await studio.selectJobRole(context.actor, input.jobRoleId)),
       ),
       assignment: authed.studio.assignment.handler(async ({ context, input }) => {
         const row = await studio.assignment(context.actor, input.assignmentId);
