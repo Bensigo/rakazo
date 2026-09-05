@@ -95,6 +95,9 @@ describe("employee host protocol", () => {
     await writeFile(malformed, "{", { mode: 0o600 });
     await expect(spool.pending()).rejects.toThrow(/preserve it for inspection and repair or remove it/);
     await expect(readFile(malformed, "utf8")).resolves.toBe("{");
+    await writeFile(malformed, JSON.stringify({ state: "terminal", receipt: {} }), { mode: 0o600 });
+    await expect(spool.pending()).rejects.toThrow(/invalid shape/);
+    await expect(readFile(malformed, "utf8")).resolves.toContain('"receipt":{}');
   });
 
   it("reconciles a lost terminal receipt response after restart without rerunning", async () => {

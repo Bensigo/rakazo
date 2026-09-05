@@ -16,6 +16,7 @@ import type {
   ScreenSession,
 } from "@rakazo/adapter-kit";
 import type { Prisma, PrismaClient } from "@rakazo/db";
+import { z } from "zod";
 
 export type EmployeeHostPlatform = "macos" | "windows" | "linux" | "unknown";
 
@@ -83,6 +84,39 @@ export interface EmployeeHostTerminalReceipt {
 
 export type EmployeeHostReceipt = EmployeeHostAcceptedReceipt | EmployeeHostTerminalReceipt;
 
+const spoolLeaseSchema = z.object({
+  hostId: z.string().min(1),
+  spaceId: z.string().min(1),
+  botId: z.string().min(1),
+  computerId: z.string().min(1),
+  runId: z.string().min(1),
+  fence: z.number().int().nonnegative(),
+  expiresAt: z.number().int().nonnegative(),
+}).strict();
+const spoolOperationSchema = z.object({
+  operationId: z.string().min(1),
+  hostId: z.string().min(1),
+  spaceId: z.string().min(1),
+  botId: z.string().min(1),
+  computerId: z.string().min(1),
+  lease: spoolLeaseSchema,
+  kind: z.literal("exec"),
+  request: z.object({ argv: z.array(z.string()).min(1), cwd: z.string().optional(), env: z.record(z.string(), z.string()).optional(), pty: z.boolean().optional(), timeoutMs: z.number().int().positive().optional() }).strict(),
+}).strict();
+const spoolTerminalReceiptSchema = z.object({
+  operationId: z.string().min(1),
+  hostId: z.string().min(1),
+  acceptedAt: z.number().int().nonnegative(),
+  completedAt: z.number().int().nonnegative(),
+  status: z.enum(["completed", "failed", "unknown"]),
+  lease: z.object({ computerId: z.string().min(1), runId: z.string().min(1), fence: z.number().int().nonnegative() }).strict(),
+  result: z.object({ stdout: z.string(), stderr: z.string(), code: z.number().int() }).strict(),
+}).strict();
+const spoolEntrySchema = z.discriminatedUnion("state", [
+  z.object({ operation: spoolOperationSchema, state: z.literal("claimed") }).strict(),
+  z.object({ receipt: spoolTerminalReceiptSchema, state: z.literal("terminal") }).strict(),
+]);
+
 export class LocalEmployeeHostReceiptSpool {
   constructor(private readonly root: string) {}
   private file(operationId: string) {
@@ -114,14 +148,19 @@ export class LocalEmployeeHostReceiptSpool {
     const receipts: EmployeeHostTerminalReceipt[] = [];
     for (const name of await readdir(this.root)) {
       if (!name.endsWith(".json")) continue;
-      let value: { receipt?: EmployeeHostTerminalReceipt; operation?: EmployeeHostOperation; state?: string };
+      let raw: unknown;
       try {
-        value = JSON.parse(await readFile(path.join(this.root, name), "utf8")) as typeof value;
+        raw = JSON.parse(await readFile(path.join(this.root, name), "utf8"));
       } catch (error) {
         throw new Error(`Employee host receipt spool entry ${name} is invalid; preserve it for inspection and repair or remove it before restarting.`, { cause: error });
       }
-      if (value.receipt) receipts.push(value.receipt);
-      else if (value.operation) receipts.push({ operationId: value.operation.operationId, hostId: value.operation.hostId, lease: { computerId: value.operation.computerId, runId: value.operation.lease.runId, fence: value.operation.lease.fence }, acceptedAt: Date.now(), completedAt: Date.now(), status: "unknown", result: { stdout: "", stderr: "Execution claim existed before companion restart; result is unknown and was not replayed.", code: 125 } });
+      const parsed = spoolEntrySchema.safeParse(raw);
+      if (!parsed.success) {
+        throw new Error(`Employee host receipt spool entry ${name} has an invalid shape; preserve it for inspection and repair or remove it before restarting.`, { cause: parsed.error });
+      }
+      const value = parsed.data;
+      if (value.state === "terminal") receipts.push(value.receipt);
+      else receipts.push({ operationId: value.operation.operationId, hostId: value.operation.hostId, lease: { computerId: value.operation.computerId, runId: value.operation.lease.runId, fence: value.operation.lease.fence }, acceptedAt: Date.now(), completedAt: Date.now(), status: "unknown", result: { stdout: "", stderr: "Execution claim existed before companion restart; result is unknown and was not replayed.", code: 125 } });
     }
     return receipts;
   }
