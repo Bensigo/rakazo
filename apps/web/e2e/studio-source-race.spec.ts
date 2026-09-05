@@ -147,12 +147,14 @@ test("ignores out-of-order source and wiki responses and de-duplicates connects"
   releaseWikiB();
   await expect(page.getByText("Project B page")).toHaveCount(0);
 
+  await sourceProject.selectOption("project-b");
   await page.getByRole("button", { name: "Wiki" }).click();
   await expect(page.getByRole("button", { name: /Project A page/ })).toBeVisible();
   await page.getByRole("button", { name: /Project A page/ }).click();
   await page.getByRole("button", { name: /Project B page/ }).click();
-  releasePageA();
   releasePageB();
+  await expect(page.getByRole("heading", { name: "Project B page" })).toBeVisible();
+  releasePageA();
   await expect(page.getByRole("heading", { name: "Project B page" })).toBeVisible();
 
   const connect = page.getByRole("button", { name: "Connect" });
