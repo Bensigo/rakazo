@@ -77,4 +77,25 @@ test.describe("Studio UI fixture", () => {
     await expect(page.getByRole("button", { name: "Provisioning…" })).toBeDisabled();
     await expect(page.getByText("1 specialists provisioned for you")).toBeVisible();
   });
+
+  test("gates administration for a regular member", async ({ page }) => {
+    await page.goto("/e2e/fixtures/studio-preview.html?member");
+
+    await expect(page.getByLabel("Studio goals")).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Publish revision" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Create role" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Create employee role" })).toBeDisabled();
+  });
+
+  test("shows and edits default specialist order", async ({ page }) => {
+    await page.goto("/e2e/fixtures/studio-preview.html");
+
+    await page.getByRole("checkbox", { name: "Default specialist Engineer" }).check();
+    await page.getByRole("checkbox", { name: "Default specialist Reviewer" }).check();
+    await expect(page.getByText("1. Engineer", { exact: true })).toBeVisible();
+    await expect(page.getByText("2. Reviewer", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Move Reviewer up" }).click();
+    await expect(page.getByText("1. Reviewer", { exact: true })).toBeVisible();
+    await expect(page.getByText("2. Engineer", { exact: true })).toBeVisible();
+  });
 });

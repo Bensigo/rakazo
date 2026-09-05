@@ -17,6 +17,14 @@ const roles = [
     instructions: "Make small changes, run relevant tests, and return cited evidence.",
     isDefault: true,
   },
+  {
+    id: "fixture-reviewer-role",
+    key: "review",
+    name: "Reviewer",
+    description: "Check evidence and acceptance boundaries.",
+    instructions: "Check evidence and acceptance boundaries.",
+    isDefault: false,
+  },
 ];
 const jobRoles = [
   {
@@ -34,11 +42,7 @@ let bots = [{ id: "fixture-engineer", name: "Engineer" }];
 const fixtureMode = new URLSearchParams(window.location.search);
 let roleSelectionCalls = 0;
 const routes: Record<string, unknown> = {
-  "/rpc/studio/permissions": {
-    memberRole: "admin",
-    canManageJobRoles: true,
-    canManageFoundation: true,
-  },
+  "/rpc/studio/permissions": null,
   "/rpc/studio/projects": projects,
   "/rpc/studio/roles": roles,
   "/rpc/bots/list": bots,
@@ -107,7 +111,16 @@ window.fetch = async (input, init) => {
   }
   if (!(pathname in routes))
     return new Response("Fixture is read-only; execution is disabled.", { status: 503 });
-  const value = pathname === "/rpc/studio/jobRoleSelection" ? selectedJobRole : routes[pathname];
+  const value =
+    pathname === "/rpc/studio/jobRoleSelection"
+      ? selectedJobRole
+      : pathname === "/rpc/studio/permissions"
+        ? {
+            memberRole: fixtureMode.has("member") ? "member" : "admin",
+            canManageJobRoles: !fixtureMode.has("member"),
+            canManageFoundation: !fixtureMode.has("member"),
+          }
+        : routes[pathname];
   return Response.json({ json: value });
 };
 
