@@ -15,6 +15,7 @@ import type {
   SandboxProvider,
   ScreenSession,
 } from "@rakazo/adapter-kit";
+import type { Prisma, PrismaClient } from "@rakazo/db";
 
 export type EmployeeHostPlatform = "macos" | "windows" | "linux" | "unknown";
 
@@ -305,6 +306,38 @@ export async function runEmployeeHostCompanion(input: {
 export interface EmployeeHostTransport {
   provision(request: { botId: string; homePath: string; providerRef?: string; providerKind?: ComputerRef["kind"] }, context: AdapterContext): Promise<ComputerRef>;
   execute(computer: ComputerRef, request: CommandRequest, context: AdapterContext): AsyncIterable<ProcessEvent>;
+}
+
+/** Prisma-backed producer/receipt transport used by API and worker composition. */
+export class PrismaEmployeeHostTransport implements EmployeeHostTransport {
+  constructor(private readonly prisma: PrismaClient, private readonly pollMs = 50) {}
+
+  async provision(request: { botId: string; homePath: string; providerRef?: string; providerKind?: ComputerRef["kind"] }, context: AdapterContext) {
+    const hostId = request.providerRef ?? request.botId;
+    const host = await this.prisma.employeeHost.findFirst({ where: { hostId, spaceId: context.spaceId, expiresAt: { gt: new Date() } } });
+    if (!host) throw new Error("employee host is unavailable");
+    return { id: `employee-${host.hostId}`, botId: request.botId, kind: "employee-host" as ComputerRef["kind"], providerRef: host.hostId, fresh: false };
+  }
+
+  async *execute(computer: ComputerRef, request: CommandRequest, context: AdapterContext): AsyncIterable<ProcessEvent> {
+    if (!context.botId || !context.runId) throw new Error("employee host execution requires bot and run context");
+    const host = await this.prisma.employeeHost.findFirst({ where: { hostId: computer.providerRef, spaceId: context.spaceId, expiresAt: { gt: new Date() } } });
+    if (!host) throw new Error("employee host is unavailable");
+    const lease = await this.prisma.computerExecutionLease.findUnique({ where: { computerId_botId: { computerId: computer.id, botId: context.botId } } });
+    if (!lease || lease.runId !== context.runId || lease.expiresAt <= new Date()) throw new Error("employee host execution lease is stale");
+    const operation = await this.prisma.employeeHostOperation.create({ data: { operationId: randomUUID(), hostId: host.hostId, spaceId: context.spaceId, botId: context.botId, runId: context.runId, fence: lease.fence, request: request as unknown as Prisma.InputJsonValue } });
+    while (!context.signal.aborted) {
+      const current = await this.prisma.employeeHostOperation.findUnique({ where: { id: operation.id } });
+      if (current?.status === "completed" || current?.status === "failed") {
+        if (current.stdout) yield { type: "stdout", data: current.stdout };
+        if (current.stderr) yield { type: "stderr", data: current.stderr };
+        yield { type: "exit", code: current.exitCode ?? 1 };
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, this.pollMs));
+    }
+    throw context.signal.reason ?? new Error("employee host execution aborted");
+  }
 }
 
 /** Placeholder adapter until API composition supplies the durable transport. */
