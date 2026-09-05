@@ -65,6 +65,12 @@ integration("employee host routes (PostgreSQL)", () => {
     const staleFence = { ...wrong, lease: { computerId: ids.computer, runId: ids.run, fence: 6 } };
     expect((await app.request(`http://test/employee-hosts/${hostId}/receipts/${operationId}`, { method: "POST", headers: auth, body: JSON.stringify(staleFence) })).status).toBe(409);
     const good = { operationId, hostId, lease: { computerId: ids.computer, runId: ids.run, fence: 7 }, result: { stdout: "ok", stderr: "", code: 0 } };
+    const otherComputer = `${ids.computer}-other`;
+    await prisma.computer.create({ data: { id: otherComputer, spaceId: ids.space, userId: ids.user, scope: "dedicated", scopeKey: `host-test-${otherComputer}`, homeKey: `host-home-${otherComputer}`, kind: "employee-host" } });
+    await prisma.computerExecutionLease.delete({ where: { computerId_botId: { computerId: ids.computer, botId: ids.bot } } });
+    await prisma.computerExecutionLease.create({ data: { computerId: otherComputer, botId: ids.bot, runId: ids.run, fence: 7, expiresAt: new Date(Date.now() + 60_000) } });
+    expect((await app.request(`http://test/employee-hosts/${hostId}/receipts/${operationId}`, { method: "POST", headers: auth, body: JSON.stringify(good) })).status).toBe(409);
+    await prisma.computerExecutionLease.create({ data: { computerId: ids.computer, botId: ids.bot, runId: ids.run, fence: 7, expiresAt: new Date(Date.now() + 60_000) } });
     expect((await app.request(`http://test/employee-hosts/${hostId}/receipts/${operationId}`, { method: "POST", headers: auth, body: JSON.stringify(good) })).status).toBe(200);
     await expect(prisma.employeeHostOperation.findUniqueOrThrow({ where: { operationId } })).resolves.toMatchObject({ status: "completed", stdout: "ok", exitCode: 0 });
     expect((await app.request(`http://test/employee-hosts/${hostId}/receipts/${operationId}`, { method: "POST", headers: auth, body: JSON.stringify(good) })).status).toBe(200);

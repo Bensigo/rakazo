@@ -81,7 +81,7 @@ export function mountEmployeeHostRoutes(
     const receipt = input.data;
     if (receipt.operationId !== operation.operationId || receipt.hostId !== operation.hostId || receipt.lease.runId !== operation.runId || receipt.lease.fence !== operation.fence || receipt.lease.computerId !== operation.computerId) return c.json({ error: "Stale receipt" }, 409);
     const result = receipt.result;
-    const lease = await deps.prisma.computerExecutionLease.findFirst({ where: { botId: operation.botId, runId: operation.runId, fence: operation.fence, expiresAt: { gt: new Date() }, computer: { spaceId: operation.spaceId } } });
+    const lease = await deps.prisma.computerExecutionLease.findFirst({ where: { computerId: operation.computerId, botId: operation.botId, runId: operation.runId, fence: operation.fence, expiresAt: { gt: new Date() }, computer: { spaceId: operation.spaceId } } });
     if (!lease) return c.json({ error: "Stale receipt" }, 409);
     const updated = await deps.prisma.employeeHostOperation.updateMany({ where: { id: operation.id, hostId: operation.hostId, runId: operation.runId, fence: operation.fence, status: "dispatched" }, data: { status: result.code === 0 ? "completed" : "failed", stdout: result.stdout ?? "", stderr: result.stderr ?? "", exitCode: result.code ?? 1, completedAt: new Date() } });
     if (updated.count !== 1) return c.json({ ok: true, status: "already-completed" });
