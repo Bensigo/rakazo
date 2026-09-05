@@ -53,7 +53,59 @@ describe("studio domain", () => {
     const domain = createStudioDomain(prisma);
     await expect(domain.assignment(actor, "missing")).resolves.toBeNull();
     expect(prisma.assignmentManifest.findFirst).toHaveBeenCalledWith({
-      where: { id: "missing", bot: { space: { organizationId: "org-1" } } },
+      where: {
+        id: "missing",
+        bot: { spaceId: "space-1", space: { organizationId: "org-1" } },
+        OR: [{ createdByUserId: "user-1" }, { reviewerUserId: "user-1" }],
+      },
+    });
+  });
+
+  it("does not expose a creator's assignment from another private space in the same organization", async () => {
+    const prisma = privacyPrisma({
+      spaceId: "space-2",
+      createdByUserId: actor.userId,
+      reviewerUserId: null,
+    });
+    const domain = createStudioDomain(prisma);
+
+    await expect(domain.assignment(actor, "private-assignment")).resolves.toBeNull();
+    await expect(domain.assignments(actor)).resolves.toEqual([]);
+    await expect(domain.acceptAssignment(actor, "private-assignment")).rejects.toThrow(
+      "Resource not found",
+    );
+  });
+
+  it("does not expose a same-space assignment to an unrelated member", async () => {
+    const prisma = privacyPrisma({
+      spaceId: actor.spaceId,
+      createdByUserId: "user-2",
+      reviewerUserId: "user-3",
+    });
+    const domain = createStudioDomain(prisma);
+
+    await expect(domain.assignment(actor, "private-assignment")).resolves.toBeNull();
+    await expect(domain.assignments(actor)).resolves.toEqual([]);
+    await expect(domain.acceptAssignment(actor, "private-assignment")).rejects.toThrow(
+      "Resource not found",
+    );
+  });
+
+  it("lets an explicitly assigned same-space reviewer read and accept", async () => {
+    const prisma = privacyPrisma({
+      spaceId: actor.spaceId,
+      createdByUserId: "user-2",
+      reviewerUserId: actor.userId,
+    });
+    const domain = createStudioDomain(prisma);
+
+    await expect(domain.assignment(actor, "private-assignment")).resolves.toMatchObject({
+      id: "private-assignment",
+    });
+    await expect(domain.assignments(actor)).resolves.toHaveLength(1);
+    await expect(domain.acceptAssignment(actor, "private-assignment")).resolves.toMatchObject({
+      status: "accepted",
+      acceptedByUserId: actor.userId,
     });
   });
 
@@ -109,7 +161,7 @@ describe("studio domain", () => {
     });
   });
 
-  it("creates runnable studio-wide work without treating run creation as acceptance", async () => {
+  it("lets a normal space member create runnable work for their own bot", async () => {
     const taskCreate = vi.fn(async () => ({ id: "task-new" }));
     const runCreate = vi.fn(async () => ({ id: "run-new" }));
     const assignmentCreate = vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
@@ -133,13 +185,16 @@ describe("studio domain", () => {
       ),
     } as any;
 
-    const created = await createStudioDomain(prisma).createAssignment(actor, {
-      scope: "studio",
-      projectIds: [],
-      objective: "Prepare the studio release plan",
-      botId: "bot-1",
-      manifest: { deliverable: "Release plan" },
-    });
+    const created = await createStudioDomain(prisma).createAssignment(
+      { ...actor, isDeploymentOwner: false },
+      {
+        scope: "studio",
+        projectIds: [],
+        objective: "Prepare the studio release plan",
+        botId: "bot-1",
+        manifest: { deliverable: "Release plan" },
+      },
+    );
 
     expect(taskCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -195,3 +250,46 @@ describe("studio domain", () => {
     expect(assignmentCreate).not.toHaveBeenCalled();
   });
 });
+
+function privacyPrisma(input: {
+  spaceId: string;
+  createdByUserId: string;
+  reviewerUserId: string | null;
+}) {
+  let assignment = {
+    id: "private-assignment",
+    status: "draft",
+    acceptedAt: null as Date | null,
+    acceptedByUserId: null as string | null,
+    task: { status: "completed" },
+    ...input,
+  };
+  const visible = (where: {
+    id?: string;
+    bot: { spaceId: string };
+    OR: Array<{ createdByUserId?: string; reviewerUserId?: string }>;
+  }) =>
+    (!where.id || where.id === assignment.id) &&
+    where.bot.spaceId === assignment.spaceId &&
+    where.OR.some(
+      (clause) =>
+        clause.createdByUserId === assignment.createdByUserId ||
+        (assignment.reviewerUserId !== null && clause.reviewerUserId === assignment.reviewerUserId),
+    );
+  return {
+    spaceMember: { findUnique: vi.fn(async () => membership) },
+    assignmentManifest: {
+      findFirst: vi.fn(async ({ where }: { where: Parameters<typeof visible>[0] }) =>
+        visible(where) ? assignment : null,
+      ),
+      findMany: vi.fn(async ({ where }: { where: Parameters<typeof visible>[0] }) =>
+        visible(where) ? [assignment] : [],
+      ),
+      updateMany: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        assignment = { ...assignment, ...data } as typeof assignment;
+        return { count: 1 };
+      }),
+      findUniqueOrThrow: vi.fn(async () => assignment),
+    },
+  } as any;
+}
