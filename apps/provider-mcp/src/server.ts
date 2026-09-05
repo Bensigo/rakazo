@@ -42,6 +42,9 @@ function providerFor(map: ProviderMap, id: z.infer<typeof ProviderSchema>): Mana
   if (!provider) throw new Error(`Managed provider ${id} is not configured`);
   return provider;
 }
+function optionalProvider(map: ProviderMap, id: z.infer<typeof ProviderSchema>): ManagedConnectorProvider | undefined {
+  return map[id];
+}
 function bounded(value: unknown): unknown {
   const text = JSON.stringify(value);
   if (text === undefined || text.length > MAX_JSON) throw new Error("Provider response is invalid or too large");
@@ -76,10 +79,22 @@ export function createProviderMcpServer(map: ProviderMap = providers()): McpServ
   };
   const value = async <T>(tool: string, fn: (provider: ManagedConnectorProvider, ctx: AdapterContext) => Promise<T>, input: { provider: z.infer<typeof ProviderSchema>; context: z.infer<typeof ContextSchema> }, signal: AbortSignal) => ({ value: await run(tool, fn, input, signal) });
   const ok = <T>(structuredContent: T) => ({ content: [], structuredContent });
-  server.registerTool("catalog", { description: "List the managed provider app catalog.", inputSchema: ToolSchema.shape }, async (input, extra) => ok(await value("catalog", (p, c) => p.catalog(c, input.query), input, extra.signal)));
-  server.registerTool("list_connected", { description: "List connected managed provider apps.", inputSchema: LifecycleSchema.shape }, async (input, extra) => ok(await value("list_connected", (p, c) => p.listConnectedExternalIds(c), input, extra.signal)));
-  server.registerTool("discover", { description: "Discover authorized tools for a managed provider.", inputSchema: ToolSchema.omit({ query: true }).shape }, async (input, extra) => ok(await value("discover", (p, c) => p.discoverTools(c), input, extra.signal)));
-  server.registerTool("connection_ready", { description: "Check whether a managed provider connection is ready.", inputSchema: LifecycleSchema.required({ externalId: true }).shape }, async (input, extra) => ok(await value("connection_ready", (p, c) => p.connectionReady(c, input.externalId), input, extra.signal)));
+  server.registerTool("catalog", { description: "List the managed provider app catalog.", inputSchema: ToolSchema.shape }, async (input, extra) => {
+    const p = optionalProvider(map, input.provider);
+    return ok(p ? await value("catalog", (provider, c) => provider.catalog(c, input.query), input, extra.signal) : { value: [] });
+  });
+  server.registerTool("list_connected", { description: "List connected managed provider apps.", inputSchema: LifecycleSchema.shape }, async (input, extra) => {
+    const p = optionalProvider(map, input.provider);
+    return ok(p ? await value("list_connected", (provider, c) => provider.listConnectedExternalIds(c), input, extra.signal) : { value: [] });
+  });
+  server.registerTool("discover", { description: "Discover authorized tools for a managed provider.", inputSchema: ToolSchema.omit({ query: true }).shape }, async (input, extra) => {
+    const p = optionalProvider(map, input.provider);
+    return ok(p ? await value("discover", (provider, c) => provider.discoverTools(c), input, extra.signal) : { value: [] });
+  });
+  server.registerTool("connection_ready", { description: "Check whether a managed provider connection is ready.", inputSchema: LifecycleSchema.required({ externalId: true }).shape }, async (input, extra) => {
+    const p = optionalProvider(map, input.provider);
+    return ok(p ? await value("connection_ready", (provider, c) => provider.connectionReady(c, input.externalId), input, extra.signal) : { value: false });
+  });
   server.registerTool("begin", { description: "Begin managed provider authorization.", inputSchema: BeginSchema.shape }, async (input, extra) => ok(await value("begin", (p, c) => p.begin(input.request, c), input, extra.signal)));
   server.registerTool("complete", { description: "Complete managed provider authorization.", inputSchema: CompleteSchema.shape }, async (input, extra) => ok(await value("complete", (p, c) => p.complete(input.request, c), input, extra.signal)));
   server.registerTool("revoke", { description: "Revoke a managed provider connection.", inputSchema: LifecycleSchema.required({ externalId: true }).shape }, async (input, extra) => ok(await value("revoke", (p, c) => p.revoke(input.externalId, c), input, extra.signal)));

@@ -67,3 +67,22 @@ test("rejects non-loopback HTTP unless explicitly enabled", () => {
   assert.throws(() => new ManagedProviderMcpClient({ providerId: "composio", endpoint: "http://provider-mcp:3180/mcp", token }), /HTTPS unless loopback/);
   assert.doesNotThrow(() => new ManagedProviderMcpClient({ providerId: "composio", endpoint: "http://provider-mcp:3180/mcp", token, allowInternalHttp: true }));
 });
+
+test("disabled providers have empty read capabilities but fail closed for mutations", async () => {
+  const token = "t".repeat(32);
+  const service = createProviderMcpHttpServer({ token, port: 0, providers: { composio: undefined, pipedream: undefined } });
+  await service.listen();
+  const port = (service.http.address() as AddressInfo).port;
+  try {
+    const client = new ManagedProviderMcpClient({ providerId: "composio", endpoint: `http://127.0.0.1:${port}/mcp`, token });
+    assert.deepEqual(await client.catalog(context), []);
+    assert.deepEqual(await client.listConnectedExternalIds(context), []);
+    assert.deepEqual(await client.discoverTools(context), []);
+    assert.equal(await client.connectionReady(context, "missing"), false);
+    await assert.rejects(() => client.begin({ provider: "github", redirectUrl: "https://example.test/callback" }, context), /request failed|not configured/i);
+    await assert.rejects(async () => { for await (const _event of client.execute({ tool: "x", args: {}, executionId: "x" }, context)) {} }, /request failed|not configured/i);
+    await assert.rejects(() => client.revoke("missing", context), /request failed|not configured/i);
+  } finally {
+    await service.close();
+  }
+});
