@@ -63,15 +63,25 @@ export interface EmployeeHostOperation {
   request: CommandRequest;
 }
 
-export interface EmployeeHostReceipt {
+export interface EmployeeHostAcceptedReceipt {
   operationId: string;
   hostId: string;
   acceptedAt: number;
-  completedAt?: number;
-  status: "accepted" | "completed" | "failed" | "unknown";
-  lease?: Pick<EmployeeHostLease, "runId" | "fence" | "computerId">;
-  result?: { stdout: string; stderr: string; code: number };
+  status: "accepted";
+  lease: Pick<EmployeeHostLease, "runId" | "fence" | "computerId">;
 }
+
+export interface EmployeeHostTerminalReceipt {
+  operationId: string;
+  hostId: string;
+  acceptedAt: number;
+  completedAt: number;
+  status: "completed" | "failed" | "unknown";
+  lease: Pick<EmployeeHostLease, "runId" | "fence" | "computerId">;
+  result: { stdout: string; stderr: string; code: number };
+}
+
+export type EmployeeHostReceipt = EmployeeHostAcceptedReceipt | EmployeeHostTerminalReceipt;
 
 export class LocalEmployeeHostReceiptSpool {
   constructor(private readonly root: string) {}
@@ -84,7 +94,7 @@ export class LocalEmployeeHostReceiptSpool {
     finally { await handle.close(); }
     return "claimed" as const;
   }
-  async terminal(receipt: EmployeeHostReceipt) {
+  async terminal(receipt: EmployeeHostTerminalReceipt) {
     await mkdir(this.root, { recursive: true, mode: 0o700 });
     const temp = `${this.file(receipt.operationId)}.tmp`;
     const handle = await open(temp, "w", 0o600);
@@ -93,16 +103,16 @@ export class LocalEmployeeHostReceiptSpool {
     await rename(temp, this.file(receipt.operationId));
   }
   async acknowledge(operationId: string) { await unlink(this.file(operationId)).catch(() => undefined); }
-  async quarantine(receipt: EmployeeHostReceipt) {
+  async quarantine(receipt: EmployeeHostTerminalReceipt) {
     await this.terminal(receipt);
     await rename(this.file(receipt.operationId), `${this.file(receipt.operationId)}.unresolved`).catch(() => undefined);
   }
-  async pending(): Promise<EmployeeHostReceipt[]> {
+  async pending(): Promise<EmployeeHostTerminalReceipt[]> {
     await mkdir(this.root, { recursive: true, mode: 0o700 });
-    const receipts: EmployeeHostReceipt[] = [];
+    const receipts: EmployeeHostTerminalReceipt[] = [];
     for (const name of await readdir(this.root)) {
       if (!name.endsWith(".json")) continue;
-      const value = JSON.parse(await readFile(path.join(this.root, name), "utf8")) as { receipt?: EmployeeHostReceipt; operation?: EmployeeHostOperation; state?: string };
+      const value = JSON.parse(await readFile(path.join(this.root, name), "utf8")) as { receipt?: EmployeeHostTerminalReceipt; operation?: EmployeeHostOperation; state?: string };
       if (value.receipt) receipts.push(value.receipt);
       else if (value.operation) receipts.push({ operationId: value.operation.operationId, hostId: value.operation.hostId, lease: { computerId: value.operation.computerId, runId: value.operation.lease.runId, fence: value.operation.lease.fence }, acceptedAt: Date.now(), completedAt: Date.now(), status: "unknown", result: { stdout: "", stderr: "Execution claim existed before companion restart; result is unknown and was not replayed.", code: 125 } });
     }
@@ -182,7 +192,7 @@ export class EmployeeHostRegistry {
     if (this.fences.get(key) !== operation.lease.fence || operation.lease.expiresAt <= now) throw new Error("employee host lease is stale");
     const full = { ...operation, operationId: randomUUID() };
     this.queues.get(operation.hostId)!.push(full);
-    this.receipts.set(full.operationId, { operationId: full.operationId, hostId: full.hostId, acceptedAt: now, status: "accepted" });
+    this.receipts.set(full.operationId, { operationId: full.operationId, hostId: full.hostId, acceptedAt: now, status: "accepted", lease: { computerId: full.computerId, runId: full.lease.runId, fence: full.lease.fence } });
     return full;
   }
 
@@ -192,7 +202,7 @@ export class EmployeeHostRegistry {
     return queue.shift();
   }
 
-  receipt(operationId: string, hostId: string, token: string, result: EmployeeHostReceipt["result"], now = Date.now()) {
+  receipt(operationId: string, hostId: string, token: string, result: EmployeeHostTerminalReceipt["result"], now = Date.now()) {
     if (!this.authenticate(hostId, token, now)) throw new Error("employee host authentication failed");
     const previous = this.receipts.get(operationId);
     if (!previous || previous.hostId !== hostId) throw new Error("unknown employee host operation");
@@ -234,7 +244,7 @@ export interface EmployeeHostCompanion {
 export interface EmployeeHostControlPlaneClient {
   heartbeat(hostId: string, token: string, capabilities: EmployeeHostCapabilities): Promise<void>;
   poll(hostId: string, token: string, signal: AbortSignal): Promise<EmployeeHostOperation | undefined>;
-  receipt(hostId: string, token: string, receipt: EmployeeHostReceipt): Promise<void>;
+  receipt(hostId: string, token: string, receipt: EmployeeHostTerminalReceipt): Promise<void>;
 }
 
 /** Minimal HTTP client used by the companion. All requests are outbound. */
@@ -268,7 +278,7 @@ export class HttpEmployeeHostControlPlaneClient implements EmployeeHostControlPl
     return body.operation;
   }
 
-  async receipt(hostId: string, token: string, receipt: EmployeeHostReceipt) {
+  async receipt(hostId: string, token: string, receipt: EmployeeHostTerminalReceipt) {
     await this.request(`/employee-hosts/${encodeURIComponent(hostId)}/receipts/${encodeURIComponent(receipt.operationId)}`, token, { method: "POST", body: JSON.stringify(receipt) });
   }
 }
@@ -382,7 +392,7 @@ export async function runEmployeeHostCompanion(input: {
     })();
     try { await execute; } finally { executionDone = true; }
     await heartbeatLoop.catch((error) => { if (input.signal.aborted) return; throw error; });
-    const receipt: EmployeeHostReceipt = {
+    const receipt: EmployeeHostTerminalReceipt = {
       operationId: operation.operationId,
       hostId: input.hostId,
       lease: { runId: operation.lease.runId, fence: operation.lease.fence, computerId: operation.computerId },
