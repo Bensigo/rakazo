@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { AssignmentManifest, EmployeeRolePreset, StudioProject } from "@rakazo/contracts";
+import { ChatMarkdown } from "@rakazo/chat-ui/web";
 import { Button, Input } from "@rakazo/ui-web";
 import { rpc } from "../lib/rpc";
 
@@ -399,7 +400,9 @@ export function StudioPage() {
                   {wikiPage ? (
                     <article className="border-t border-border pt-3">
                       <h3 className="font-medium">{wikiPage.page.title}</h3>
-                      <p className="mt-2 whitespace-pre-wrap text-sm">{wikiPage.page.content}</p>
+                      <div className="mt-2 text-sm">
+                        <ChatMarkdown>{wikiPage.page.content}</ChatMarkdown>
+                      </div>
                       <p className="mt-3 text-xs text-muted-foreground">
                         {wikiPage.manifest.commit} · {wikiPage.freshness.status} ·{" "}
                         {wikiPage.page.citations
