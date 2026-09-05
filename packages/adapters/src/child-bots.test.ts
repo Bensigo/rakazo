@@ -102,7 +102,13 @@ describe("spawned bot creation", () => {
       organizationId: "org-1",
       foundation: { id: "foundation-2", revision: 2, content: { goal: "Ship" } },
       role: null,
-      assignment: { id: "assignment-1", projectIds: ["project-1"], brief: {} },
+      assignment: {
+        id: "assignment-1",
+        scope: "one",
+        projectIds: ["project-1"],
+        brief: {},
+      },
+      sourceProjectIds: ["project-1"],
       sources: [],
     };
     const taskCreate = vi.fn(async () => ({ id: "child-task" }));
@@ -120,7 +126,13 @@ describe("spawned bot creation", () => {
       return null;
     });
     const prisma = {
-      run: { findUnique },
+      run: {
+        findUnique,
+        findFirst: vi.fn(async () => ({
+          studioContext,
+          task: { projectId: "project-1", studioContext },
+        })),
+      },
       $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
         callback({
           thread: {
@@ -139,6 +151,7 @@ describe("spawned bot creation", () => {
       botId: "child-bot",
       threadId: "child-thread",
       sourceRunId: "parent-run",
+      sourceBotId: "parent-bot",
       spawnKey: "tool-call-1",
       prompt: "Inspect the release",
     });
@@ -148,6 +161,18 @@ describe("spawned bot creation", () => {
     });
     expect(runCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({ studioContext, trigger: "spawn" }),
+    });
+    expect(prisma.run.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: "parent-run",
+        spaceId: "workspace-1",
+        userId: "user-1",
+        botId: "parent-bot",
+      },
+      select: {
+        studioContext: true,
+        task: { select: { projectId: true, studioContext: true } },
+      },
     });
   });
 });

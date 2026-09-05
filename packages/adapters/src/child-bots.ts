@@ -108,6 +108,7 @@ export async function spawnBot(
       botId: created.id,
       threadId: created.threadId,
       sourceRunId: input.runId,
+      sourceBotId: input.spawnedBy.id,
       spawnKey: input.spawnKey,
       prompt,
     });
@@ -134,6 +135,7 @@ export async function ensureSpawnRun(
     botId: string;
     threadId: string;
     sourceRunId: string;
+    sourceBotId: string;
     spawnKey: string;
     prompt: string;
   },
@@ -148,8 +150,13 @@ export async function ensureSpawnRun(
   const existing = await prisma.run.findUnique({ where });
   if (existing) return existing;
 
-  const source = await prisma.run.findUnique({
-    where: { id: input.sourceRunId },
+  const source = await prisma.run.findFirst({
+    where: {
+      id: input.sourceRunId,
+      spaceId: input.spaceId,
+      userId: input.userId,
+      botId: input.sourceBotId,
+    },
     select: {
       studioContext: true,
       task: { select: { projectId: true, studioContext: true } },

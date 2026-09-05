@@ -66,6 +66,7 @@ describe("studio run context", () => {
       organizationId: "org-1",
       foundation: { id: "foundation-revision-3", revision: 3 },
       role: { id: "role-producer", key: "producer" },
+      sourceProjectIds: [],
       sources: [],
     });
     expect(resolved.instructions).toContain("Precedence is studio foundation, employee role");
@@ -191,6 +192,8 @@ describe("studio run context", () => {
       ],
     });
     expect(resolved.manifest.assignment?.projectIds).toEqual(["project-1", "project-2"]);
+    expect(resolved.manifest.assignment?.scope).toBe("multi");
+    expect(resolved.manifest.sourceProjectIds).toEqual(["project-1", "project-2"]);
     expect(resolved.manifest.sources.map((source) => source.snapshotId)).toEqual([
       "snapshot-1",
       "snapshot-2",
@@ -207,16 +210,18 @@ describe("studio run context", () => {
       role: null,
       assignment: {
         id: "assignment-parent",
+        scope: "one",
         projectIds: ["project-1"],
         brief: { scope: "one" },
       },
+      sourceProjectIds: ["project-1"],
       sources: [
         {
           bindingId: "binding-revoked",
           studioProjectId: "project-1",
           sourceId: "github-gameplay",
           refKey: "main@abc123",
-          access: { allowedScopes: ["project:project-1"] },
+          access: { allowedScopes: ["project"] },
           knowledgeProjectId: "knowledge-1",
           snapshotId: "snapshot-1",
         },
@@ -239,6 +244,132 @@ describe("studio run context", () => {
     );
     expect(bridge.pin).not.toHaveBeenCalled();
     expect(bridge.read).not.toHaveBeenCalled();
+  });
+
+  it("rejects a structurally invalid persisted context instead of trusting or replacing it", async () => {
+    const malicious = {
+      version: 1,
+      organizationId: "org-1",
+      foundation: null,
+      role: null,
+      assignment: {
+        id: "assignment-1",
+        scope: "one",
+        projectIds: ["project-1"],
+        brief: {},
+      },
+      sourceProjectIds: ["project-1"],
+      sources: [
+        {
+          bindingId: "binding-1",
+          studioProjectId: "project-outside",
+          sourceId: "attacker-source",
+          refKey: "attacker-ref",
+          access: { allowedScopes: ["admin"] },
+          knowledgeProjectId: "attacker-knowledge",
+          snapshotId: "attacker-snapshot",
+        },
+      ],
+    };
+    const bridge = emptyBridge();
+    const prisma = {
+      spaceMember: { findUnique: vi.fn(async () => ({ organizationId: "org-1" })) },
+      run: { findUnique: vi.fn(async () => ({ studioContext: malicious })) },
+      task: { findUnique: vi.fn(async () => ({ studioContext: null })) },
+    } as unknown as PrismaClient;
+
+    await expect(resolveStudioRunContext(prisma, bridge, input)).rejects.toMatchObject({
+      code: "STUDIO_CONTEXT_UNAVAILABLE",
+      message: "Stored studio context is invalid.",
+    });
+    expect(bridge.pin).not.toHaveBeenCalled();
+    expect(bridge.read).not.toHaveBeenCalled();
+  });
+
+  it("pins only explicitly configured studio-common sources for studio scope", async () => {
+    const bridge = emptyBridge();
+    bridge.pin = vi.fn(async ({ sources }: { sources: AuthorizedStudioSource[] }) => ({
+      sources: sources.map((source) => ({
+        ...source,
+        knowledgeProjectId: "knowledge-common",
+        snapshotId: "snapshot-common",
+      })),
+    }));
+    const studioProjectFindMany = vi.fn(
+      async (args: { where: { scope?: string; id?: { in: string[] } } }) => {
+        if (args.where.scope === "studio") return [{ id: "project-common" }];
+        return [];
+      },
+    );
+    const projectSourceFindMany = vi.fn(async (args: { select?: unknown }) =>
+      args.select
+        ? [
+            {
+              id: "binding-common",
+              projectId: "project-common",
+              repository: "studio-handbook",
+              ref: "main@common",
+            },
+          ]
+        : [
+            {
+              id: "binding-common",
+              projectId: "project-common",
+              repository: "studio-handbook",
+              ref: "main@common",
+              path: null,
+              metadata: {},
+              createdAt: new Date(0),
+            },
+          ],
+    );
+    const prisma = {
+      spaceMember: { findUnique: vi.fn(async () => ({ organizationId: "org-1" })) },
+      run: {
+        findUnique: vi.fn(async () => ({ studioContext: null })),
+        update: vi.fn(async () => ({})),
+      },
+      task: {
+        findUnique: vi.fn(async () => ({ studioContext: null, projectId: null })),
+        update: vi.fn(async () => ({})),
+      },
+      studioFoundation: { findUnique: vi.fn(async () => null) },
+      bot: { findFirst: vi.fn(async () => ({ rolePresetId: null })) },
+      assignmentManifest: {
+        findUnique: vi.fn(async () => ({
+          id: "assignment-studio",
+          botId: "bot-1",
+          scope: "studio",
+          projectId: null,
+          projectIds: [],
+          foundationRevisionId: null,
+          manifest: { deliverable: "Release plan" },
+        })),
+      },
+      employeeRolePreset: { findFirst: vi.fn(async () => null) },
+      studioProject: { findMany: studioProjectFindMany },
+      projectSourceBinding: { findMany: projectSourceFindMany },
+      $transaction: vi.fn(async (operations: Array<Promise<unknown>>) => Promise.all(operations)),
+    } as unknown as PrismaClient;
+
+    const resolved = await resolveStudioRunContext(prisma, bridge, input);
+
+    expect(resolved.manifest.assignment).toMatchObject({ scope: "studio", projectIds: [] });
+    expect(resolved.manifest.sourceProjectIds).toEqual(["project-common"]);
+    expect(bridge.pin).toHaveBeenCalledWith({
+      sources: [
+        expect.objectContaining({
+          studioProjectId: "project-common",
+          sourceId: "studio-handbook",
+          access: { allowedScopes: ["project"] },
+        }),
+      ],
+    });
+    expect(studioProjectFindMany).toHaveBeenCalledWith({
+      where: { organizationId: "org-1", scope: "studio" },
+      select: { id: true },
+      orderBy: { id: "asc" },
+    });
   });
 
   it("fails when configured sources have no canonical bridge", async () => {
