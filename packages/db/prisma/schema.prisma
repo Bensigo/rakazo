@@ -96,6 +96,7 @@ model Organization {
   foundation  StudioFoundation?
   projects    StudioProject[]
   rolePresets EmployeeRolePreset[]
+  jobRoles    EmployeeJobRole[]
 
   @@unique([slug])
   @@map("organization")
@@ -203,14 +204,49 @@ model SpaceMember {
   userId           String
   member           Member                 @relation(fields: [organizationId, userId], references: [organizationId, userId], onDelete: Cascade)
   role             String                 @default("member")
+  jobRoleId        String?
+  jobRole          EmployeeJobRole?       @relation(fields: [jobRoleId], references: [id], onDelete: SetNull)
   createdAt        DateTime
   modelPreferences SpaceModelPreference[]
   voicePreferences SpaceVoicePreference[]
+  specialistBindings EmployeeJobRoleSpecialist[]
 
   @@unique([spaceId, userId])
+  @@index([jobRoleId])
   @@index([organizationId, userId])
   @@index([userId, createdAt])
   @@map("space_members")
+}
+
+model EmployeeJobRole {
+  id                   String        @id @default(cuid())
+  organizationId       String
+  organization         Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  key                  String
+  name                 String
+  description          String        @default("")
+  defaultRolePresetIds Json
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  spaceMembers         SpaceMember[]
+  @@unique([organizationId, key])
+  @@index([organizationId, name])
+  @@map("employee_job_roles")
+}
+
+model EmployeeJobRoleSpecialist {
+  id            String            @id @default(cuid())
+  spaceMemberId String
+  rolePresetId  String
+  botId         String            @unique
+  spaceMember   SpaceMember       @relation(fields: [spaceMemberId], references: [id], onDelete: Cascade)
+  rolePreset    EmployeeRolePreset @relation(fields: [rolePresetId], references: [id], onDelete: Cascade)
+  bot           Bot               @relation(fields: [botId], references: [id], onDelete: Cascade)
+  createdAt     DateTime          @default(now())
+
+  @@unique([spaceMemberId, rolePresetId])
+  @@index([spaceMemberId])
+  @@map("employee_job_role_specialists")
 }
 
 model Invitation {
@@ -339,6 +375,7 @@ model Bot {
   children          Bot[]                @relation("BotChildren")
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
+  jobRoleSpecialist  EmployeeJobRoleSpecialist?
   thread            Thread?
   computerId        String?
   computer          Computer?            @relation(fields: [computerId], references: [id], onDelete: SetNull)
@@ -509,23 +546,23 @@ model Event {
 }
 
 model Task {
-  id         String              @id @default(cuid())
-  spaceId    String
-  space      Space               @relation(fields: [spaceId], references: [id], onDelete: Cascade)
-  botId      String
-  bot        Bot                 @relation(fields: [botId], references: [id], onDelete: Cascade)
-  threadId   String
-  thread     Thread              @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  userId     String
-  prompt     String
-  status     String
-  projectId  String?
-  project    StudioProject?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  id            String              @id @default(cuid())
+  spaceId       String
+  space         Space               @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  botId         String
+  bot           Bot                 @relation(fields: [botId], references: [id], onDelete: Cascade)
+  threadId      String
+  thread        Thread              @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  userId        String
+  prompt        String
+  status        String
+  projectId     String?
+  project       StudioProject?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
   studioContext Json?
-  createdAt  DateTime            @default(now())
-  updatedAt  DateTime            @updatedAt
-  runs       Run[]
-  assignment AssignmentManifest?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  runs          Run[]
+  assignment    AssignmentManifest?
 
   @@index([spaceId, botId])
   @@map("tasks")
@@ -576,6 +613,7 @@ model EmployeeRolePreset {
   updatedAt            DateTime             @updatedAt
   bots                 Bot[]
   assignments          AssignmentManifest[]
+  jobRoleSpecialists   EmployeeJobRoleSpecialist[]
 
   @@unique([organizationId, key])
   @@index([organizationId, isDefault])
@@ -991,22 +1029,22 @@ model ComputerExecutionLease {
 }
 
 model EmployeeHost {
-  id             String                  @id @default(cuid())
-  hostId         String                  @unique
-  spaceId        String
-  space          Space                   @relation(fields: [spaceId], references: [id], onDelete: Cascade)
-  ownerUserId    String
-  owner          User                    @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
-  name           String
-  platform       String
-  capabilities   Json
-  workspaceRoot  String
-  tokenHash      String
-  lastSeenAt     DateTime
-  expiresAt      DateTime
-  createdAt      DateTime                @default(now())
-  updatedAt      DateTime                @updatedAt
-  operations     EmployeeHostOperation[]
+  id            String                  @id @default(cuid())
+  hostId        String                  @unique
+  spaceId       String
+  space         Space                   @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  ownerUserId   String
+  owner         User                    @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  name          String
+  platform      String
+  capabilities  Json
+  workspaceRoot String
+  tokenHash     String
+  lastSeenAt    DateTime
+  expiresAt     DateTime
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+  operations    EmployeeHostOperation[]
 
   @@index([spaceId, ownerUserId])
   @@index([expiresAt])
@@ -1014,25 +1052,25 @@ model EmployeeHost {
 }
 
 model EmployeeHostOperation {
-  id             String       @id @default(cuid())
-  operationId    String       @unique
-  hostId         String
-  host           EmployeeHost @relation(fields: [hostId], references: [hostId], onDelete: Cascade)
-  computerId     String
-  computer       Computer     @relation(fields: [computerId], references: [id], onDelete: Cascade)
-  spaceId        String
-  botId          String
-  runId          String
-  fence          Int
-  request        Json
-  status         String       @default("accepted")
-  stdout         String       @default("")
-  stderr         String       @default("")
-  exitCode       Int?
-  acceptedAt     DateTime     @default(now())
-  completedAt    DateTime?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  id          String       @id @default(cuid())
+  operationId String       @unique
+  hostId      String
+  host        EmployeeHost @relation(fields: [hostId], references: [hostId], onDelete: Cascade)
+  computerId  String
+  computer    Computer     @relation(fields: [computerId], references: [id], onDelete: Cascade)
+  spaceId     String
+  botId       String
+  runId       String
+  fence       Int
+  request     Json
+  status      String       @default("accepted")
+  stdout      String       @default("")
+  stderr      String       @default("")
+  exitCode    Int?
+  acceptedAt  DateTime     @default(now())
+  completedAt DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
   @@index([hostId, status, createdAt])
   @@index([spaceId, botId, fence])
