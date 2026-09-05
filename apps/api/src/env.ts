@@ -36,21 +36,7 @@ export interface AppEnv {
   managedProviderMcpUrl: string | undefined;
   managedProviderMcpToken: string | undefined;
   managedProviderMcpAllowInternalHttp: boolean;
-  sendblueApiKeyId: string | undefined;
-  sendblueApiSecret: string | undefined;
-  sendblueSigningSecret: string | undefined;
-  sendbluePhoneNumber: string | undefined;
-  smtpUrl: string | undefined;
-  emailFrom: string | undefined;
   emailEmulator: boolean;
-  slackBotToken: string | undefined;
-  slackSigningSecret: string | undefined;
-  whatsappAccessToken: string | undefined;
-  whatsappPhoneNumberId: string | undefined;
-  whatsappAppSecret: string | undefined;
-  whatsappVerifyToken: string | undefined;
-  telegramBotToken: string | undefined;
-  telegramWebhookSecret: string | undefined;
   /** Unknown chat senders auto-provision their own accounts when true. */
   messagingOpenSignup: boolean;
   defaultProvider: string;
@@ -110,21 +96,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     managedProviderMcpUrl: optional(source.MANAGED_PROVIDER_MCP_URL),
     managedProviderMcpToken: optional(source.MANAGED_PROVIDER_MCP_TOKEN),
     managedProviderMcpAllowInternalHttp: source.MANAGED_PROVIDER_MCP_ALLOW_INTERNAL_HTTP === "true",
-    sendblueApiKeyId: optional(source.SENDBLUE_API_KEY_ID),
-    sendblueApiSecret: optional(source.SENDBLUE_API_SECRET),
-    sendblueSigningSecret: optional(source.SENDBLUE_SIGNING_SECRET),
-    sendbluePhoneNumber: optional(source.SENDBLUE_PHONE_NUMBER),
-    smtpUrl: optional(source.SMTP_URL),
-    emailFrom: optional(source.EMAIL_FROM),
     emailEmulator: source.EMAIL_EMULATOR === "true" && source.NODE_ENV !== "production",
-    slackBotToken: optional(source.SLACK_BOT_TOKEN),
-    slackSigningSecret: optional(source.SLACK_SIGNING_SECRET),
-    whatsappAccessToken: optional(source.WHATSAPP_ACCESS_TOKEN),
-    whatsappPhoneNumberId: optional(source.WHATSAPP_PHONE_NUMBER_ID),
-    whatsappAppSecret: optional(source.WHATSAPP_APP_SECRET),
-    whatsappVerifyToken: optional(source.WHATSAPP_VERIFY_TOKEN),
-    telegramBotToken: optional(source.TELEGRAM_BOT_TOKEN),
-    telegramWebhookSecret: optional(source.TELEGRAM_WEBHOOK_SECRET_TOKEN),
     messagingOpenSignup: source.MESSAGING_OPEN_SIGNUP === "true",
     defaultProvider: deploymentModel.provider,
     defaultModel: deploymentModel.model,

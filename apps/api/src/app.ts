@@ -12,7 +12,6 @@ import type {
 } from "@rakazo/adapter-kit";
 import {
   applyMessagingOutboundStatus,
-  ChatSdkMessagingSurface,
   type ComposioProvider,
   type ConnectorRegistry,
   createBackgroundJobHandlers,
@@ -27,28 +26,28 @@ import {
   destroyBot,
   EmailEmulator,
   EncryptedSecretStore,
-  ExpoPushProvider,
   GraphileJobPublisher,
   InMemoryJobQueue,
   InMemoryRealtimeFanout,
   InstalledConnectorProvider,
-  isMessagingSurfaceEnabled,
   LocalAgentHomeStore,
   LocalArtifactStore,
   loadStudioKnowledgeBridge,
   ManagedProviderMcpClient,
+  ManagedMessagingMcpClient,
+  ManagedEmailMcpClient,
+  ManagedNotificationMcpClient,
   McpConnector,
   McpOAuthBroker,
-  messagingPlatformsFromEnv,
   PiAgentRuntime,
   PiOAuthLogins,
   PostgresRealtimeFanout,
   parseRegisteredStudioRepositories,
   pushTokenPath,
+  loadPushToken,
   type RegisteredStudioRepository,
   type RemoteConnectorDependencies,
   ScriptedAgentRuntime,
-  SmtpEmailProvider,
   SpaceMemoryProviderResolver,
   type StudioKnowledgeBridge,
 } from "@rakazo/adapters";
@@ -210,20 +209,22 @@ export async function createApp(
   const managedProviderMcp = env.managedProviderMcpUrl && env.managedProviderMcpToken
     ? (providerId: "composio" | "pipedream") => new ManagedProviderMcpClient({ providerId, endpoint: env.managedProviderMcpUrl!, token: env.managedProviderMcpToken!, allowInternalHttp: env.managedProviderMcpAllowInternalHttp })
     : undefined;
+  const managedProviderRpc = env.managedProviderMcpUrl && env.managedProviderMcpToken
+    ? new ManagedProviderMcpClient({ providerId: "composio", endpoint: env.managedProviderMcpUrl, token: env.managedProviderMcpToken, allowInternalHttp: env.managedProviderMcpAllowInternalHttp })
+    : undefined;
+  const managedCapabilities = managedProviderRpc ? await managedProviderRpc.capabilities() : undefined;
   const pipedream =
     pipedreamOverride ??
     managedProviderMcp?.("pipedream");
-  const messagingPlatforms = messagingPlatformsFromEnv(env);
+  const managedMessaging = managedProviderRpc && managedCapabilities?.messaging
+    ? new ManagedMessagingMcpClient(managedProviderRpc)
+    : undefined;
+  if (managedMessaging) await managedMessaging.refreshPlatforms();
   const messaging =
     messagingOverride ??
-    (isMessagingSurfaceEnabled(messagingPlatforms, {
-      deploymentModelKey: env.deploymentModelKey,
-      openSignup: env.messagingOpenSignup,
-    })
-      ? new ChatSdkMessagingSurface(messagingPlatforms)
-      : undefined);
+    managedMessaging;
   const localEmailEmulator =
-    !emailOverride && !env.smtpUrl && env.emailEmulator
+    !emailOverride && !managedCapabilities?.email && env.emailEmulator
       ? new EmailEmulator((message) => {
           getLogger().info("email emulator captured message", {
             "email.subject": message.subject,
@@ -235,8 +236,8 @@ export async function createApp(
   }
   const email: TransactionalEmailProvider | undefined =
     emailOverride ??
-    (env.smtpUrl
-      ? new SmtpEmailProvider({ url: env.smtpUrl, from: env.emailFrom ?? "" })
+    (managedProviderRpc && managedCapabilities?.email
+      ? new ManagedEmailMcpClient(managedProviderRpc)
       : localEmailEmulator);
   const installed = new InstalledConnectorProvider(prisma, secrets, remoteConnectors);
   const stack = createConnectorStack(Boolean(managedProviderMcp), composioOverride ?? managedProviderMcp?.("composio"), [
@@ -250,7 +251,9 @@ export async function createApp(
   void pipedream?.warmDirectory?.().catch(() => undefined);
   const runtime =
     env.agentRuntime === "scripted" ? new ScriptedAgentRuntime() : new PiAgentRuntime();
-  const notifications = new ExpoPushProvider(env.dataDir);
+  const notifications = managedProviderRpc
+    ? new ManagedNotificationMcpClient(managedProviderRpc, (userId) => loadPushToken(env.dataDir, userId))
+    : undefined;
   const auth = createAuth(prisma, {
     secret: env.authSecret,
     baseURL: env.authUrl,

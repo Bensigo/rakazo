@@ -163,19 +163,13 @@ describe("loadEnv", () => {
     expect(env.updaterToken).toBe("fake-review-updater-token-000000000000");
   });
 
-  it("loads SMTP configuration and keeps the email emulator out of production", () => {
+  it("loads the development email emulator without reading provider credentials", () => {
     expect(
       loadEnv({
         ...base,
-        SMTP_URL: " smtps://user:secret@smtp.example.test:465 ",
-        EMAIL_FROM: " Rakazo <no-reply@example.test> ",
         EMAIL_EMULATOR: "true",
       }),
-    ).toMatchObject({
-      smtpUrl: "smtps://user:secret@smtp.example.test:465",
-      emailFrom: "Rakazo <no-reply@example.test>",
-      emailEmulator: true,
-    });
+    ).toMatchObject({ emailEmulator: true });
     expect(
       loadEnv({
         ...base,

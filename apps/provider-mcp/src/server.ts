@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import type { AdapterContext, ConnectorEvent, ManagedConnectorProvider } from "@rakazo/adapter-kit";
+import type { AdapterContext, ConnectorEvent, ManagedConnectorProvider, MessagingSurface, NotificationMessage, NotificationProvider, TransactionalEmail, TransactionalEmailProvider } from "@rakazo/adapter-kit";
 import { ComposioConnector, isComposioEnabled, isPipedreamEnabled, PipedreamConnector, pipedreamConfigFromEnv } from "@rakazo/adapters";
 import { z } from "zod";
 
@@ -19,8 +19,16 @@ const ExecuteSchema = z.object({ provider: ProviderSchema, context: ContextSchem
 const LifecycleSchema = z.object({ provider: ProviderSchema, context: ContextSchema, externalId: z.string().min(1).max(MAX_ID).optional() });
 const BeginSchema = z.object({ provider: ProviderSchema, context: ContextSchema, request: z.object({ provider: z.string().min(1).max(MAX_ID), redirectUrl: z.string().url().max(2_000) }) });
 const CompleteSchema = z.object({ provider: ProviderSchema, context: ContextSchema, request: z.object({ state: z.string().min(1).max(MAX_ID), code: z.string().max(2_000).optional() }) });
+const MessagingContextSchema = ContextSchema;
+const MessagingSendSchema = z.object({ context: MessagingContextSchema, request: z.object({ threadId: z.string().min(1).max(MAX_ID), body: z.string().max(MAX_JSON) }) });
+const MessagingOpenSchema = z.object({ context: MessagingContextSchema, provider: z.string().min(1).max(MAX_ID), address: z.string().min(1).max(MAX_ID) });
+const MessagingTypingSchema = z.object({ context: MessagingContextSchema, threadId: z.string().min(1).max(MAX_ID) });
+const WebhookSchema = z.object({ provider: z.string().min(1).max(MAX_ID), method: z.string().regex(/^[A-Z]+$/).max(12), url: z.string().url().max(2_000), headers: z.record(z.string(), z.string().max(20_000)).refine((h) => Object.keys(h).length <= 100), bodyBase64: z.string().max(MAX_JSON) });
+const EmailSchema = z.object({ message: z.object({ to: z.string().email().max(320), subject: z.string().max(500), text: z.string().max(MAX_JSON), html: z.string().max(MAX_JSON).optional() }) });
+const NotificationSchema = z.object({ token: z.string().min(1).max(500), message: z.object({ kind: z.enum(["completion", "failure", "help", "takeover"]), title: z.string().max(500), body: z.string().max(MAX_JSON), botId: z.string().min(1).max(MAX_ID), threadId: z.string().min(1).max(MAX_ID) }) });
 
 type ProviderMap = Record<"composio" | "pipedream", ManagedConnectorProvider | undefined>;
+export type ProviderMcpServices = { messagingFactory?: () => MessagingSurface; email?: TransactionalEmailProvider; notifications?: NotificationProvider; push?: (token: string, message: NotificationMessage, signal: AbortSignal) => Promise<void> };
 function providers(): ProviderMap {
   const pipedreamConfig = pipedreamConfigFromEnv({
     pipedreamClientId: process.env.PIPEDREAM_CLIENT_ID,
@@ -53,6 +61,19 @@ function bounded(value: unknown): unknown {
 function response(events: ConnectorEvent[]): { events: ConnectorEvent[] } {
   return bounded({ events }) as { events: ConnectorEvent[] };
 }
+export async function deliveryRun<T>(signal: AbortSignal, operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (signal.aborted) throw abortedError();
+    throw new Error("Managed delivery operation failed");
+  }
+}
+function abortedError(): Error {
+  const error = new Error("Managed delivery operation aborted");
+  error.name = "AbortError";
+  return error;
+}
 
 const outputSchemas: Record<string, z.ZodTypeAny> = {
   catalog: z.array(z.object({ connectorId: z.string().min(1).max(MAX_ID), slug: z.string().min(1).max(MAX_ID), name: z.string().min(1).max(MAX_ID), logo: z.string().nullable(), connected: z.boolean(), noAuth: z.boolean() })),
@@ -64,10 +85,12 @@ const outputSchemas: Record<string, z.ZodTypeAny> = {
   revoke: z.null().or(z.undefined()),
 };
 
-export function createProviderMcpServer(map: ProviderMap = providers()): McpServer {
+export function createProviderMcpServer(map: ProviderMap = providers(), services: ProviderMcpServices = {}): McpServer {
   const server = new McpServer({ name: "rakazo-managed-provider", version: "0.1.0" });
   const run = async <T>(tool: string, fn: (provider: ManagedConnectorProvider, ctx: AdapterContext) => Promise<T>, input: { provider: z.infer<typeof ProviderSchema>; context: z.infer<typeof ContextSchema> }, signal: AbortSignal) => {
-    const raw = await fn(providerFor(map, input.provider), context(input.context, signal));
+    let raw: T;
+    try { raw = await fn(providerFor(map, input.provider), context(input.context, signal)); }
+    catch (error) { if (signal.aborted) throw abortedError(); throw new Error("Managed provider operation failed"); }
     const result = bounded(raw === undefined ? null : raw);
     const schema = outputSchemas[tool];
     if (schema) {
@@ -107,6 +130,56 @@ export function createProviderMcpServer(map: ProviderMap = providers()): McpServ
     }
     return { content: [], structuredContent: response(events) };
   });
+  server.registerTool("messaging_platforms", { description: "List configured messaging platforms.", inputSchema: {} }, async (_, extra) => ok({ value: await deliveryRun(extra.signal, async () => services.messagingFactory?.().platforms() ?? []) }));
+  server.registerTool("capabilities", { description: "Report configured managed delivery capabilities.", inputSchema: {} }, async () => ok({ value: { messaging: Boolean(services.messagingFactory), email: Boolean(services.email), push: Boolean(services.push || services.notifications), composio: Boolean(map.composio), pipedream: Boolean(map.pipedream) } }));
+  server.registerTool("messaging_send", { description: "Send a message to an existing provider thread.", inputSchema: MessagingSendSchema.shape }, async (input, extra) => {
+    if (!services.messagingFactory) throw new Error("Messaging provider is not configured");
+    return ok({ value: await deliveryRun(extra.signal, () => services.messagingFactory!().sendToThread(input.request, context(input.context, extra.signal))) });
+  });
+  server.registerTool("messaging_open_direct", { description: "Open a provider direct thread.", inputSchema: MessagingOpenSchema.shape }, async (input, extra) => {
+    if (!services.messagingFactory) throw new Error("Messaging provider is not configured");
+    return ok({ value: await deliveryRun(extra.signal, () => services.messagingFactory!().openDirectThread(input.provider, input.address, context(input.context, extra.signal))) });
+  });
+  server.registerTool("messaging_typing", { description: "Send a best effort typing indicator.", inputSchema: MessagingTypingSchema.shape }, async (input, extra) => {
+    if (!services.messagingFactory) throw new Error("Messaging provider is not configured");
+    await deliveryRun(extra.signal, () => services.messagingFactory!().sendTyping(input.threadId, context(input.context, extra.signal)));
+    return ok({ value: null });
+  });
+  server.registerTool("messaging_webhook", { description: "Verify and translate one raw platform webhook.", inputSchema: WebhookSchema.shape }, async (input, extra) => {
+    if (!services.messagingFactory) throw new Error("Messaging provider is not configured");
+    return ok({ value: await deliveryRun(extra.signal, async () => {
+      const surface = services.messagingFactory!();
+      const events: unknown[] = [];
+      surface.onInbound(async (event) => { events.push(event); });
+      const bytes = Buffer.from(input.bodyBase64, "base64");
+      if (bytes.length > MAX_JSON) throw new Error("Webhook body is too large");
+      const request = new Request(input.url, { method: input.method, headers: input.headers, body: input.method === "GET" || input.method === "HEAD" ? undefined : bytes });
+      const response = surface.handleWebhook(input.provider, request);
+      if (!response) throw new Error("Messaging provider is not configured");
+      const vendor = await response;
+      const body = new Uint8Array(await vendor.arrayBuffer());
+      if (body.byteLength > MAX_JSON) throw new Error("Webhook response is too large");
+      const responseHeaders: Record<string, string> = {};
+      vendor.headers.forEach((value, key) => { responseHeaders[key] = value; });
+      return { status: vendor.status, headers: responseHeaders, bodyBase64: Buffer.from(body).toString("base64"), events };
+    }) });
+  });
+  server.registerTool("email_send", { description: "Send transactional email.", inputSchema: EmailSchema.shape }, async (input, extra) => {
+    if (!services.email) throw new Error("Email provider is not configured");
+    await deliveryRun(extra.signal, () => services.email!.send(input.message as TransactionalEmail)); return ok({ value: null });
+  });
+  server.registerTool("email_drain", { description: "Drain accepted email deliveries.", inputSchema: {} }, async (_, extra) => {
+    if (!services.email?.drain) return ok({ value: null });
+    await deliveryRun(extra.signal, () => services.email!.drain!());
+    return ok({ value: null });
+  });
+  server.registerTool("notification_send", { description: "Send one push notification.", inputSchema: NotificationSchema.shape }, async (input, extra) => {
+    if (!services.push && !services.notifications) throw new Error("Notification provider is not configured");
+    await deliveryRun(extra.signal, () => services.push
+      ? services.push!(input.token, input.message as NotificationMessage, extra.signal)
+      : services.notifications!.send(input.message as NotificationMessage, { operationId: "provider-mcp", traceId: "provider-mcp", spaceId: "internal", userId: "internal", signal: extra.signal }));
+    return ok({ value: null });
+  });
   return server;
 }
 
@@ -115,7 +188,7 @@ async function body(request: IncomingMessage): Promise<unknown> {
   for await (const chunk of request) { size += Buffer.byteLength(chunk); if (size > MAX_JSON) throw new Error("Request is too large"); chunks.push(Buffer.from(chunk)); }
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
-export function createProviderMcpHttpServer(options: { token: string; port?: number; host?: string; providers?: ProviderMap } = { token: process.env.MANAGED_PROVIDER_MCP_TOKEN ?? "" }) {
+export function createProviderMcpHttpServer(options: { token: string; port?: number; host?: string; providers?: ProviderMap; services?: ProviderMcpServices } = { token: process.env.MANAGED_PROVIDER_MCP_TOKEN ?? "" }) {
   if (!options.token || options.token.length < 32) throw new Error("MANAGED_PROVIDER_MCP_TOKEN must be at least 32 characters");
   const providerMap = options.providers ?? providers();
   const http = createServer(async (request, reply) => {
@@ -127,7 +200,7 @@ export function createProviderMcpHttpServer(options: { token: string; port?: num
     if (request.headers.authorization !== `Bearer ${options.token}`) { reply.writeHead(401).end(); return; }
     try {
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-      const server = createProviderMcpServer(providerMap);
+      const server = createProviderMcpServer(providerMap, options.services);
       await server.connect(transport);
       await transport.handleRequest(request, reply, await body(request));
     } catch (error) {
