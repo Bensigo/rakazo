@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { authClient } from "../lib/auth";
 import { clearSpaceSelection } from "../lib/rpc";
+import { safeAuthNext } from "../lib/studio-invitations";
 
 type AuthMode = "in" | "up" | "forgot";
 type PasswordResetCapabilities = { passwordReset: boolean; resetUrl: string | null };
@@ -15,6 +16,9 @@ const submitClass = "mt-3 h-12 w-full rounded-xl text-base";
 export function AuthPage({ mode }: { mode: AuthMode }) {
   const { t } = useLingui();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const next = safeAuthNext(searchParams.get("next"));
+  const nextQuery = next ? `?next=${encodeURIComponent(next)}` : "";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -86,7 +90,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
         return;
       }
       clearSpaceSelection();
-      navigate(mode === "up" ? "/onboarding" : "/app");
+      navigate(next ?? (mode === "up" ? "/onboarding" : "/app"));
     } catch {
       setError(t`Could not reach the server`);
     } finally {
@@ -195,14 +199,14 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
             {mode === "in" ? (
               <>
                 <Trans>Don’t have an account?</Trans>{" "}
-                <Link to="/sign-up" className="font-medium text-foreground">
+                <Link to={`/sign-up${nextQuery}`} className="font-medium text-foreground">
                   <Trans>Sign up</Trans>
                 </Link>
               </>
             ) : mode === "up" ? (
               <>
                 <Trans>Already have an account?</Trans>{" "}
-                <Link to="/sign-in" className="font-medium text-foreground">
+                <Link to={`/sign-in${nextQuery}`} className="font-medium text-foreground">
                   <Trans>Sign in</Trans>
                 </Link>
               </>

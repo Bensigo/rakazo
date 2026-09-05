@@ -78,6 +78,7 @@ import { type AppEnv, loadEnv } from "./env.js";
 import { createMessagingInboundHandler } from "./messaging-inbound.js";
 import { mountMessagingWebhookRoutes } from "./messaging-webhook.js";
 import { createRouter } from "./router.js";
+import { mountStudioInvitationRoutes } from "./studio-invitations.js";
 import { mountVoiceHttpRoutes } from "./voice.js";
 import { mountWebhookHttpRoutes } from "./webhook.js";
 
@@ -404,6 +405,12 @@ export async function createApp(
         }),
     );
   }
+  mountStudioInvitationRoutes(app, {
+    prisma,
+    auth,
+    authBaseUrl: env.authUrl,
+    webOrigin: env.webOrigin,
+  });
   app.on(["GET", "POST"], "/api/auth/*", async (c) => {
     const path = new URL(c.req.url).pathname.replace("/api/auth", "");
     if (blockedAuthPaths.some((blocked) => path.startsWith(blocked))) {
@@ -415,7 +422,12 @@ export async function createApp(
     const session = await auth.api.getSession({ headers: sessionHeaders(c.req.raw) });
     const requestedSpaceId = c.req.header("x-rakazo-space-id");
     const actor = session?.user
-      ? await requireMembership(prisma, session.user.id, requestedSpaceId).catch(() => null)
+      ? await requireMembership(
+          prisma,
+          session.user.id,
+          requestedSpaceId,
+          session.session.activeOrganizationId,
+        ).catch(() => null)
       : null;
     if (actor) {
       enrichLogContext({ "user.id": actor.userId, "space.id": actor.spaceId });
@@ -434,6 +446,7 @@ export async function createApp(
       prisma,
       session.user.id,
       c.req.header("x-rakazo-space-id"),
+      session.session.activeOrganizationId,
     ).catch(() => null);
     if (actor) enrichLogContext({ "user.id": actor.userId, "space.id": actor.spaceId });
     return actor;
@@ -483,6 +496,7 @@ export async function createApp(
         prisma,
         session.user.id,
         request.headers.get("x-rakazo-space-id"),
+        session.session.activeOrganizationId,
       ).catch(() => null);
       return actor ? { userId: actor.userId, spaceId: actor.spaceId } : null;
     },

@@ -99,6 +99,32 @@ export function createAuth(prisma: PrismaClient, env: AuthEnv) {
       organization({
         allowUserToCreateOrganization: false,
         creatorRole: "owner",
+        sendInvitationEmail: env.email
+          ? async ({ id, email, organization: invitedOrganization, inviter }) => {
+              const url = new URL(`/invite/${encodeURIComponent(id)}`, env.webOrigin).href;
+              await env.email
+                ?.send(
+                  organizationInvitationEmail(
+                    {
+                      email,
+                      organizationName: invitedOrganization.name,
+                      inviterName: inviter.user.name,
+                    },
+                    url,
+                  ),
+                )
+                .catch((error) => env.onEmailError?.(error));
+            }
+          : undefined,
+        organizationHooks: {
+          beforeCreateInvitation: async ({ invitation }) => {
+            if (invitation.role !== "member") {
+              throw new APIError("FORBIDDEN", {
+                message: "Studio invitations can only grant employee membership",
+              });
+            }
+          },
+        },
       }),
     ],
     hooks: {
@@ -149,6 +175,27 @@ export function passwordResetEmail(
       "This link expires in one hour. If you did not request this, you can ignore this email.",
     ].join("\n"),
     html: `<p>Hi ${safeName},</p><p>Reset your Rakazo password:</p><p><a href="${safeUrl}">Reset password</a></p><p>This link expires in one hour. If you did not request this, you can ignore this email.</p>`,
+  };
+}
+
+export function organizationInvitationEmail(
+  input: { email: string; organizationName: string; inviterName: string },
+  inviteUrl: string,
+): TransactionalEmail {
+  const organizationName = input.organizationName.trim() || "Sunrise Studio";
+  const inviterName = input.inviterName.trim() || "A Studio administrator";
+  return {
+    to: input.email,
+    subject: `Join ${organizationName} in Sunrise Studio`,
+    text: [
+      `${inviterName} invited you to join ${organizationName} in Sunrise Studio.`,
+      "",
+      "Sign in with this email address, then accept the invitation:",
+      inviteUrl,
+      "",
+      "This invitation expires in 48 hours.",
+    ].join("\n"),
+    html: `<p>${escapeHtml(inviterName)} invited you to join ${escapeHtml(organizationName)} in Sunrise Studio.</p><p><a href="${escapeHtml(inviteUrl)}">Review invitation</a></p><p>Sign in with this email address. This invitation expires in 48 hours.</p>`,
   };
 }
 

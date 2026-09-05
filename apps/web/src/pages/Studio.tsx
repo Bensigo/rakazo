@@ -10,6 +10,7 @@ import { Button, Input } from "@rakazo/ui-web";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { rpc } from "../lib/rpc";
+import { type CreatedStudioInvitation, createStudioInvitation } from "../lib/studio-invitations";
 
 export function StudioPage() {
   const navigate = useNavigate();
@@ -57,6 +58,8 @@ export function StudioPage() {
   const [computersLoading, setComputersLoading] = useState(false);
   const [computerName, setComputerName] = useState("");
   const [workspaceRoot, setWorkspaceRoot] = useState("");
+  const [employeeEmail, setEmployeeEmail] = useState("");
+  const [createdInvitation, setCreatedInvitation] = useState<CreatedStudioInvitation | null>(null);
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [roleKey, setRoleKey] = useState("");
   const [roleName, setRoleName] = useState("");
@@ -338,6 +341,11 @@ export function StudioPage() {
     setComputerName("");
     setWorkspaceRoot("");
   }
+  async function inviteEmployee() {
+    const invitation = await createStudioInvitation(employeeEmail);
+    setCreatedInvitation(invitation);
+    setEmployeeEmail("");
+  }
   return (
     <main
       className="min-h-full overflow-y-auto bg-background px-6 py-8 md:px-12"
@@ -468,6 +476,55 @@ export function StudioPage() {
             </div>
           </div>
         </section>
+        {permissions?.canManageJobRoles ? (
+          <section className="mt-4 rounded-2xl border border-border p-5">
+            <h2 className="text-lg font-medium">Employees</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Invite an employee into this Studio's shared workspace. Private spaces remain visible
+              only to their existing members.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Input
+                className="min-w-64 flex-1"
+                type="email"
+                aria-label="Employee email"
+                placeholder="employee@company.com"
+                value={employeeEmail}
+                onChange={(event) => setEmployeeEmail(event.target.value)}
+              />
+              <Button disabled={!employeeEmail.trim()} onClick={() => void run(inviteEmployee)}>
+                Create invitation
+              </Button>
+            </div>
+            {createdInvitation ? (
+              <div className="mt-3 rounded-xl bg-muted/40 p-3 text-sm">
+                <p>
+                  Invitation created for <strong>{createdInvitation.email}</strong>. Copy this link
+                  if email delivery is not configured.
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <a
+                    className="min-w-0 flex-1 truncate text-primary underline"
+                    href={createdInvitation.inviteUrl}
+                  >
+                    {createdInvitation.inviteUrl}
+                  </a>
+                  <Button
+                    variant="secondary"
+                    onClick={() =>
+                      void navigator.clipboard
+                        .writeText(createdInvitation.inviteUrl)
+                        .then(() => setNotice("Invitation link copied"))
+                        .catch(() => setError("Could not copy invitation link"))
+                    }
+                  >
+                    Copy link
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
         <section className="mt-4 rounded-2xl border border-border p-5">
           <h2 className="text-lg font-medium">Employee job roles</h2>
           <p className="mt-1 text-sm text-muted-foreground">
