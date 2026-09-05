@@ -213,6 +213,7 @@ describe("contracts", () => {
       }).success,
     ).toBe(true);
     expect(RunSchema.safeParse({ ...run, trigger: "webhook" }).success).toBe(true);
+    expect(RunSchema.safeParse({ ...run, trigger: "assignment" }).success).toBe(true);
   });
 
   it("caps remote MCP headers", () => {
