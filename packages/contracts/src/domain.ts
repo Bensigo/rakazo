@@ -46,6 +46,28 @@ export const EmployeeRolePresetSchema = z.object({
 });
 export type EmployeeRolePreset = z.infer<typeof EmployeeRolePresetSchema>;
 
+export const EmployeeJobRoleSchema = z.object({
+  id: Id,
+  key: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string(),
+  defaultRolePresetIds: z.array(Id),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type EmployeeJobRole = z.infer<typeof EmployeeJobRoleSchema>;
+
+export const EmployeeJobRoleSelectionSchema = z.object({
+  jobRole: EmployeeJobRoleSchema,
+  specialists: z.array(
+    z.object({
+      rolePresetId: Id,
+      botId: Id,
+    }),
+  ),
+});
+export type EmployeeJobRoleSelection = z.infer<typeof EmployeeJobRoleSelectionSchema>;
+
 export const StudioProjectSchema = z.object({
   id: Id,
   name: z.string().min(1),
