@@ -209,6 +209,7 @@ model SpaceMember {
   createdAt        DateTime
   modelPreferences SpaceModelPreference[]
   voicePreferences SpaceVoicePreference[]
+  specialistBindings EmployeeJobRoleSpecialist[]
 
   @@unique([spaceId, userId])
   @@index([organizationId, userId])
@@ -227,10 +228,26 @@ model EmployeeJobRole {
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
   spaceMembers         SpaceMember[]
+  specialists          EmployeeJobRoleSpecialist[]
 
   @@unique([organizationId, key])
   @@index([organizationId, name])
   @@map("employee_job_roles")
+}
+
+model EmployeeJobRoleSpecialist {
+  id            String            @id @default(cuid())
+  spaceMemberId String
+  rolePresetId  String
+  botId         String            @unique
+  spaceMember   SpaceMember       @relation(fields: [spaceMemberId], references: [id], onDelete: Cascade)
+  rolePreset    EmployeeRolePreset @relation(fields: [rolePresetId], references: [id], onDelete: Cascade)
+  bot           Bot               @relation(fields: [botId], references: [id], onDelete: Cascade)
+  createdAt     DateTime          @default(now())
+
+  @@unique([spaceMemberId, rolePresetId])
+  @@index([spaceMemberId])
+  @@map("employee_job_role_specialists")
 }
 
 model Invitation {
@@ -359,6 +376,7 @@ model Bot {
   children          Bot[]                @relation("BotChildren")
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
+  jobRoleSpecialist  EmployeeJobRoleSpecialist?
   thread            Thread?
   computerId        String?
   computer          Computer?            @relation(fields: [computerId], references: [id], onDelete: SetNull)
@@ -596,6 +614,7 @@ model EmployeeRolePreset {
   updatedAt            DateTime             @updatedAt
   bots                 Bot[]
   assignments          AssignmentManifest[]
+  jobRoleSpecialists   EmployeeJobRoleSpecialist[]
 
   @@unique([organizationId, key])
   @@index([organizationId, isDefault])
