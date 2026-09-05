@@ -19,6 +19,8 @@ const provider: ManagedConnectorProvider = {
   revoke: async () => undefined,
   async *execute(call: ConnectorCall, seen: AdapterContext) {
     assert.equal(seen.spaceId, context.spaceId);
+    assert.equal(seen.connectedConnections?.[0]?.externalId, "github-account");
+    assert.equal(call.connectionId, "connection-1");
     yield { type: "result", data: { tool: call.tool, args: call.args } };
   },
 };
@@ -38,11 +40,26 @@ test("managed provider MCP boundary authenticates and preserves calls without pr
         { connectorId: "composio", slug: "github", name: "GitHub", logo: null, connected: true, noAuth: false },
       ]);
       const events = [];
-      for await (const event of client.execute({ tool: "issues.list", args: { limit: 1 }, executionId: "exec-1", route: { connectorId: "composio", toolName: "issues.list" } }, context)) events.push(event);
+      for await (const event of client.execute({ tool: "issues.list", args: { limit: 1 }, connectionId: "connection-1", executionId: "exec-1", route: { connectorId: "composio", toolName: "issues.list" } }, { ...context, connectedConnections: [{ id: "connection-1", connectorId: "composio", externalId: "github-account", displayName: "GitHub" }] })) events.push(event);
       assert.deepEqual(events, [{ type: "result", data: { tool: "issues.list", args: { limit: 1 } } }]);
     } finally {
       await service.close();
     }
+});
+
+test("rejects malformed provider output and normalizes void lifecycle results", async () => {
+  const token = "t".repeat(32);
+  const malformed: ManagedConnectorProvider = { ...provider, catalog: async () => [{ bad: true }] as never };
+  const service = createProviderMcpHttpServer({ token, port: 0, providers: { composio: malformed, pipedream: undefined } });
+  await service.listen();
+  const port = (service.http.address() as AddressInfo).port;
+  try {
+    const client = new ManagedProviderMcpClient({ providerId: "composio", endpoint: `http://127.0.0.1:${port}/mcp`, token });
+    await assert.rejects(() => client.catalog(context), /invalid response|invalid catalog/i);
+    await client.revoke("github", context);
+  } finally {
+    await service.close();
+  }
 });
 
 test("rejects non-loopback HTTP unless explicitly enabled", () => {
