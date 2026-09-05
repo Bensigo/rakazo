@@ -103,6 +103,23 @@ export function resolveBotWorkspaceCwd(
   return resolveBotWorkspacePath(scope, botId, requestedCwd);
 }
 
+/**
+ * State the run's workspace authority explicitly so a model cannot carry an
+ * absolute path from a previous computer into the current run's shell calls.
+ * Absolute paths remain valid when they belong to the current provider's
+ * virtual home; host-specific paths from another run are never portable.
+ */
+export function computerWorkspaceInstruction(input: {
+  computerId: string;
+  kind: string;
+  scope: ComputerMode;
+  botId: string;
+}): string {
+  const home =
+    input.scope === "team" ? teamBotWorkspaceDirectory(input.botId) : "this computer's private home";
+  return `This run is pinned to computer ${input.computerId} (${input.kind}). Its current workspace root is ${home}. Use relative paths by default. Absolute paths from another computer or an earlier turn are stale and must not be reused; only use an absolute path when it is a path in this computer's current virtual home.`;
+}
+
 export function displayBotWorkspacePath(
   scope: ComputerMode,
   botId: string,

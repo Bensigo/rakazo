@@ -144,10 +144,10 @@ import {
 } from "./computer-lifecycle.js";
 import { withComputerScreenAvailability } from "./computer-screens.js";
 import {
+  computerWorkspaceInstruction,
   displayBotWorkspacePath,
   resolveBotWorkspaceCwd,
   resolveBotWorkspacePath,
-  teamBotWorkspaceDirectory,
 } from "./computer-support.js";
 import { observationToolResult, parseComputerActions } from "./computer-tools.js";
 import { checkpointAndRecordComputerWorkspace } from "./computer-workspace.js";
@@ -1313,8 +1313,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
             : "You have a persistent sandbox filesystem and shell. This backend does not provide model-visible graphical control, so use the file tools and shell.";
         const workspaceInstruction =
           computerMode === "team"
-            ? `Your Team Computer home is ${teamBotWorkspaceDirectory(bot.id)}. Relative file paths and shell working directories start there. Put intentionally shared work under shared/. Other bots' folders are visible under bots/; treat them as their working areas.`
-            : "This entire computer workspace is your private home. Relative file paths and shell working directories start at its root.";
+            ? `${computerWorkspaceInstruction({ computerId: storedComputer.id, kind: storedComputer.kind, scope: computerMode, botId: bot.id })} Put intentionally shared work under shared/. Other bots' folders are visible under bots/; treat them as their working areas.`
+            : computerWorkspaceInstruction({ computerId: storedComputer.id, kind: storedComputer.kind, scope: computerMode, botId: bot.id });
 
         let assembled = "";
         let currentTextSegment = "";

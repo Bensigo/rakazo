@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   displayBotWorkspacePath,
+  computerWorkspaceInstruction,
   resolveBotWorkspaceCwd,
   resolveBotWorkspacePath,
   teamBotWorkspaceDirectory,
@@ -51,5 +52,24 @@ describe("Team Computer bot folders", () => {
     expect(displayBotWorkspacePath("dedicated", "bot-1", "notes", "notes/result.txt")).toBe(
       "notes/result.txt",
     );
+  });
+
+  it("names the current computer and rejects stale-path assumptions in run instructions", () => {
+    const host = computerWorkspaceInstruction({
+      computerId: "employee-computer",
+      kind: "employee-host",
+      scope: "dedicated",
+      botId: "bot-1",
+    });
+    const docker = computerWorkspaceInstruction({
+      computerId: "docker-computer",
+      kind: "docker",
+      scope: "dedicated",
+      botId: "bot-1",
+    });
+    expect(host).toContain("employee-computer (employee-host)");
+    expect(docker).toContain("docker-computer (docker)");
+    expect(docker).toContain("Absolute paths from another computer or an earlier turn are stale");
+    expect(docker).not.toContain("employee-computer");
   });
 });
