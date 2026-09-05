@@ -28,6 +28,17 @@ services:
     command: ["true"]
     restart: "no"
 
+  # The API and worker run as the unprivileged `node` user, while the supervisor
+  # must run as root to access Docker. Normalize a fresh named volume before
+  # either process creates a per-bot home so the supervisor's ownership check
+  # cannot reject newly provisioned computers.
+  data-init:
+    image: busybox:1
+    command: ["chown", "-R", "1000:1000", "/data"]
+    restart: "no"
+    volumes:
+      - appdata:/data
+
   supervisor:
     image: ${TOPOLOGY_APP_IMAGE:-rakazo/app:topology}
     command: ["pnpm", "--filter", "@rakazo/sandbox-supervisor", "start"]
@@ -49,6 +60,8 @@ services:
       app-image:
         condition: service_completed_successfully
       computer-image:
+        condition: service_completed_successfully
+      data-init:
         condition: service_completed_successfully
     healthcheck:
       test:
@@ -101,6 +114,8 @@ services:
         condition: service_healthy
       supervisor:
         condition: service_healthy
+      data-init:
+        condition: service_completed_successfully
     healthcheck:
       test:
         - CMD
@@ -122,6 +137,8 @@ services:
     depends_on:
       api:
         condition: service_healthy
+      data-init:
+        condition: service_completed_successfully
     healthcheck:
       test:
         - CMD
