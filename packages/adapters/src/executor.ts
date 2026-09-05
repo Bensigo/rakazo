@@ -144,10 +144,10 @@ import {
 } from "./computer-lifecycle.js";
 import { withComputerScreenAvailability } from "./computer-screens.js";
 import {
+  computerWorkspaceInstruction,
   displayBotWorkspacePath,
   resolveBotWorkspaceCwd,
   resolveBotWorkspacePath,
-  teamBotWorkspaceDirectory,
 } from "./computer-support.js";
 import { observationToolResult, parseComputerActions } from "./computer-tools.js";
 import { checkpointAndRecordComputerWorkspace } from "./computer-workspace.js";
@@ -253,6 +253,18 @@ import {
 } from "./user-progress.js";
 import { createWebProvider } from "./web-provider-factory.js";
 import { webFetchFromTool, webSearchFromTool } from "./web-tools.js";
+
+export function buildRunWorkspaceInstruction(input: {
+  computerId: string;
+  kind: string;
+  scope: import("@rakazo/contracts").ComputerMode;
+  botId: string;
+}): string {
+  const instruction = computerWorkspaceInstruction(input);
+  return input.scope === "team"
+    ? `${instruction} Put intentionally shared work under shared/. Other bots' folders are visible under bots/; treat them as their working areas.`
+    : instruction;
+}
 
 const modelCredentialLocks = new Map<string, Promise<void>>();
 const READ_ONLY_AGENT_TOOLS = new Set([
@@ -1311,10 +1323,12 @@ export function createRunExecutor(deps: ExecutorDeps) {
           : graphical
             ? `You have a persistent computer filesystem and shell. ${MODEL_CANNOT_SEE_MESSAGE} Desktop observe and act tools are unavailable until a vision-capable model is selected. Use the file tools and shell.`
             : "You have a persistent sandbox filesystem and shell. This backend does not provide model-visible graphical control, so use the file tools and shell.";
-        const workspaceInstruction =
-          computerMode === "team"
-            ? `Your Team Computer home is ${teamBotWorkspaceDirectory(bot.id)}. Relative file paths and shell working directories start there. Put intentionally shared work under shared/. Other bots' folders are visible under bots/; treat them as their working areas.`
-            : "This entire computer workspace is your private home. Relative file paths and shell working directories start at its root.";
+        const workspaceInstruction = buildRunWorkspaceInstruction({
+          computerId: storedComputer.id,
+          kind: storedComputer.kind,
+          scope: computerMode,
+          botId: bot.id,
+        });
 
         let assembled = "";
         let currentTextSegment = "";
