@@ -43,6 +43,7 @@ export function StudioPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const sourceRequest = useRef(0);
+  const wikiPageRequest = useRef(0);
   const load = async () => {
     try {
       const [p, r, f, a, b, rr] = await Promise.all([
@@ -129,18 +130,27 @@ export function StudioPage() {
   }
   async function selectSourceProject(projectId: string) {
     const request = ++sourceRequest.current;
+    ++wikiPageRequest.current;
     setSourceProjectId(projectId);
     setSourceBindingId("");
     setSources([]);
     setWikiPages([]);
     setWikiPage(null);
     if (projectId) {
-      const next = await rpc.studio.projectSources({ projectId });
-      if (request === sourceRequest.current) setSources(next);
+      try {
+        const next = await rpc.studio.projectSources({ projectId });
+        if (request === sourceRequest.current) setSources(next);
+      } catch (e) {
+        if (request === sourceRequest.current)
+          setError(e instanceof Error ? e.message : "Could not load project sources");
+      }
     }
   }
   async function addSource(repositoryId: string) {
-    const source = await rpc.studio.addProjectSource({ projectId: sourceProjectId, repositoryId });
+    const request = sourceRequest.current;
+    const projectId = sourceProjectId;
+    const source = await rpc.studio.addProjectSource({ projectId, repositoryId });
+    if (request !== sourceRequest.current || projectId !== sourceProjectId) return;
     setSources((all) =>
       all.some((item) => item.id === source.id)
         ? all.map((item) => (item.id === source.id ? source : item))
@@ -150,22 +160,37 @@ export function StudioPage() {
   }
   async function refreshSource(bindingId: string) {
     const request = sourceRequest.current;
+    const projectId = sourceProjectId;
     const synced = await rpc.studio.syncProjectSource({ bindingId });
-    if (request !== sourceRequest.current) return;
+    if (request !== sourceRequest.current || projectId !== sourceProjectId) return;
     setSources((all) => all.map((s) => (s.id === bindingId ? synced : s)));
-    if (bindingId === sourceBindingId)
-      setWikiPages(await rpc.studio.projectWikiPages({ projectId: sourceProjectId, bindingId }));
+    if (bindingId === sourceBindingId) {
+      const pages = await rpc.studio.projectWikiPages({ projectId, bindingId });
+      if (request === sourceRequest.current && projectId === sourceProjectId)
+        setWikiPages(pages);
+    }
   }
   async function loadWiki(bindingId: string) {
     const request = ++sourceRequest.current;
+    const pageRequest = ++wikiPageRequest.current;
+    const projectId = sourceProjectId;
     setSourceBindingId(bindingId);
     setWikiPage(null);
-    const pages = await rpc.studio.projectWikiPages({ projectId: sourceProjectId, bindingId });
-    if (request === sourceRequest.current) setWikiPages(pages);
+    setWikiPages([]);
+    setError(null);
+    try {
+      const pages = await rpc.studio.projectWikiPages({ projectId, bindingId });
+      if (request === sourceRequest.current && pageRequest === wikiPageRequest.current)
+        setWikiPages(pages);
+    } catch (e) {
+      if (request === sourceRequest.current && pageRequest === wikiPageRequest.current)
+        setError(e instanceof Error ? e.message : "Could not load wiki pages");
+    }
   }
   async function readWiki(pageId: string) {
     if (!sourceProjectId || !sourceBindingId) return;
     const request = sourceRequest.current;
+    const pageRequest = ++wikiPageRequest.current;
     const projectId = sourceProjectId;
     const bindingId = sourceBindingId;
     const page = await rpc.studio.projectWikiPage({
@@ -173,11 +198,7 @@ export function StudioPage() {
       bindingId,
       pageId,
     });
-    if (
-      request === sourceRequest.current &&
-      projectId === sourceProjectId &&
-      bindingId === sourceBindingId
-    )
+    if (request === sourceRequest.current && pageRequest === wikiPageRequest.current && projectId === sourceProjectId && bindingId === sourceBindingId)
       setWikiPage(page);
   }
   async function createAssignment() {
