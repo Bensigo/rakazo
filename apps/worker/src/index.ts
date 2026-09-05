@@ -4,7 +4,6 @@ import { loadRootEnv } from "@rakazo/core/node/load-root-env";
 loadRootEnv();
 
 import {
-  ChatSdkMessagingSurface,
   createBackgroundJobHandlers,
   createConnectorStack,
   createJobReconciler,
@@ -15,19 +14,18 @@ import {
   createRunSecretWriter,
   createWebProvider,
   EncryptedSecretStore,
-  ExpoPushProvider,
+  ManagedMessagingMcpClient,
+  ManagedNotificationMcpClient,
   GraphileJobPublisher,
   GraphileJobWorkerHost,
   InMemoryJobQueue,
   InstalledConnectorProvider,
-  isMessagingSurfaceEnabled,
   LocalAgentHomeStore,
   LocalArtifactStore,
   loadStudioKnowledgeBridge,
   McpConnector,
   McpOAuthBroker,
-  messagingEnvFromProcess,
-  messagingPlatformsFromEnv,
+  loadPushToken,
   PiAgentRuntime,
   ManagedProviderMcpClient,
   PostgresRealtimeFanout,
@@ -90,14 +88,11 @@ async function main() {
   const managedProviderMcp = process.env.MANAGED_PROVIDER_MCP_URL && process.env.MANAGED_PROVIDER_MCP_TOKEN
     ? (providerId: "composio" | "pipedream") => new ManagedProviderMcpClient({ providerId, endpoint: process.env.MANAGED_PROVIDER_MCP_URL!, token: process.env.MANAGED_PROVIDER_MCP_TOKEN!, allowInternalHttp: process.env.MANAGED_PROVIDER_MCP_ALLOW_INTERNAL_HTTP === "true" })
     : undefined;
-  const pipedream = managedProviderMcp?.("pipedream");
-  const messagingPlatforms = messagingPlatformsFromEnv(messagingEnvFromProcess(process.env));
-  const messaging = isMessagingSurfaceEnabled(messagingPlatforms, {
-    deploymentModelKey,
-    openSignup: process.env.MESSAGING_OPEN_SIGNUP === "true",
-  })
-    ? new ChatSdkMessagingSurface(messagingPlatforms)
+  const managedProviderRpc = process.env.MANAGED_PROVIDER_MCP_URL && process.env.MANAGED_PROVIDER_MCP_TOKEN
+    ? new ManagedProviderMcpClient({ providerId: "composio", endpoint: process.env.MANAGED_PROVIDER_MCP_URL, token: process.env.MANAGED_PROVIDER_MCP_TOKEN, allowInternalHttp: process.env.MANAGED_PROVIDER_MCP_ALLOW_INTERNAL_HTTP === "true" })
     : undefined;
+  const pipedream = managedProviderMcp?.("pipedream");
+  const messaging = managedProviderRpc ? new ManagedMessagingMcpClient(managedProviderRpc) : undefined;
   const stack = createConnectorStack(Boolean(managedProviderMcp), managedProviderMcp?.("composio"), [
     new InstalledConnectorProvider(prisma, secrets),
     ...(pipedream ? [pipedream] : []),
@@ -130,7 +125,7 @@ async function main() {
     secretStore: secrets,
     deploymentModelKey,
     dataDir,
-    notifications: new ExpoPushProvider(dataDir),
+    notifications: managedProviderRpc ? new ManagedNotificationMcpClient(managedProviderRpc, (userId) => loadPushToken(dataDir, userId)) : undefined,
     jobs,
     events,
     messaging: messaging ? createMessagingContextLoader(prisma) : undefined,

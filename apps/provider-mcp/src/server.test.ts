@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { type AddressInfo } from "node:net";
 import test from "node:test";
 import type { AdapterContext, ConnectorCall, ManagedConnectorProvider } from "@rakazo/adapter-kit";
-import { ManagedProviderMcpClient } from "@rakazo/adapters";
+import { ManagedEmailMcpClient, ManagedMessagingMcpClient, ManagedNotificationMcpClient, ManagedProviderMcpClient } from "@rakazo/adapters";
 import { createProviderMcpHttpServer } from "./server.js";
+import type { MessagingSurface } from "@rakazo/adapter-kit";
 
 const context: AdapterContext = {
   operationId: "op-1", traceId: "trace-1", spaceId: "space-1", userId: "user-1", botId: "bot-1", signal: new AbortController().signal,
@@ -79,10 +80,60 @@ test("disabled providers have empty read capabilities but fail closed for mutati
     assert.deepEqual(await client.listConnectedExternalIds(context), []);
     assert.deepEqual(await client.discoverTools(context), []);
     assert.equal(await client.connectionReady(context, "missing"), false);
-    await assert.rejects(() => client.begin({ provider: "github", redirectUrl: "https://example.test/callback" }, context), /request failed|not configured/i);
-    await assert.rejects(async () => { for await (const _event of client.execute({ tool: "x", args: {}, executionId: "x" }, context)) {} }, /request failed|not configured/i);
-    await assert.rejects(() => client.revoke("missing", context), /request failed|not configured/i);
+    await assert.rejects(() => client.begin({ provider: "github", redirectUrl: "https://example.test/callback" }, context), /operation failed|not configured/i);
+    await assert.rejects(async () => { for await (const _event of client.execute({ tool: "x", args: {}, executionId: "x" }, context)) {} }, /operation failed|not configured/i);
+    await assert.rejects(() => client.revoke("missing", context), /operation failed|not configured/i);
   } finally {
     await service.close();
   }
+});
+
+test("MCP preserves raw webhook ACK/events and isolates concurrent collectors", async () => {
+  const token = "t".repeat(32);
+  const sinks: Array<(event: any) => Promise<void>> = [];
+  const fake = (): MessagingSurface => {
+    let sink: ((event: any) => Promise<void>) | undefined;
+    const surface: MessagingSurface = {
+      describe: () => ({ id: "fake", contractVersion: "1", adapterVersion: "test", capabilities: { providers: ["fake"] } }),
+      platforms: () => [{ provider: "fake", capabilities: { direct: true, groups: false, typing: false } }],
+      onInbound: (next) => { sink = next; sinks.push(next); },
+      handleWebhook: async (_provider, request) => { const body = await request.text(); await sink?.({ type: "message", provider: "fake", handle: body, threadId: "fake:dm", isDirect: true, from: "u", fromLabel: null, channelName: null, participants: [], content: body, mediaUrl: null }); return new Response("ACK:" + body, { status: 202, headers: { "x-provider": "fake" } }); },
+      sendToThread: async () => ({ handle: "sent" }), openDirectThread: async () => "fake:dm", sendTyping: async () => undefined,
+    };
+    return surface;
+  };
+  const service = createProviderMcpHttpServer({ token, port: 0, providers: { composio: undefined, pipedream: undefined }, services: { messagingFactory: fake } });
+  await service.listen();
+  const port = (service.http.address() as AddressInfo).port;
+  try {
+    const rpc = new ManagedProviderMcpClient({ providerId: "composio", endpoint: `http://127.0.0.1:${port}/mcp`, token });
+    const left = new ManagedMessagingMcpClient(rpc);
+    const right = new ManagedMessagingMcpClient(rpc);
+    const leftEvents: unknown[] = []; const rightEvents: unknown[] = [];
+    left.onInbound(async (event) => { leftEvents.push(event); }); right.onInbound(async (event) => { rightEvents.push(event); });
+    const [leftResponse, rightResponse] = await Promise.all([
+      left.handleWebhook("fake", new Request("https://fake.test/hook", { method: "POST", body: "left" }))!,
+      right.handleWebhook("fake", new Request("https://fake.test/hook", { method: "POST", body: "right" }))!,
+    ]);
+    assert.equal(await leftResponse.text(), "ACK:left"); assert.equal(await rightResponse.text(), "ACK:right");
+    assert.equal(leftEvents.length, 1); assert.equal(rightEvents.length, 1);
+    assert.equal((leftEvents[0] as { handle: string }).handle, "left"); assert.equal((rightEvents[0] as { handle: string }).handle, "right");
+    assert.equal(sinks.length, 2);
+  } finally { await service.close(); }
+});
+
+test("MCP routes email and scoped push token without persisting it", async () => {
+  const token = "t".repeat(32); let emailCount = 0; let pushToken = "";
+  const service = createProviderMcpHttpServer({ token, port: 0, providers: { composio: undefined, pipedream: undefined }, services: {
+    email: { describe: () => ({ id: "fake-email", contractVersion: "1", adapterVersion: "test", capabilities: { transactional: true } }), send: async () => { emailCount += 1; }, drain: async () => undefined },
+    push: async (destination, message) => { pushToken = destination; assert.equal(message.botId, "bot-1"); },
+  } });
+  await service.listen(); const port = (service.http.address() as AddressInfo).port;
+  try {
+    const rpc = new ManagedProviderMcpClient({ providerId: "composio", endpoint: `http://127.0.0.1:${port}/mcp`, token });
+    const email = new ManagedEmailMcpClient(rpc); await email.send({ to: "person@example.com", subject: "Hello", text: "Body" }); await email.drain();
+    const notification = new ManagedNotificationMcpClient(rpc, async (userId) => userId === "user-1" ? "ExponentPushToken[secret]" : undefined);
+    await notification.send({ kind: "completion", title: "Done", body: "Finished", botId: "bot-1", threadId: "thread-1" }, { ...context, userId: "user-1" });
+    assert.equal(emailCount, 1); assert.equal(pushToken, "ExponentPushToken[secret]");
+  } finally { await service.close(); }
 });

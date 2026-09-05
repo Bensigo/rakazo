@@ -79,6 +79,11 @@ export class ExpoPushProvider implements NotificationProvider {
   async send(message: NotificationMessage, context: AdapterContext): Promise<void> {
     const token = await loadPushToken(this.dataDir, context.userId);
     if (!token) return;
+    await sendExpoPushToken(token, message);
+  }
+}
+
+export async function sendExpoPushToken(token: string, message: NotificationMessage): Promise<void> {
     let response: Response;
     try {
       response = await fetch("https://exp.host/--/api/v2/push/send", {
@@ -102,5 +107,4 @@ export class ExpoPushProvider implements NotificationProvider {
     if (!failure) return;
     getLogger().error(failure);
     throw new Error(failure);
-  }
 }

@@ -7,6 +7,14 @@ import type {
   ConnectorEvent,
   ConnectorTool,
   ManagedConnectorProvider,
+  MessagingSurface,
+  MessagingPlatformDescriptor,
+  MessagingSendRequest,
+  MessagingSendResult,
+  NotificationMessage,
+  NotificationProvider,
+  TransactionalEmail,
+  TransactionalEmailProvider,
 } from "@rakazo/adapter-kit";
 import { z } from "zod";
 
@@ -86,7 +94,7 @@ export class ManagedProviderMcpClient implements ManagedConnectorProvider {
     for (const event of result.events) yield event;
   }
 
-  private async call(tool: string, args: Record<string, unknown>, signal: AbortSignal): Promise<unknown> {
+  async call(tool: string, args: Record<string, unknown>, signal: AbortSignal): Promise<unknown> {
     const transport = new StreamableHTTPClientTransport(this.endpoint, {
       requestInit: { headers: { authorization: `Bearer ${this.config.token}` }, redirect: "manual", signal },
       fetch: this.config.fetch ?? globalThis.fetch,
@@ -107,6 +115,52 @@ export class ManagedProviderMcpClient implements ManagedConnectorProvider {
       await transport.close().catch(() => undefined);
     }
   }
+}
+
+export class ManagedMessagingMcpClient implements MessagingSurface {
+  private descriptors: MessagingPlatformDescriptor[] = [];
+  private sink?: (event: import("@rakazo/adapter-kit").MessagingInboundEvent) => Promise<void>;
+  constructor(private readonly rpc: ManagedProviderMcpClient) {}
+  describe() { return { id: "managed-messaging-mcp", contractVersion: "1", adapterVersion: "0.1.0", capabilities: { providers: [] } }; }
+  platforms(): MessagingPlatformDescriptor[] { return this.descriptors; }
+  async refreshPlatforms(signal = new AbortController().signal): Promise<void> { this.descriptors = parse(z.array(z.object({ provider: z.string(), capabilities: z.object({ direct: z.boolean(), groups: z.boolean(), typing: z.boolean() }) })), await this.rpc.call("messaging_platforms", {}, signal)); }
+  onInbound(sink: (event: import("@rakazo/adapter-kit").MessagingInboundEvent) => Promise<void>): void { this.sink = sink; }
+  handleWebhook(provider: string, request: Request): Promise<Response> | null {
+    return this.forwardWebhook(provider, request);
+  }
+  private async forwardWebhook(provider: string, request: Request): Promise<Response> {
+    const bytes = new Uint8Array(await request.arrayBuffer());
+    const result = parse(z.object({ status: z.number().int().min(100).max(599), headers: z.record(z.string(), z.string()), bodyBase64: z.string(), events: z.array(z.unknown()) }), await this.rpc.call("messaging_webhook", { provider, method: request.method, url: request.url, headers: Object.fromEntries(request.headers), bodyBase64: Buffer.from(bytes).toString("base64") }, request.signal));
+    for (const event of result.events) {
+      const parsed = parse(z.union([z.object({ type: z.literal("message") }).passthrough(), z.object({ type: z.literal("status") }).passthrough()]), event);
+      await this.sink?.(parsed as unknown as import("@rakazo/adapter-kit").MessagingInboundEvent);
+    }
+    return new Response(Buffer.from(result.bodyBase64, "base64"), { status: result.status, headers: result.headers });
+  }
+  async sendToThread(request: MessagingSendRequest, context: AdapterContext): Promise<MessagingSendResult> { return parse(z.object({ handle: z.string() }), await this.rpc.call("messaging_send", { request, context: contextPayload(context) }, context.signal)); }
+  async openDirectThread(provider: string, address: string, context: AdapterContext): Promise<string> { return parse(z.string(), await this.rpc.call("messaging_open_direct", { provider, address, context: contextPayload(context) }, context.signal)); }
+  async sendTyping(threadId: string, context: AdapterContext): Promise<void> { await this.rpc.call("messaging_typing", { threadId, context: contextPayload(context) }, context.signal); }
+}
+
+export class ManagedEmailMcpClient implements TransactionalEmailProvider {
+  constructor(private readonly rpc: ManagedProviderMcpClient) {}
+  describe() { return { id: "managed-email-mcp", contractVersion: "1", adapterVersion: "0.1.0", capabilities: { transactional: true } }; }
+  async send(message: TransactionalEmail): Promise<void> { await this.rpc.call("email_send", { message }, new AbortController().signal); }
+  async drain(): Promise<void> { await this.rpc.call("email_drain", {}, new AbortController().signal); }
+}
+
+export class ManagedNotificationMcpClient implements NotificationProvider {
+  constructor(private readonly rpc: ManagedProviderMcpClient, private readonly token: (userId: string) => Promise<string | undefined>) {}
+  describe() { return { id: "managed-notification-mcp", contractVersion: "1", adapterVersion: "0.1.0", capabilities: { push: true, email: false } }; }
+  async send(message: NotificationMessage, context: AdapterContext): Promise<void> {
+    const token = await this.token(context.userId);
+    if (!token) return;
+    await this.rpc.call("notification_send", { token, message }, context.signal);
+  }
+}
+
+function contextPayload(input: AdapterContext): Record<string, unknown> {
+  return { operationId: input.operationId, traceId: input.traceId, spaceId: input.spaceId, userId: input.userId, ...(input.botId ? { botId: input.botId } : {}), ...(input.runId ? { runId: input.runId } : {}) };
 }
 
 function parse<T>(schema: z.ZodType<T>, value: unknown): T {
