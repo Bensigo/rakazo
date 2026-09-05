@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { Actor } from "@rakazo/contracts";
 import type { Prisma, PrismaClient } from "./client.js";
 import { IsolationError } from "./scope.js";
+import { createRepos } from "./repos.js";
 
 async function organizationFor(prisma: PrismaClient, actor: Actor) {
   const membership = await prisma.spaceMember.findUnique({
@@ -22,6 +23,7 @@ async function requireAdmin(prisma: PrismaClient, actor: Actor) {
 }
 
 export function createStudioDomain(prisma: PrismaClient) {
+  const repos = createRepos(prisma);
   return {
     async jobRoles(actor: Actor) {
       const organizationId = await organizationIdFor(prisma, actor);
@@ -48,7 +50,16 @@ export function createStudioDomain(prisma: PrismaClient) {
       const membership = await organizationFor(prisma, actor);
       const role = await prisma.employeeJobRole.findFirst({ where: { id: jobRoleId, organizationId: membership.organizationId }, select: { id: true } });
       if (!role) throw new IsolationError();
-      return prisma.spaceMember.update({ where: { spaceId_userId: { spaceId: actor.spaceId, userId: actor.userId } }, data: { jobRoleId } });
+      const member = await prisma.spaceMember.update({ where: { spaceId_userId: { spaceId: actor.spaceId, userId: actor.userId } }, data: { jobRoleId } });
+      const presetIds = await prisma.employeeJobRole.findUniqueOrThrow({ where: { id: jobRoleId }, select: { defaultRolePresetIds: true } });
+      const ids = Array.isArray(presetIds.defaultRolePresetIds) ? presetIds.defaultRolePresetIds.filter((id): id is string => typeof id === "string") : [];
+      for (const rolePresetId of ids) {
+        const existing = await prisma.employeeJobRoleSpecialist.findUnique({ where: { spaceMemberId_rolePresetId: { spaceMemberId: member.id, rolePresetId } } });
+        if (existing) continue;
+        const bot = await repos.createBot(actor, { name: `Specialist ${rolePresetId}`, title: "Studio specialist", description: "Provisioned from employee job role", instructions: "", notifyOnFinish: true, rolePresetId });
+        await prisma.employeeJobRoleSpecialist.create({ data: { spaceMemberId: member.id, rolePresetId, botId: bot.id } });
+      }
+      return member;
     },
     async organizationId(actor: Actor) {
       return organizationIdFor(prisma, actor);
