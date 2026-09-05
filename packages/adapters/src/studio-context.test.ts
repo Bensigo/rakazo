@@ -33,7 +33,71 @@ function emptyBridge(): StudioKnowledgeBridge {
 }
 
 describe("studio run context", () => {
-  it("pins the current foundation and default role as instructions without granting rights", async () => {
+  it("refreshes routine foundation and source pins while preserving its selection", async () => {
+    const selection = {
+      kind: "studio-routine-selection" as const,
+      version: 1 as const,
+      organizationId: "org-1",
+      rolePresetId: "role-writer",
+      assignment: {
+        id: "assignment-origin",
+        scope: "multi" as const,
+        projectIds: ["project-1", "project-2"],
+        brief: { deliverable: "Weekly report" },
+      },
+    };
+    const bridge = emptyBridge();
+    bridge.pin = vi.fn(async ({ sources }: { sources: AuthorizedStudioSource[] }) => ({
+      sources: sources.map((source) => ({
+        ...source,
+        knowledgeProjectId: "knowledge-current",
+        snapshotId: "snapshot-current",
+      })),
+    }));
+    const binding = {
+      id: "binding-current",
+      projectId: "project-1",
+      repository: "repository-1",
+      ref: "main@current",
+      path: "docs/current.md",
+      metadata: { relevantSourcePaths: ["docs/current.md"] },
+      createdAt: new Date(0),
+    };
+    const taskUpdate = vi.fn(async () => ({}));
+    const runUpdate = vi.fn(async () => ({}));
+    const assignmentLookup = vi.fn(async () => null);
+    const prisma = {
+      spaceMember: { findUnique: vi.fn(async () => ({ organizationId: "org-1" })) },
+      run: { findUnique: vi.fn(async () => ({ studioContext: selection })), update: runUpdate },
+      task: { findUnique: vi.fn(async () => ({ studioContext: selection, projectId: null })), update: taskUpdate },
+      studioFoundation: { findUnique: vi.fn(async () => ({ currentRevision: { id: "foundation-current", revision: 4, content: { policy: "Current" } } })) },
+      foundationRevision: { findFirst: vi.fn(async () => null) },
+      bot: { findFirst: vi.fn(async () => ({ rolePresetId: "role-on-bot" })) },
+      assignmentManifest: { findUnique: assignmentLookup },
+      employeeRolePreset: { findFirst: vi.fn(async () => ({ id: "role-writer", key: "writer", name: "Writer", instructions: "Use the current evidence." })) },
+      studioProject: { findMany: vi.fn(async () => [{ id: "project-1" }, { id: "project-2" }]) },
+      projectSourceBinding: { findMany: vi.fn(async (args: { select?: unknown }) => args.select ? [{ id: binding.id, projectId: binding.projectId, repository: binding.repository, ref: binding.ref }] : [binding]) },
+      $transaction: vi.fn(async (operations: Array<Promise<unknown>>) => Promise.all(operations)),
+    } as unknown as PrismaClient;
+
+    const resolved = await resolveStudioRunContext(prisma, bridge, input);
+
+    expect(assignmentLookup).not.toHaveBeenCalled();
+    expect(resolved.manifest).toMatchObject({
+      foundation: { id: "foundation-current", revision: 4 },
+      role: { id: "role-writer" },
+      assignment: selection.assignment,
+      sourceProjectIds: ["project-1", "project-2"],
+      sources: [{ bindingId: "binding-current", snapshotId: "snapshot-current" }],
+    });
+    expect(bridge.pin).toHaveBeenCalledWith({
+      sources: [expect.objectContaining({ sourceId: "repository-1", refKey: "main@current", requiredSourcePaths: ["docs/current.md"] })],
+    });
+    expect(taskUpdate).toHaveBeenCalledWith(expect.objectContaining({ data: { studioContext: resolved.manifest } }));
+    expect(runUpdate).toHaveBeenCalledWith(expect.objectContaining({ data: { studioContext: resolved.manifest } }));
+  });
+
+  it("pins the current foundation and explicit role as instructions without granting rights", async () => {
     const taskUpdate = vi.fn(async () => ({}));
     const runUpdate = vi.fn(async () => ({}));
     const prisma = {
@@ -52,7 +116,7 @@ describe("studio run context", () => {
           },
         })),
       },
-      bot: { findFirst: vi.fn(async () => ({ rolePresetId: null })) },
+      bot: { findFirst: vi.fn(async () => ({ rolePresetId: "role-producer" })) },
       assignmentManifest: { findUnique: vi.fn(async () => null) },
       employeeRolePreset: {
         findFirst: vi.fn(async () => ({
@@ -82,6 +146,31 @@ describe("studio run context", () => {
     expect(resolved.instructions).toContain("Keep delivery evidence explicit.");
     expect(taskUpdate).toHaveBeenCalledOnce();
     expect(runUpdate).toHaveBeenCalledOnce();
+  });
+
+  it("does not assign a studio role to an unassigned custom bot", async () => {
+    const roleFindFirst = vi.fn(async () => ({
+      id: "role-default",
+      key: "default",
+      name: "Default",
+      instructions: "Unexpected",
+    }));
+    const prisma = {
+      spaceMember: { findUnique: vi.fn(async () => ({ organizationId: "org-1" })) },
+      run: { findUnique: vi.fn(async () => ({ studioContext: null })), update: vi.fn(async () => ({})) },
+      task: { findUnique: vi.fn(async () => ({ studioContext: null, projectId: null })), update: vi.fn(async () => ({})) },
+      studioFoundation: { findUnique: vi.fn(async () => null) },
+      bot: { findFirst: vi.fn(async () => ({ rolePresetId: null })) },
+      assignmentManifest: { findUnique: vi.fn(async () => null) },
+      employeeRolePreset: { findFirst: roleFindFirst },
+      projectSourceBinding: { findMany: vi.fn(async () => []) },
+      $transaction: vi.fn(async (operations: Array<Promise<unknown>>) => Promise.all(operations)),
+    } as unknown as PrismaClient;
+
+    const resolved = await resolveStudioRunContext(prisma, undefined, input);
+
+    expect(resolved.manifest.role).toBeNull();
+    expect(roleFindFirst).not.toHaveBeenCalled();
   });
 
   it("pins an explicit multi-project source set and renders cited context as data", async () => {
@@ -291,6 +380,31 @@ describe("studio run context", () => {
     });
     expect(bridge.pin).not.toHaveBeenCalled();
     expect(bridge.read).not.toHaveBeenCalled();
+  });
+
+  it("rejects a routine selector whose project scope is structurally invalid", async () => {
+    const malformedSelection = {
+      kind: "studio-routine-selection",
+      version: 1,
+      organizationId: "org-1",
+      rolePresetId: null,
+      assignment: {
+        id: "assignment-1",
+        scope: "one",
+        projectIds: [],
+        brief: {},
+      },
+    };
+    const prisma = {
+      spaceMember: { findUnique: vi.fn(async () => ({ organizationId: "org-1" })) },
+      run: { findUnique: vi.fn(async () => ({ studioContext: malformedSelection })) },
+      task: { findUnique: vi.fn(async () => ({ studioContext: null })) },
+    } as unknown as PrismaClient;
+
+    await expect(resolveStudioRunContext(prisma, emptyBridge(), input)).rejects.toMatchObject({
+      code: "STUDIO_CONTEXT_UNAVAILABLE",
+      message: "Stored studio context is invalid.",
+    });
   });
 
   it("pins only explicitly configured studio-common sources for studio scope", async () => {

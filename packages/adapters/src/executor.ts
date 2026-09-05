@@ -233,7 +233,13 @@ import {
   skillReadFromTool,
   skillUpdateFromTool,
 } from "./skill-tools.js";
-import { resolveStudioRunContext, type StudioKnowledgeBridge } from "./studio-context.js";
+import {
+  refreshableRoutineStudioContext,
+  resolveStudioRunContext,
+  routineStudioProjectId,
+  studioRoutineSelection,
+  type StudioKnowledgeBridge,
+} from "./studio-context.js";
 import { type TakeoverResumeCheckpoint, takeoverResumeFromRelease } from "./takeover-resume.js";
 import { getActiveTeachingSession, parsePlaybook } from "./teaching-session.js";
 import {
@@ -692,6 +698,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
         userId: routine.userId,
       });
       const routinePrompt = expandSkillReferencesInPrompt(routine.prompt, skillRecords);
+      const routineStudioContext = refreshableRoutineStudioContext(routine.studioContext);
+      const routineProjectId = routineStudioProjectId(routine.studioContext);
       const claimed = await deps.prisma.$transaction(async (tx) => {
         const updated = await tx.routine.updateMany({
           where: { id: routine.id, active: true, nextRunAt: scheduledAt },
@@ -710,7 +718,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
             userId: routine.userId,
             prompt: routinePrompt,
             status: "queued",
-            studioContext: routine.studioContext ?? undefined,
+            projectId: routineProjectId,
+            studioContext: routineStudioContext,
           },
         });
         return tx.run.create({
@@ -723,7 +732,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
             status: "queued",
             trigger: "routine",
             routineId: routine.id,
-            studioContext: routine.studioContext ?? undefined,
+            studioContext: routineStudioContext,
           },
         });
       });
@@ -2313,7 +2322,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 delayMinutes: args.delayMinutes,
                 delaySeconds: args.delaySeconds,
               },
-              studioContext: studioContext?.manifest as unknown as Prisma.InputJsonValue,
+              studioContext: studioContext
+                ? (studioRoutineSelection(studioContext.manifest) as unknown as Prisma.InputJsonValue)
+                : undefined,
             });
             return finish(created);
           }
