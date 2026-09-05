@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { access } from "node:fs/promises";
+import { access, mkdir, open, readdir, readFile, rename } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import type {
@@ -66,9 +66,41 @@ export interface EmployeeHostReceipt {
   hostId: string;
   acceptedAt: number;
   completedAt?: number;
-  status: "accepted" | "completed" | "failed";
+  status: "accepted" | "completed" | "failed" | "unknown";
   lease?: Pick<EmployeeHostLease, "runId" | "fence">;
   result?: { stdout: string; stderr: string; code: number };
+}
+
+export class LocalEmployeeHostReceiptSpool {
+  constructor(private readonly root: string) {}
+  private file(operationId: string) { return path.join(this.root, `${operationId}.json`); }
+  async claim(operation: EmployeeHostOperation) {
+    await mkdir(this.root, { recursive: true, mode: 0o700 });
+    const handle = await open(this.file(operation.operationId), "wx", 0o600).catch(() => null);
+    if (!handle) return "existing" as const;
+    try { await handle.writeFile(JSON.stringify({ operation, state: "claimed" })); await handle.sync(); }
+    finally { await handle.close(); }
+    return "claimed" as const;
+  }
+  async terminal(receipt: EmployeeHostReceipt) {
+    await mkdir(this.root, { recursive: true, mode: 0o700 });
+    const temp = `${this.file(receipt.operationId)}.tmp`;
+    const handle = await open(temp, "w", 0o600);
+    try { await handle.writeFile(JSON.stringify({ receipt, state: "terminal" })); await handle.sync(); }
+    finally { await handle.close(); }
+    await rename(temp, this.file(receipt.operationId));
+  }
+  async pending(): Promise<EmployeeHostReceipt[]> {
+    await mkdir(this.root, { recursive: true, mode: 0o700 });
+    const receipts: EmployeeHostReceipt[] = [];
+    for (const name of await readdir(this.root)) {
+      if (!name.endsWith(".json")) continue;
+      const value = JSON.parse(await readFile(path.join(this.root, name), "utf8")) as { receipt?: EmployeeHostReceipt; operation?: EmployeeHostOperation; state?: string };
+      if (value.receipt) receipts.push(value.receipt);
+      else if (value.operation) receipts.push({ operationId: value.operation.operationId, hostId: value.operation.hostId, lease: { runId: value.operation.lease.runId, fence: value.operation.lease.fence }, acceptedAt: Date.now(), completedAt: Date.now(), status: "unknown", result: { stdout: "", stderr: "Execution claim existed before companion restart; result is unknown and was not replayed.", code: 125 } });
+    }
+    return receipts;
+  }
 }
 
 export interface EmployeeHostEnrollment {
@@ -291,30 +323,41 @@ export async function runEmployeeHostCompanion(input: {
   client: EmployeeHostControlPlaneClient;
   signal: AbortSignal;
   heartbeatMs?: number;
+  spool?: LocalEmployeeHostReceiptSpool;
 }) {
   const heartbeatMs = input.heartbeatMs ?? 30_000;
   const sendHeartbeat = async () => input.client.heartbeat(input.hostId, input.enrollmentToken, await input.companion.capabilities());
-  await sendHeartbeat();
+  const retry = async <T>(work: () => Promise<T>) => {
+    let delay = 100;
+    while (!input.signal.aborted) { try { return await work(); } catch { await new Promise((resolve) => setTimeout(resolve, delay)); delay = Math.min(delay * 2, 5_000); } }
+    throw input.signal.reason ?? new Error("employee host companion aborted");
+  };
+  if (input.spool) for (const receipt of await input.spool.pending()) await retry(() => input.client.receipt(input.hostId, input.enrollmentToken, receipt));
+  await retry(sendHeartbeat);
   let nextHeartbeat = Date.now() + heartbeatMs;
   while (!input.signal.aborted) {
     if (Date.now() >= nextHeartbeat) {
-      await sendHeartbeat();
+      await retry(sendHeartbeat);
       nextHeartbeat = Date.now() + heartbeatMs;
     }
-    const operation = await input.client.poll(input.hostId, input.enrollmentToken, input.signal);
+    const operation = await retry(() => input.client.poll(input.hostId, input.enrollmentToken, input.signal));
     if (!operation) {
       await new Promise((resolve) => setTimeout(resolve, 25));
       continue;
     }
+    if (input.spool && await input.spool.claim(operation) === "existing") continue;
     const stdout: string[] = [];
     const stderr: string[] = [];
     let code = 1;
-    for await (const event of input.companion.execute(operation.request, input.signal)) {
-      if (event.type === "stdout") stdout.push(event.data);
-      if (event.type === "stderr") stderr.push(event.data);
-      if (event.type === "exit") code = event.code;
-    }
-    await input.client.receipt(input.hostId, input.enrollmentToken, {
+    const heartbeatTimer = setInterval(() => { void retry(sendHeartbeat); }, heartbeatMs);
+    try {
+      for await (const event of input.companion.execute(operation.request, input.signal)) {
+        if (event.type === "stdout") stdout.push(event.data);
+        if (event.type === "stderr") stderr.push(event.data);
+        if (event.type === "exit") code = event.code;
+      }
+    } finally { clearInterval(heartbeatTimer); }
+    const receipt: EmployeeHostReceipt = {
       operationId: operation.operationId,
       hostId: input.hostId,
       lease: { runId: operation.lease.runId, fence: operation.lease.fence },
@@ -322,7 +365,9 @@ export async function runEmployeeHostCompanion(input: {
       completedAt: Date.now(),
       status: code === 0 ? "completed" : "failed",
       result: { stdout: stdout.join(""), stderr: stderr.join(""), code },
-    });
+    };
+    if (input.spool) await input.spool.terminal(receipt);
+    await retry(() => input.client.receipt(input.hostId, input.enrollmentToken, receipt));
   }
 }
 

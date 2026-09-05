@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { EmployeeHostRegistry, LocalEmployeeHostCompanion } from "./employee-host.js";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { EmployeeHostRegistry, LocalEmployeeHostCompanion, LocalEmployeeHostReceiptSpool } from "./employee-host.js";
 
 const capabilities = {
   platform: "macos" as const,
@@ -46,5 +49,17 @@ describe("employee host protocol", () => {
     const blocked = [];
     for await (const event of companion.execute({ argv: ["true"], cwd: ".." })) blocked.push(event);
     expect(blocked).toContainEqual({ type: "exit", code: 1 });
+  });
+
+  it("spools terminal receipts and never reruns an uncertain claim", async () => {
+    const root = await mkdtemp(join(tmpdir(), "employee-host-test-"));
+    const spool = new LocalEmployeeHostReceiptSpool(root);
+    const operation = { operationId: "op-1", hostId: "host-1", spaceId: "space-1", botId: "bot-1", lease: { hostId: "host-1", spaceId: "space-1", botId: "bot-1", runId: "run-1", fence: 1, expiresAt: Date.now() + 10_000 }, kind: "exec" as const, request: { argv: ["true"] } };
+    expect(await spool.claim(operation)).toBe("claimed");
+    expect(await spool.claim(operation)).toBe("existing");
+    const pending = await spool.pending();
+    expect(pending[0]?.status).toBe("unknown");
+    await spool.terminal({ ...pending[0]!, status: "completed", result: { stdout: "ok", stderr: "", code: 0 } });
+    expect((await spool.pending())[0]?.status).toBe("completed");
   });
 });
