@@ -3,6 +3,7 @@ import { ONCE_ROUTINE_CRON } from "@rakazo/core";
 import type { PrismaClient } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
 import {
+  buildRunWorkspaceInstruction,
   createRunExecutor,
   createRunWorkspaceCheckpoint,
   loadCurrentTurnImages,
@@ -14,6 +15,27 @@ import {
 } from "./executor.js";
 
 describe("run workspace checkpoint", () => {
+  it("binds workspace guidance to the computer selected for this run", () => {
+    const host = buildRunWorkspaceInstruction({
+      computerId: "employee-computer",
+      kind: "employee-host",
+      scope: "dedicated",
+      botId: "bot-1",
+    });
+    const docker = buildRunWorkspaceInstruction({
+      computerId: "docker-computer",
+      kind: "docker",
+      scope: "dedicated",
+      botId: "bot-1",
+    });
+    expect(host).toContain("employee-computer");
+    expect(docker).toContain("docker-computer");
+    expect(docker).toContain(
+      "An absolute path from an earlier turn may be stale after switching computers",
+    );
+    expect(docker).not.toContain("employee-computer");
+  });
+
   it("skips clean turns and flushes once after a mutation", async () => {
     const persist = vi.fn(async () => undefined);
     const checkpoint = createRunWorkspaceCheckpoint(persist);

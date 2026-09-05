@@ -116,8 +116,10 @@ export function computerWorkspaceInstruction(input: {
   botId: string;
 }): string {
   const home =
-    input.scope === "team" ? teamBotWorkspaceDirectory(input.botId) : "this computer's private home";
-  return `This run is pinned to computer ${input.computerId} (${input.kind}). Its current workspace root is ${home}. Use relative paths by default. Absolute paths from another computer or an earlier turn are stale and must not be reused; only use an absolute path when it is a path in this computer's current virtual home.`;
+    input.scope === "team"
+      ? teamBotWorkspaceDirectory(input.botId)
+      : "this computer's private home";
+  return `This run is pinned to computer ${input.computerId} (${input.kind}). Its current workspace root is ${home}. Use relative paths by default. An absolute path from an earlier turn may be stale after switching computers; reuse it only after confirming it is inside this computer's current virtual home. Never reuse a path from a different computer.`;
 }
 
 export function displayBotWorkspacePath(
