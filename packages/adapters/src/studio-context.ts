@@ -15,12 +15,80 @@ export interface PinnedStudioSource extends AuthorizedStudioSource {
   snapshotId: string;
 }
 
+export interface StudioSourceSyncResult {
+  knowledgeProjectId: string;
+  snapshotId: string;
+  commit: string;
+  localOverlay: boolean;
+  freshness: {
+    added: number;
+    updated: number;
+    unchanged: number;
+    deleted: number;
+    embedded: number;
+    reused: number;
+  };
+  skipped: { relativePath: string; reason: string }[];
+}
+
+export interface StudioWikiPageSummary {
+  pageId: string;
+  title: string;
+  snapshotId: string;
+  commit: string;
+  generatedAt: string;
+  generatorVersion: string;
+  localOverlay: boolean;
+  freshness: { status: "current" | "stale"; reasons: string[] };
+}
+
+export interface StudioWikiPageRead {
+  pageId: string;
+  page: {
+    slug: string;
+    title: string;
+    content: string;
+    citations: { relativePath: string; startLine: number; endLine: number }[];
+    inputsHash?: string;
+    links?: string[];
+    kind?: "navigation" | "module";
+    omitted?: number;
+  };
+  manifest: {
+    snapshotId: string;
+    inputsHash: string;
+    projectId: string;
+    commit: string;
+    indexerVersion: string;
+    parserVersion: string;
+    generatorVersion: string;
+    generatedAt: string;
+    sourceAuthority: "generated";
+    localOverlay: boolean;
+  };
+  freshness: { status: "current" | "stale"; reasons: string[] };
+  activeSnapshot: {
+    id: string;
+    projectId: string;
+    commit: string;
+    localOverlay: boolean;
+  };
+}
+
 export interface StudioKnowledgeBridge {
   pin(input: { sources: AuthorizedStudioSource[] }): Promise<{ sources: PinnedStudioSource[] }>;
   read(input: {
     sources: PinnedStudioSource[];
     question: string;
   }): Promise<{ instructions: string }>;
+  sync(input: AuthorizedStudioSource & {
+    checkoutPath: string;
+    expectedSnapshotId?: string;
+  }): Promise<StudioSourceSyncResult>;
+  listWiki(input: AuthorizedStudioSource): Promise<{ pages: StudioWikiPageSummary[] }>;
+  getWikiPage(
+    input: AuthorizedStudioSource & { pageId: string },
+  ): Promise<StudioWikiPageRead>;
   close(): Promise<void>;
 }
 

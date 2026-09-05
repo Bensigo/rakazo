@@ -267,6 +267,13 @@ describePostgres("studio assignment runtime (PostgreSQL)", () => {
         })),
       })),
       read: vi.fn(async () => ({ instructions: "README.md @ snapshot-server-pinned" })),
+      sync: vi.fn(async () => {
+        throw new Error("not used");
+      }),
+      listWiki: vi.fn(async () => ({ pages: [] })),
+      getWikiPage: vi.fn(async () => {
+        throw new Error("not used");
+      }),
       close: vi.fn(async () => undefined),
     };
     const resolved = await resolveStudioRunContext(prisma, bridge, {

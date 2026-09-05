@@ -72,6 +72,8 @@ export interface AppEnv {
   sunriseKnowledgeModule: string | undefined;
   /** Canonical Sunrise knowledge database, separate from the Rakazo application database. */
   sunriseKnowledgeDatabaseUrl: string | undefined;
+  /** Server-owned repository registrations available for Studio source onboarding. */
+  sunriseStudioRepositories: string | undefined;
 }
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
@@ -144,6 +146,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     imageTag: optional(source.RAKAZO_IMAGE_TAG),
     sunriseKnowledgeModule: optional(source.SUNRISE_KNOWLEDGE_MODULE),
     sunriseKnowledgeDatabaseUrl: optional(source.SUNRISE_KNOWLEDGE_DATABASE_URL),
+    sunriseStudioRepositories: optional(source.SUNRISE_STUDIO_REPOSITORIES),
   };
 }
 

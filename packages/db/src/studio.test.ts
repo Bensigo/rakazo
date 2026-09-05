@@ -36,6 +36,67 @@ function fakePrisma() {
 }
 
 describe("studio domain", () => {
+  it("scopes project source reads to the actor organization", async () => {
+    const findMany = vi.fn(async () => [{ id: "source-1", projectId: "project-1" }]);
+    const prisma = {
+      spaceMember: { findUnique: vi.fn(async () => membership) },
+      studioProject: {
+        findFirst: vi.fn(async ({ where }: { where: { organizationId: string } }) =>
+          where.organizationId === "org-1" ? { id: "project-1" } : null,
+        ),
+      },
+      projectSourceBinding: { findMany },
+    } as any;
+    await expect(createStudioDomain(prisma).projectSources(actor, "project-1")).resolves.toEqual([
+      { id: "source-1", projectId: "project-1" },
+    ]);
+    expect(prisma.studioProject.findFirst).toHaveBeenCalledWith({
+      where: { id: "project-1", organizationId: "org-1" },
+      select: { id: true },
+    });
+  });
+
+  it("requires admin authority and keeps a stable repository binding id across syncs", async () => {
+    const upsert = vi.fn(async ({ where, create, update }: any) => ({
+      id: where.id,
+      ...create,
+      ...update,
+    }));
+    const prisma = {
+      spaceMember: {
+        findUnique: vi.fn(async () => ({ organizationId: "org-1", member: { role: "admin" } })),
+      },
+      studioProject: { findFirst: vi.fn(async () => ({ id: "project-1" })) },
+      projectSourceBinding: { findFirst: vi.fn(async () => null), upsert },
+    } as any;
+    const domain = createStudioDomain(prisma);
+    const first = await domain.saveProjectSource(
+      { ...actor, isDeploymentOwner: false },
+      {
+        projectId: "project-1",
+        sourceId: "github:studio/game",
+        refKey: "workspace",
+        metadata: { snapshotId: "snapshot-1" },
+      },
+    );
+    const second = await domain.saveProjectSource(
+      { ...actor, isDeploymentOwner: false },
+      {
+        projectId: "project-1",
+        sourceId: "github:studio/game",
+        refKey: "workspace",
+        metadata: { snapshotId: "snapshot-2" },
+      },
+    );
+    expect(first.id).toBe(second.id);
+    expect(first.id).toMatch(/^studio-source-[a-f0-9]{64}$/);
+    expect(upsert).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: { id: first.id },
+        update: { metadata: { snapshotId: "snapshot-2" } },
+      }),
+    );
+  });
   it("requires organization owner or admin for foundation writes", async () => {
     const prisma = {
       spaceMember: {

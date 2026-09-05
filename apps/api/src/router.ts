@@ -55,6 +55,9 @@ import {
   probeOpenAiCompatibleModels,
   provisionComputer,
   type RemoteConnectorDependencies,
+  type RegisteredStudioRepository,
+  registeredRepositoryForOrganization,
+  repositoriesForOrganization,
   releaseComputerExecutionLease,
   replaceComputer,
   resolveAutoReviewChecker,
@@ -69,6 +72,7 @@ import {
   takeoverLeaseMs,
   toComputerRef,
   toStringRecord,
+  type StudioKnowledgeBridge,
   touchRunningComputer,
   verifyMcpInstall,
 } from "@rakazo/adapters";
@@ -325,6 +329,25 @@ function mcpAssignmentDto(row: {
   };
 }
 
+function jsonRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function sourceBindingConflict(error: unknown): boolean {
+  return (
+    error !== null &&
+    typeof error === "object" &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "source-binding-stale"
+  );
+}
+
 export interface RouterDeps {
   prisma: PrismaClient;
   events: ThreadEvents;
@@ -342,6 +365,8 @@ export interface RouterDeps {
   remoteConnectors?: RemoteConnectorDependencies;
   artifacts: ArtifactStore;
   dataDir: string;
+  studioKnowledge?: StudioKnowledgeBridge;
+  studioRepositories?: readonly RegisteredStudioRepository[];
   /** Present when the external messaging surface is enabled. */
   messaging?: { enabled: boolean; providers: string[]; openSignup: boolean };
   env: {
@@ -402,6 +427,96 @@ export function createRouter(deps: RouterDeps) {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   });
+  const projectSourceDto = (
+    row: Awaited<ReturnType<typeof studio.projectSources>>[number],
+  ) => ({
+    id: row.id,
+    projectId: row.projectId,
+    kind: row.kind,
+    repository: row.repository,
+    ref: row.ref,
+    path: row.path,
+    metadata: jsonRecord(row.metadata),
+  });
+  const knowledgeBridge = () => {
+    if (!deps.studioKnowledge) {
+      throw new ORPCError("CONFLICT", { message: "Studio knowledge is not configured." });
+    }
+    return deps.studioKnowledge;
+  };
+  const registeredRepository = (organizationId: string, repositoryId: string) => {
+    const repository = registeredRepositoryForOrganization(
+      deps.studioRepositories ?? [],
+      organizationId,
+      repositoryId,
+    );
+    if (!repository) throw new IsolationError();
+    return repository;
+  };
+  const syncRepository = async (input: {
+    actor: Actor;
+    projectId: string;
+    repository: RegisteredStudioRepository;
+    existing?: Awaited<ReturnType<typeof studio.projectSources>>[number];
+  }) => {
+    const previous = jsonRecord(input.existing?.metadata);
+    const expectedSnapshotId = stringValue(previous?.snapshotId);
+    let result: Awaited<ReturnType<StudioKnowledgeBridge["sync"]>>;
+    try {
+      result = await knowledgeBridge().sync({
+        studioProjectId: input.projectId,
+        sourceId: input.repository.sourceId,
+        refKey: input.repository.refKey,
+        access: { allowedScopes: ["project"] },
+        checkoutPath: input.repository.checkoutPath,
+        ...(expectedSnapshotId ? { expectedSnapshotId } : {}),
+      });
+    } catch (error) {
+      if (sourceBindingConflict(error)) {
+        throw new ORPCError("CONFLICT", {
+          message: "The project source changed during sync. Refresh and try again.",
+        });
+      }
+      throw error;
+    }
+    return studio.saveProjectSource(input.actor, {
+      projectId: input.projectId,
+      sourceId: input.repository.sourceId,
+      refKey: input.repository.refKey,
+      metadata: {
+        ...(previous ?? {}),
+        registeredRepositoryId: input.repository.id,
+        knowledgeProjectId: result.knowledgeProjectId,
+        snapshotId: result.snapshotId,
+        commit: result.commit,
+        localOverlay: result.localOverlay,
+        freshness: result.freshness,
+        skipped: result.skipped,
+        syncedAt: new Date().toISOString(),
+      },
+    });
+  };
+  const authorizedWikiSource = async (actor: Actor, projectId: string, bindingId: string) => {
+    const organizationId = await studio.organizationId(actor);
+    const binding = await studio.projectSource(actor, projectId, bindingId);
+    const metadata = jsonRecord(binding.metadata);
+    const repositoryId = stringValue(metadata?.registeredRepositoryId);
+    if (!repositoryId) throw new IsolationError();
+    const repository = registeredRepository(organizationId, repositoryId);
+    if (
+      binding.kind !== "repository" ||
+      binding.repository !== repository.sourceId ||
+      binding.ref !== repository.refKey
+    ) {
+      throw new IsolationError();
+    }
+    return {
+      studioProjectId: binding.projectId,
+      sourceId: repository.sourceId,
+      refKey: repository.refKey,
+      access: { allowedScopes: ["project"] },
+    };
+  };
 
   const authed = os.use(async ({ context, next }) => {
     if (!context.actor) throw new ORPCError("UNAUTHORIZED");
@@ -484,6 +599,74 @@ export function createRouter(deps: RouterDeps) {
       createProject: authed.studio.createProject.handler(async ({ context, input }) =>
         studioProjectDto(await studio.createProject(context.actor, input)),
       ),
+      registeredRepositories: authed.studio.registeredRepositories.handler(
+        async ({ context }) => {
+          const organizationId = await studio.organizationId(context.actor);
+          return repositoriesForOrganization(
+            deps.studioRepositories ?? [],
+            organizationId,
+          );
+        },
+      ),
+      projectSources: authed.studio.projectSources.handler(async ({ context, input }) =>
+        (await studio.projectSources(context.actor, input.projectId)).map(projectSourceDto),
+      ),
+      addProjectSource: authed.studio.addProjectSource.handler(async ({ context, input }) => {
+        const target = await studio.projectForSourceWrite(context.actor, input.projectId);
+        const repository = registeredRepository(target.organizationId, input.repositoryId);
+        const existing = (await studio.projectSources(context.actor, input.projectId)).find(
+          (binding) =>
+            binding.kind === "repository" &&
+            binding.repository === repository.sourceId &&
+            binding.ref === repository.refKey,
+        );
+        return projectSourceDto(
+          await syncRepository({
+            actor: context.actor,
+            projectId: target.projectId,
+            repository,
+            ...(existing ? { existing } : {}),
+          }),
+        );
+      }),
+      syncProjectSource: authed.studio.syncProjectSource.handler(async ({ context, input }) => {
+        const target = await studio.projectSourceForWrite(context.actor, input.bindingId);
+        const metadata = jsonRecord(target.binding.metadata);
+        const repositoryId = stringValue(metadata?.registeredRepositoryId);
+        if (!repositoryId) throw new IsolationError("Project source is not registered");
+        const repository = registeredRepository(target.organizationId, repositoryId);
+        if (
+          target.binding.kind !== "repository" ||
+          target.binding.repository !== repository.sourceId ||
+          target.binding.ref !== repository.refKey
+        ) {
+          throw new IsolationError("Project source identity does not match its registration");
+        }
+        return projectSourceDto(
+          await syncRepository({
+            actor: context.actor,
+            projectId: target.binding.projectId,
+            repository,
+            existing: target.binding,
+          }),
+        );
+      }),
+      projectWikiPages: authed.studio.projectWikiPages.handler(async ({ context, input }) => {
+        const source = await authorizedWikiSource(
+          context.actor,
+          input.projectId,
+          input.bindingId,
+        );
+        return (await knowledgeBridge().listWiki(source)).pages;
+      }),
+      projectWikiPage: authed.studio.projectWikiPage.handler(async ({ context, input }) => {
+        const source = await authorizedWikiSource(
+          context.actor,
+          input.projectId,
+          input.bindingId,
+        );
+        return knowledgeBridge().getWikiPage({ ...source, pageId: input.pageId });
+      }),
       roles: authed.studio.roles.handler(async ({ context }) =>
         (await studio.roles(context.actor)).map(roleDto),
       ),

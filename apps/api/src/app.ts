@@ -38,6 +38,7 @@ import {
   LocalAgentHomeStore,
   LocalArtifactStore,
   loadStudioKnowledgeBridge,
+  parseRegisteredStudioRepositories,
   McpConnector,
   McpOAuthBroker,
   messagingPlatformsFromEnv,
@@ -52,6 +53,7 @@ import {
   SmtpEmailProvider,
   SpaceMemoryProviderResolver,
   type StudioKnowledgeBridge,
+  type RegisteredStudioRepository,
 } from "@rakazo/adapters";
 import { blockedAuthPaths, createAuth } from "@rakazo/auth";
 import { signupPolicyFromEnv } from "@rakazo/core";
@@ -107,6 +109,7 @@ export async function createApp(
     remoteConnectors?: RemoteConnectorDependencies;
     logger?: Logger;
     studioKnowledge?: StudioKnowledgeBridge;
+    studioRepositories?: RegisteredStudioRepository[];
   } = {},
 ): Promise<AppHandles> {
   const {
@@ -119,6 +122,7 @@ export async function createApp(
     remoteConnectors,
     logger: loggerOverride,
     studioKnowledge: studioKnowledgeOverride,
+    studioRepositories: studioRepositoriesOverride,
     ...envOverrides
   } = overrides;
   const env = { ...loadEnv(process.env), ...envOverrides };
@@ -128,6 +132,8 @@ export async function createApp(
       modulePath: env.sunriseKnowledgeModule,
       databaseUrl: env.sunriseKnowledgeDatabaseUrl,
     }));
+  const studioRepositories =
+    studioRepositoriesOverride ?? parseRegisteredStudioRepositories(env.sunriseStudioRepositories);
   const logger = loggerOverride ?? createServiceLogger({ service: SERVICE_NAMES.api });
   installLogger(logger);
   const created = prismaOverride
@@ -347,6 +353,8 @@ export async function createApp(
     remoteConnectors,
     artifacts,
     dataDir: env.dataDir,
+    studioKnowledge,
+    studioRepositories,
     messaging: {
       enabled: Boolean(messaging),
       providers: messaging?.platforms().map((platform) => platform.provider) ?? [],

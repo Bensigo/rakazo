@@ -39,6 +39,9 @@ function isStudioKnowledgeBridge(value: unknown): value is StudioKnowledgeBridge
   return (
     typeof bridge.pin === "function" &&
     typeof bridge.read === "function" &&
+    typeof bridge.sync === "function" &&
+    typeof bridge.listWiki === "function" &&
+    typeof bridge.getWikiPage === "function" &&
     typeof bridge.close === "function"
   );
 }

@@ -67,6 +67,69 @@ export const ProjectSourceBindingSchema = z.object({
 });
 export type ProjectSourceBinding = z.infer<typeof ProjectSourceBindingSchema>;
 
+export const RegisteredStudioRepositorySchema = z.object({
+  id: Id,
+  label: z.string().min(1),
+});
+export type RegisteredStudioRepository = z.infer<typeof RegisteredStudioRepositorySchema>;
+
+const StudioWikiFreshnessSchema = z.object({
+  status: z.enum(["current", "stale"]),
+  reasons: z.array(z.string()),
+});
+
+export const StudioWikiPageSummarySchema = z.object({
+  pageId: z.string().min(1),
+  title: z.string().min(1),
+  snapshotId: z.string().min(1),
+  commit: z.string(),
+  generatedAt: z.string(),
+  generatorVersion: z.string().min(1),
+  localOverlay: z.boolean(),
+  freshness: StudioWikiFreshnessSchema,
+});
+export type StudioWikiPageSummary = z.infer<typeof StudioWikiPageSummarySchema>;
+
+export const StudioWikiPageReadSchema = z.object({
+  pageId: z.string().min(1),
+  page: z.object({
+    slug: z.string().min(1),
+    title: z.string().min(1),
+    content: z.string(),
+    citations: z.array(
+      z.object({
+        relativePath: z.string().min(1),
+        startLine: z.number().int().positive(),
+        endLine: z.number().int().positive(),
+      }),
+    ),
+    inputsHash: z.string().optional(),
+    links: z.array(z.string()).optional(),
+    kind: z.enum(["navigation", "module"]).optional(),
+    omitted: z.number().int().nonnegative().optional(),
+  }),
+  manifest: z.object({
+    snapshotId: z.string().min(1),
+    inputsHash: z.string().min(1),
+    projectId: z.string().min(1),
+    commit: z.string(),
+    indexerVersion: z.string().min(1),
+    parserVersion: z.string().min(1),
+    generatorVersion: z.string().min(1),
+    generatedAt: z.string(),
+    sourceAuthority: z.literal("generated"),
+    localOverlay: z.boolean(),
+  }),
+  freshness: StudioWikiFreshnessSchema,
+  activeSnapshot: z.object({
+    id: z.string().min(1),
+    projectId: z.string().min(1),
+    commit: z.string(),
+    localOverlay: z.boolean(),
+  }),
+});
+export type StudioWikiPageRead = z.infer<typeof StudioWikiPageReadSchema>;
+
 export const AssignmentManifestSchema = z.object({
   id: Id,
   scope: ProjectScopeSchema,

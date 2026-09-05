@@ -21,6 +21,13 @@ function emptyBridge(): StudioKnowledgeBridge {
   return {
     pin: vi.fn(async () => ({ sources: [] })),
     read: vi.fn(async () => ({ instructions: "" })),
+    sync: vi.fn(async () => {
+      throw new Error("not used");
+    }),
+    listWiki: vi.fn(async () => ({ pages: [] })),
+    getWikiPage: vi.fn(async () => {
+      throw new Error("not used");
+    }),
     close: vi.fn(async () => undefined),
   };
 }

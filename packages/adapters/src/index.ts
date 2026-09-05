@@ -77,6 +77,7 @@ export * from "./skill-tools.js";
 export * from "./smtp-email.js";
 export * from "./studio-context.js";
 export * from "./studio-knowledge-loader.js";
+export * from "./studio-repository-registry.js";
 export { SupermemoryMemoryProvider } from "./supermemory-memory-provider.js";
 export * from "./teaching-session.js";
 export * from "./third-party-connector-emulator.js";

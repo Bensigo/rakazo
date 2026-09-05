@@ -44,6 +44,8 @@ import {
   ModelCredentialSchema,
   ModelOAuthBeginSchema,
   ProjectScopeSchema,
+  ProjectSourceBindingSchema,
+  RegisteredStudioRepositorySchema,
   ReorderBotsInput,
   RoutineSchema,
   ScratchpadItemSchema,
@@ -58,6 +60,8 @@ import {
   SpaceSchema,
   StudioFoundationSchema,
   StudioProjectSchema,
+  StudioWikiPageReadSchema,
+  StudioWikiPageSummarySchema,
   TaughtSkillSchema,
   TeachRecordingEventSchema,
   ThreadMessagePageSchema,
@@ -152,6 +156,22 @@ export const appContract = {
         }),
       )
       .output(StudioProjectSchema),
+    registeredRepositories: oc.output(z.array(RegisteredStudioRepositorySchema)),
+    projectSources: oc
+      .input(z.object({ projectId: Id }))
+      .output(z.array(ProjectSourceBindingSchema)),
+    addProjectSource: oc
+      .input(z.object({ projectId: Id, repositoryId: Id }))
+      .output(ProjectSourceBindingSchema),
+    syncProjectSource: oc
+      .input(z.object({ bindingId: Id }))
+      .output(ProjectSourceBindingSchema),
+    projectWikiPages: oc
+      .input(z.object({ projectId: Id, bindingId: Id }))
+      .output(z.array(StudioWikiPageSummarySchema)),
+    projectWikiPage: oc
+      .input(z.object({ projectId: Id, bindingId: Id, pageId: z.string().min(1).max(512) }))
+      .output(StudioWikiPageReadSchema),
     roles: oc.output(z.array(EmployeeRolePresetSchema)),
     createRole: oc
       .input(

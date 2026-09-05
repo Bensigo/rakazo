@@ -1,4 +1,5 @@
 import type { Actor } from "@rakazo/contracts";
+import { createHash } from "node:crypto";
 import type { Prisma, PrismaClient } from "./client.js";
 import { IsolationError } from "./scope.js";
 
@@ -22,6 +23,9 @@ async function requireAdmin(prisma: PrismaClient, actor: Actor) {
 
 export function createStudioDomain(prisma: PrismaClient) {
   return {
+    async organizationId(actor: Actor) {
+      return organizationIdFor(prisma, actor);
+    },
     async foundation(actor: Actor) {
       const organizationId = await organizationIdFor(prisma, actor);
       return prisma.studioFoundation.findUnique({
@@ -71,6 +75,86 @@ export function createStudioDomain(prisma: PrismaClient) {
           scope: input.scope,
           createdByUserId: actor.userId,
         },
+      });
+    },
+    async projectSources(actor: Actor, projectId: string) {
+      const organizationId = await organizationIdFor(prisma, actor);
+      const project = await prisma.studioProject.findFirst({
+        where: { id: projectId, organizationId },
+        select: { id: true },
+      });
+      if (!project) throw new IsolationError();
+      return prisma.projectSourceBinding.findMany({
+        where: { projectId },
+        orderBy: [{ kind: "asc" }, { createdAt: "asc" }],
+      });
+    },
+    async projectSource(actor: Actor, projectId: string, bindingId: string) {
+      const organizationId = await organizationIdFor(prisma, actor);
+      const binding = await prisma.projectSourceBinding.findFirst({
+        where: { id: bindingId, projectId, project: { organizationId } },
+      });
+      if (!binding) throw new IsolationError();
+      return binding;
+    },
+    async projectSourceForWrite(actor: Actor, bindingId: string) {
+      const organizationId = await requireAdmin(prisma, actor);
+      const binding = await prisma.projectSourceBinding.findFirst({
+        where: { id: bindingId, project: { organizationId } },
+      });
+      if (!binding) throw new IsolationError();
+      return { organizationId, binding };
+    },
+    async projectForSourceWrite(actor: Actor, projectId: string) {
+      const organizationId = await requireAdmin(prisma, actor);
+      const project = await prisma.studioProject.findFirst({
+        where: { id: projectId, organizationId },
+        select: { id: true },
+      });
+      if (!project) throw new IsolationError();
+      return { organizationId, projectId: project.id };
+    },
+    async saveProjectSource(
+      actor: Actor,
+      input: {
+        projectId: string;
+        sourceId: string;
+        refKey: string;
+        metadata: Record<string, unknown>;
+      },
+    ) {
+      const organizationId = await requireAdmin(prisma, actor);
+      const project = await prisma.studioProject.findFirst({
+        where: { id: input.projectId, organizationId },
+        select: { id: true },
+      });
+      if (!project) throw new IsolationError();
+      const existing = await prisma.projectSourceBinding.findFirst({
+        where: {
+          projectId: input.projectId,
+          kind: "repository",
+          repository: input.sourceId,
+          ref: input.refKey,
+        },
+        select: { id: true },
+      });
+      const id =
+        existing?.id ??
+        `studio-source-${createHash("sha256")
+          .update(`${input.projectId}\u0000${input.sourceId}\u0000${input.refKey}`)
+          .digest("hex")}`;
+      return prisma.projectSourceBinding.upsert({
+        where: { id },
+        create: {
+          id,
+          projectId: input.projectId,
+          kind: "repository",
+          repository: input.sourceId,
+          ref: input.refKey,
+          metadata: input.metadata as Prisma.InputJsonValue,
+          createdByUserId: actor.userId,
+        },
+        update: { metadata: input.metadata as Prisma.InputJsonValue },
       });
     },
     async roles(actor: Actor) {
