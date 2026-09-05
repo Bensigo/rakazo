@@ -3,7 +3,7 @@ import { type AddressInfo } from "node:net";
 import test from "node:test";
 import type { AdapterContext, ConnectorCall, ManagedConnectorProvider } from "@rakazo/adapter-kit";
 import { ManagedEmailMcpClient, ManagedMessagingMcpClient, ManagedNotificationMcpClient, ManagedProviderMcpClient } from "@rakazo/adapters";
-import { createProviderMcpHttpServer } from "./server.js";
+import { createProviderMcpHttpServer, deliveryRun } from "./server.js";
 import type { MessagingSurface } from "@rakazo/adapter-kit";
 
 const context: AdapterContext = {
@@ -82,9 +82,9 @@ test("disabled providers have empty read capabilities but fail closed for mutati
     assert.deepEqual(await client.listConnectedExternalIds(context), []);
     assert.deepEqual(await client.discoverTools(context), []);
     assert.equal(await client.connectionReady(context, "missing"), false);
-    await assert.rejects(() => client.begin({ provider: "github", redirectUrl: "https://example.test/callback" }, context), /operation failed|not configured/i);
-    await assert.rejects(async () => { for await (const _event of client.execute({ tool: "x", args: {}, executionId: "x" }, context)) {} }, /operation failed|not configured/i);
-    await assert.rejects(() => client.revoke("missing", context), /operation failed|not configured/i);
+    await assert.rejects(() => client.begin({ provider: "github", redirectUrl: "https://example.test/callback" }, context), /operation failed|request failed|not configured/i);
+    await assert.rejects(async () => { for await (const _event of client.execute({ tool: "x", args: {}, executionId: "x" }, context)) {} }, /operation failed|request failed|not configured/i);
+    await assert.rejects(() => client.revoke("missing", context), /operation failed|request failed|not configured/i);
   } finally {
     await service.close();
   }
@@ -185,4 +185,20 @@ test("delivery failures never expose provider secrets or inbound event data", as
       });
     }
   } finally { await service.close(); }
+});
+
+test("late provider rejection after cancellation is classified without leaking its error", async () => {
+  const controller = new AbortController();
+  const secret = "smtp://user:password@private.example.test/?signingSecret=hidden";
+  const operation = deliveryRun(controller.signal, async () => {
+    await Promise.resolve();
+    controller.abort();
+    throw new Error(`late SDK failure ${secret}`);
+  });
+  await assert.rejects(operation, (error: unknown) => {
+    assert.equal((error as Error).name, "AbortError");
+    assert.equal((error as Error).message, "Managed delivery operation aborted");
+    assert.doesNotMatch(String(error), /private\.example|password|hidden/i);
+    return true;
+  });
 });

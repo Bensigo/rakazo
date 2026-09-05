@@ -61,13 +61,18 @@ function bounded(value: unknown): unknown {
 function response(events: ConnectorEvent[]): { events: ConnectorEvent[] } {
   return bounded({ events }) as { events: ConnectorEvent[] };
 }
-async function deliveryRun<T>(signal: AbortSignal, operation: () => Promise<T>): Promise<T> {
+export async function deliveryRun<T>(signal: AbortSignal, operation: () => Promise<T>): Promise<T> {
   try {
     return await operation();
   } catch (error) {
-    if (signal.aborted) throw error;
+    if (signal.aborted) throw abortedError();
     throw new Error("Managed delivery operation failed");
   }
+}
+function abortedError(): Error {
+  const error = new Error("Managed delivery operation aborted");
+  error.name = "AbortError";
+  return error;
 }
 
 const outputSchemas: Record<string, z.ZodTypeAny> = {
@@ -85,7 +90,7 @@ export function createProviderMcpServer(map: ProviderMap = providers(), services
   const run = async <T>(tool: string, fn: (provider: ManagedConnectorProvider, ctx: AdapterContext) => Promise<T>, input: { provider: z.infer<typeof ProviderSchema>; context: z.infer<typeof ContextSchema> }, signal: AbortSignal) => {
     let raw: T;
     try { raw = await fn(providerFor(map, input.provider), context(input.context, signal)); }
-    catch (error) { if (signal.aborted) throw error; throw new Error("Managed provider operation failed"); }
+    catch (error) { if (signal.aborted) throw abortedError(); throw new Error("Managed provider operation failed"); }
     const result = bounded(raw === undefined ? null : raw);
     const schema = outputSchemas[tool];
     if (schema) {
