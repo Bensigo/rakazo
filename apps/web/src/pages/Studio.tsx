@@ -10,9 +10,16 @@ export function StudioPage() {
   const [roles, setRoles] = useState<EmployeeRolePreset[]>([]);
   const [bots, setBots] = useState<Awaited<ReturnType<typeof rpc.bots.list>>>([]);
   const [assignments, setAssignments] = useState<AssignmentManifest[]>([]);
-  const [repositories, setRepositories] = useState<Awaited<ReturnType<typeof rpc.studio.registeredRepositories>>>([]);
+  const [repositories, setRepositories] = useState<
+    Awaited<ReturnType<typeof rpc.studio.registeredRepositories>>
+  >([]);
   const [sources, setSources] = useState<Awaited<ReturnType<typeof rpc.studio.projectSources>>>([]);
-  const [wikiPages, setWikiPages] = useState<Awaited<ReturnType<typeof rpc.studio.projectWikiPages>>>([]);
+  const [wikiPages, setWikiPages] = useState<
+    Awaited<ReturnType<typeof rpc.studio.projectWikiPages>>
+  >([]);
+  const [wikiPage, setWikiPage] = useState<Awaited<
+    ReturnType<typeof rpc.studio.projectWikiPage>
+  > | null>(null);
   const [sourceProjectId, setSourceProjectId] = useState("");
   const [sourceBindingId, setSourceBindingId] = useState("");
   const [foundation, setFoundation] =
@@ -120,12 +127,39 @@ export function StudioPage() {
     setProjectSlug("");
   }
   async function selectSourceProject(projectId: string) {
-    setSourceProjectId(projectId); setSourceBindingId(""); setSources([]); setWikiPages([]);
+    setSourceProjectId(projectId);
+    setSourceBindingId("");
+    setSources([]);
+    setWikiPages([]);
+    setWikiPage(null);
     if (projectId) setSources(await rpc.studio.projectSources({ projectId }));
   }
-  async function addSource(repositoryId: string) { const source = await rpc.studio.addProjectSource({ projectId: sourceProjectId, repositoryId }); setSources((all) => [...all, source]); setSourceBindingId(source.id); }
-  async function refreshSource() { if (!sourceBindingId) return; setSources((all) => all.map((s) => s.id === sourceBindingId ? s : s)); await rpc.studio.syncProjectSource({ bindingId: sourceBindingId }); }
-  async function loadWiki(bindingId: string) { setSourceBindingId(bindingId); setWikiPages(await rpc.studio.projectWikiPages({ projectId: sourceProjectId, bindingId })); }
+  async function addSource(repositoryId: string) {
+    const source = await rpc.studio.addProjectSource({ projectId: sourceProjectId, repositoryId });
+    setSources((all) => [...all, source]);
+    setSourceBindingId(source.id);
+  }
+  async function refreshSource(bindingId: string) {
+    const synced = await rpc.studio.syncProjectSource({ bindingId });
+    setSources((all) => all.map((s) => (s.id === bindingId ? synced : s)));
+    if (bindingId === sourceBindingId)
+      setWikiPages(await rpc.studio.projectWikiPages({ projectId: sourceProjectId, bindingId }));
+  }
+  async function loadWiki(bindingId: string) {
+    setSourceBindingId(bindingId);
+    setWikiPage(null);
+    setWikiPages(await rpc.studio.projectWikiPages({ projectId: sourceProjectId, bindingId }));
+  }
+  async function readWiki(pageId: string) {
+    if (!sourceProjectId || !sourceBindingId) return;
+    setWikiPage(
+      await rpc.studio.projectWikiPage({
+        projectId: sourceProjectId,
+        bindingId: sourceBindingId,
+        pageId,
+      }),
+    );
+  }
   async function createAssignment() {
     const a = await rpc.studio.createAssignment({
       scope,
@@ -251,9 +285,92 @@ export function StudioPage() {
         </section>
         <section className="mt-4 rounded-2xl border border-border p-5">
           <h2 className="text-lg font-medium">Project sources &amp; wiki</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Connect an authorized repository to a project and inspect its cited pages.</p>
-          <select aria-label="Source project" className="mt-3 rounded-xl border border-border bg-background px-3 py-2 text-sm" value={sourceProjectId} onChange={(e) => void selectSourceProject(e.target.value)}><option value="">Choose a project</option>{projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-          {sourceProjectId ? <div className="mt-3 space-y-2">{repositories.length ? repositories.map((repo) => <div key={repo.id} className="flex items-center justify-between rounded-xl bg-muted/40 px-3 py-2 text-sm"><span>{repo.label}</span><Button variant="secondary" onClick={() => void run(() => addSource(repo.id))}>Connect</Button></div>) : <p className="text-sm text-muted-foreground">No authorized repositories are registered yet. An administrator must connect one in setup.</p>}{sources.map((source) => <div key={source.id} className="flex items-center justify-between rounded-xl border border-border px-3 py-2 text-sm"><span>{source.repository ?? source.kind} · {source.ref ?? "unresolved"}</span><span className="flex gap-2"><Button variant="secondary" onClick={() => void run(refreshSource)}>Refresh</Button><Button variant="secondary" onClick={() => void loadWiki(source.id)}>Wiki</Button></span></div>)}{wikiPages.length ? <div className="border-t border-border pt-2">{wikiPages.map((page) => <p key={page.pageId} className="text-sm">{page.title} · {page.commit} · {page.localOverlay ? "local overlay" : "canonical"}</p>)}</div> : null}</div> : null}
+          <p className="mt-1 text-sm text-muted-foreground">
+            Connect an authorized repository to a project and inspect its cited pages.
+          </p>
+          <select
+            aria-label="Source project"
+            className="mt-3 rounded-xl border border-border bg-background px-3 py-2 text-sm"
+            value={sourceProjectId}
+            onChange={(e) => void selectSourceProject(e.target.value)}
+          >
+            <option value="">Choose a project</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          {sourceProjectId ? (
+            <div className="mt-3 space-y-2">
+              {repositories.length ? (
+                repositories.map((repo) => (
+                  <div
+                    key={repo.id}
+                    className="flex items-center justify-between rounded-xl bg-muted/40 px-3 py-2 text-sm"
+                  >
+                    <span>{repo.label}</span>
+                    <Button variant="secondary" onClick={() => void run(() => addSource(repo.id))}>
+                      Connect
+                    </Button>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No authorized repositories are registered yet. An administrator must connect one
+                  in setup.
+                </p>
+              )}
+              {sources.map((source) => (
+                <div
+                  key={source.id}
+                  className="flex items-center justify-between rounded-xl border border-border px-3 py-2 text-sm"
+                >
+                  <span>
+                    {source.repository ?? source.kind} · {source.ref ?? "unresolved"}
+                  </span>
+                  <span className="flex gap-2">
+                    <Button
+                      variant="secondary"
+                      onClick={() => void run(() => refreshSource(source.id))}
+                    >
+                      Refresh
+                    </Button>
+                    <Button variant="secondary" onClick={() => void loadWiki(source.id)}>
+                      Wiki
+                    </Button>
+                  </span>
+                </div>
+              ))}
+              {wikiPages.length ? (
+                <div className="border-t border-border pt-2">
+                  {wikiPages.map((page) => (
+                    <button
+                      type="button"
+                      key={page.pageId}
+                      className="block text-left text-sm underline"
+                      onClick={() => void run(() => readWiki(page.pageId))}
+                    >
+                      {page.title} · {page.commit} ·{" "}
+                      {page.localOverlay ? "local overlay" : "canonical"}
+                    </button>
+                  ))}
+                  {wikiPage ? (
+                    <article className="border-t border-border pt-3">
+                      <h3 className="font-medium">{wikiPage.page.title}</h3>
+                      <p className="mt-2 whitespace-pre-wrap text-sm">{wikiPage.page.content}</p>
+                      <p className="mt-3 text-xs text-muted-foreground">
+                        {wikiPage.manifest.commit} · {wikiPage.freshness.status} ·{" "}
+                        {wikiPage.page.citations
+                          .map((c) => `${c.relativePath}:${c.startLine}-${c.endLine}`)
+                          .join(", ")}
+                      </p>
+                    </article>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </section>
         <section className="mt-4 rounded-2xl border border-border p-5">
           <h2 className="text-lg font-medium">Projects</h2>
