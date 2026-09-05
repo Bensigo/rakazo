@@ -47,6 +47,14 @@ test("ignores out-of-order source and wiki responses and de-duplicates connects"
   const wikiBReady = new Promise<void>((resolve) => {
     releaseWikiB = resolve;
   });
+  let releasePageA!: () => void;
+  const pageAReady = new Promise<void>((resolve) => {
+    releasePageA = resolve;
+  });
+  let releasePageB!: () => void;
+  const pageBReady = new Promise<void>((resolve) => {
+    releasePageB = resolve;
+  });
 
   await page.route("**/rpc/studio/projects", (route) => route.fulfill(jsonResponse(projects)));
   await page.route("**/rpc/studio/registeredRepositories", (route) =>
@@ -74,7 +82,52 @@ test("ignores out-of-order source and wiki responses and de-duplicates connects"
           localOverlay: false,
           freshness: { status: "current", reasons: [] },
         },
+        {
+          pageId: "a-page",
+          title: "Project A page",
+          snapshotId: "snapshot-b",
+          commit: "commit-b",
+          generatedAt: "2026-09-05T00:00:00.000Z",
+          generatorVersion: "test",
+          localOverlay: false,
+          freshness: { status: "current", reasons: [] },
+        },
       ]),
+    );
+  });
+  await page.route("**/rpc/studio/projectWikiPage", async (route) => {
+    const pageId = (route.request().postDataJSON() as { json: { pageId: string } }).json.pageId;
+    if (pageId === "a-page") await pageAReady;
+    else await pageBReady;
+    return route.fulfill(
+      jsonResponse({
+        pageId,
+        page: {
+          slug: pageId,
+          title: pageId === "a-page" ? "Project A page" : "Project B page",
+          content: pageId === "a-page" ? "A content" : "B content",
+          citations: [{ relativePath: `${pageId}.md`, startLine: 1, endLine: 2 }],
+        },
+        manifest: {
+          snapshotId: "snapshot-b",
+          inputsHash: "inputs-b",
+          projectId: "project-b",
+          commit: "commit-b",
+          indexerVersion: "test",
+          parserVersion: "test",
+          generatorVersion: "test",
+          generatedAt: "2026-09-05T00:00:00.000Z",
+          sourceAuthority: "generated",
+          localOverlay: false,
+        },
+        freshness: { status: "current", reasons: [] },
+        activeSnapshot: {
+          id: "snapshot-b",
+          projectId: "project-b",
+          commit: "commit-b",
+          overlay: "shared-commit",
+        },
+      }),
     );
   });
   await page.route("**/rpc/studio/addProjectSource", (route) =>
@@ -94,7 +147,14 @@ test("ignores out-of-order source and wiki responses and de-duplicates connects"
   releaseWikiB();
   await expect(page.getByText("Project B page")).toHaveCount(0);
 
-  await sourceProject.selectOption("project-b");
+  await page.getByRole("button", { name: "Wiki" }).click();
+  await expect(page.getByRole("button", { name: /Project A page/ })).toBeVisible();
+  await page.getByRole("button", { name: /Project A page/ }).click();
+  await page.getByRole("button", { name: /Project B page/ }).click();
+  releasePageA();
+  releasePageB();
+  await expect(page.getByRole("heading", { name: "Project B page" })).toBeVisible();
+
   const connect = page.getByRole("button", { name: "Connect" });
   await connect.click();
   await connect.click();
