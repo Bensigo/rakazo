@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { access, mkdir, open, readdir, readFile, rename } from "node:fs/promises";
+import { access, mkdir, open, readdir, readFile, rename, unlink } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import type {
@@ -91,6 +91,11 @@ export class LocalEmployeeHostReceiptSpool {
     try { await handle.writeFile(JSON.stringify({ receipt, state: "terminal" })); await handle.sync(); }
     finally { await handle.close(); }
     await rename(temp, this.file(receipt.operationId));
+  }
+  async acknowledge(operationId: string) { await unlink(this.file(operationId)).catch(() => undefined); }
+  async quarantine(receipt: EmployeeHostReceipt) {
+    await this.terminal(receipt);
+    await rename(this.file(receipt.operationId), `${this.file(receipt.operationId)}.unresolved`).catch(() => undefined);
   }
   async pending(): Promise<EmployeeHostReceipt[]> {
     await mkdir(this.root, { recursive: true, mode: 0o700 });
@@ -245,7 +250,11 @@ export class HttpEmployeeHostControlPlaneClient implements EmployeeHostControlPl
       ...init,
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json", ...(init.headers ?? {}) },
     });
-    if (!response.ok) throw new Error(`employee host control plane returned ${response.status}`);
+    if (!response.ok) {
+      const error = new Error(`employee host control plane returned ${response.status}`) as Error & { status?: number };
+      error.status = response.status;
+      throw error;
+    }
     return response;
   }
 
@@ -331,10 +340,16 @@ export async function runEmployeeHostCompanion(input: {
   const sendHeartbeat = async () => input.client.heartbeat(input.hostId, input.enrollmentToken, await input.companion.capabilities());
   const retry = async <T>(work: () => Promise<T>) => {
     let delay = 100;
-    while (!input.signal.aborted) { try { return await work(); } catch { await new Promise((resolve) => setTimeout(resolve, delay)); delay = Math.min(delay * 2, 5_000); } }
+    while (!input.signal.aborted) { try { return await work(); } catch (error) { if (isPermanentControlPlaneError(error)) throw error; await new Promise((resolve) => setTimeout(resolve, delay)); delay = Math.min(delay * 2, 5_000); } }
     throw input.signal.reason ?? new Error("employee host companion aborted");
   };
-  if (input.spool) for (const receipt of await input.spool.pending()) await retry(() => input.client.receipt(input.hostId, input.enrollmentToken, receipt));
+  if (input.spool) for (const receipt of await input.spool.pending()) {
+    try { await retry(() => input.client.receipt(input.hostId, input.enrollmentToken, receipt)); await input.spool.acknowledge(receipt.operationId); }
+    catch (error) {
+      if (isPermanentControlPlaneError(error)) await input.spool.quarantine(receipt);
+      else throw error;
+    }
+  }
   await retry(sendHeartbeat);
   let nextHeartbeat = Date.now() + heartbeatMs;
   while (!input.signal.aborted) {
@@ -351,14 +366,22 @@ export async function runEmployeeHostCompanion(input: {
     const stdout: string[] = [];
     const stderr: string[] = [];
     let code = 1;
-    const heartbeatTimer = setInterval(() => { void retry(sendHeartbeat); }, heartbeatMs);
-    try {
+    let executionDone = false;
+    const heartbeatLoop = (async () => {
+      while (!input.signal.aborted && !executionDone) {
+        await abortableDelay(heartbeatMs, input.signal);
+        if (!input.signal.aborted && !executionDone) await retry(sendHeartbeat);
+      }
+    })();
+    const execute = (async () => {
       for await (const event of input.companion.execute(operation.request, input.signal)) {
         if (event.type === "stdout") stdout.push(event.data);
         if (event.type === "stderr") stderr.push(event.data);
         if (event.type === "exit") code = event.code;
       }
-    } finally { clearInterval(heartbeatTimer); }
+    })();
+    try { await execute; } finally { executionDone = true; }
+    await heartbeatLoop.catch((error) => { if (input.signal.aborted) return; throw error; });
     const receipt: EmployeeHostReceipt = {
       operationId: operation.operationId,
       hostId: input.hostId,
@@ -369,8 +392,24 @@ export async function runEmployeeHostCompanion(input: {
       result: { stdout: stdout.join(""), stderr: stderr.join(""), code },
     };
     if (input.spool) await input.spool.terminal(receipt);
-    await retry(() => input.client.receipt(input.hostId, input.enrollmentToken, receipt));
+    try { await retry(() => input.client.receipt(input.hostId, input.enrollmentToken, receipt)); if (input.spool) await input.spool.acknowledge(receipt.operationId); }
+    catch (error) { if (input.spool && isPermanentControlPlaneError(error)) await input.spool.quarantine(receipt); else throw error; }
   }
+}
+
+function abortableDelay(ms: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) return reject(signal.reason ?? new Error("aborted"));
+    const timer = setTimeout(done, ms);
+    const abort = () => { clearTimeout(timer); reject(signal.reason ?? new Error("aborted")); };
+    function done() { signal.removeEventListener("abort", abort); resolve(); }
+    signal.addEventListener("abort", abort, { once: true });
+  });
+}
+
+function isPermanentControlPlaneError(error: unknown) {
+  const status = error && typeof error === "object" && "status" in error ? error.status : undefined;
+  return status === 401 || status === 403 || status === 404 || status === 409;
 }
 
 /** Provider-facing transport seam; server composition owns authentication and durable storage. */
