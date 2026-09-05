@@ -5,6 +5,13 @@ import { createBotInTransaction } from "./repos.js";
 import { IsolationError } from "./scope.js";
 import { withTransactionRetry } from "./transaction-retry.js";
 
+export class AssignmentNotCompleteError extends Error {
+  constructor() {
+    super("Assignment work must complete before human acceptance");
+    this.name = "AssignmentNotCompleteError";
+  }
+}
+
 async function organizationFor(prisma: PrismaClient, actor: Actor) {
   const membership = await prisma.spaceMember.findUnique({
     where: { spaceId_userId: { spaceId: actor.spaceId, userId: actor.userId } },
@@ -695,8 +702,7 @@ export function createStudioDomain(prisma: PrismaClient) {
       if (!current) throw new IsolationError();
       if (current.status !== "draft")
         return prisma.assignmentManifest.findUniqueOrThrow({ where: { id: current.id } });
-      if (current.task.status !== "completed")
-        throw new IsolationError("Assignment work must complete before human acceptance");
+      if (current.task.status !== "completed") throw new AssignmentNotCompleteError();
       await prisma.assignmentManifest.updateMany({
         where: { id: current.id, status: "draft", acceptedAt: null },
         data: { status: "accepted", acceptedAt: new Date(), acceptedByUserId: actor.userId },

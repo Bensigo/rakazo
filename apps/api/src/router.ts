@@ -96,6 +96,7 @@ import {
   nextCronDateAcrossStrict,
 } from "@rakazo/core";
 import {
+  AssignmentNotCompleteError,
   appendEventInTransaction,
   createGroupRepos,
   createRepos,
@@ -736,9 +737,15 @@ export function createRouter(deps: RouterDeps) {
         }
         return assignmentDto(created.assignment);
       }),
-      acceptAssignment: authed.studio.acceptAssignment.handler(async ({ context, input }) =>
-        assignmentDto(await studio.acceptAssignment(context.actor, input.assignmentId)),
-      ),
+      acceptAssignment: authed.studio.acceptAssignment.handler(async ({ context, input }) => {
+        try {
+          return assignmentDto(await studio.acceptAssignment(context.actor, input.assignmentId));
+        } catch (error) {
+          if (error instanceof AssignmentNotCompleteError)
+            throw new ORPCError("CONFLICT", { message: error.message });
+          throw error;
+        }
+      }),
     },
     bootstrap: authed.bootstrap.handler(async ({ context, input }) => {
       const actor = context.actor;

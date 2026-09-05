@@ -71,6 +71,7 @@ test("ignores out-of-order source and wiki responses and de-duplicates connects"
     }
     return route.fulfill(jsonResponse([sourceB]));
   });
+  let wikiCommit = "commit-b";
   await page.route("**/rpc/studio/projectWikiPages", async (route) => {
     await wikiBReady;
     return route.fulfill(
@@ -79,7 +80,7 @@ test("ignores out-of-order source and wiki responses and de-duplicates connects"
           pageId: "b-page",
           title: "Project B page",
           snapshotId: "snapshot-b",
-          commit: "commit-b",
+          commit: wikiCommit,
           generatedAt: "2026-09-05T00:00:00.000Z",
           generatorVersion: "test",
           localOverlay: false,
@@ -89,7 +90,7 @@ test("ignores out-of-order source and wiki responses and de-duplicates connects"
           pageId: "a-page",
           title: "Project A page",
           snapshotId: "snapshot-b",
-          commit: "commit-b",
+          commit: wikiCommit,
           generatedAt: "2026-09-05T00:00:00.000Z",
           generatorVersion: "test",
           localOverlay: false,
@@ -122,7 +123,7 @@ test("ignores out-of-order source and wiki responses and de-duplicates connects"
           snapshotId: "snapshot-b",
           inputsHash: "inputs-b",
           projectId: "project-b",
-          commit: "commit-b",
+          commit: wikiCommit,
           indexerVersion: "test",
           parserVersion: "test",
           generatorVersion: "test",
@@ -134,7 +135,7 @@ test("ignores out-of-order source and wiki responses and de-duplicates connects"
         activeSnapshot: {
           id: "snapshot-b",
           projectId: "project-b",
-          commit: "commit-b",
+          commit: wikiCommit,
           overlay: "shared-commit",
         },
       }),
@@ -171,4 +172,28 @@ test("ignores out-of-order source and wiki responses and de-duplicates connects"
   await connect.click();
   await connect.click();
   await expect(page.getByText("github:studio/game · workspace")).toHaveCount(1);
+
+  let releaseSync!: () => void;
+  let syncCalls = 0;
+  const syncReady = new Promise<void>((resolve) => {
+    releaseSync = resolve;
+  });
+  await page.route("**/rpc/studio/syncProjectSource", async (route) => {
+    syncCalls += 1;
+    await syncReady;
+    wikiCommit = "commit-next";
+    await route.fulfill(jsonResponse(sourceB));
+  });
+  const sourceSection = page.getByRole("heading", { name: "Project sources & wiki" }).locator("..");
+  const refresh = sourceSection.getByRole("button", { name: "Refresh", exact: true });
+  await refresh.click();
+  await expect(refresh).toBeDisabled();
+  await expect(connect).toBeDisabled();
+  await expect(sourceSection.getByRole("button", { name: "Wiki", exact: true })).toBeDisabled();
+  await expect(page.getByRole("heading", { name: "Project B page" })).toHaveCount(0);
+  releaseSync();
+  await expect(refresh).toBeEnabled();
+  expect(syncCalls).toBe(1);
+  await expect(page.getByRole("button", { name: /Project B page · commit-next/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Project B page" })).toHaveCount(0);
 });
