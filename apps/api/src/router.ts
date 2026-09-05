@@ -96,6 +96,7 @@ import {
   createGroupRepos,
   createRepos,
   createSpaceForMember,
+  createStudioDomain,
   createThreadMessageInTransaction,
   deleteUnreferencedCredentialSecret,
   findDefaultModelCredential,
@@ -372,6 +373,33 @@ export function createRouter(deps: RouterDeps) {
     dataDir: deps.dataDir,
   });
   const agentSkills = createAgentSkillsService(deps.prisma);
+  const studio = createStudioDomain(deps.prisma);
+
+  const studioProjectDto = (row: Awaited<ReturnType<typeof studio.projects>>[number]) => ({
+    id: row.id,
+    name: row.name,
+    slug: row.slug,
+    scope: row.scope as "studio" | "one" | "multi",
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  });
+  const roleDto = (row: Awaited<ReturnType<typeof studio.roles>>[number]) => ({
+    id: row.id,
+    key: row.key,
+    name: row.name,
+    description: row.description,
+    instructions: row.instructions,
+    isDefault: row.isDefault,
+    foundationRevisionId: row.foundationRevisionId,
+  });
+  const assignmentDto = (row: NonNullable<Awaited<ReturnType<typeof studio.assignment>>>) => ({
+    ...row,
+    manifest: row.manifest as Record<string, unknown>,
+    status: row.status as "draft" | "accepted" | "blocked" | "completed",
+    acceptedAt: row.acceptedAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  });
 
   const authed = os.use(async ({ context, next }) => {
     if (!context.actor) throw new ORPCError("UNAUTHORIZED");
@@ -417,6 +445,28 @@ export function createRouter(deps: RouterDeps) {
           botSections: [],
         };
       }),
+    },
+    studio: {
+      foundation: authed.studio.foundation.handler(async ({ context }) => {
+        const row = await studio.foundation(context.actor);
+        if (!row) return null;
+        return {
+          id: row.id,
+          organizationId: row.organizationId,
+          currentRevision: row.currentRevision
+            ? { ...row.currentRevision, content: row.currentRevision.content as Record<string, unknown>, createdAt: row.currentRevision.createdAt.toISOString() }
+            : null,
+        };
+      }),
+      projects: authed.studio.projects.handler(async ({ context }) => (await studio.projects(context.actor)).map(studioProjectDto)),
+      createProject: authed.studio.createProject.handler(async ({ context, input }) => studioProjectDto(await studio.createProject(context.actor, input))),
+      roles: authed.studio.roles.handler(async ({ context }) => (await studio.roles(context.actor)).map(roleDto)),
+      assignment: authed.studio.assignment.handler(async ({ context, input }) => {
+        const row = await studio.assignment(context.actor, input.assignmentId);
+        if (!row) throw new IsolationError();
+        return assignmentDto(row);
+      }),
+      acceptAssignment: authed.studio.acceptAssignment.handler(async ({ context, input }) => assignmentDto(await studio.acceptAssignment(context.actor, input.assignmentId))),
     },
     bootstrap: authed.bootstrap.handler(async ({ context, input }) => {
       const actor = context.actor;

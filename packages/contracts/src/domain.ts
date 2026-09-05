@@ -83,6 +83,13 @@ export const AssignmentManifestSchema = z.object({
 });
 export type AssignmentManifest = z.infer<typeof AssignmentManifestSchema>;
 
+export const StudioFoundationSchema = z.object({
+  id: Id,
+  organizationId: Id,
+  currentRevision: FoundationRevisionSchema.nullable(),
+});
+export type StudioFoundation = z.infer<typeof StudioFoundationSchema>;
+
 export const BotSchema = z.object({
   id: Id,
   spaceId: Id,

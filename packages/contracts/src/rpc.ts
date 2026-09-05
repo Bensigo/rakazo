@@ -53,6 +53,11 @@ import {
   SpaceMemoryConfigSchema,
   SpaceNavigationSchema,
   SpaceSchema,
+  AssignmentManifestSchema,
+  EmployeeRolePresetSchema,
+  ProjectScopeSchema,
+  StudioFoundationSchema,
+  StudioProjectSchema,
   TaughtSkillSchema,
   TeachRecordingEventSchema,
   ThreadMessagePageSchema,
@@ -131,6 +136,16 @@ export const appContract = {
   spaces: {
     list: oc.output(SpaceNavigationSchema),
     create: oc.input(z.object({ name: z.string().trim().min(1).max(60) })).output(SpaceSchema),
+  },
+  studio: {
+    foundation: oc.output(StudioFoundationSchema.nullable()),
+    projects: oc.output(z.array(StudioProjectSchema)),
+    createProject: oc
+      .input(z.object({ name: z.string().trim().min(1).max(160), slug: z.string().trim().min(1).max(120), scope: ProjectScopeSchema }))
+      .output(StudioProjectSchema),
+    roles: oc.output(z.array(EmployeeRolePresetSchema)),
+    assignment: oc.input(z.object({ assignmentId: Id })).output(AssignmentManifestSchema),
+    acceptAssignment: oc.input(z.object({ assignmentId: Id })).output(AssignmentManifestSchema),
   },
   bootstrap: oc.input(z.object({ botId: Id.optional() })).output(AppBootstrapSchema),
   deployment: {
