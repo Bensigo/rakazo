@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { AssignmentManifest, EmployeeRolePreset, StudioProject } from "@rakazo/contracts";
+import type {
+  AssignmentManifest,
+  EmployeeJobRole,
+  EmployeeRolePreset,
+  StudioProject,
+} from "@rakazo/contracts";
 import { Button, Input } from "@rakazo/ui-web";
 import { rpc } from "../lib/rpc";
 
@@ -8,6 +13,15 @@ export function StudioPage() {
   const navigate = useNavigate();
   const [projects, setProjects] = useState<StudioProject[]>([]);
   const [roles, setRoles] = useState<EmployeeRolePreset[]>([]);
+  const [jobRoles, setJobRoles] = useState<EmployeeJobRole[]>([]);
+  const [selectedJobRole, setSelectedJobRole] = useState<
+    Awaited<ReturnType<typeof rpc.studio.jobRoleSelection>>
+  >(null);
+  const [jobRoleSelectionId, setJobRoleSelectionId] = useState("");
+  const [jobRoleKey, setJobRoleKey] = useState("");
+  const [jobRoleName, setJobRoleName] = useState("");
+  const [jobRoleDescription, setJobRoleDescription] = useState("");
+  const [jobRolePresetIds, setJobRolePresetIds] = useState<string[]>([]);
   const [bots, setBots] = useState<Awaited<ReturnType<typeof rpc.bots.list>>>([]);
   const [assignments, setAssignments] = useState<AssignmentManifest[]>([]);
   const [repositories, setRepositories] = useState<
@@ -46,9 +60,11 @@ export function StudioPage() {
   const wikiPageRequest = useRef(0);
   const load = async () => {
     try {
-      const [p, r, f, a, b, rr] = await Promise.all([
+      const [p, r, jr, selection, f, a, b, rr] = await Promise.all([
         rpc.studio.projects(),
         rpc.studio.roles(),
+        rpc.studio.jobRoles(),
+        rpc.studio.jobRoleSelection(),
         rpc.studio.foundation(),
         rpc.studio.assignments(),
         rpc.bots.list(),
@@ -57,6 +73,9 @@ export function StudioPage() {
       setProjects(p);
       setRoles(r);
       setFoundation(f);
+      setJobRoles(jr);
+      setSelectedJobRole(selection);
+      setJobRoleSelectionId(selection?.jobRole.id ?? "");
       setAssignments(a);
       setBots(b);
       setRepositories(rr);
@@ -113,6 +132,25 @@ export function StudioPage() {
     setEditingRole(null);
     setRoleName("");
     setRoleInstructions("");
+  }
+  async function createJobRole() {
+    const role = await rpc.studio.createJobRole({
+      key: jobRoleKey,
+      name: jobRoleName,
+      description: jobRoleDescription,
+      defaultRolePresetIds: jobRolePresetIds,
+    });
+    setJobRoles((all) => [...all, role]);
+    setJobRoleKey("");
+    setJobRoleName("");
+    setJobRoleDescription("");
+    setJobRolePresetIds([]);
+  }
+  async function selectJobRole() {
+    if (!jobRoleSelectionId) return;
+    const selection = await rpc.studio.selectJobRole({ jobRoleId: jobRoleSelectionId });
+    setSelectedJobRole(selection);
+    setBots(await rpc.bots.list());
   }
   async function createProject() {
     const name = projectName.trim();
@@ -322,6 +360,109 @@ export function StudioPage() {
                 </div>
               ))}
             </div>
+          </div>
+        </section>
+        <section className="mt-4 rounded-2xl border border-border p-5">
+          <h2 className="text-lg font-medium">Employee job roles</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Admins configure the ordered specialist presets for each employee role. Your selection
+            provisions your own persistent specialists.
+          </p>
+          <div className="mt-3 grid gap-2 md:grid-cols-3">
+            <Input
+              aria-label="Job role key"
+              placeholder="Job role key"
+              value={jobRoleKey}
+              onChange={(e) => setJobRoleKey(e.target.value)}
+            />
+            <Input
+              aria-label="Job role name"
+              placeholder="Job role name"
+              value={jobRoleName}
+              onChange={(e) => setJobRoleName(e.target.value)}
+            />
+            <Input
+              aria-label="Job role description"
+              placeholder="Description"
+              value={jobRoleDescription}
+              onChange={(e) => setJobRoleDescription(e.target.value)}
+            />
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {roles.map((role) => (
+              <label key={role.id} className="flex items-start gap-2 rounded-xl bg-muted/40 p-3 text-sm">
+                <input
+                  type="checkbox"
+                  aria-label={`Default specialist ${role.name}`}
+                  checked={jobRolePresetIds.includes(role.id)}
+                  onChange={(e) =>
+                    setJobRolePresetIds((ids) =>
+                      e.target.checked ? [...ids, role.id] : ids.filter((id) => id !== role.id),
+                    )
+                  }
+                />
+                <span>
+                  <span className="font-medium">{role.name}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {role.description || role.instructions || "Specialist preset"}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <Button
+            className="mt-3"
+            disabled={!jobRoleKey.trim() || !jobRoleName.trim()}
+            onClick={() => void run(createJobRole)}
+          >
+            Create employee role
+          </Button>
+          <div className="mt-4 grid gap-2 md:grid-cols-2">
+            {jobRoles.map((role) => (
+              <div key={role.id} className="rounded-xl border border-border px-4 py-3 text-sm">
+                <p className="font-medium">{role.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {role.description || "No description"} · {role.defaultRolePresetIds.length} default
+                  specialist{role.defaultRolePresetIds.length === 1 ? "" : "s"}
+                </p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-5 border-t border-border pt-4">
+            <h3 className="font-medium">Your job role</h3>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <select
+                aria-label="Your job role"
+                className="rounded-xl border border-border bg-background px-3 py-2 text-sm"
+                value={jobRoleSelectionId}
+                onChange={(e) => setJobRoleSelectionId(e.target.value)}
+              >
+                <option value="">Choose a job role</option>
+                {jobRoles.map((role) => (
+                  <option key={role.id} value={role.id}>
+                    {role.name}
+                  </option>
+                ))}
+              </select>
+              <Button disabled={!jobRoleSelectionId} onClick={() => void run(selectJobRole)}>
+                Apply and provision specialists
+              </Button>
+            </div>
+            {selectedJobRole ? (
+              <div className="mt-3 rounded-xl bg-muted/40 p-3 text-sm">
+                <p className="font-medium">{selectedJobRole.jobRole.name}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {selectedJobRole.specialists.length} specialists provisioned for you
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {selectedJobRole.specialists.map((specialist) => (
+                    <span key={specialist.rolePresetId} className="rounded-full border border-border px-2 py-1 text-xs">
+                      {roles.find((role) => role.id === specialist.rolePresetId)?.name ?? "Specialist"}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         </section>
         <section className="mt-4 rounded-2xl border border-border p-5">
