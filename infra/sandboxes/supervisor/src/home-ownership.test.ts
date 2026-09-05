@@ -12,8 +12,12 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { assertComputerHomeWritable, assertOpenedDirectoryBeneathRoot } from "./home-ownership.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  assertComputerHomeWritable,
+  assertComputerHomeWritableAfterVisibilityDelay,
+  assertOpenedDirectoryBeneathRoot,
+} from "./home-ownership.js";
 
 const roots: string[] = [];
 const DIRECTORY_OPEN_FLAGS = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW;
@@ -32,6 +36,27 @@ describe("computer home ownership", () => {
     ).rejects.toThrow(/does not exist/);
   });
 
+  it("rechecks a newly created home while bind metadata becomes visible", async () => {
+    const parent = await mkdtemp(path.join(tmpdir(), "rakazo-home-visible-"));
+    roots.push(parent);
+    const home = path.join(parent, "home");
+    const parentStat = await lstat(parent);
+    let checks = 0;
+    const wait = vi.fn(async () => {
+      checks += 1;
+      if (checks === 1) await mkdir(home);
+    });
+
+    await expect(
+      assertComputerHomeWritableAfterVisibilityDelay(home, parentStat.uid, parentStat.gid, {
+        maxWaitMs: 100,
+        retryMs: 10,
+        wait,
+      }),
+    ).resolves.toBeUndefined();
+    expect(wait).toHaveBeenCalledOnce();
+  });
+
   it("rejects a symlink as the home root", async () => {
     const parent = await mkdtemp(path.join(tmpdir(), "rakazo-home-root-link-"));
     roots.push(parent);
@@ -41,6 +66,21 @@ describe("computer home ownership", () => {
     await symlink(outside, home);
 
     await expect(assertComputerHomeWritable(home, 1000, 1000)).rejects.toThrow(/symbolic link/);
+  });
+
+  it("does not retry a symlink security failure", async () => {
+    const parent = await mkdtemp(path.join(tmpdir(), "rakazo-home-retry-link-"));
+    roots.push(parent);
+    const outside = path.join(parent, "outside");
+    const home = path.join(parent, "home");
+    await mkdir(outside);
+    await symlink(outside, home);
+    const wait = vi.fn(async () => undefined);
+
+    await expect(
+      assertComputerHomeWritableAfterVisibilityDelay(home, 1000, 1000, { wait }),
+    ).rejects.toThrow(/symbolic link/);
+    expect(wait).not.toHaveBeenCalled();
   });
 
   it("rejects a writable regular file as the home root", async () => {
@@ -70,6 +110,29 @@ describe("computer home ownership", () => {
     await expect(assertComputerHomeWritable(home, stat.uid + 1, stat.gid + 1)).rejects.toThrow(
       /chown -R/,
     );
+  });
+
+  it("keeps a persistent wrong owner as an actionable failure after the bounded wait", async () => {
+    const parent = await mkdtemp(path.join(tmpdir(), "rakazo-home-persistent-owner-"));
+    roots.push(parent);
+    const home = path.join(parent, "home");
+    await mkdir(home);
+    const stat = await lstat(home);
+    let elapsed = 0;
+    const wait = vi.fn(async (milliseconds: number) => {
+      elapsed += milliseconds;
+    });
+
+    await expect(
+      assertComputerHomeWritableAfterVisibilityDelay(home, stat.uid + 1, stat.gid + 1, {
+        maxWaitMs: 20,
+        now: () => elapsed,
+        retryMs: 5,
+        wait,
+      }),
+    ).rejects.toThrow(/chown -R/);
+    expect(wait).toHaveBeenCalled();
+    expect(elapsed).toBeGreaterThanOrEqual(20);
   });
 
   it("rejects an owner-owned file that is not writable by that owner", async () => {

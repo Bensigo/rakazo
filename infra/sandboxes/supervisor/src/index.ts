@@ -32,7 +32,7 @@ import {
   screenUrlFor,
   xdotoolCommand,
 } from "./computer-spec.js";
-import { assertComputerHomeWritable } from "./home-ownership.js";
+import { assertComputerHomeWritableAfterVisibilityDelay } from "./home-ownership.js";
 import {
   assertRequestIdentity,
   attemptComputerControl,
@@ -169,7 +169,11 @@ app.post("/computers", async (c) => {
         runtimeInfo || hostUid === undefined || hostGid === undefined || hostUid === 0
           ? COMPUTER_GID
           : hostGid;
-      await assertComputerHomeWritable(serviceHomePath, effectiveUid, effectiveGid);
+      await assertComputerHomeWritableAfterVisibilityDelay(
+        serviceHomePath,
+        effectiveUid,
+        effectiveGid,
+      );
       if (existing) {
         await existing.remove({ force: true }).catch(() => undefined);
       }

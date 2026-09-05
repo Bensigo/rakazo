@@ -4,6 +4,16 @@ import path from "node:path";
 
 const DIRECTORY_OPEN_FLAGS = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW;
 
+const DEFAULT_VISIBILITY_WAIT_MS = 2_000;
+const DEFAULT_VISIBILITY_RETRY_MS = 100;
+
+class ComputerHomeVisibilityError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ComputerHomeVisibilityError";
+  }
+}
+
 function hasPermissions(stat: Stats, uid: number, gid: number, required: number): boolean {
   const shift = stat.uid === uid ? 6 : stat.gid === gid ? 3 : 0;
   return ((stat.mode >> shift) & required) === required;
@@ -35,9 +45,13 @@ async function assertFdBeneathRoot(handle: FileHandle, rootPath: string): Promis
 }
 
 function writabilityError(target: string, root: string, uid: number, gid: number): Error {
-  return new Error(
+  return new ComputerHomeVisibilityError(
     `computer home entry ${target} is not writable by uid ${uid}; run sudo chown -R ${uid}:${gid} ${JSON.stringify(root)} or use Compose data-init`,
   );
+}
+
+function missingHomeError(root: string): Error {
+  return new ComputerHomeVisibilityError(`computer home ${root} does not exist`);
 }
 
 /** Pathname walk for non-Linux hosts without /proc/self/fd containment. */
@@ -54,7 +68,7 @@ async function assertWritableEntry(
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT" && !isRoot) return;
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      throw new Error(`computer home ${root} does not exist`);
+      throw missingHomeError(root);
     }
     throw error;
   }
@@ -137,7 +151,7 @@ async function assertWritableLinux(root: string, uid: number, gid: number): Prom
     rootStat = await lstat(root);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      throw new Error(`computer home ${root} does not exist`);
+      throw missingHomeError(root);
     }
     throw error;
   }
@@ -153,7 +167,7 @@ async function assertWritableLinux(root: string, uid: number, gid: number): Prom
     handle = await open(root, DIRECTORY_OPEN_FLAGS);
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
-    if (code === "ENOENT") throw new Error(`computer home ${root} does not exist`);
+    if (code === "ENOENT") throw missingHomeError(root);
     if (code === "ELOOP") throw new Error(`computer home ${root} must not be a symbolic link`);
     if (code === "ENOTDIR") throw new Error(`computer home ${root} must be a directory`);
     throw error;
@@ -177,6 +191,43 @@ export async function assertComputerHomeWritable(
     return;
   }
   await assertWritableEntry(root, root, uid, gid, true);
+}
+
+/**
+ * Docker Desktop can briefly expose stale bind-mount ownership to a second
+ * container immediately after the worker creates a home. Recheck only missing
+ * or non-writable entries; path type, symlink, and containment failures remain
+ * immediate hard failures.
+ */
+export async function assertComputerHomeWritableAfterVisibilityDelay(
+  root: string,
+  uid: number,
+  gid: number,
+  options: {
+    maxWaitMs?: number;
+    now?: () => number;
+    retryMs?: number;
+    wait?: (milliseconds: number) => Promise<void>;
+  } = {},
+): Promise<void> {
+  const maxWaitMs = Math.max(0, Math.min(options.maxWaitMs ?? DEFAULT_VISIBILITY_WAIT_MS, 2_000));
+  const retryMs = Math.max(1, options.retryMs ?? DEFAULT_VISIBILITY_RETRY_MS);
+  const now = options.now ?? Date.now;
+  const wait =
+    options.wait ??
+    ((milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
+  const deadline = now() + maxWaitMs;
+  while (true) {
+    try {
+      await assertComputerHomeWritable(root, uid, gid);
+      return;
+    } catch (error) {
+      if (!(error instanceof ComputerHomeVisibilityError)) throw error;
+      const remaining = deadline - now();
+      if (remaining <= 0) throw error;
+      await wait(Math.min(retryMs, remaining));
+    }
+  }
 }
 
 /** Exported for regression coverage of the moved-directory escape check. */
