@@ -24,6 +24,11 @@ const PasswordResetPage = lazy(() =>
 const OnboardingPage = lazy(() =>
   import("./pages/Onboarding").then((module) => ({ default: module.OnboardingPage })),
 );
+const StudioInvitationPage = lazy(() =>
+  import("./pages/StudioInvitation").then((module) => ({
+    default: module.StudioInvitationPage,
+  })),
+);
 const WelcomePage = lazy(() =>
   import("./pages/Welcome").then((module) => ({ default: module.WelcomePage })),
 );
@@ -79,6 +84,10 @@ export function App() {
           />
           <Route path="/reset-password" element={<PasswordResetPage />} />
           <Route
+            path="/invite/:invitationId"
+            element={<StudioInvitationPage signedIn={Boolean(user)} />}
+          />
+          <Route
             path="/onboarding"
             element={user ? <OnboardingPage /> : <Navigate to="/sign-in" replace />}
           />
@@ -87,7 +96,10 @@ export function App() {
             element={user ? <McpOAuthCallbackPage /> : <Navigate to="/sign-in" replace />}
           />
           <Route path="/app" element={user ? <ShellPage /> : <Navigate to="/sign-in" replace />} />
-          <Route path="/studio" element={user ? <StudioPage /> : <Navigate to="/sign-in" replace />} />
+          <Route
+            path="/studio"
+            element={user ? <StudioPage /> : <Navigate to="/sign-in" replace />}
+          />
           <Route
             path="/app/g/:groupId"
             element={user ? <ShellPage /> : <Navigate to="/sign-in" replace />}

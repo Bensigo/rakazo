@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { blockedAuthPaths, passwordResetEmail, resolveSignupPolicy } from "./index.js";
+import {
+  blockedAuthPaths,
+  organizationInvitationEmail,
+  passwordResetEmail,
+  resolveSignupPolicy,
+} from "./index.js";
 
 describe("auth policy", () => {
   it("blocks invitation and org-creation paths in version 1", () => {
@@ -23,6 +28,28 @@ describe("passwordResetEmail", () => {
     expect(message.html).toContain("&lt;Ada &amp; &quot;team&quot;&gt;");
     expect(message.html).toContain("token=secret&amp;next=1");
     expect(message.html).not.toContain('<Ada & "team">');
+  });
+});
+
+describe("organizationInvitationEmail", () => {
+  it("links the bound invitation and escapes organization and inviter names", () => {
+    const message = organizationInvitationEmail(
+      {
+        email: "employee@example.test",
+        organizationName: '<Sunrise & "Co">',
+        inviterName: "Ada <Owner>",
+      },
+      "https://studio.example.test/invite/invitation-id?next=1&safe=yes",
+    );
+
+    expect(message).toMatchObject({
+      to: "employee@example.test",
+      subject: 'Join <Sunrise & "Co"> in Sunrise Studio',
+    });
+    expect(message.text).toContain("/invite/invitation-id?next=1&safe=yes");
+    expect(message.html).toContain("&lt;Sunrise &amp; &quot;Co&quot;&gt;");
+    expect(message.html).toContain("Ada &lt;Owner&gt;");
+    expect(message.html).not.toContain("<Sunrise");
   });
 });
 

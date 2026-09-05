@@ -55,4 +55,32 @@ describe("requireMembership", () => {
       }),
     );
   });
+
+  it("uses the session's active organization when no space is explicitly selected", async () => {
+    const prisma = prismaForMembership(true);
+
+    await requireMembership(prisma, "user-1", null, "organization-studio");
+
+    expect(prisma.spaceMember.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId: "user-1", organizationId: "organization-studio" },
+      }),
+    );
+  });
+
+  it("falls back to another membership when the session's active organization is stale", async () => {
+    const prisma = prismaForMembership(true);
+    vi.mocked(prisma.spaceMember.findFirst)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        userId: "user-1",
+        spaceId: "space-personal",
+        member: { user: { email: "owner@example.test" } },
+      } as never);
+
+    await expect(
+      requireMembership(prisma, "user-1", null, "organization-removed"),
+    ).resolves.toMatchObject({ spaceId: "space-personal" });
+    expect(prisma.spaceMember.findFirst).toHaveBeenCalledTimes(2);
+  });
 });
