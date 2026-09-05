@@ -689,13 +689,22 @@ export function createStudioDomain(prisma: PrismaClient) {
           status: true,
           createdByUserId: true,
           reviewerUserId: true,
-          task: { select: { status: true } },
+          task: {
+            select: {
+              status: true,
+              runs: {
+                orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+                take: 1,
+                select: { status: true },
+              },
+            },
+          },
         },
       });
       if (!current) throw new IsolationError();
       if (current.status !== "draft")
         return prisma.assignmentManifest.findUniqueOrThrow({ where: { id: current.id } });
-      if (current.task.status !== "completed")
+      if (current.task.status !== "completed" || current.task.runs[0]?.status !== "completed")
         throw new IsolationError("Assignment work must complete before human acceptance");
       await prisma.assignmentManifest.updateMany({
         where: { id: current.id, status: "draft", acceptedAt: null },

@@ -17,7 +17,7 @@ function fakePrisma() {
     reviewerUserId: null,
     acceptedAt: null as Date | null,
     acceptedByUserId: null as string | null,
-    task: { status: "completed" },
+    task: { status: "completed", runs: [{ status: "completed" }] },
   };
   return {
     spaceMember: { findUnique: vi.fn(async () => membership) },
@@ -209,7 +209,23 @@ describe("studio domain", () => {
       status: "draft",
       createdByUserId: actor.userId,
       reviewerUserId: null,
-      task: { status: "running" },
+      task: { status: "running", runs: [{ status: "running" }] },
+    })) as any;
+
+    await expect(
+      createStudioDomain(prisma).acceptAssignment(actor, "assignment-1"),
+    ).rejects.toThrow("Assignment work must complete before human acceptance");
+    expect(prisma.assignmentManifest.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("does not accept when the task is completed but its assignment run is not", async () => {
+    const prisma = fakePrisma();
+    prisma.assignmentManifest.findFirst = vi.fn(async () => ({
+      id: "assignment-1",
+      status: "draft",
+      createdByUserId: actor.userId,
+      reviewerUserId: null,
+      task: { status: "completed", runs: [{ status: "failed" }] },
     })) as any;
 
     await expect(
@@ -397,7 +413,7 @@ function privacyPrisma(input: {
     status: "draft",
     acceptedAt: null as Date | null,
     acceptedByUserId: null as string | null,
-    task: { status: "completed" },
+    task: { status: "completed", runs: [{ status: "completed" }] },
     ...input,
   };
   const visible = (where: {
