@@ -18,8 +18,17 @@ test.describe("Studio UI fixture", () => {
     await scope.selectOption("one");
     await expect(assign).toBeDisabled();
 
-    const garden = page.locator("label").filter({ hasText: "Garden Tiles" }).locator("input[type=checkbox]");
+    const garden = page
+      .locator("label")
+      .filter({ hasText: "Garden Tiles" })
+      .locator("input[type=checkbox]");
     await garden.check();
+    await expect(assign).toBeEnabled();
+
+    await scope.selectOption("multi");
+    await garden.check();
+    await expect(assign).toBeDisabled();
+    await page.getByRole("checkbox", { name: "Moon Runner one" }).check();
     await expect(assign).toBeEnabled();
 
     await scope.selectOption("studio");
