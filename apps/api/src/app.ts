@@ -32,21 +32,18 @@ import {
   InMemoryJobQueue,
   InMemoryRealtimeFanout,
   InstalledConnectorProvider,
-  isComposioEnabled,
   isMessagingSurfaceEnabled,
-  isPipedreamEnabled,
   LocalAgentHomeStore,
   LocalArtifactStore,
   loadStudioKnowledgeBridge,
+  ManagedProviderMcpClient,
   McpConnector,
   McpOAuthBroker,
   messagingPlatformsFromEnv,
   PiAgentRuntime,
   PiOAuthLogins,
-  PipedreamConnector,
   PostgresRealtimeFanout,
   parseRegisteredStudioRepositories,
-  pipedreamConfigFromEnv,
   pushTokenPath,
   type RegisteredStudioRepository,
   type RemoteConnectorDependencies,
@@ -209,10 +206,12 @@ export async function createApp(
     },
     mcpOAuth,
   );
-  const pipedreamConfig = pipedreamConfigFromEnv(env);
+  const managedProviderMcp = env.managedProviderMcpUrl && env.managedProviderMcpToken
+    ? (providerId: "composio" | "pipedream") => new ManagedProviderMcpClient({ providerId, endpoint: env.managedProviderMcpUrl!, token: env.managedProviderMcpToken!, allowInternalHttp: env.managedProviderMcpAllowInternalHttp })
+    : undefined;
   const pipedream =
     pipedreamOverride ??
-    (isPipedreamEnabled(pipedreamConfig) ? new PipedreamConnector(pipedreamConfig) : undefined);
+    managedProviderMcp?.("pipedream");
   const messagingPlatforms = messagingPlatformsFromEnv(env);
   const messaging =
     messagingOverride ??
@@ -239,7 +238,7 @@ export async function createApp(
       ? new SmtpEmailProvider({ url: env.smtpUrl, from: env.emailFrom ?? "" })
       : localEmailEmulator);
   const installed = new InstalledConnectorProvider(prisma, secrets, remoteConnectors);
-  const stack = createConnectorStack(isComposioEnabled(env.composioApiKey), composioOverride, [
+  const stack = createConnectorStack(Boolean(managedProviderMcp), composioOverride ?? managedProviderMcp?.("composio"), [
     installed,
     ...(pipedream ? [pipedream] : []),
     mcp,
@@ -304,7 +303,7 @@ export async function createApp(
     connector: stack.connector,
     connectors: stack.connector,
     listConnectedPluginSlugs: stack.composio?.listConnectedSlugs.bind(stack.composio),
-    secrets: [env.deploymentModelKey ?? "", env.composioApiKey ?? ""].filter(Boolean),
+    secrets: [env.deploymentModelKey ?? ""].filter(Boolean),
     secretStore: secrets,
     deploymentModelKey: env.deploymentModelKey,
     dataDir: env.dataDir,

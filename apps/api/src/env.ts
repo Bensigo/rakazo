@@ -33,11 +33,9 @@ export interface AppEnv {
   daytonaTarget: string | undefined;
   boxApiKey: string | undefined;
   boxApiUrl: string | undefined;
-  composioApiKey: string | undefined;
-  pipedreamClientId: string | undefined;
-  pipedreamClientSecret: string | undefined;
-  pipedreamProjectId: string | undefined;
-  pipedreamEnvironment: "development" | "production";
+  managedProviderMcpUrl: string | undefined;
+  managedProviderMcpToken: string | undefined;
+  managedProviderMcpAllowInternalHttp: boolean;
   sendblueApiKeyId: string | undefined;
   sendblueApiSecret: string | undefined;
   sendblueSigningSecret: string | undefined;
@@ -109,12 +107,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     daytonaTarget: source.DAYTONA_TARGET,
     boxApiKey: source.BOX_API_KEY,
     boxApiUrl: source.BOX_API_URL ?? source.BOX_BASE_URL,
-    composioApiKey: source.COMPOSIO_API_KEY,
-    pipedreamClientId: optional(source.PIPEDREAM_CLIENT_ID),
-    pipedreamClientSecret: optional(source.PIPEDREAM_CLIENT_SECRET),
-    pipedreamProjectId: optional(source.PIPEDREAM_PROJECT_ID),
-    pipedreamEnvironment:
-      source.PIPEDREAM_ENVIRONMENT === "production" ? "production" : "development",
+    managedProviderMcpUrl: optional(source.MANAGED_PROVIDER_MCP_URL),
+    managedProviderMcpToken: optional(source.MANAGED_PROVIDER_MCP_TOKEN),
+    managedProviderMcpAllowInternalHttp: source.MANAGED_PROVIDER_MCP_ALLOW_INTERNAL_HTTP === "true",
     sendblueApiKeyId: optional(source.SENDBLUE_API_KEY_ID),
     sendblueApiSecret: optional(source.SENDBLUE_API_SECRET),
     sendblueSigningSecret: optional(source.SENDBLUE_SIGNING_SECRET),

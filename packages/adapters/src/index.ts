@@ -46,6 +46,7 @@ export * from "./mcp-emulator.js";
 export * from "./mcp-oauth.js";
 export * from "./mcp-server-tool.js";
 export * from "./mcp-transport.js";
+export * from "./managed-provider-mcp.js";
 export * from "./memory-provider-factory.js";
 export * from "./messaging-context.js";
 export * from "./messaging-delivery.js";
