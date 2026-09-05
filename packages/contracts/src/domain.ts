@@ -23,6 +23,66 @@ export const ThinkingLevelSchema = z.enum([
 ]);
 export type ThinkingLevel = z.infer<typeof ThinkingLevelSchema>;
 
+export const ProjectScopeSchema = z.enum(["studio", "one", "multi"]);
+export type ProjectScope = z.infer<typeof ProjectScopeSchema>;
+
+export const FoundationRevisionSchema = z.object({
+  id: Id,
+  revision: z.number().int().positive(),
+  content: z.record(z.string(), z.unknown()),
+  createdByUserId: Id,
+  createdAt: z.string(),
+});
+export type FoundationRevision = z.infer<typeof FoundationRevisionSchema>;
+
+export const EmployeeRolePresetSchema = z.object({
+  id: Id,
+  key: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string(),
+  instructions: z.string(),
+  isDefault: z.boolean(),
+  foundationRevisionId: Id.nullable(),
+});
+export type EmployeeRolePreset = z.infer<typeof EmployeeRolePresetSchema>;
+
+export const StudioProjectSchema = z.object({
+  id: Id,
+  name: z.string().min(1),
+  slug: z.string().min(1),
+  scope: ProjectScopeSchema,
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type StudioProject = z.infer<typeof StudioProjectSchema>;
+
+export const ProjectSourceBindingSchema = z.object({
+  id: Id,
+  projectId: Id,
+  kind: z.string().min(1),
+  repository: z.string().nullable(),
+  ref: z.string().nullable(),
+  path: z.string().nullable(),
+  metadata: z.record(z.string(), z.unknown()).nullable(),
+});
+export type ProjectSourceBinding = z.infer<typeof ProjectSourceBindingSchema>;
+
+export const AssignmentManifestSchema = z.object({
+  id: Id,
+  projectId: Id,
+  taskId: Id,
+  botId: Id,
+  foundationRevisionId: Id.nullable(),
+  rolePresetId: Id.nullable(),
+  manifest: z.record(z.string(), z.unknown()),
+  status: z.enum(["draft", "accepted", "blocked", "completed"]),
+  acceptedAt: z.string().nullable(),
+  acceptedByUserId: Id.nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type AssignmentManifest = z.infer<typeof AssignmentManifestSchema>;
+
 export const BotSchema = z.object({
   id: Id,
   spaceId: Id,

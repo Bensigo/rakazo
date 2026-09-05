@@ -92,6 +92,9 @@ model Organization {
   members     Member[]
   invitations Invitation[]
   spaces      Space[]
+  foundation  StudioFoundation?
+  projects    StudioProject[]
+  rolePresets EmployeeRolePreset[]
 
   @@unique([slug])
   @@map("organization")
@@ -328,6 +331,8 @@ model Bot {
   parentBotId       String?
   spawnKey          String?
   memoryScope       String?
+  rolePresetId      String?
+  rolePreset        EmployeeRolePreset? @relation(fields: [rolePresetId], references: [id], onDelete: SetNull)
   parent            Bot?              @relation("BotChildren", fields: [parentBotId], references: [id], onDelete: SetNull)
   children          Bot[]             @relation("BotChildren")
   createdAt         DateTime          @default(now())
@@ -355,6 +360,7 @@ model Bot {
   steeringMessages  SteeringMessage[]
   mcpServers        BotMcpServer[]
   groupMembers      ChatGroupMember[]
+  assignments       AssignmentManifest[]
 
   @@unique([spaceId, spawnKey])
   @@index([spaceId, userId, archivedAt, pinned, updatedAt])
@@ -511,12 +517,126 @@ model Task {
   userId    String
   prompt    String
   status    String
+  projectId String?
+  project   StudioProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   runs      Run[]
+  assignment AssignmentManifest?
 
   @@index([spaceId, botId])
   @@map("tasks")
+}
+
+model StudioFoundation {
+  id             String               @id @default(cuid())
+  organizationId String               @unique
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  currentRevisionId String?
+  currentRevision FoundationRevision? @relation("CurrentFoundationRevision", fields: [currentRevisionId], references: [id], onDelete: SetNull)
+  revisions      FoundationRevision[] @relation("FoundationRevisions")
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@map("studio_foundations")
+}
+
+model FoundationRevision {
+  id           String           @id @default(cuid())
+  foundationId String
+  foundation   StudioFoundation @relation("FoundationRevisions", fields: [foundationId], references: [id], onDelete: Cascade)
+  revision     Int
+  content      Json
+  createdByUserId String
+  createdAt    DateTime         @default(now())
+  currentFor   StudioFoundation? @relation("CurrentFoundationRevision")
+  roles        EmployeeRolePreset[]
+  assignments  AssignmentManifest[]
+
+  @@unique([foundationId, revision])
+  @@index([foundationId, createdAt])
+  @@map("foundation_revisions")
+}
+
+model EmployeeRolePreset {
+  id             String            @id @default(cuid())
+  organizationId String
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  foundationRevisionId String?
+  foundationRevision FoundationRevision? @relation(fields: [foundationRevisionId], references: [id], onDelete: SetNull)
+  key            String
+  name           String
+  description    String            @default("")
+  instructions   String            @default("")
+  isDefault      Boolean           @default(false)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  bots           Bot[]
+  assignments    AssignmentManifest[]
+
+  @@unique([organizationId, key])
+  @@index([organizationId, isDefault])
+  @@map("employee_role_presets")
+}
+
+model StudioProject {
+  id             String              @id @default(cuid())
+  organizationId String
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  slug           String
+  scope          String              @default("studio")
+  createdByUserId String
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  tasks          Task[]
+  sources        ProjectSourceBinding[]
+  assignments    AssignmentManifest[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, scope])
+  @@map("studio_projects")
+}
+
+model ProjectSourceBinding {
+  id          String        @id @default(cuid())
+  projectId   String
+  project     StudioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  kind        String
+  repository  String?
+  ref         String?
+  path        String?
+  metadata    Json?
+  createdByUserId String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([projectId, kind])
+  @@map("project_source_bindings")
+}
+
+model AssignmentManifest {
+  id                   String             @id @default(cuid())
+  projectId            String
+  project               StudioProject     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  taskId               String             @unique
+  task                 Task               @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  botId                String
+  bot                  Bot                @relation(fields: [botId], references: [id], onDelete: Cascade)
+  foundationRevisionId String?
+  foundationRevision  FoundationRevision? @relation(fields: [foundationRevisionId], references: [id], onDelete: SetNull)
+  rolePresetId         String?
+  rolePreset            EmployeeRolePreset? @relation(fields: [rolePresetId], references: [id], onDelete: SetNull)
+  manifest              Json
+  status                String             @default("draft")
+  acceptedAt            DateTime?
+  acceptedByUserId      String?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  @@index([projectId, status])
+  @@index([botId, status])
+  @@map("assignment_manifests")
 }
 
 model Run {
