@@ -18,10 +18,25 @@ const roles = [
     isDefault: true,
   },
 ];
+const jobRoles = [
+  {
+    id: "fixture-job-role",
+    key: "product",
+    name: "Product team",
+    description: "A focused product role.",
+    defaultRolePresetIds: ["fixture-engineer-role"],
+    createdAt: "2026-09-05T00:00:00.000Z",
+    updatedAt: "2026-09-05T00:00:00.000Z",
+  },
+];
+let selectedJobRole: unknown = null;
+let bots = [{ id: "fixture-engineer", name: "Engineer" }];
 const routes: Record<string, unknown> = {
   "/rpc/studio/projects": projects,
   "/rpc/studio/roles": roles,
-  "/rpc/bots/list": [{ id: "fixture-engineer", name: "Engineer" }],
+  "/rpc/bots/list": bots,
+  "/rpc/studio/jobRoles": jobRoles,
+  "/rpc/studio/jobRoleSelection": null,
   "/rpc/studio/assignments": [],
   "/rpc/studio/foundation": {
     currentRevision: {
@@ -40,9 +55,43 @@ window.fetch = async (input, init) => {
   const request = new Request(input, init);
   const pathname = new URL(request.url).pathname;
   if (!pathname.startsWith("/rpc/")) return realFetch(input, init);
+  if (pathname === "/rpc/studio/selectJobRole") {
+    selectedJobRole = {
+      jobRole: jobRoles[0],
+      specialists: [
+        { rolePresetId: "fixture-engineer-role", botId: "fixture-provisioned-engineer" },
+      ],
+    };
+    bots = [...bots, { id: "fixture-provisioned-engineer", name: "Engineer (yours)" }];
+    routes["/rpc/bots/list"] = bots;
+    routes["/rpc/studio/jobRoleSelection"] = selectedJobRole;
+    return Response.json({ json: selectedJobRole });
+  }
+  if (pathname === "/rpc/studio/createJobRole") {
+    const envelope = (await request.clone().json()) as {
+      json: {
+        key: string;
+        name: string;
+        description?: string;
+        defaultRolePresetIds: string[];
+      };
+    };
+    const input = envelope.json;
+    const role = {
+      id: `fixture-job-role-${jobRoles.length}`,
+      ...input,
+      description: input.description ?? "",
+      createdAt: "2026-09-05T00:00:00.000Z",
+      updatedAt: "2026-09-05T00:00:00.000Z",
+    };
+    jobRoles.push(role);
+    routes["/rpc/studio/jobRoles"] = jobRoles;
+    return Response.json({ json: role });
+  }
   if (!(pathname in routes))
     return new Response("Fixture is read-only; execution is disabled.", { status: 503 });
-  return Response.json({ json: routes[pathname] });
+  const value = pathname === "/rpc/studio/jobRoleSelection" ? selectedJobRole : routes[pathname];
+  return Response.json({ json: value });
 };
 
 createRoot(document.getElementById("root")!).render(

@@ -36,4 +36,21 @@ test.describe("Studio UI fixture", () => {
     await expect(garden).not.toBeChecked();
     await expect(page.getByRole("button", { name: "Edit" })).toBeVisible();
   });
+
+  test("selects an employee job role and refreshes specialist options", async ({ page }) => {
+    await page.goto("/e2e/fixtures/studio-preview.html");
+
+    const jobRole = page.getByRole("combobox", { name: "Your job role" });
+    await expect(jobRole).toBeVisible();
+    await jobRole.selectOption("fixture-job-role");
+    await page.getByRole("button", { name: "Apply and provision specialists" }).click();
+
+    await expect(page.getByText("1 specialists provisioned for you")).toBeVisible();
+    await expect(page.getByText("Engineer", { exact: false }).last()).toBeVisible();
+    const specialist = page.getByRole("combobox", { name: "Specialist" });
+    await expect(specialist.locator("option", { hasText: "Engineer (yours)" })).toHaveCount(1);
+
+    await page.getByRole("button", { name: "Apply and provision specialists" }).click();
+    await expect(page.getByText("1 specialists provisioned for you")).toHaveCount(1);
+  });
 });
