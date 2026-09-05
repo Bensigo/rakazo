@@ -372,7 +372,22 @@ describe("createRunExecutor", () => {
 
   it("deactivates one-shot routines after wake without scheduling another wakeup", async () => {
     const scheduledAt = new Date(Date.now() - 1_000);
-    const studioContext = { version: 1, organizationId: "org-1", sources: [] };
+    const studioContext = {
+      version: 1,
+      organizationId: "org-1",
+      foundation: { id: "foundation-1", revision: 1, content: {} },
+      role: { id: "role-1", key: "writer", name: "Writer", instructions: "Write." },
+      assignment: { id: "assignment-1", scope: "multi", projectIds: ["project-1", "project-2"], brief: { deliverable: "Report" } },
+      sourceProjectIds: ["project-1", "project-2"],
+      sources: [],
+    };
+    const routineSelection = {
+      kind: "studio-routine-selection",
+      version: 1,
+      organizationId: "org-1",
+      rolePresetId: "role-1",
+      assignment: studioContext.assignment,
+    };
     const enqueue = vi.fn(async () => undefined);
     const cancel = vi.fn(async () => undefined);
     const append = vi.fn(async () => undefined);
@@ -392,7 +407,7 @@ describe("createRunExecutor", () => {
           active: true,
           nextRunAt: scheduledAt,
           threadId: "group-thread-1",
-          studioContext,
+          studioContext: routineSelection,
         })),
       },
       bot: {
@@ -435,7 +450,8 @@ describe("createRunExecutor", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           threadId: "group-thread-1",
-          studioContext,
+          projectId: "project-1",
+          studioContext: routineSelection,
         }),
       }),
     );
@@ -443,7 +459,7 @@ describe("createRunExecutor", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           threadId: "group-thread-1",
-          studioContext,
+          studioContext: routineSelection,
         }),
       }),
     );

@@ -142,13 +142,6 @@ export async function createBotInTransaction(
       select: { id: true },
     });
     if (!role) throw new IsolationError();
-  } else {
-    const defaultRole = await prisma.employeeRolePreset.findFirst({
-      where: { organizationId: membership.organizationId, isDefault: true },
-      select: { id: true },
-      orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
-    });
-    rolePresetId = defaultRole?.id ?? null;
   }
   const settings = await prisma.deploymentSettings.findUnique({ where: { id: "default" } });
   const envKind = process.env.SANDBOX_PROVIDER ?? "docker";
