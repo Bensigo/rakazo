@@ -28,7 +28,7 @@ test.describe("Studio UI fixture", () => {
     await scope.selectOption("multi");
     await garden.check();
     await expect(assign).toBeDisabled();
-    await page.getByRole("checkbox", { name: "Moon Runner one" }).check();
+    await page.getByRole("checkbox", { name: "Moon Runner Project" }).check();
     await expect(assign).toBeEnabled();
 
     await scope.selectOption("studio");
