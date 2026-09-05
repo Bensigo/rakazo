@@ -185,6 +185,34 @@ describe("container home access probe", () => {
     await vi.waitFor(() => expect(lateContainer.remove).toHaveBeenCalledWith({ force: true }));
   });
 
+  it("ignores a benign late-cleanup 404 after named cleanup won the race", async () => {
+    let resolveCreate: ((container: Docker.Container) => void) | undefined;
+    const createPromise = new Promise<Docker.Container>((resolve) => {
+      resolveCreate = resolve;
+    });
+    const docker = {
+      createContainer: vi.fn((_options: Docker.ContainerCreateOptions) => createPromise),
+      getContainer: vi.fn(() => ({ remove: vi.fn(async () => undefined) })),
+    } as unknown as Docker;
+    const onLateCleanupError = vi.fn();
+
+    await expect(
+      probeContainerHomeAccess(
+        docker,
+        { homePath: "/host/home", image: "computer:test", user: "1000:1000" },
+        { cleanupTimeoutMs: 5, onLateCleanupError, timeoutMs: 5 },
+      ),
+    ).rejects.toThrow(/creation timed out/);
+
+    resolveCreate?.({
+      remove: vi.fn(async () => {
+        throw Object.assign(new Error("already removed"), { statusCode: 404 });
+      }),
+    } as unknown as Docker.Container);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(onLateCleanupError).not.toHaveBeenCalled();
+  });
+
   it("makes a late cleanup failure observable", async () => {
     let resolveCreate: ((container: Docker.Container) => void) | undefined;
     const createPromise = new Promise<Docker.Container>((resolve) => {

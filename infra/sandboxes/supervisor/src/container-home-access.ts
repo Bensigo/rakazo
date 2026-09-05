@@ -117,6 +117,7 @@ export async function probeContainerHomeAccess(
             `late computer home access probe cleanup timed out after ${boundedCleanupTimeoutMs}ms`,
           );
         } catch (lateError) {
+          if (isNotFound(lateError)) return;
           if (options.onLateCleanupError) options.onLateCleanupError(lateError);
           else {
             const detail = lateError instanceof Error ? lateError.message : String(lateError);
