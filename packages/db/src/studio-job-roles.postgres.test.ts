@@ -169,6 +169,33 @@ integration.sequential("studio job role provisioning (PostgreSQL)", () => {
     expect(selected?.jobRole.id).toBe(secondRole.id);
     expect(selected?.specialists).toEqual(secondSelection.specialists);
 
+    const reviewerBinding = secondSelection.specialists.find(
+      (binding) => binding.rolePresetId === reviewer!.id,
+    )!;
+    await prisma.bot.update({
+      where: { id: reviewerBinding.botId },
+      data: { name: "Customized archived reviewer", archivedAt: new Date() },
+    });
+    await expect(domain.jobRoleSelection(actor)).resolves.toMatchObject({
+      specialists: [{ rolePresetId: writer!.id, botId: sharedWriter.botId }],
+    });
+    const repaired = await domain.selectJobRole(actor, secondRole.id);
+    const repairedReviewer = repaired.specialists.find(
+      (binding) => binding.rolePresetId === reviewer!.id,
+    )!;
+    expect(repairedReviewer.botId).not.toBe(reviewerBinding.botId);
+    await expect(
+      prisma.bot.findUniqueOrThrow({ where: { id: reviewerBinding.botId } }),
+    ).resolves.toMatchObject({
+      name: "Customized archived reviewer",
+      archivedAt: expect.any(Date),
+    });
+    expect(
+      await prisma.employeeJobRoleSpecialist.count({
+        where: { spaceMemberId: ids.spaceMember },
+      }),
+    ).toBe(3);
+
     const corrupt = await prisma.employeeJobRole.create({
       data: {
         organizationId: ids.organization,
@@ -180,6 +207,17 @@ integration.sequential("studio job role provisioning (PostgreSQL)", () => {
     await expect(domain.selectJobRole(actor, corrupt.id)).rejects.toThrow(
       "Specialist preset is outside this organization",
     );
+    await prisma.spaceMember.update({
+      where: { id: ids.spaceMember },
+      data: { jobRoleId: corrupt.id },
+    });
+    await expect(domain.jobRoleSelection(actor)).rejects.toThrow(
+      "Specialist preset is outside this organization",
+    );
+    await prisma.spaceMember.update({
+      where: { id: ids.spaceMember },
+      data: { jobRoleId: secondRole.id },
+    });
     await expect(
       prisma.spaceMember.findUniqueOrThrow({ where: { id: ids.spaceMember } }),
     ).resolves.toMatchObject({ jobRoleId: secondRole.id });
