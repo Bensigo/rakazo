@@ -192,6 +192,7 @@ export type AssignmentComputer = z.infer<typeof AssignmentComputerSchema>;
 export const EmployeeHostEnrollmentSchema = z.object({
   hostId: Id,
   enrollmentToken: z.string().min(1),
+  controlPlaneUrl: z.string().url(),
 });
 export type EmployeeHostEnrollment = z.infer<typeof EmployeeHostEnrollmentSchema>;
 

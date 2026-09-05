@@ -40,7 +40,9 @@ export async function handoffToGroupBot(
         include: {
           members: {
             where: { bot: { archivedAt: null } },
-            include: { bot: { select: { id: true, name: true } } },
+            include: {
+              bot: { select: { id: true, name: true, spaceId: true, userId: true } },
+            },
             orderBy: { createdAt: "asc" },
           },
         },
@@ -54,11 +56,22 @@ export async function handoffToGroupBot(
           userId: run.userId,
           status: "running",
         },
-        select: { id: true, computerId: true, sourceMessage: { select: { blocks: true } } },
+        select: {
+          id: true,
+          computerId: true,
+          studioContext: true,
+          task: { select: { projectId: true, studioContext: true } },
+          sourceMessage: { select: { blocks: true } },
+        },
       }),
     ]);
     if (!group || !activeSource) return { error: "source run is no longer active" } as const;
-    if (!group.members.some((member) => member.bot.id === run.botId)) {
+    const sourceMember = group.members.find((member) => member.bot.id === run.botId);
+    if (
+      !sourceMember ||
+      sourceMember.bot.spaceId !== run.spaceId ||
+      sourceMember.bot.userId !== run.userId
+    ) {
       return { error: "source bot is no longer a group member" } as const;
     }
 
@@ -90,8 +103,12 @@ export async function handoffToGroupBot(
     }
     if (!targetId) return { error: "handoff target bot is required" } as const;
     if (targetId === run.botId) return { error: "cannot hand off to yourself" } as const;
-    if (!group.members.some((member) => member.bot.id === targetId)) {
+    const targetMember = group.members.find((member) => member.bot.id === targetId);
+    if (!targetMember) {
       return { error: "handoff target is not a group member" } as const;
+    }
+    if (targetMember.bot.spaceId !== run.spaceId || targetMember.bot.userId !== run.userId) {
+      return { error: "handoff target is no longer available" } as const;
     }
 
     let sourceBlocks: MessageBlock[] = [];
@@ -139,6 +156,7 @@ export async function handoffToGroupBot(
       spaceId: run.spaceId,
       userId: run.userId,
     });
+    const studioContext = activeSource.studioContext ?? activeSource.task.studioContext;
     const task = await tx.task.create({
       data: {
         spaceId: run.spaceId,
@@ -147,6 +165,8 @@ export async function handoffToGroupBot(
         userId: run.userId,
         prompt: input.message,
         status: "queued",
+        projectId: activeSource.task.projectId,
+        studioContext: studioContext ?? undefined,
       },
     });
     const nextRun = await tx.run.create({
@@ -160,6 +180,7 @@ export async function handoffToGroupBot(
         status: "queued",
         trigger: "follow_up",
         sourceMessageId: message.id,
+        studioContext: studioContext ?? undefined,
       },
     });
     const event = await appendEventInTransaction(tx, {

@@ -28,6 +28,6 @@ The provider is exposed as `employee-host` through `createSandboxProvider()` whe
    pnpm --filter @rakazo/employee-host start
    ```
 
-The downloaded `controlPlaneUrl` uses the Studio browser origin. If the API is hosted at a separate origin without a reverse proxy, replace that value with the HTTPS API origin before starting the companion. Set `RAKAZO_EMPLOYEE_HOST_CONFIG` to an alternate owner-only config path when needed.
+The server writes its configured public `API_URL` into `controlPlaneUrl`; verify that the employee computer can reach that HTTPS origin. Set `RAKAZO_EMPLOYEE_HOST_CONFIG` to an alternate owner-only config path when needed.
 
 After the first heartbeat, the registered computer appears in the assignment computer selector. Stopping the foreground process makes it unavailable after its heartbeat expires. Re-register to rotate a lost enrollment token; do not copy the token into project files or commit it.
