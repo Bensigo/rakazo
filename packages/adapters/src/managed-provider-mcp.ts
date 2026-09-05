@@ -143,7 +143,12 @@ export class ManagedMessagingMcpClient implements MessagingSurface {
     const result = parse(z.object({ status: z.number().int().min(100).max(599), headers: z.record(z.string(), z.string()), bodyBase64: z.string(), events: z.array(z.unknown()) }), await this.rpc.call("messaging_webhook", { provider, method: request.method, url: request.url, headers: Object.fromEntries(request.headers), bodyBase64: Buffer.from(bytes).toString("base64") }, request.signal));
     for (const event of result.events) {
       const parsed = parse(z.union([z.object({ type: z.literal("message") }).passthrough(), z.object({ type: z.literal("status") }).passthrough()]), event);
-      await this.sink?.(parsed as unknown as import("@rakazo/adapter-kit").MessagingInboundEvent);
+      try {
+        await this.sink?.(parsed as unknown as import("@rakazo/adapter-kit").MessagingInboundEvent);
+      } catch (error) {
+        if (request.signal.aborted) throw error;
+        throw new Error("Managed delivery operation failed");
+      }
     }
     return new Response(Buffer.from(result.bodyBase64, "base64"), { status: result.status, headers: result.headers });
   }

@@ -61,6 +61,14 @@ function bounded(value: unknown): unknown {
 function response(events: ConnectorEvent[]): { events: ConnectorEvent[] } {
   return bounded({ events }) as { events: ConnectorEvent[] };
 }
+async function deliveryRun<T>(signal: AbortSignal, operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (signal.aborted) throw error;
+    throw new Error("Managed delivery operation failed");
+  }
+}
 
 const outputSchemas: Record<string, z.ZodTypeAny> = {
   catalog: z.array(z.object({ connectorId: z.string().min(1).max(MAX_ID), slug: z.string().min(1).max(MAX_ID), name: z.string().min(1).max(MAX_ID), logo: z.string().nullable(), connected: z.boolean(), noAuth: z.boolean() })),
@@ -117,51 +125,54 @@ export function createProviderMcpServer(map: ProviderMap = providers(), services
     }
     return { content: [], structuredContent: response(events) };
   });
-  server.registerTool("messaging_platforms", { description: "List configured messaging platforms.", inputSchema: {} }, async () => ok({ value: services.messagingFactory?.().platforms() ?? [] }));
+  server.registerTool("messaging_platforms", { description: "List configured messaging platforms.", inputSchema: {} }, async (_, extra) => ok({ value: await deliveryRun(extra.signal, async () => services.messagingFactory?.().platforms() ?? []) }));
   server.registerTool("capabilities", { description: "Report configured managed delivery capabilities.", inputSchema: {} }, async () => ok({ value: { messaging: Boolean(services.messagingFactory), email: Boolean(services.email), push: Boolean(services.push || services.notifications), composio: Boolean(map.composio), pipedream: Boolean(map.pipedream) } }));
   server.registerTool("messaging_send", { description: "Send a message to an existing provider thread.", inputSchema: MessagingSendSchema.shape }, async (input, extra) => {
     if (!services.messagingFactory) throw new Error("Messaging provider is not configured");
-    return ok({ value: await services.messagingFactory().sendToThread(input.request, context(input.context, extra.signal)) });
+    return ok({ value: await deliveryRun(extra.signal, () => services.messagingFactory!().sendToThread(input.request, context(input.context, extra.signal))) });
   });
   server.registerTool("messaging_open_direct", { description: "Open a provider direct thread.", inputSchema: MessagingOpenSchema.shape }, async (input, extra) => {
     if (!services.messagingFactory) throw new Error("Messaging provider is not configured");
-    return ok({ value: await services.messagingFactory().openDirectThread(input.provider, input.address, context(input.context, extra.signal)) });
+    return ok({ value: await deliveryRun(extra.signal, () => services.messagingFactory!().openDirectThread(input.provider, input.address, context(input.context, extra.signal))) });
   });
   server.registerTool("messaging_typing", { description: "Send a best effort typing indicator.", inputSchema: MessagingTypingSchema.shape }, async (input, extra) => {
     if (!services.messagingFactory) throw new Error("Messaging provider is not configured");
-    await services.messagingFactory().sendTyping(input.threadId, context(input.context, extra.signal));
+    await deliveryRun(extra.signal, () => services.messagingFactory!().sendTyping(input.threadId, context(input.context, extra.signal)));
     return ok({ value: null });
   });
   server.registerTool("messaging_webhook", { description: "Verify and translate one raw platform webhook.", inputSchema: WebhookSchema.shape }, async (input, extra) => {
     if (!services.messagingFactory) throw new Error("Messaging provider is not configured");
-    const surface = services.messagingFactory();
-    const events: unknown[] = [];
-    surface.onInbound(async (event) => { events.push(event); });
-    const bytes = Buffer.from(input.bodyBase64, "base64");
-    if (bytes.length > MAX_JSON) throw new Error("Webhook body is too large");
-    const request = new Request(input.url, { method: input.method, headers: input.headers, body: input.method === "GET" || input.method === "HEAD" ? undefined : bytes });
-    const response = surface.handleWebhook(input.provider, request);
-    if (!response) throw new Error("Messaging provider is not configured");
-    const vendor = await response;
-    const body = new Uint8Array(await vendor.arrayBuffer());
-    if (body.byteLength > MAX_JSON) throw new Error("Webhook response is too large");
-    const responseHeaders: Record<string, string> = {};
-    vendor.headers.forEach((value, key) => { responseHeaders[key] = value; });
-    return ok({ status: vendor.status, headers: responseHeaders, bodyBase64: Buffer.from(body).toString("base64"), events });
+    return ok({ value: await deliveryRun(extra.signal, async () => {
+      const surface = services.messagingFactory!();
+      const events: unknown[] = [];
+      surface.onInbound(async (event) => { events.push(event); });
+      const bytes = Buffer.from(input.bodyBase64, "base64");
+      if (bytes.length > MAX_JSON) throw new Error("Webhook body is too large");
+      const request = new Request(input.url, { method: input.method, headers: input.headers, body: input.method === "GET" || input.method === "HEAD" ? undefined : bytes });
+      const response = surface.handleWebhook(input.provider, request);
+      if (!response) throw new Error("Messaging provider is not configured");
+      const vendor = await response;
+      const body = new Uint8Array(await vendor.arrayBuffer());
+      if (body.byteLength > MAX_JSON) throw new Error("Webhook response is too large");
+      const responseHeaders: Record<string, string> = {};
+      vendor.headers.forEach((value, key) => { responseHeaders[key] = value; });
+      return { status: vendor.status, headers: responseHeaders, bodyBase64: Buffer.from(body).toString("base64"), events };
+    }) });
   });
-  server.registerTool("email_send", { description: "Send transactional email.", inputSchema: EmailSchema.shape }, async (input) => {
+  server.registerTool("email_send", { description: "Send transactional email.", inputSchema: EmailSchema.shape }, async (input, extra) => {
     if (!services.email) throw new Error("Email provider is not configured");
-    await services.email.send(input.message as TransactionalEmail); return ok({ value: null });
+    await deliveryRun(extra.signal, () => services.email!.send(input.message as TransactionalEmail)); return ok({ value: null });
   });
-  server.registerTool("email_drain", { description: "Drain accepted email deliveries.", inputSchema: {} }, async () => {
+  server.registerTool("email_drain", { description: "Drain accepted email deliveries.", inputSchema: {} }, async (_, extra) => {
     if (!services.email?.drain) return ok({ value: null });
-    await services.email.drain();
+    await deliveryRun(extra.signal, () => services.email!.drain!());
     return ok({ value: null });
   });
   server.registerTool("notification_send", { description: "Send one push notification.", inputSchema: NotificationSchema.shape }, async (input, extra) => {
     if (!services.push && !services.notifications) throw new Error("Notification provider is not configured");
-    if (services.push) await services.push(input.token, input.message as NotificationMessage, extra.signal);
-    else await services.notifications!.send(input.message as NotificationMessage, { operationId: "provider-mcp", traceId: "provider-mcp", spaceId: "internal", userId: "internal", signal: extra.signal });
+    await deliveryRun(extra.signal, () => services.push
+      ? services.push!(input.token, input.message as NotificationMessage, extra.signal)
+      : services.notifications!.send(input.message as NotificationMessage, { operationId: "provider-mcp", traceId: "provider-mcp", spaceId: "internal", userId: "internal", signal: extra.signal }));
     return ok({ value: null });
   });
   return server;

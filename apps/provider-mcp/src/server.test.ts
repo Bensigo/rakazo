@@ -139,3 +139,50 @@ test("MCP routes email and scoped push token without persisting it", async () =>
     assert.equal(emailCount, 1); assert.equal(pushToken, "ExponentPushToken[secret]");
   } finally { await service.close(); }
 });
+
+test("delivery failures never expose provider secrets or inbound event data", async () => {
+  const token = "t".repeat(32);
+  const secret = "https://secret.example.test/hook?token=private-signing-material";
+  const failingMessaging = (): MessagingSurface => {
+    let sink: ((event: any) => Promise<void>) | undefined;
+    return {
+    describe: () => ({ id: "fake", contractVersion: "1", adapterVersion: "test", capabilities: { providers: ["fake"] } }),
+    platforms: () => [{ provider: "fake", capabilities: { direct: true, groups: false, typing: true } }],
+    onInbound: (next) => { sink = next; },
+    handleWebhook: async () => {
+      await sink?.({ type: "message", provider: "fake", handle: secret, threadId: "fake:dm", isDirect: true, from: "u", fromLabel: null, channelName: null, participants: [], content: secret, mediaUrl: null });
+      return new Response("ACK", { status: 202 });
+    },
+    sendToThread: async () => { throw new Error(`vendor request ${secret}`); },
+    openDirectThread: async () => { throw new Error(`vendor request ${secret}`); },
+    sendTyping: async () => { throw new Error(`vendor request ${secret}`); },
+    };
+  };
+  const service = createProviderMcpHttpServer({ token, port: 0, providers: { composio: undefined, pipedream: undefined }, services: {
+    messagingFactory: failingMessaging,
+    email: { describe: () => ({ id: "fake-email", contractVersion: "1", adapterVersion: "test", capabilities: { transactional: true } }), send: async () => { throw new Error(`smtp password ${secret}`); }, drain: async () => { throw new Error(`smtp password ${secret}`); } },
+    push: async () => { throw new Error(`expo bearer secret ${secret}`); },
+  } });
+  await service.listen(); const port = (service.http.address() as AddressInfo).port;
+  try {
+    const rpc = new ManagedProviderMcpClient({ providerId: "composio", endpoint: `http://127.0.0.1:${port}/mcp`, token });
+    const messaging = new ManagedMessagingMcpClient(rpc);
+    messaging.onInbound(async () => { throw new Error(`sink event ${secret}`); });
+    const operations = [
+      () => messaging.sendToThread({ threadId: "thread-1", body: "hello" }, context),
+      () => messaging.openDirectThread("fake", "person", context),
+      () => messaging.sendTyping("thread-1", context),
+      () => (async () => { await messaging.handleWebhook("fake", new Request("https://fake.test/hook", { method: "POST", body: "event" })); })(),
+      () => new ManagedEmailMcpClient(rpc).send({ to: "person@example.com", subject: "Hi", text: "Hello" }),
+      () => new ManagedEmailMcpClient(rpc).drain(),
+      () => new ManagedNotificationMcpClient(rpc, async () => "ExponentPushToken[private]").send({ kind: "completion", title: "Done", body: "Body", botId: "bot-1", threadId: "thread-1" }, context),
+    ];
+    for (const operation of operations) {
+      await assert.rejects(operation(), (error: unknown) => {
+        assert.match(String(error), /Managed (delivery operation failed|provider operation failed|provider failed)/i);
+        assert.doesNotMatch(String(error), /secret\.example|signing-material|password|bearer secret|private/i);
+        return true;
+      });
+    }
+  } finally { await service.close(); }
+});
