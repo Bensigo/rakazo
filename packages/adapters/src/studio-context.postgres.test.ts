@@ -345,10 +345,16 @@ describePostgres("studio assignment runtime (PostgreSQL)", () => {
     });
     expect(vi.mocked(bridge.read).mock.calls).toHaveLength(readCount);
 
-    await prisma.task.update({
-      where: { id: created.assignment.taskId },
-      data: { status: "completed" },
-    });
+    await prisma.$transaction([
+      prisma.task.update({
+        where: { id: created.assignment.taskId },
+        data: { status: "completed" },
+      }),
+      prisma.run.update({
+        where: { id: created.runId! },
+        data: { status: "completed", completedAt: new Date() },
+      }),
+    ]);
     const receipts = await Promise.all([
       domain.acceptAssignment(creator, created.assignment.id),
       domain.acceptAssignment(reviewer, created.assignment.id),
@@ -361,7 +367,7 @@ describePostgres("studio assignment runtime (PostgreSQL)", () => {
     expect(finalAssignment.acceptedAt).toBeTruthy();
     expect(receipts).toEqual([finalAssignment, finalAssignment]);
     expect((await prisma.run.findUniqueOrThrow({ where: { id: created.runId! } })).status).toBe(
-      "queued",
+      "completed",
     );
   });
 });
