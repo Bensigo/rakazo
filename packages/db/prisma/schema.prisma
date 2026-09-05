@@ -28,6 +28,7 @@ model User {
   actionApprovalRules         ActionApprovalRule[]
   actionAutoReviewPreferences ActionAutoReviewPreference[]
   createdSpaces               Space[]                      @relation("SpaceCreator")
+  employeeHosts               EmployeeHost[]
 
   @@unique([email])
   @@map("user")
@@ -173,6 +174,7 @@ model Space {
   usageRecords                UsageRecord[]
   notificationPreferences     NotificationPreference[]
   computers                   Computer[]
+  employeeHosts               EmployeeHost[]
   externalEffects             ExternalEffect[]
   mcpServers                  McpServer[]
   mcpOAuthSessions            McpOAuthSession[]
@@ -858,6 +860,53 @@ model ComputerExecutionLease {
   @@index([runId])
   @@index([computerId, expiresAt])
   @@map("computer_execution_leases")
+}
+
+model EmployeeHost {
+  id             String                  @id @default(cuid())
+  hostId         String                  @unique
+  spaceId        String
+  space          Space                   @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  ownerUserId    String
+  owner          User                    @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  name           String
+  platform       String
+  capabilities   Json
+  workspaceRoot  String
+  tokenHash      String
+  lastSeenAt     DateTime
+  expiresAt      DateTime
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+  operations     EmployeeHostOperation[]
+
+  @@index([spaceId, ownerUserId])
+  @@index([expiresAt])
+  @@map("employee_hosts")
+}
+
+model EmployeeHostOperation {
+  id             String       @id @default(cuid())
+  operationId    String       @unique
+  hostId         String
+  host           EmployeeHost @relation(fields: [hostId], references: [hostId], onDelete: Cascade)
+  spaceId        String
+  botId          String
+  runId          String
+  fence          Int
+  request        Json
+  status         String       @default("accepted")
+  stdout         String       @default("")
+  stderr         String       @default("")
+  exitCode       Int?
+  acceptedAt     DateTime     @default(now())
+  completedAt    DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([hostId, status, createdAt])
+  @@index([spaceId, botId, fence])
+  @@map("employee_host_operations")
 }
 
 model Artifact {
