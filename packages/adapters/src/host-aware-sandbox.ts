@@ -13,6 +13,7 @@ import type {
 } from "@rakazo/adapter-kit";
 import type { PrismaClient } from "@rakazo/db";
 import { DesktopSandboxProvider } from "./desktop-sandbox.js";
+import { PrismaEmployeeHostTransport } from "./employee-host.js";
 import { createSandboxProvider, type SandboxProviderOptions } from "./sandbox-factory.js";
 
 export function sandboxKindForBot(envKind: string, computerHost: string | null | undefined) {
@@ -28,6 +29,12 @@ export function createRunSandbox(
     return new DesktopSandboxProvider({
       root: opts.dataDir,
       hostRoots: [homedir()],
+    });
+  }
+  if (kind === "employee-host" && opts.prisma) {
+    return createSandboxProvider(kind, {
+      ...opts,
+      employeeHostTransport: new PrismaEmployeeHostTransport(opts.prisma),
     });
   }
   const primary = createSandboxProvider(kind, opts);

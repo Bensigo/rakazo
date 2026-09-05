@@ -20,6 +20,7 @@
     "@rakazo/db": "workspace:*",
     "@rakazo/logging": "workspace:*",
     "@rakazo/memory": "workspace:*",
+    "zod": "^4.1.5",
     "hono": "^4.9.6"
   },
   "devDependencies": {

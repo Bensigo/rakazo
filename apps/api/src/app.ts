@@ -76,6 +76,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { type AppEnv, loadEnv } from "./env.js";
 import { createMessagingInboundHandler } from "./messaging-inbound.js";
+import { mountEmployeeHostRoutes } from "./employee-host-routes.js";
 import { mountMessagingWebhookRoutes } from "./messaging-webhook.js";
 import { createRouter } from "./router.js";
 import { mountVoiceHttpRoutes } from "./voice.js";
@@ -464,6 +465,16 @@ export async function createApp(
     });
     mountMessagingWebhookRoutes(app, { messaging });
   }
+
+  mountEmployeeHostRoutes(app, {
+    prisma,
+    actor: async (request) => {
+      const session = await auth.api.getSession({ headers: sessionHeaders(request) });
+      if (!session?.user) return null;
+      const actor = await requireMembership(prisma, session.user.id, request.headers.get("x-rakazo-space-id")).catch(() => null);
+      return actor ? { userId: actor.userId, spaceId: actor.spaceId } : null;
+    },
+  });
 
   app.get("/health", (c) =>
     c.json({
