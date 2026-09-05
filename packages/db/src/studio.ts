@@ -23,6 +23,33 @@ async function requireAdmin(prisma: PrismaClient, actor: Actor) {
 
 export function createStudioDomain(prisma: PrismaClient) {
   return {
+    async jobRoles(actor: Actor) {
+      const organizationId = await organizationIdFor(prisma, actor);
+      return prisma.employeeJobRole.findMany({ where: { organizationId }, orderBy: { name: "asc" } });
+    },
+    async createJobRole(actor: Actor, input: { key: string; name: string; description?: string; defaultRolePresetIds: string[] }) {
+      const organizationId = await requireAdmin(prisma, actor);
+      const presetIds = [...new Set(input.defaultRolePresetIds)];
+      if (presetIds.length !== input.defaultRolePresetIds.length) throw new IsolationError("Duplicate specialist preset");
+      const count = await prisma.employeeRolePreset.count({ where: { id: { in: presetIds }, organizationId } });
+      if (count !== presetIds.length) throw new IsolationError("Specialist preset is outside this organization");
+      return prisma.employeeJobRole.create({ data: { organizationId, key: input.key.trim(), name: input.name.trim(), description: input.description?.trim() ?? "", defaultRolePresetIds: presetIds } });
+    },
+    async updateJobRole(actor: Actor, id: string, input: { name?: string; description?: string; defaultRolePresetIds?: string[] }) {
+      const organizationId = await requireAdmin(prisma, actor);
+      const existing = await prisma.employeeJobRole.findFirst({ where: { id, organizationId } });
+      if (!existing) throw new IsolationError();
+      const presetIds = input.defaultRolePresetIds ? [...new Set(input.defaultRolePresetIds)] : undefined;
+      if (presetIds && presetIds.length !== input.defaultRolePresetIds!.length) throw new IsolationError("Duplicate specialist preset");
+      if (presetIds) { const count = await prisma.employeeRolePreset.count({ where: { id: { in: presetIds }, organizationId } }); if (count !== presetIds.length) throw new IsolationError("Specialist preset is outside this organization"); }
+      return prisma.employeeJobRole.update({ where: { id }, data: { ...(input.name === undefined ? {} : { name: input.name.trim() }), ...(input.description === undefined ? {} : { description: input.description.trim() }), ...(presetIds ? { defaultRolePresetIds: presetIds } : {}) } });
+    },
+    async selectJobRole(actor: Actor, jobRoleId: string) {
+      const membership = await organizationFor(prisma, actor);
+      const role = await prisma.employeeJobRole.findFirst({ where: { id: jobRoleId, organizationId: membership.organizationId }, select: { id: true } });
+      if (!role) throw new IsolationError();
+      return prisma.spaceMember.update({ where: { spaceId_userId: { spaceId: actor.spaceId, userId: actor.userId } }, data: { jobRoleId } });
+    },
     async organizationId(actor: Actor) {
       return organizationIdFor(prisma, actor);
     },
