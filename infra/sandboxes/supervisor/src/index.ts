@@ -32,7 +32,11 @@ import {
   screenUrlFor,
   xdotoolCommand,
 } from "./computer-spec.js";
-import { assertComputerHomeWritableAfterVisibilityDelay } from "./home-ownership.js";
+import { probeContainerHomeAccess } from "./container-home-access.js";
+import {
+  assertComputerHomeWritableAfterVisibilityDelay,
+  assertComputerHomeWritableInContainer,
+} from "./home-ownership.js";
 import {
   assertRequestIdentity,
   attemptComputerControl,
@@ -169,11 +173,25 @@ app.post("/computers", async (c) => {
         runtimeInfo || hostUid === undefined || hostGid === undefined || hostUid === 0
           ? COMPUTER_GID
           : hostGid;
-      await assertComputerHomeWritableAfterVisibilityDelay(
-        serviceHomePath,
-        effectiveUid,
-        effectiveGid,
-      );
+      if (runtimeInfo) {
+        await assertComputerHomeWritableInContainer(
+          serviceHomePath,
+          effectiveUid,
+          effectiveGid,
+          () =>
+            probeContainerHomeAccess(docker, {
+              homePath,
+              image: COMPUTER_IMAGE,
+              user: computerUser,
+            }),
+        );
+      } else {
+        await assertComputerHomeWritableAfterVisibilityDelay(
+          serviceHomePath,
+          effectiveUid,
+          effectiveGid,
+        );
+      }
       if (existing) {
         await existing.remove({ force: true }).catch(() => undefined);
       }
