@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from "@rakazo/db";
+import { z } from "zod";
 
 export interface AuthorizedStudioSource {
   studioProjectId: string;
@@ -43,9 +44,11 @@ export interface EffectiveStudioContext {
   } | null;
   assignment: {
     id: string;
+    scope: "studio" | "one" | "multi";
     projectIds: string[];
     brief: Record<string, unknown>;
   } | null;
+  sourceProjectIds: string[];
   sources: ManifestSource[];
 }
 
@@ -169,11 +172,15 @@ async function createManifest(
   }
 
   const projectIds = await assignedProjectIds(prisma, organizationId, task.projectId, assignment);
+  const sourceProjectIds =
+    assignment?.scope === "studio"
+      ? await studioCommonProjectIds(prisma, organizationId)
+      : projectIds;
   const sourceBindings =
-    projectIds.length === 0
+    sourceProjectIds.length === 0
       ? []
       : await prisma.projectSourceBinding.findMany({
-          where: { projectId: { in: projectIds }, project: { organizationId } },
+          where: { projectId: { in: sourceProjectIds }, project: { organizationId } },
           orderBy: [{ projectId: "asc" }, { createdAt: "asc" }, { id: "asc" }],
         });
   const authorizedSources = sourceBindings.map(sourceFromBinding);
@@ -191,6 +198,23 @@ async function createManifest(
       "The knowledge bridge did not pin every configured source.",
     );
   }
+  pinned.forEach((source, index) => {
+    const authorized = authorizedSources[index];
+    const result = pinnedSourceSchema.safeParse(source);
+    if (
+      !authorized ||
+      !result.success ||
+      source.studioProjectId !== authorized.studioProjectId ||
+      source.sourceId !== authorized.sourceId ||
+      source.refKey !== authorized.refKey ||
+      source.access.allowedScopes.length !== 1 ||
+      source.access.allowedScopes[0] !== "project"
+    ) {
+      throw new StudioContextUnavailableError(
+        "The knowledge bridge returned an invalid pinned source.",
+      );
+    }
+  });
 
   const selectedFoundation = assignment?.foundationRevisionId
     ? await prisma.foundationRevision.findFirst({
@@ -203,7 +227,7 @@ async function createManifest(
     );
   }
 
-  return {
+  return validateManifest({
     version: 1,
     organizationId,
     foundation: selectedFoundation
@@ -221,9 +245,11 @@ async function createManifest(
           instructions: role.instructions,
         }
       : null,
+    sourceProjectIds,
     assignment: assignment
       ? {
           id: assignment.id,
+          scope: assignment.scope as "studio" | "one" | "multi",
           projectIds,
           brief: recordValue(assignment.manifest, "Assignment manifest"),
         }
@@ -232,7 +258,7 @@ async function createManifest(
       ...source,
       bindingId: sourceBindings[index]!.id,
     })),
-  };
+  });
 }
 
 async function assignedProjectIds(
@@ -244,6 +270,9 @@ async function assignedProjectIds(
   if (!assignment) {
     if (!taskProjectId) return [];
     return validateProjects(prisma, organizationId, [taskProjectId]);
+  }
+  if (!(["studio", "one", "multi"] as const).includes(assignment.scope as never)) {
+    throw new StudioContextUnavailableError("The assignment has an invalid project scope.");
   }
   const storedProjectIds = arrayOfStrings(assignment.projectIds);
   const explicit = unique(
@@ -293,6 +322,18 @@ async function validateProjects(
   return ids;
 }
 
+async function studioCommonProjectIds(
+  prisma: PrismaClient,
+  organizationId: string,
+): Promise<string[]> {
+  const projects = await prisma.studioProject.findMany({
+    where: { organizationId, scope: "studio" },
+    select: { id: true },
+    orderBy: { id: "asc" },
+  });
+  return projects.map((project) => project.id);
+}
+
 function sourceFromBinding(binding: {
   id: string;
   projectId: string;
@@ -333,11 +374,29 @@ async function assertManifestAccess(
 ): Promise<PinnedStudioSource[]> {
   const projectIds = manifest.assignment?.projectIds ?? [];
   if (projectIds.length > 0) await validateProjects(prisma, manifest.organizationId, projectIds);
+  const sourceProjectIds = manifest.sourceProjectIds;
+  if (manifest.assignment?.scope === "studio") {
+    const projects = await prisma.studioProject.findMany({
+      where: {
+        id: { in: sourceProjectIds },
+        organizationId: manifest.organizationId,
+        scope: "studio",
+      },
+      select: { id: true },
+    });
+    if (projects.length !== sourceProjectIds.length) {
+      throw new StudioContextUnavailableError(
+        "A studio-common source project is no longer authorized.",
+      );
+    }
+  } else if (sourceProjectIds.length > 0) {
+    await validateProjects(prisma, manifest.organizationId, sourceProjectIds);
+  }
   if (manifest.sources.length === 0) return [];
   const bindings = await prisma.projectSourceBinding.findMany({
     where: {
       id: { in: manifest.sources.map((source) => source.bindingId) },
-      projectId: { in: projectIds },
+      projectId: { in: sourceProjectIds },
       project: { organizationId: manifest.organizationId },
     },
     select: { id: true, projectId: true, repository: true, ref: true },
@@ -395,17 +454,117 @@ export function renderStudioInstructions(
   return sections.filter((section): section is string => Boolean(section)).join("\n\n");
 }
 
-function parseManifest(value: Prisma.JsonValue | null | undefined): EffectiveStudioContext | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const manifest = value as unknown as Partial<EffectiveStudioContext>;
-  if (
-    manifest.version !== 1 ||
-    typeof manifest.organizationId !== "string" ||
-    !Array.isArray(manifest.sources)
-  ) {
-    return null;
+const nonEmptyString = z.string().trim().min(1);
+const uniqueStrings = z
+  .array(nonEmptyString)
+  .refine((values) => new Set(values).size === values.length, "Values must be unique");
+const recordSchema = z.record(z.string(), z.unknown());
+const sourceSchema = z
+  .object({
+    bindingId: nonEmptyString,
+    studioProjectId: nonEmptyString,
+    sourceId: nonEmptyString,
+    refKey: nonEmptyString,
+    access: z.object({ allowedScopes: z.tuple([z.literal("project")]) }).strict(),
+    requiredSourcePaths: uniqueStrings.optional(),
+    relevantSourcePaths: uniqueStrings.optional(),
+    knowledgeProjectId: nonEmptyString,
+    snapshotId: nonEmptyString,
+  })
+  .strict();
+const pinnedSourceSchema = sourceSchema.omit({ bindingId: true });
+const effectiveStudioContextSchema = z
+  .object({
+    version: z.literal(1),
+    organizationId: nonEmptyString,
+    foundation: z
+      .object({
+        id: nonEmptyString,
+        revision: z.number().int().positive(),
+        content: recordSchema,
+      })
+      .strict()
+      .nullable(),
+    role: z
+      .object({
+        id: nonEmptyString,
+        key: nonEmptyString,
+        name: nonEmptyString,
+        instructions: z.string(),
+      })
+      .strict()
+      .nullable(),
+    assignment: z
+      .object({
+        id: nonEmptyString,
+        scope: z.enum(["studio", "one", "multi"]),
+        projectIds: uniqueStrings,
+        brief: recordSchema,
+      })
+      .strict()
+      .nullable(),
+    sourceProjectIds: uniqueStrings,
+    sources: z.array(sourceSchema),
+  })
+  .strict()
+  .superRefine((manifest, context) => {
+    const assignment = manifest.assignment;
+    if (!assignment) {
+      if (
+        manifest.sources.some(
+          (source) => !manifest.sourceProjectIds.includes(source.studioProjectId),
+        )
+      ) {
+        context.addIssue({ code: "custom", message: "A source is outside the protected scope" });
+      }
+    } else {
+      if (assignment.scope === "studio" && assignment.projectIds.length !== 0) {
+        context.addIssue({ code: "custom", message: "Studio scope cannot name assigned projects" });
+      }
+      if (assignment.scope === "one" && assignment.projectIds.length !== 1) {
+        context.addIssue({ code: "custom", message: "One scope must name one assigned project" });
+      }
+      if (assignment.scope === "multi" && assignment.projectIds.length < 2) {
+        context.addIssue({ code: "custom", message: "Multi scope must name multiple projects" });
+      }
+      if (
+        assignment.scope !== "studio" &&
+        (manifest.sourceProjectIds.length !== assignment.projectIds.length ||
+          manifest.sourceProjectIds.some((id) => !assignment.projectIds.includes(id)))
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "Scoped source projects must match assigned projects",
+        });
+      }
+      if (
+        manifest.sources.some(
+          (source) => !manifest.sourceProjectIds.includes(source.studioProjectId),
+        )
+      ) {
+        context.addIssue({ code: "custom", message: "A source is outside the protected scope" });
+      }
+    }
+    const sourceIdentities = manifest.sources.map(
+      (source) =>
+        `${source.bindingId}\u0000${source.studioProjectId}\u0000${source.sourceId}\u0000${source.refKey}`,
+    );
+    if (new Set(sourceIdentities).size !== sourceIdentities.length) {
+      context.addIssue({ code: "custom", message: "Source identities must be unique" });
+    }
+  });
+
+function validateManifest(value: unknown): EffectiveStudioContext {
+  const result = effectiveStudioContextSchema.safeParse(value);
+  if (!result.success) {
+    throw new StudioContextUnavailableError("Stored studio context is invalid.");
   }
-  return manifest as EffectiveStudioContext;
+  return result.data as EffectiveStudioContext;
+}
+
+function parseManifest(value: Prisma.JsonValue | null | undefined): EffectiveStudioContext | null {
+  if (value == null) return null;
+  return validateManifest(value);
 }
 
 function recordValue(value: unknown, label: string): Record<string, unknown> {

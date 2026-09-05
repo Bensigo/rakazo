@@ -161,7 +161,7 @@ export function createStudioDomain(prisma: PrismaClient) {
       if (input.scope === "multi" && projectIds.length < 2)
         throw new IsolationError("Multi-project assignments require at least two projects");
       return prisma.$transaction(async (tx) => {
-        const [projects, existingTask, bot] = await Promise.all([
+        const [projects, existingTask, bot, reviewerMembership] = await Promise.all([
           tx.studioProject.findMany({
             where: { id: { in: projectIds }, organizationId },
             select: { id: true },
@@ -176,6 +176,17 @@ export function createStudioDomain(prisma: PrismaClient) {
             where: { id: input.botId, spaceId: actor.spaceId, userId: actor.userId },
             select: { id: true, thread: { select: { id: true } } },
           }),
+          input.reviewerUserId
+            ? tx.spaceMember.findUnique({
+                where: {
+                  spaceId_userId: {
+                    spaceId: actor.spaceId,
+                    userId: input.reviewerUserId,
+                  },
+                },
+                select: { userId: true },
+              })
+            : Promise.resolve(null),
         ]);
         if (projects.length !== projectIds.length)
           throw new IsolationError("Project is outside this organization");
@@ -187,6 +198,8 @@ export function createStudioDomain(prisma: PrismaClient) {
             "Task and bot must belong to this space and task must be unassigned",
           );
         if (!bot?.thread) throw new IsolationError("Bot is outside this space");
+        if (input.reviewerUserId && !reviewerMembership)
+          throw new IsolationError("Reviewer is outside this space");
         if (input.foundationRevisionId) {
           const revision = await tx.foundationRevision.findFirst({
             where: { id: input.foundationRevisionId, foundation: { organizationId } },
@@ -265,10 +278,11 @@ export function createStudioDomain(prisma: PrismaClient) {
         return prisma.assignmentManifest.findUniqueOrThrow({ where: { id: current.id } });
       if (current.task.status !== "completed")
         throw new IsolationError("Assignment work must complete before human acceptance");
-      return prisma.assignmentManifest.update({
-        where: { id: current.id },
+      await prisma.assignmentManifest.updateMany({
+        where: { id: current.id, status: "draft", acceptedAt: null },
         data: { status: "accepted", acceptedAt: new Date(), acceptedByUserId: actor.userId },
       });
+      return prisma.assignmentManifest.findUniqueOrThrow({ where: { id: current.id } });
     },
   };
 }

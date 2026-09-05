@@ -10,11 +10,13 @@ const actor = {
 const membership = { organizationId: "org-1" };
 
 function fakePrisma() {
-  const assignment = {
+  let assignment = {
     id: "assignment-1",
     status: "draft",
     createdByUserId: actor.userId,
     reviewerUserId: null,
+    acceptedAt: null as Date | null,
+    acceptedByUserId: null as string | null,
     task: { status: "completed" },
   };
   return {
@@ -24,10 +26,11 @@ function fakePrisma() {
         where.id === assignment.id ? assignment : null,
       ),
       findUniqueOrThrow: vi.fn(async () => assignment),
-      update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
-        ...assignment,
-        ...data,
-      })),
+      updateMany: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        if (assignment.status !== "draft" || assignment.acceptedAt) return { count: 0 };
+        assignment = { ...assignment, ...data } as typeof assignment;
+        return { count: 1 };
+      }),
     },
   } as any;
 }
@@ -61,21 +64,10 @@ describe("studio domain", () => {
       status: "accepted",
       acceptedByUserId: actor.userId,
     });
-    prisma.assignmentManifest.findFirst = vi.fn(async () => ({
-      id: "assignment-1",
-      status: "accepted",
-      createdByUserId: actor.userId,
-      reviewerUserId: null,
-      task: { status: "completed" },
-    })) as any;
-    prisma.assignmentManifest.findUniqueOrThrow = vi.fn(async () => ({
-      id: "assignment-1",
-      status: "accepted",
-    })) as any;
     await expect(domain.acceptAssignment(actor, "assignment-1")).resolves.toMatchObject({
       status: "accepted",
     });
-    expect(prisma.assignmentManifest.update).toHaveBeenCalledTimes(1);
+    expect(prisma.assignmentManifest.updateMany).toHaveBeenCalledTimes(1);
   });
 
   it("does not turn a running assignment into human acceptance", async () => {
@@ -91,7 +83,30 @@ describe("studio domain", () => {
     await expect(
       createStudioDomain(prisma).acceptAssignment(actor, "assignment-1"),
     ).rejects.toThrow("Assignment work must complete before human acceptance");
-    expect(prisma.assignmentManifest.update).not.toHaveBeenCalled();
+    expect(prisma.assignmentManifest.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("preserves the first acceptance receipt when another request wins the compare-and-set", async () => {
+    const firstAcceptedAt = new Date("2026-09-05T08:00:00.000Z");
+    const prisma = fakePrisma();
+    prisma.assignmentManifest.updateMany = vi.fn(async () => ({ count: 0 })) as any;
+    prisma.assignmentManifest.findUniqueOrThrow = vi.fn(async () => ({
+      id: "assignment-1",
+      status: "accepted",
+      acceptedAt: firstAcceptedAt,
+      acceptedByUserId: "reviewer-1",
+    })) as any;
+
+    await expect(
+      createStudioDomain(prisma).acceptAssignment(actor, "assignment-1"),
+    ).resolves.toMatchObject({
+      acceptedAt: firstAcceptedAt,
+      acceptedByUserId: "reviewer-1",
+    });
+    expect(prisma.assignmentManifest.updateMany).toHaveBeenCalledWith({
+      where: { id: "assignment-1", status: "draft", acceptedAt: null },
+      data: expect.objectContaining({ status: "accepted", acceptedByUserId: actor.userId }),
+    });
   });
 
   it("creates runnable studio-wide work without treating run creation as acceptance", async () => {
@@ -107,6 +122,7 @@ describe("studio domain", () => {
       $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
         callback({
           studioProject: { findMany: vi.fn(async () => []) },
+          spaceMember: { findUnique: vi.fn(async () => null) },
           bot: {
             findFirst: vi.fn(async () => ({ id: "bot-1", thread: { id: "thread-1" } })),
           },
@@ -147,5 +163,35 @@ describe("studio domain", () => {
       runId: "run-new",
       assignment: { id: "assignment-new", status: "draft" },
     });
+  });
+
+  it("rejects a reviewer who is not a member of the assignment space", async () => {
+    const assignmentCreate = vi.fn();
+    const prisma = {
+      spaceMember: { findUnique: vi.fn(async () => membership) },
+      $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
+        callback({
+          studioProject: { findMany: vi.fn(async () => []) },
+          spaceMember: { findUnique: vi.fn(async () => null) },
+          bot: {
+            findFirst: vi.fn(async () => ({ id: "bot-1", thread: { id: "thread-1" } })),
+          },
+          task: { create: vi.fn() },
+          assignmentManifest: { create: assignmentCreate },
+        }),
+      ),
+    } as any;
+
+    await expect(
+      createStudioDomain(prisma).createAssignment(actor, {
+        scope: "studio",
+        projectIds: [],
+        objective: "Prepare the studio release plan",
+        botId: "bot-1",
+        reviewerUserId: "outsider",
+        manifest: {},
+      }),
+    ).rejects.toThrow("Reviewer is outside this space");
+    expect(assignmentCreate).not.toHaveBeenCalled();
   });
 });
