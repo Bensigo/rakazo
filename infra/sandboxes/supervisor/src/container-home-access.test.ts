@@ -87,6 +87,40 @@ describe("container home access probe", () => {
     expect(pending.container.remove).toHaveBeenCalledWith({ force: true });
   });
 
+  it("fails closed on start rejection and still force-removes the probe", async () => {
+    const startFailure = dockerWithProbe({
+      start: async () => {
+        throw new Error("daemon rejected start");
+      },
+      wait: async () => ({ StatusCode: 0 }),
+    });
+    await expect(
+      probeContainerHomeAccess(startFailure.docker, {
+        homePath: "/host/home",
+        image: "computer:test",
+        user: "1000:1000",
+      }),
+    ).rejects.toThrow(/daemon rejected start/);
+    expect(startFailure.container.wait).not.toHaveBeenCalled();
+    expect(startFailure.container.remove).toHaveBeenCalledWith({ force: true });
+  });
+
+  it("bounds a hung cleanup and fails closed", async () => {
+    const cleanupHang = dockerWithProbe({
+      wait: async () => ({ StatusCode: 0 }),
+      remove: () => new Promise<unknown>(() => undefined),
+    });
+    await expect(
+      probeContainerHomeAccess(
+        cleanupHang.docker,
+        { homePath: "/host/home", image: "computer:test", user: "1000:1000" },
+        50,
+        5,
+      ),
+    ).rejects.toThrow(/cleanup timed out after 5ms/);
+    expect(cleanupHang.container.remove).toHaveBeenCalledWith({ force: true });
+  });
+
   it("fails closed when cleanup cannot prove that the probe was removed", async () => {
     const cleanupFailure = dockerWithProbe({
       wait: async () => ({ StatusCode: 0 }),

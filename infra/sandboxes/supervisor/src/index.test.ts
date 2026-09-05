@@ -2,8 +2,14 @@ import { spawnSync } from "node:child_process";
 import http from "node:http";
 import net from "node:net";
 import { resolveSupervisorToken } from "@rakazo/core";
+import type Docker from "dockerode";
 import { describe, expect, it } from "vitest";
-import { resolveDockerSocketPath, supervisorApp, waitForScreenReady } from "./index.js";
+import {
+  hostHomePath,
+  resolveDockerSocketPath,
+  supervisorApp,
+  waitForScreenReady,
+} from "./index.js";
 import {
   assertRequestIdentity,
   attemptComputerControl,
@@ -117,6 +123,19 @@ describe("sandbox supervisor Docker endpoint", () => {
     );
     expect(resolveDockerSocketPath({}, "win32")).toBe("//./pipe/docker_engine");
     expect(resolveDockerSocketPath({}, "linux")).toBe("/var/run/docker.sock");
+  });
+
+  it("maps a service home through the supervisor's exact host data bind", () => {
+    expect(
+      hostHomePath(
+        "/data/homes/team-a",
+        {
+          Mounts: [{ Destination: "/data", Source: "/host/studio-data" }],
+        } as Docker.ContainerInspectInfo,
+        "/data",
+      ),
+    ).toBe("/host/studio-data/homes/team-a");
+    expect(hostHomePath("/data/homes/team-a", undefined)).toBe("/data/homes/team-a");
   });
 });
 

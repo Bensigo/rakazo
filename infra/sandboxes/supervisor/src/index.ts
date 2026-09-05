@@ -765,10 +765,14 @@ function assertBotHomePath(homePath: string, botId: string) {
   }
 }
 
-function hostHomePath(serviceHomePath: string, info: Docker.ContainerInspectInfo | undefined) {
-  const dataMount = info?.Mounts.find((mount) => mount.Destination === dataDir);
+export function hostHomePath(
+  serviceHomePath: string,
+  info: Docker.ContainerInspectInfo | undefined,
+  serviceDataDir = dataDir,
+) {
+  const dataMount = info?.Mounts.find((mount) => mount.Destination === serviceDataDir);
   if (!dataMount?.Source) return serviceHomePath;
-  return path.join(dataMount.Source, path.relative(dataDir, serviceHomePath));
+  return path.join(dataMount.Source, path.relative(serviceDataDir, serviceHomePath));
 }
 
 function computerControlEndpoint(info: Docker.ContainerInspectInfo) {

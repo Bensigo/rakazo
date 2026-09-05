@@ -2,6 +2,7 @@ import type Docker from "dockerode";
 
 const DEFAULT_PROBE_TIMEOUT_MS = 3_000;
 const MAX_PROBE_TIMEOUT_MS = 5_000;
+const DEFAULT_CLEANUP_TIMEOUT_MS = 1_000;
 
 const ACCESS_PROBE = `
 import os
@@ -49,30 +50,54 @@ export function computerHomeAccessProbeOptions(input: {
   };
 }
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 /** Ask Docker's target mount namespace whether the exact computer uid can use the home. */
 export async function probeContainerHomeAccess(
   docker: Docker,
   input: { homePath: string; image: string; user: string },
   timeoutMs = DEFAULT_PROBE_TIMEOUT_MS,
+  cleanupTimeoutMs = DEFAULT_CLEANUP_TIMEOUT_MS,
 ): Promise<boolean> {
   const boundedTimeoutMs = Math.max(1, Math.min(timeoutMs, MAX_PROBE_TIMEOUT_MS));
-  const container = await docker.createContainer(computerHomeAccessProbeOptions(input));
-  let timer: NodeJS.Timeout | undefined;
+  const boundedCleanupTimeoutMs = Math.max(
+    1,
+    Math.min(cleanupTimeoutMs, DEFAULT_CLEANUP_TIMEOUT_MS),
+  );
+  const container = await withTimeout(
+    docker.createContainer(computerHomeAccessProbeOptions(input)),
+    boundedTimeoutMs,
+    `computer home access probe creation timed out after ${boundedTimeoutMs}ms`,
+  );
   try {
-    await container.start();
-    const result = await Promise.race([
+    await withTimeout(
+      container.start(),
+      boundedTimeoutMs,
+      `computer home access probe start timed out after ${boundedTimeoutMs}ms`,
+    );
+    const result = await withTimeout(
       container.wait(),
-      new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(
-          () =>
-            reject(new Error(`computer home access probe timed out after ${boundedTimeoutMs}ms`)),
-          boundedTimeoutMs,
-        );
-      }),
-    ]);
+      boundedTimeoutMs,
+      `computer home access probe timed out after ${boundedTimeoutMs}ms`,
+    );
     return result.StatusCode === 0;
   } finally {
-    if (timer) clearTimeout(timer);
-    await container.remove({ force: true });
+    await withTimeout(
+      container.remove({ force: true }),
+      boundedCleanupTimeoutMs,
+      `computer home access probe cleanup timed out after ${boundedCleanupTimeoutMs}ms`,
+    );
   }
 }
