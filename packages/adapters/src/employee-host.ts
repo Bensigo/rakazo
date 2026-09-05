@@ -156,7 +156,7 @@ export class EmployeeHostRegistry {
     const previous = this.receipts.get(operationId);
     if (!previous || previous.hostId !== hostId) throw new Error("unknown employee host operation");
     if (previous.status !== "accepted") return { ...previous };
-    const next: EmployeeHostReceipt = { ...previous, completedAt: now, status: result.code === 0 ? "completed" : "failed", result };
+    const next: EmployeeHostReceipt = { ...previous, completedAt: now, status: result?.code === 0 ? "completed" : "failed", result };
     this.receipts.set(operationId, next);
     return { ...next };
   }
@@ -191,6 +191,38 @@ export interface EmployeeHostControlPlaneClient {
   heartbeat(hostId: string, token: string, capabilities: EmployeeHostCapabilities): Promise<void>;
   poll(hostId: string, token: string, signal: AbortSignal): Promise<EmployeeHostOperation | undefined>;
   receipt(hostId: string, token: string, receipt: EmployeeHostReceipt): Promise<void>;
+}
+
+/** Minimal HTTP client used by the companion. All requests are outbound. */
+export class HttpEmployeeHostControlPlaneClient implements EmployeeHostControlPlaneClient {
+  constructor(private readonly baseUrl: string, private readonly fetchImpl: typeof fetch = fetch) {}
+
+  private url(pathname: string) {
+    return `${this.baseUrl.replace(/\/$/u, "")}${pathname}`;
+  }
+
+  private async request(pathname: string, token: string, init: RequestInit = {}) {
+    const response = await this.fetchImpl(this.url(pathname), {
+      ...init,
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json", ...(init.headers ?? {}) },
+    });
+    if (!response.ok) throw new Error(`employee host control plane returned ${response.status}`);
+    return response;
+  }
+
+  async heartbeat(hostId: string, token: string, capabilities: EmployeeHostCapabilities) {
+    await this.request(`/employee-hosts/${encodeURIComponent(hostId)}/heartbeat`, token, { method: "POST", body: JSON.stringify({ capabilities }) });
+  }
+
+  async poll(hostId: string, token: string, signal: AbortSignal) {
+    const response = await this.request(`/employee-hosts/${encodeURIComponent(hostId)}/poll`, token, { method: "POST", signal });
+    const body = (await response.json()) as { operation?: EmployeeHostOperation };
+    return body.operation;
+  }
+
+  async receipt(hostId: string, token: string, receipt: EmployeeHostReceipt) {
+    await this.request(`/employee-hosts/${encodeURIComponent(hostId)}/receipts/${encodeURIComponent(receipt.operationId)}`, token, { method: "POST", body: JSON.stringify(receipt) });
+  }
 }
 
 /** Local companion implementation. It never exports credentials or permits cwd outside its bound root. */
