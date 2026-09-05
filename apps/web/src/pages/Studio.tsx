@@ -21,6 +21,7 @@ export function StudioPage() {
   const [jobRoleName, setJobRoleName] = useState("");
   const [jobRoleDescription, setJobRoleDescription] = useState("");
   const [jobRolePresetIds, setJobRolePresetIds] = useState<string[]>([]);
+  const [jobRoleApplyPending, setJobRoleApplyPending] = useState(false);
   const [bots, setBots] = useState<Awaited<ReturnType<typeof rpc.bots.list>>>([]);
   const [assignments, setAssignments] = useState<AssignmentManifest[]>([]);
   const [repositories, setRepositories] = useState<
@@ -146,10 +147,26 @@ export function StudioPage() {
     setJobRolePresetIds([]);
   }
   async function selectJobRole() {
-    if (!jobRoleSelectionId) return;
-    const selection = await rpc.studio.selectJobRole({ jobRoleId: jobRoleSelectionId });
-    setSelectedJobRole(selection);
-    setBots(await rpc.bots.list());
+    if (!jobRoleSelectionId || jobRoleApplyPending) return;
+    setJobRoleApplyPending(true);
+    try {
+      const selection = await rpc.studio.selectJobRole({ jobRoleId: jobRoleSelectionId });
+      const refreshedBots = await rpc.bots.list();
+      setSelectedJobRole(selection);
+      setBots(refreshedBots);
+    } finally {
+      setJobRoleApplyPending(false);
+    }
+  }
+  function moveJobRolePreset(roleId: string, direction: -1 | 1) {
+    setJobRolePresetIds((ids) => {
+      const index = ids.indexOf(roleId);
+      const nextIndex = index + direction;
+      if (index < 0 || nextIndex < 0 || nextIndex >= ids.length) return ids;
+      const next = [...ids];
+      [next[index], next[nextIndex]] = [next[nextIndex]!, next[index]!];
+      return next;
+    });
   }
   async function createProject() {
     const name = projectName.trim();
@@ -421,6 +438,40 @@ export function StudioPage() {
               </label>
             ))}
           </div>
+          {jobRolePresetIds.length ? (
+            <div className="mt-3 rounded-xl border border-border p-3 text-sm">
+              <p className="font-medium">Default specialist order</p>
+              <div className="mt-2 space-y-2">
+                {jobRolePresetIds.map((roleId, index) => (
+                  <div key={roleId} className="flex items-center justify-between gap-2">
+                    <span>
+                      {index + 1}. {roles.find((role) => role.id === roleId)?.name ?? "Specialist"}
+                    </span>
+                    <span className="flex gap-1">
+                      <button
+                        type="button"
+                        className="rounded border border-border px-2 py-1 text-xs disabled:opacity-40"
+                        aria-label={`Move ${roles.find((role) => role.id === roleId)?.name ?? "specialist"} up`}
+                        disabled={index === 0}
+                        onClick={() => moveJobRolePreset(roleId, -1)}
+                      >
+                        Up
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded border border-border px-2 py-1 text-xs disabled:opacity-40"
+                        aria-label={`Move ${roles.find((role) => role.id === roleId)?.name ?? "specialist"} down`}
+                        disabled={index === jobRolePresetIds.length - 1}
+                        onClick={() => moveJobRolePreset(roleId, 1)}
+                      >
+                        Down
+                      </button>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <Button
             className="mt-3"
             disabled={!jobRoleKey.trim() || !jobRoleName.trim()}
@@ -455,8 +506,11 @@ export function StudioPage() {
                   </option>
                 ))}
               </select>
-              <Button disabled={!jobRoleSelectionId} onClick={() => void run(selectJobRole)}>
-                Apply and provision specialists
+              <Button
+                disabled={!jobRoleSelectionId || jobRoleApplyPending}
+                onClick={() => void run(selectJobRole)}
+              >
+                {jobRoleApplyPending ? "Provisioning…" : "Apply and provision specialists"}
               </Button>
             </div>
             {selectedJobRole ? (
