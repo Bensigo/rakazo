@@ -840,6 +840,7 @@ model Computer {
   updatedAt               DateTime                 @updatedAt
   bots                    Bot[]
   executionLeases         ComputerExecutionLease[]
+  employeeHostOperations  EmployeeHostOperation[]
 
   @@index([spaceId, scope])
   @@map("computers")
@@ -890,6 +891,8 @@ model EmployeeHostOperation {
   operationId    String       @unique
   hostId         String
   host           EmployeeHost @relation(fields: [hostId], references: [hostId], onDelete: Cascade)
+  computerId     String
+  computer       Computer     @relation(fields: [computerId], references: [id], onDelete: Cascade)
   spaceId        String
   botId          String
   runId          String
@@ -906,6 +909,7 @@ model EmployeeHostOperation {
 
   @@index([hostId, status, createdAt])
   @@index([spaceId, botId, fence])
+  @@index([computerId, runId, fence])
   @@map("employee_host_operations")
 }
 

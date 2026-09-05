@@ -60,7 +60,7 @@ export function mountEmployeeHostRoutes(
     const candidate = await deps.prisma.employeeHostOperation.findFirst({ where: { hostId: c.req.param("hostId"), status: "accepted", spaceId: authenticated.record.spaceId }, orderBy: { createdAt: "asc" } });
     const operation = candidate && (await deps.prisma.employeeHostOperation.updateMany({ where: { id: candidate.id, status: "accepted" }, data: { status: "dispatched" } })).count === 1 ? { ...candidate, status: "dispatched" } : null;
     if (!operation) return c.json({});
-    return c.json({ operation: { operationId: operation.operationId, hostId: operation.hostId, spaceId: operation.spaceId, botId: operation.botId, lease: { hostId: operation.hostId, spaceId: operation.spaceId, botId: operation.botId, runId: operation.runId, fence: operation.fence, expiresAt: operation.acceptedAt.getTime() + TTL_MS }, kind: "exec", request: operation.request } });
+    return c.json({ operation: { operationId: operation.operationId, hostId: operation.hostId, spaceId: operation.spaceId, botId: operation.botId, computerId: operation.computerId, lease: { hostId: operation.hostId, spaceId: operation.spaceId, botId: operation.botId, runId: operation.runId, fence: operation.fence, expiresAt: operation.acceptedAt.getTime() + TTL_MS }, kind: "exec", request: operation.request } });
   });
 
   app.post("/employee-hosts/:hostId/receipts/:operationId", async (c) => {
@@ -69,8 +69,8 @@ export function mountEmployeeHostRoutes(
     const operation = await deps.prisma.employeeHostOperation.findFirst({ where: { hostId: c.req.param("hostId"), operationId: c.req.param("operationId"), spaceId: authenticated.record.spaceId } });
     if (!operation) return c.json({ error: "Not found" }, 404);
     if (operation.status !== "accepted" && operation.status !== "dispatched") return c.json({ ok: true, status: operation.status });
-    const input = (await c.req.json().catch(() => null)) as { operationId?: string; hostId?: string; lease?: { runId?: string; fence?: number }; result?: { stdout?: string; stderr?: string; code?: number } } | null;
-    if (input?.operationId !== operation.operationId || input.hostId !== operation.hostId || input.lease?.runId !== operation.runId || input.lease?.fence !== operation.fence) return c.json({ error: "Stale receipt" }, 409);
+    const input = (await c.req.json().catch(() => null)) as { operationId?: string; hostId?: string; lease?: { computerId?: string; runId?: string; fence?: number }; result?: { stdout?: string; stderr?: string; code?: number } } | null;
+    if (input?.operationId !== operation.operationId || input.hostId !== operation.hostId || input.lease?.runId !== operation.runId || input.lease?.fence !== operation.fence || input.lease?.computerId !== operation.computerId) return c.json({ error: "Stale receipt" }, 409);
     const result = input?.result ?? {};
     const lease = await deps.prisma.computerExecutionLease.findFirst({ where: { botId: operation.botId, runId: operation.runId, fence: operation.fence, expiresAt: { gt: new Date() }, computer: { spaceId: operation.spaceId } } });
     if (!lease) return c.json({ error: "Stale receipt" }, 409);

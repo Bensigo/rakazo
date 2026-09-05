@@ -32,9 +32,9 @@ describe("employee host protocol", () => {
     const registry = new EmployeeHostRegistry(10_000);
     const enrollment = host(registry);
     const lease = registry.acquireLease({ hostId: "host-1", spaceId: "space-1", botId: "bot-1", runId: "run-1" }, 1001)!;
-    expect(() => registry.enqueue({ hostId: "host-1", spaceId: "space-2", botId: "bot-1", lease, kind: "exec", request: { argv: ["true"] } }, 1002)).toThrow(/unavailable/);
-    const operation = registry.enqueue({ hostId: "host-1", spaceId: "space-1", botId: "bot-1", lease, kind: "exec", request: { argv: ["true"] } }, 1002);
-    expect(() => registry.enqueue({ hostId: operation.hostId, spaceId: operation.spaceId, botId: operation.botId, lease: { ...lease, fence: lease.fence - 1 }, kind: operation.kind, request: operation.request }, 1003)).toThrow(/stale/);
+    expect(() => registry.enqueue({ hostId: "host-1", spaceId: "space-2", botId: "bot-1", computerId: "computer-1", lease, kind: "exec", request: { argv: ["true"] } }, 1002)).toThrow(/unavailable/);
+    const operation = registry.enqueue({ hostId: "host-1", spaceId: "space-1", botId: "bot-1", computerId: "computer-1", lease, kind: "exec", request: { argv: ["true"] } }, 1002);
+    expect(() => registry.enqueue({ hostId: operation.hostId, spaceId: operation.spaceId, botId: operation.botId, computerId: operation.computerId, lease: { ...lease, fence: lease.fence - 1 }, kind: operation.kind, request: operation.request }, 1003)).toThrow(/stale/);
     expect(registry.poll("host-1", enrollment.enrollmentToken, 1004)?.operationId).toBe(operation.operationId);
     const receipt = registry.receipt(operation.operationId, "host-1", enrollment.enrollmentToken, { stdout: "", stderr: "", code: 0 }, 1005);
     expect(registry.receipt(operation.operationId, "host-1", enrollment.enrollmentToken, { stdout: "replayed", stderr: "", code: 0 }, 1006)).toEqual(receipt);

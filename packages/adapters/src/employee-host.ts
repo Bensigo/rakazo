@@ -46,6 +46,7 @@ export interface EmployeeHostLease {
   hostId: string;
   spaceId: string;
   botId: string;
+  computerId: string;
   runId: string;
   fence: number;
   expiresAt: number;
@@ -56,6 +57,7 @@ export interface EmployeeHostOperation {
   hostId: string;
   spaceId: string;
   botId: string;
+  computerId: string;
   lease: EmployeeHostLease;
   kind: "exec";
   request: CommandRequest;
@@ -67,7 +69,7 @@ export interface EmployeeHostReceipt {
   acceptedAt: number;
   completedAt?: number;
   status: "accepted" | "completed" | "failed" | "unknown";
-  lease?: Pick<EmployeeHostLease, "runId" | "fence">;
+  lease?: Pick<EmployeeHostLease, "runId" | "fence" | "computerId">;
   result?: { stdout: string; stderr: string; code: number };
 }
 
@@ -360,7 +362,7 @@ export async function runEmployeeHostCompanion(input: {
     const receipt: EmployeeHostReceipt = {
       operationId: operation.operationId,
       hostId: input.hostId,
-      lease: { runId: operation.lease.runId, fence: operation.lease.fence },
+      lease: { runId: operation.lease.runId, fence: operation.lease.fence, computerId: operation.computerId },
       acceptedAt: Date.now(),
       completedAt: Date.now(),
       status: code === 0 ? "completed" : "failed",
@@ -394,7 +396,7 @@ export class PrismaEmployeeHostTransport implements EmployeeHostTransport {
     if (!host) throw new Error("employee host is unavailable");
     const lease = await this.prisma.computerExecutionLease.findUnique({ where: { computerId_botId: { computerId: computer.id, botId: context.botId } } });
     if (!lease || lease.runId !== context.runId || lease.expiresAt <= new Date()) throw new Error("employee host execution lease is stale");
-    const operation = await this.prisma.employeeHostOperation.create({ data: { operationId: randomUUID(), hostId: host.hostId, spaceId: context.spaceId, botId: context.botId, runId: context.runId, fence: lease.fence, request: request as unknown as Prisma.InputJsonValue } });
+    const operation = await this.prisma.employeeHostOperation.create({ data: { operationId: randomUUID(), hostId: host.hostId, computerId: computer.id, spaceId: context.spaceId, botId: context.botId, runId: context.runId, fence: lease.fence, request: request as unknown as Prisma.InputJsonValue } });
     while (!context.signal.aborted) {
       const current = await this.prisma.employeeHostOperation.findUnique({ where: { id: operation.id } });
       if (current?.status === "completed" || current?.status === "failed") {
