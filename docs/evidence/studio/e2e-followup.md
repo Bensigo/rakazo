@@ -9,15 +9,20 @@ All accounts, sources, objectives and acceptance decisions here are synthetic lo
 - PR #18 (`b87518c8`): source refresh clears old wiki projections, serializes source mutations, and unfinished acceptance returns a clear conflict.
 - PR #19 (`99f13ee5`): future routine fires resolve current foundation/source context; retries retain their effective manifest. Custom bots keep a null role unless a preset was selected.
 - PR #20 (`020498ad`): finalization waits up to 30 seconds and retries only the fenced database commit on expiry, never the completed external tool.
-- PR #21 (`85d21878`): bounded two-second read-only Docker home visibility retry; symlink/containment failures remain immediate.
+- PR #21 (`85d21878`): bounded two-second read-only Docker home visibility retry; symlink/containment failures remain immediate. Fresh packaged QA showed this alone was insufficient.
+- PR #22 (`f5e39a41`): containerized supervision validates effective access using the exact computer image, uid and host bind; local fd containment is checked first. The temporary probe has no network, no capabilities, a read-only root, bounded operations and cleanup, and late-creation cleanup fenced by UUID. Standalone validation stays unchanged.
 
 Each correction received an independent review with no remaining P1/P2 finding. A stale PG acceptance fixture was corrected at `8d8b1765` to complete both its Task and Run before the positive acceptance assertion.
 
 ## Build and test provenance
 
-The full distribution Dockerfile built app `98e3f0c1f1f2c158ba0cc41b5ecf6a2b0c7e8653` into image `sha256:cc59bb0002c9e0068a1ce6ce592d0cd36a646ff03bc213e2aca572a23833dde1`. A small overlay copied the exact four changed files between that commit and `93a77aea61834135e82cd1527a8230bff03b025d`: two supervisor runtime files and two regression tests. Dependencies and compiled web output are unchanged. The final image is `sha256:04b4bd770f157f9f73cf4f1e3ea0414def4d62db5908a24459e27440d55a986e`; API, worker, web, provider MCP and supervisor use it.
+The full distribution Dockerfile built app `98e3f0c1f1f2c158ba0cc41b5ecf6a2b0c7e8653` into image `sha256:cc59bb0002c9e0068a1ce6ce592d0cd36a646ff03bc213e2aca572a23833dde1`. A small overlay copied the exact four changed files between that commit and `93a77aea61834135e82cd1527a8230bff03b025d`: two supervisor runtime files and two regression tests. Dependencies and compiled web output are unchanged. That checkpoint image is `sha256:04b4bd770f157f9f73cf4f1e3ea0414def4d62db5908a24459e27440d55a986e`.
+
+The final runtime `f5e39a413cf6b3057c8be42391081ae597fdb82a` adds a six-file supervisor overlay over that image, digest `sha256:ac2f410053b7b5aec6809106d2e9e3bbf3da8ce681bf45d83223b5bd457ab4a0`. API, worker, web, provider MCP and supervisor all use it. Aggregate `61e135d209bc884d242e17dc235d5cc7795edbc8` has identical runtime source; its difference from that runtime commit consists only of evidence files. This is an explicit incremental image over the full distribution build, not a second full dependency build.
 
 At `93a77aea`: 24/24 workspace checks passed. The focused suite passed 209 tests across 12 files with one existing Linux-only skip on macOS. A fresh disposable PostgreSQL database applied all 78 migrations and passed six integrated files, with no skipped tests, then was removed. The separate finalization suite passed 30/30, including a real six-second thread lock, exactly one terminal message/event, unchanged completed effect, and idempotent duplicate finalization.
+
+At integrated `61e135d2`, the final supervisor suite passed **89 tests with one existing Linux-only skip** across five files, and its TypeScript check passed. Independent final review of `f5e39a41` found no remaining P1/P2 issue.
 
 The updated source UI passed the installed-Chrome race regression. Its isolated temporary harness mocked authentication and initial Studio RPC state; it proves component race behavior, while the real packaged journeys below prove authentication and persistence.
 
@@ -62,7 +67,13 @@ Final observation showed one inactive routine, no next run, exactly one complete
 
 ## Fresh Docker computer observation
 
-At `93a77aea`, a brand-new synthetic organization failed first provision with HTTP 500 after the full two-second visibility retry: its fresh home was still reported non-writable for uid 1000. A subsequent user retry returned HTTP 200 and started the computer as `1000:1000`. This means PR #21 alone does not satisfy reliable first provision. Follow-up diagnosis is in progress; existing-computer execution must not be presented as proof of successful first provision.
+At `93a77aea`, a brand-new synthetic organization failed first provision with HTTP 500 after the full two-second visibility retry: its fresh home was still reported non-writable for uid 1000. A subsequent user retry returned HTTP 200 and started the computer as `1000:1000`. This means PR #21 alone does not satisfy reliable first provision. Follow-up diagnosis found that Docker Desktop reports synthetic ownership metadata that can disagree with effective access in the target container namespace. PR #22 corrects that access check; its separate fresh-home journey below determines first-provision acceptance. The failed first attempt above remains part of the record.
+
+### Corrected first provision on the final image
+
+A new account created through real signup/onboarding opened bot `First Provision One` (`cmtp0e9w300053dpf2m27mnh3`) and its computer (`cmtp0e9w100043dpf03dkzptx`) in new organization `2e5e965d92f6394492d689e161e45e9c`. Its first browser `POST /rpc/computer/boot` returned 200 in 3272 ms. Supervisor trace `96c4f13a8a566f1c887f9a396b328e8c` recorded the first `POST /computers` as 200 in 3179 ms at `23:24:09.108Z`, followed by setup exec 200 and screen mode 200. Product supervisor execution then returned exit 0, uid 1000, gid 1000, a writable home and persisted marker readback. No model generation was required for this computer test.
+
+![Fresh computer succeeds on its first start](fresh-first-provision-one-f5e39a41.png)
 
 ## Host receipt recovery
 
