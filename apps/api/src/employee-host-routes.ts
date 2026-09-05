@@ -18,16 +18,20 @@ export function mountEmployeeHostRoutes(
   app.post("/employee-hosts/enroll", async (c) => {
     const actor = await deps.actor(c.req.raw);
     if (!actor) return c.json({ error: "Unauthorized" }, 401);
+    const origin = c.req.header("origin");
+    if (origin && origin !== new URL(c.req.url).origin) return c.json({ error: "Origin denied" }, 403);
+    if (Number(c.req.header("content-length") ?? 0) > 64 * 1024) return c.json({ error: "Payload too large" }, 413);
     const input = (await c.req.json().catch(() => null)) as { hostId?: string; name?: string; platform?: string; capabilities?: unknown; workspaceRoot?: string } | null;
     if (!input?.hostId || !input.name || !input.platform || !input.workspaceRoot) return c.json({ error: "Invalid enrollment" }, 400);
+    if ([input.hostId, input.name, input.platform, input.workspaceRoot].some((value) => value.length > 512)) return c.json({ error: "Invalid enrollment" }, 400);
+    if (!/^[a-z0-9][a-z0-9._:-]{0,127}$/iu.test(input.hostId)) return c.json({ error: "Invalid enrollment" }, 400);
+    const existing = await deps.prisma.employeeHost.findUnique({ where: { hostId: input.hostId } });
+    if (existing) return c.json({ error: "Host already enrolled" }, 409);
     const capabilities = (input.capabilities && typeof input.capabilities === "object" ? input.capabilities : {}) as Prisma.InputJsonValue;
     const token = randomUUID();
     const now = new Date();
-    await deps.prisma.employeeHost.upsert({
-      where: { hostId: input.hostId },
-      create: { hostId: input.hostId, spaceId: actor.spaceId, ownerUserId: actor.userId, name: input.name, platform: input.platform, capabilities, workspaceRoot: input.workspaceRoot, tokenHash: hash(token), lastSeenAt: now, expiresAt: new Date(now.getTime() + TTL_MS) },
-      update: { spaceId: actor.spaceId, ownerUserId: actor.userId, name: input.name, platform: input.platform, capabilities, workspaceRoot: input.workspaceRoot, tokenHash: hash(token), lastSeenAt: now, expiresAt: new Date(now.getTime() + TTL_MS) },
-    });
+    try { await deps.prisma.employeeHost.create({ data: { hostId: input.hostId, spaceId: actor.spaceId, ownerUserId: actor.userId, name: input.name, platform: input.platform, capabilities, workspaceRoot: input.workspaceRoot, tokenHash: hash(token), lastSeenAt: now, expiresAt: new Date(now.getTime() + TTL_MS) } }); }
+    catch { return c.json({ error: "Host already enrolled" }, 409); }
     return c.json({ hostId: input.hostId, enrollmentToken: token });
   });
 
@@ -65,9 +69,13 @@ export function mountEmployeeHostRoutes(
     const operation = await deps.prisma.employeeHostOperation.findFirst({ where: { hostId: c.req.param("hostId"), operationId: c.req.param("operationId"), spaceId: authenticated.record.spaceId } });
     if (!operation) return c.json({ error: "Not found" }, 404);
     if (operation.status !== "accepted" && operation.status !== "dispatched") return c.json({ ok: true, status: operation.status });
-    const input = (await c.req.json().catch(() => null)) as { result?: { stdout?: string; stderr?: string; code?: number } } | null;
+    const input = (await c.req.json().catch(() => null)) as { operationId?: string; hostId?: string; lease?: { runId?: string; fence?: number }; result?: { stdout?: string; stderr?: string; code?: number } } | null;
+    if (input?.operationId !== operation.operationId || input.hostId !== operation.hostId || input.lease?.runId !== operation.runId || input.lease?.fence !== operation.fence) return c.json({ error: "Stale receipt" }, 409);
     const result = input?.result ?? {};
-    await deps.prisma.employeeHostOperation.update({ where: { id: operation.id }, data: { status: result.code === 0 ? "completed" : "failed", stdout: result.stdout ?? "", stderr: result.stderr ?? "", exitCode: result.code ?? 1, completedAt: new Date() } });
+    const lease = await deps.prisma.computerExecutionLease.findFirst({ where: { botId: operation.botId, runId: operation.runId, fence: operation.fence, expiresAt: { gt: new Date() }, computer: { spaceId: operation.spaceId } } });
+    if (!lease) return c.json({ error: "Stale receipt" }, 409);
+    const updated = await deps.prisma.employeeHostOperation.updateMany({ where: { id: operation.id, hostId: operation.hostId, runId: operation.runId, fence: operation.fence, status: "dispatched" }, data: { status: result.code === 0 ? "completed" : "failed", stdout: result.stdout ?? "", stderr: result.stderr ?? "", exitCode: result.code ?? 1, completedAt: new Date() } });
+    if (updated.count !== 1) return c.json({ ok: true, status: "already-completed" });
     return c.json({ ok: true });
   });
 }

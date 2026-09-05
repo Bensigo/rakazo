@@ -67,6 +67,7 @@ export interface EmployeeHostReceipt {
   acceptedAt: number;
   completedAt?: number;
   status: "accepted" | "completed" | "failed";
+  lease?: Pick<EmployeeHostLease, "runId" | "fence">;
   result?: { stdout: string; stderr: string; code: number };
 }
 
@@ -183,6 +184,9 @@ async function commandExists(command: string) {
   }
 }
 
+export const EMPLOYEE_HOST_MAX_OUTPUT_BYTES = 1_000_000;
+export const EMPLOYEE_HOST_MAX_TIMEOUT_MS = 5 * 60_000;
+
 export interface EmployeeHostCompanion {
   execute(request: CommandRequest, signal?: AbortSignal): AsyncIterable<ProcessEvent>;
   capabilities(): Promise<EmployeeHostCapabilities>;
@@ -241,9 +245,27 @@ export class LocalEmployeeHostCompanion implements EmployeeHostCompanion {
       yield { type: "exit", code: 1 };
       return;
     }
-    const child = spawn(request.argv[0] ?? "true", request.argv.slice(1), { cwd, signal, env: { ...process.env } });
-    child.stdout?.on("data", (data) => events.push({ type: "stdout", data: String(data) }));
-    child.stderr?.on("data", (data) => events.push({ type: "stderr", data: String(data) }));
+    const env = {
+      PATH: process.env.PATH ?? "",
+      HOME: process.env.HOME ?? root,
+      LANG: process.env.LANG ?? "C",
+      TMPDIR: process.env.TMPDIR ?? "/tmp",
+      ...Object.fromEntries(Object.entries(request.env ?? {}).filter(([key]) => /^(PATH|HOME|LANG|TMPDIR|LC_[A-Z_]+)$/u.test(key))),
+    };
+    const timeoutMs = Math.min(request.timeoutMs ?? EMPLOYEE_HOST_MAX_TIMEOUT_MS, EMPLOYEE_HOST_MAX_TIMEOUT_MS);
+    const child = spawn(request.argv[0] ?? "true", request.argv.slice(1), { cwd, signal, env });
+    const timeout = setTimeout(() => child.kill("SIGTERM"), timeoutMs);
+    let outputBytes = 0;
+    const append = (type: "stdout" | "stderr", data: unknown) => {
+      const value = String(data);
+      if (outputBytes >= EMPLOYEE_HOST_MAX_OUTPUT_BYTES) return;
+      const remaining = EMPLOYEE_HOST_MAX_OUTPUT_BYTES - outputBytes;
+      const bounded = value.slice(0, remaining);
+      outputBytes += bounded.length;
+      events.push({ type, data: bounded });
+    };
+    child.stdout?.on("data", (data) => append("stdout", data));
+    child.stderr?.on("data", (data) => append("stderr", data));
     const events: ProcessEvent[] = [];
     let code: number | null = null;
     child.once("close", (exitCode) => { code = exitCode ?? 1; });
@@ -252,6 +274,7 @@ export class LocalEmployeeHostCompanion implements EmployeeHostCompanion {
       if (code !== null) break;
       await new Promise((resolve) => setTimeout(resolve, 5));
     }
+    clearTimeout(timeout);
     yield { type: "exit", code };
   }
 }
@@ -294,6 +317,7 @@ export async function runEmployeeHostCompanion(input: {
     await input.client.receipt(input.hostId, input.enrollmentToken, {
       operationId: operation.operationId,
       hostId: input.hostId,
+      lease: { runId: operation.lease.runId, fence: operation.lease.fence },
       acceptedAt: Date.now(),
       completedAt: Date.now(),
       status: code === 0 ? "completed" : "failed",
@@ -347,18 +371,16 @@ export class EmployeeHostSandboxProvider implements SandboxProvider {
   provision(request: Parameters<EmployeeHostTransport["provision"]>[0], context: AdapterContext) { return this.transport.provision(request, context); }
   prepare() { return Promise.resolve(); }
   execute(computer: ComputerRef, request: CommandRequest, context: AdapterContext) { return this.transport.execute(computer, request, context); }
-  connectScreen(): Promise<ScreenSession> { return Promise.resolve({ url: null, mimeType: "text/plain", close: async () => undefined }); }
-  sendInput(): Promise<void> { return Promise.resolve(); }
-  observe(): Promise<ComputerObservation> {
-    return Promise.resolve({ frameId: "employee-host-no-gui", capturedAt: new Date().toISOString(), mimeType: "image/png", image: new Uint8Array(), width: 0, height: 0 });
-  }
-  act(_computer: ComputerRef, _request: ComputerActionRequest): Promise<{ completed: number }> { return Promise.resolve({ completed: 0 }); }
-  listFiles(): Promise<ComputerFileEntry[]> { return Promise.resolve([]); }
-  readFile(): Promise<Uint8Array> { return Promise.reject(new Error("employee host file transport is not wired")); }
-  writeFile(_computer: ComputerRef, _file: PortableFile): Promise<void> { return Promise.reject(new Error("employee host file transport is not wired")); }
-  exportWorkspace(): AsyncIterable<PortableFile> { return (async function* () {})(); }
-  importWorkspace(): Promise<void> { return Promise.reject(new Error("employee host workspace transport is not wired")); }
-  snapshot(): Promise<{ id: string; createdAt: string }> { return Promise.reject(new Error("employee host snapshots are not supported")); }
+  connectScreen(): Promise<ScreenSession> { return Promise.reject(new Error("employee host GUI is unsupported")); }
+  sendInput(): Promise<void> { return Promise.reject(new Error("employee host input is unsupported")); }
+  observe(): Promise<ComputerObservation> { return Promise.reject(new Error("employee host GUI observation is unsupported")); }
+  act(_computer: ComputerRef, _request: ComputerActionRequest): Promise<{ completed: number }> { return Promise.reject(new Error("employee host GUI actions are unsupported")); }
+  listFiles(): Promise<ComputerFileEntry[]> { return Promise.reject(new Error("employee host file transport is unsupported")); }
+  readFile(): Promise<Uint8Array> { return Promise.reject(new Error("employee host file transport is unsupported")); }
+  writeFile(_computer: ComputerRef, _file: PortableFile): Promise<void> { return Promise.reject(new Error("employee host file transport is unsupported")); }
+  exportWorkspace(): AsyncIterable<PortableFile> { throw new Error("employee host workspace transport is unsupported"); }
+  importWorkspace(): Promise<void> { return Promise.reject(new Error("employee host workspace transport is unsupported")); }
+  snapshot(): Promise<{ id: string; createdAt: string }> { return Promise.reject(new Error("employee host snapshots are unsupported")); }
   stop(): Promise<void> { return Promise.resolve(); }
   destroy(): Promise<void> { return Promise.resolve(); }
 }

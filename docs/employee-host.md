@@ -6,4 +6,6 @@ The control plane enrolls a stable `hostId` against the employee's existing auth
 
 The included `LocalEmployeeHostCompanion` executes shell commands only below its bound workspace root. `detectEmployeeHostCapabilities()` reports macOS, Xcode (`xcodebuild`), and Simulator tooling (`xcrun`) when present. GUI observation, graphical input, screen takeover, and multi-screen are deliberately reported as unsupported until a native screen transport exists. Xcode or Simulator command-line work can therefore be advertised truthfully without claiming remote GUI control.
 
+The employee workspace is a path boundary, not an operating-system sandbox. Commands run with the employee account's normal OS permissions, subject to the companion's environment and timeout limits; install and review the companion accordingly.
+
 The provider is exposed as `employee-host` through `createSandboxProvider()` when composition supplies an authenticated `EmployeeHostTransport`. The transport and registry are intentionally separate so API persistence can replace the in-memory reference implementation without changing the companion contract.
