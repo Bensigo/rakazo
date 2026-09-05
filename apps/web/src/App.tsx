@@ -13,6 +13,7 @@ import {
 } from "./lib/session-gate";
 import { McpOAuthCallbackPage } from "./pages/McpOAuthCallback";
 import { ShellPage } from "./pages/Shell";
+import { StudioPage } from "./pages/Studio";
 
 const AuthPage = lazy(() =>
   import("./pages/Auth").then((module) => ({ default: module.AuthPage })),
@@ -86,6 +87,7 @@ export function App() {
             element={user ? <McpOAuthCallbackPage /> : <Navigate to="/sign-in" replace />}
           />
           <Route path="/app" element={user ? <ShellPage /> : <Navigate to="/sign-in" replace />} />
+          <Route path="/studio" element={user ? <StudioPage /> : <Navigate to="/sign-in" replace />} />
           <Route
             path="/app/g/:groupId"
             element={user ? <ShellPage /> : <Navigate to="/sign-in" replace />}

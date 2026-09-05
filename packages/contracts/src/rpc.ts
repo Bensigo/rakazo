@@ -139,11 +139,14 @@ export const appContract = {
   },
   studio: {
     foundation: oc.output(StudioFoundationSchema.nullable()),
+    publishFoundation: oc.input(z.object({ content: z.record(z.string(), z.unknown()) })).output(StudioFoundationSchema),
     projects: oc.output(z.array(StudioProjectSchema)),
     createProject: oc
       .input(z.object({ name: z.string().trim().min(1).max(160), slug: z.string().trim().min(1).max(120), scope: ProjectScopeSchema }))
       .output(StudioProjectSchema),
     roles: oc.output(z.array(EmployeeRolePresetSchema)),
+    createRole: oc.input(z.object({ key: z.string().trim().min(1).max(80), name: z.string().trim().min(1).max(160), description: z.string().max(4000).default(""), instructions: z.string().max(20000).default(""), isDefault: z.boolean().default(false) })).output(EmployeeRolePresetSchema),
+    updateRole: oc.input(z.object({ roleId: Id, name: z.string().trim().min(1).max(160).optional(), description: z.string().max(4000).optional(), instructions: z.string().max(20000).optional(), isDefault: z.boolean().optional() })).output(EmployeeRolePresetSchema),
     assignment: oc.input(z.object({ assignmentId: Id })).output(AssignmentManifestSchema),
     acceptAssignment: oc.input(z.object({ assignmentId: Id })).output(AssignmentManifestSchema),
   },

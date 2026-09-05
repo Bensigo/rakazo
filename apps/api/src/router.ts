@@ -458,9 +458,15 @@ export function createRouter(deps: RouterDeps) {
             : null,
         };
       }),
+      publishFoundation: authed.studio.publishFoundation.handler(async ({ context, input }) => {
+        const row = await studio.publishFoundation(context.actor, input.content);
+        return { id: row.id, organizationId: row.organizationId, currentRevision: row.currentRevision ? { ...row.currentRevision, content: row.currentRevision.content as Record<string, unknown>, createdAt: row.currentRevision.createdAt.toISOString() } : null };
+      }),
       projects: authed.studio.projects.handler(async ({ context }) => (await studio.projects(context.actor)).map(studioProjectDto)),
       createProject: authed.studio.createProject.handler(async ({ context, input }) => studioProjectDto(await studio.createProject(context.actor, input))),
       roles: authed.studio.roles.handler(async ({ context }) => (await studio.roles(context.actor)).map(roleDto)),
+      createRole: authed.studio.createRole.handler(async ({ context, input }) => roleDto(await studio.createRole(context.actor, input))),
+      updateRole: authed.studio.updateRole.handler(async ({ context, input }) => roleDto(await studio.updateRole(context.actor, input.roleId, input))),
       assignment: authed.studio.assignment.handler(async ({ context, input }) => {
         const row = await studio.assignment(context.actor, input.assignmentId);
         if (!row) throw new IsolationError();
