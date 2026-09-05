@@ -75,6 +75,12 @@ A new account created through real signup/onboarding opened bot `First Provision
 
 ![Fresh computer succeeds on its first start](fresh-first-provision-one-f5e39a41.png)
 
+A second distinct account repeated real signup/onboarding and opened bot `First Provision Two` (`cmtp0sjwm000m3dpf4s18sodw`), computer `cmtp0sjwk000l3dpfu9x2zv5i`, organization/home `410d5b1455bf3785206f2fde93d4a3e8`. Its first browser boot returned 200 in 3727 ms; supervisor trace `b843a0efc1e30526ee2d266746935701` recorded the first provision as 200 in 3626 ms at `23:35:17.706Z`. Product exec returned exit 0, uid/gid 1000 and writable storage, wrote `second-marker`, and a separate product exec read that same persisted value as uid 1000. No probe containers remained.
+
+![Second distinct fresh computer also succeeds on first start](fresh-first-provision-two-f5e39a41.png)
+
+Both fresh Docker journeys used the final image and new homes, with no retries, DB seeding or model generation. Their synthetic accounts/computers remain available for review; task browser/authentication artifacts were closed or removed. An unrelated second-test attempt took the employee-host enrollment path and was stopped; it is excluded from Docker proof.
+
 ## Host receipt recovery
 
 The final CLI code at `4560e752` was exercised against packaged API `98e3f0c1`. A real HTTP proxy dropped the response only after the API committed the receipt. Before companion restart: marker lines 1, terminal spool entries 1, DB operation completed/exit 0. After a new CLI process with the same configuration: marker lines 1, spool entries 0, DB result unchanged. A stale fence returned 409 and a distinct owner's token returned 401. These were explicit protocol fixtures, not model-created assignments. Their accounts, organizations, hosts, operations and workspaces were removed; final fixture counts were zero.
@@ -84,3 +90,5 @@ The final CLI code at `4560e752` was exercised against packaged API `98e3f0c1`. 
 Two navigation redirects were observed around service replacement. Four subsequent authenticated deep-link checks, including a traced HTTP-200 bootstrap with the requested bot ID, selected the correct bot. No speculative routing change was made. The earlier missing-thread hypothesis was withdrawn because the thread already existed.
 
 Provider credentials remain unset: MCP transport/security is tested, but no paid vendor action, SMTP delivery, production invitation or native macOS/Xcode/device action is claimed.
+
+Final packaging check validated the pushed application pin and Compose configuration. Superseded unused image tags were removed after the final image started; Docker reported another 281.8 kB reclaimed. Existing containers, volumes and user checkouts were preserved.
