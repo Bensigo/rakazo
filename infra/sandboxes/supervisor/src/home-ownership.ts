@@ -145,6 +145,29 @@ async function assertWritableDirectory(
   await assertFdBeneathRoot(handle, rootPath);
 }
 
+async function assertDirectoryStructure(handle: FileHandle, rootPath: string) {
+  await assertFdBeneathRoot(handle, rootPath);
+  const descriptorPath = `/proc/self/fd/${handle.fd}`;
+  const directory = await opendir(descriptorPath);
+  for await (const entry of directory) {
+    const childPath = path.join(descriptorPath, entry.name);
+    let childDir: FileHandle | undefined;
+    try {
+      childDir = await open(childPath, DIRECTORY_OPEN_FLAGS);
+    } catch (error) {
+      if (!isMissingOrNotDirectory(error)) throw error;
+    }
+    if (!childDir) continue;
+    try {
+      await assertFdBeneathRoot(childDir, rootPath);
+      await assertDirectoryStructure(childDir, rootPath);
+    } finally {
+      await childDir.close();
+    }
+  }
+  await assertFdBeneathRoot(handle, rootPath);
+}
+
 async function assertWritableLinux(root: string, uid: number, gid: number): Promise<void> {
   let rootStat: Stats;
   try {
@@ -178,6 +201,56 @@ async function assertWritableLinux(root: string, uid: number, gid: number): Prom
   } finally {
     await handle.close();
   }
+}
+
+/**
+ * Validate the home tree's type and fd containment without inferring access
+ * from uid/mode bits. Docker Desktop bind mounts can expose synthetic stat
+ * ownership that differs from the access decision in a child container.
+ */
+export async function assertComputerHomeStructure(root: string): Promise<void> {
+  let rootStat: Stats;
+  try {
+    rootStat = await lstat(root);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") throw missingHomeError(root);
+    throw error;
+  }
+  if (rootStat.isSymbolicLink()) {
+    throw new Error(`computer home ${root} must not be a symbolic link`);
+  }
+  if (!rootStat.isDirectory()) {
+    throw new Error(`computer home ${root} must be a directory`);
+  }
+  if (process.platform !== "linux") return;
+
+  let handle: FileHandle;
+  try {
+    handle = await open(root, DIRECTORY_OPEN_FLAGS);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") throw missingHomeError(root);
+    if (code === "ELOOP") throw new Error(`computer home ${root} must not be a symbolic link`);
+    if (code === "ENOTDIR") throw new Error(`computer home ${root} must be a directory`);
+    throw error;
+  }
+  try {
+    const rootPath = await resolveFdPath(handle.fd);
+    await assertDirectoryStructure(handle, rootPath);
+  } finally {
+    await handle.close();
+  }
+}
+
+/** Validate structure locally, then ask the target uid's mount namespace for access. */
+export async function assertComputerHomeWritableInContainer(
+  root: string,
+  uid: number,
+  gid: number,
+  verifyEffectiveAccess: () => Promise<boolean>,
+): Promise<void> {
+  await assertComputerHomeStructure(root);
+  if (!(await verifyEffectiveAccess())) throw writabilityError(root, root, uid, gid);
 }
 
 /** Validate without privileged mutation before a computer receives the home bind mount. */

@@ -16,6 +16,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assertComputerHomeWritable,
   assertComputerHomeWritableAfterVisibilityDelay,
+  assertComputerHomeWritableInContainer,
   assertOpenedDirectoryBeneathRoot,
 } from "./home-ownership.js";
 
@@ -133,6 +134,50 @@ describe("computer home ownership", () => {
     ).rejects.toThrow(/chown -R/);
     expect(wait).toHaveBeenCalled();
     expect(elapsed).toBeGreaterThanOrEqual(20);
+  });
+
+  it("uses the target container's effective access when stat ownership disagrees", async () => {
+    const parent = await mkdtemp(path.join(tmpdir(), "rakazo-home-container-access-"));
+    roots.push(parent);
+    const home = path.join(parent, "home");
+    await mkdir(home);
+    await chmod(home, 0o700);
+    const stat = await lstat(home);
+    const targetUid = stat.uid + 1;
+    const targetGid = stat.gid + 1;
+
+    await expect(assertComputerHomeWritable(home, targetUid, targetGid)).rejects.toThrow(
+      /not writable/,
+    );
+    await expect(
+      assertComputerHomeWritableInContainer(home, targetUid, targetGid, async () => true),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects a home that the target container cannot access", async () => {
+    const parent = await mkdtemp(path.join(tmpdir(), "rakazo-home-container-denied-"));
+    roots.push(parent);
+    const home = path.join(parent, "home");
+    await mkdir(home);
+
+    await expect(
+      assertComputerHomeWritableInContainer(home, 1000, 1000, async () => false),
+    ).rejects.toThrow(/not writable by uid 1000/);
+  });
+
+  it("rejects a root symlink before consulting container access", async () => {
+    const parent = await mkdtemp(path.join(tmpdir(), "rakazo-home-container-link-"));
+    roots.push(parent);
+    const outside = path.join(parent, "outside");
+    const home = path.join(parent, "home");
+    await mkdir(outside);
+    await symlink(outside, home);
+    const verifyEffectiveAccess = vi.fn(async () => true);
+
+    await expect(
+      assertComputerHomeWritableInContainer(home, 1000, 1000, verifyEffectiveAccess),
+    ).rejects.toThrow(/symbolic link/);
+    expect(verifyEffectiveAccess).not.toHaveBeenCalled();
   });
 
   it("rejects an owner-owned file that is not writable by that owner", async () => {
