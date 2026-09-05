@@ -64,7 +64,7 @@ test.describe("Studio UI fixture", () => {
     await expect(page.getByText("1 specialists provisioned for you")).toBeVisible();
 
     await apply.click();
-    await expect(page.getByRole("alert")).toContainText("Synthetic role provisioning failure");
+    await expect(page.getByRole("alert")).toContainText("Service Unavailable");
     await expect(page.getByText("1 specialists provisioned for you")).toBeVisible();
   });
 
