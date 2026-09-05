@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { AssignmentManifest, EmployeeRolePreset, StudioProject } from "@rakazo/contracts";
 import { Button, Input } from "@rakazo/ui-web";
@@ -42,6 +42,7 @@ export function StudioPage() {
   const [projectSlug, setProjectSlug] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const sourceRequest = useRef(0);
   const load = async () => {
     try {
       const [p, r, f, a, b, rr] = await Promise.all([
@@ -127,38 +128,57 @@ export function StudioPage() {
     setProjectSlug("");
   }
   async function selectSourceProject(projectId: string) {
+    const request = ++sourceRequest.current;
     setSourceProjectId(projectId);
     setSourceBindingId("");
     setSources([]);
     setWikiPages([]);
     setWikiPage(null);
-    if (projectId) setSources(await rpc.studio.projectSources({ projectId }));
+    if (projectId) {
+      const next = await rpc.studio.projectSources({ projectId });
+      if (request === sourceRequest.current) setSources(next);
+    }
   }
   async function addSource(repositoryId: string) {
     const source = await rpc.studio.addProjectSource({ projectId: sourceProjectId, repositoryId });
-    setSources((all) => [...all, source]);
+    setSources((all) =>
+      all.some((item) => item.id === source.id)
+        ? all.map((item) => (item.id === source.id ? source : item))
+        : [...all, source],
+    );
     setSourceBindingId(source.id);
   }
   async function refreshSource(bindingId: string) {
+    const request = sourceRequest.current;
     const synced = await rpc.studio.syncProjectSource({ bindingId });
+    if (request !== sourceRequest.current) return;
     setSources((all) => all.map((s) => (s.id === bindingId ? synced : s)));
     if (bindingId === sourceBindingId)
       setWikiPages(await rpc.studio.projectWikiPages({ projectId: sourceProjectId, bindingId }));
   }
   async function loadWiki(bindingId: string) {
+    const request = ++sourceRequest.current;
     setSourceBindingId(bindingId);
     setWikiPage(null);
-    setWikiPages(await rpc.studio.projectWikiPages({ projectId: sourceProjectId, bindingId }));
+    const pages = await rpc.studio.projectWikiPages({ projectId: sourceProjectId, bindingId });
+    if (request === sourceRequest.current) setWikiPages(pages);
   }
   async function readWiki(pageId: string) {
     if (!sourceProjectId || !sourceBindingId) return;
-    setWikiPage(
-      await rpc.studio.projectWikiPage({
-        projectId: sourceProjectId,
-        bindingId: sourceBindingId,
-        pageId,
-      }),
-    );
+    const request = sourceRequest.current;
+    const projectId = sourceProjectId;
+    const bindingId = sourceBindingId;
+    const page = await rpc.studio.projectWikiPage({
+      projectId,
+      bindingId,
+      pageId,
+    });
+    if (
+      request === sourceRequest.current &&
+      projectId === sourceProjectId &&
+      bindingId === sourceBindingId
+    )
+      setWikiPage(page);
   }
   async function createAssignment() {
     const a = await rpc.studio.createAssignment({
