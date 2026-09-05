@@ -112,12 +112,7 @@ export class ManagedProviderMcpClient implements ManagedConnectorProvider {
       if (serialized === undefined || serialized.length > MAX_RESPONSE_BYTES) throw new Error("Managed provider response is invalid or too large");
       return value;
     } catch (error) {
-      if (signal.aborted) throw abortedError();
-      const message = error instanceof Error ? error.message : "";
-      const safe = /^(Managed provider (returned invalid|operation failed|failed|request failed|response is invalid)|Managed delivery operation failed)/i.test(message)
-        ? message
-        : "Managed provider request failed";
-      throw new Error(safe);
+      throw sanitizeManagedProviderError(error, signal);
     } finally {
       await client.close().catch(() => undefined);
       await transport.close().catch(() => undefined);
@@ -129,6 +124,22 @@ function abortedError(): Error {
   const error = new Error("Managed provider request aborted");
   error.name = "AbortError";
   return error;
+}
+
+export function sanitizeManagedProviderError(error: unknown, signal: AbortSignal): Error {
+  if (signal.aborted) return abortedError();
+  const message = error instanceof Error ? error.message : "";
+  const safeMessages = new Set([
+    "Managed provider operation failed",
+    "Managed provider request failed",
+    "Managed provider response is invalid or too large",
+    "Managed provider returned an invalid execute event",
+    "Managed delivery operation failed",
+  ]);
+  if (safeMessages.has(message) || /^Managed provider returned invalid [a-z_]+ response$/.test(message)) {
+    return new Error(message);
+  }
+  return new Error("Managed provider request failed");
 }
 
 export class ManagedMessagingMcpClient implements MessagingSurface {

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { type AddressInfo } from "node:net";
 import test from "node:test";
 import type { AdapterContext, ConnectorCall, ManagedConnectorProvider } from "@rakazo/adapter-kit";
-import { ManagedEmailMcpClient, ManagedMessagingMcpClient, ManagedNotificationMcpClient, ManagedProviderMcpClient } from "@rakazo/adapters";
+import { ManagedEmailMcpClient, ManagedMessagingMcpClient, ManagedNotificationMcpClient, ManagedProviderMcpClient, sanitizeManagedProviderError } from "@rakazo/adapters";
 import { createProviderMcpHttpServer, deliveryRun } from "./server.js";
 import type { MessagingSurface } from "@rakazo/adapter-kit";
 
@@ -201,4 +201,13 @@ test("late provider rejection after cancellation is classified without leaking i
     assert.doesNotMatch(String(error), /private\.example|password|hidden/i);
     return true;
   });
+});
+
+test("provider-prefixed remote errors are still replaced rather than allowlisted", () => {
+  const error = sanitizeManagedProviderError(
+    new Error("Managed provider failed: apiKey=secret-value"),
+    new AbortController().signal,
+  );
+  assert.equal(error.message, "Managed provider request failed");
+  assert.doesNotMatch(error.message, /secret-value/i);
 });
