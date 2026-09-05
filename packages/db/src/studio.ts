@@ -118,11 +118,29 @@ export function createStudioDomain(prisma: PrismaClient) {
       });
       if (!role) return null;
       const presetIds = parseRolePresetIds(role.defaultRolePresetIds);
+      await validatedRolePresets(prisma, membership.organizationId, presetIds);
       const bindings = await prisma.employeeJobRoleSpecialist.findMany({
         where: { spaceMemberId: membership.id, rolePresetId: { in: presetIds } },
-        select: { rolePresetId: true, botId: true },
+        select: {
+          rolePresetId: true,
+          botId: true,
+          bot: { select: { spaceId: true, userId: true, rolePresetId: true, archivedAt: true } },
+        },
       });
-      const byPresetId = new Map(bindings.map((binding) => [binding.rolePresetId, binding]));
+      const byPresetId = new Map(
+        bindings
+          .filter(
+            (binding) =>
+              binding.bot.spaceId === actor.spaceId &&
+              binding.bot.userId === actor.userId &&
+              binding.bot.rolePresetId === binding.rolePresetId &&
+              binding.bot.archivedAt === null,
+          )
+          .map((binding) => [
+            binding.rolePresetId,
+            { rolePresetId: binding.rolePresetId, botId: binding.botId },
+          ]),
+      );
       return {
         jobRole: role,
         specialists: presetIds.flatMap((id) => {
@@ -148,9 +166,32 @@ export function createStudioDomain(prisma: PrismaClient) {
           const presets = await validatedRolePresets(tx, membership.organizationId, presetIds);
           const existing = await tx.employeeJobRoleSpecialist.findMany({
             where: { spaceMemberId: membership.id, rolePresetId: { in: presetIds } },
-            select: { rolePresetId: true, botId: true },
+            select: {
+              id: true,
+              rolePresetId: true,
+              botId: true,
+              bot: {
+                select: { spaceId: true, userId: true, rolePresetId: true, archivedAt: true },
+              },
+            },
           });
-          const byPresetId = new Map(existing.map((binding) => [binding.rolePresetId, binding]));
+          const staleByPresetId = new Map(
+            existing.map((binding) => [binding.rolePresetId, binding]),
+          );
+          const byPresetId = new Map(
+            existing
+              .filter(
+                (binding) =>
+                  binding.bot.spaceId === actor.spaceId &&
+                  binding.bot.userId === actor.userId &&
+                  binding.bot.rolePresetId === binding.rolePresetId &&
+                  binding.bot.archivedAt === null,
+              )
+              .map((binding) => [
+                binding.rolePresetId,
+                { rolePresetId: binding.rolePresetId, botId: binding.botId },
+              ]),
+          );
           for (const preset of presets) {
             if (byPresetId.has(preset.id)) continue;
             const bot = await createBotInTransaction(tx, actor, {
@@ -161,10 +202,21 @@ export function createStudioDomain(prisma: PrismaClient) {
               notifyOnFinish: true,
               rolePresetId: preset.id,
             });
-            const binding = await tx.employeeJobRoleSpecialist.create({
-              data: { spaceMemberId: membership.id, rolePresetId: preset.id, botId: bot.id },
-              select: { rolePresetId: true, botId: true },
-            });
+            const stale = staleByPresetId.get(preset.id);
+            const binding = stale
+              ? await tx.employeeJobRoleSpecialist.update({
+                  where: { id: stale.id },
+                  data: { botId: bot.id },
+                  select: { rolePresetId: true, botId: true },
+                })
+              : await tx.employeeJobRoleSpecialist.create({
+                  data: {
+                    spaceMemberId: membership.id,
+                    rolePresetId: preset.id,
+                    botId: bot.id,
+                  },
+                  select: { rolePresetId: true, botId: true },
+                });
             byPresetId.set(preset.id, binding);
           }
           await tx.spaceMember.update({
