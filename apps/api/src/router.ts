@@ -394,6 +394,7 @@ export function createRouter(deps: RouterDeps) {
   });
   const assignmentDto = (row: NonNullable<Awaited<ReturnType<typeof studio.assignment>>>) => ({
     ...row,
+    projectIds: row.projectIds as string[],
     manifest: row.manifest as Record<string, unknown>,
     status: row.status as "draft" | "accepted" | "blocked" | "completed",
     acceptedAt: row.acceptedAt?.toISOString() ?? null,
@@ -472,6 +473,8 @@ export function createRouter(deps: RouterDeps) {
         if (!row) throw new IsolationError();
         return assignmentDto(row);
       }),
+      assignments: authed.studio.assignments.handler(async ({ context }) => (await studio.assignments(context.actor)).map(assignmentDto)),
+      createAssignment: authed.studio.createAssignment.handler(async ({ context, input }) => assignmentDto(await studio.createAssignment(context.actor, input))),
       acceptAssignment: authed.studio.acceptAssignment.handler(async ({ context, input }) => assignmentDto(await studio.acceptAssignment(context.actor, input.assignmentId))),
     },
     bootstrap: authed.bootstrap.handler(async ({ context, input }) => {

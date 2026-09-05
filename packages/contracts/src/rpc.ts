@@ -145,9 +145,11 @@ export const appContract = {
       .input(z.object({ name: z.string().trim().min(1).max(160), slug: z.string().trim().min(1).max(120), scope: ProjectScopeSchema }))
       .output(StudioProjectSchema),
     roles: oc.output(z.array(EmployeeRolePresetSchema)),
-    createRole: oc.input(z.object({ key: z.string().trim().min(1).max(80), name: z.string().trim().min(1).max(160), description: z.string().max(4000).default(""), instructions: z.string().max(20000).default(""), isDefault: z.boolean().default(false) })).output(EmployeeRolePresetSchema),
+    createRole: oc.input(z.object({ key: z.string().trim().min(1).max(80), name: z.string().trim().min(1).max(160), description: z.string().max(4000).default(""), instructions: z.string().max(20000).default(""), isDefault: z.boolean().default(false), foundationRevisionId: Id.nullable().optional() })).output(EmployeeRolePresetSchema),
     updateRole: oc.input(z.object({ roleId: Id, name: z.string().trim().min(1).max(160).optional(), description: z.string().max(4000).optional(), instructions: z.string().max(20000).optional(), isDefault: z.boolean().optional() })).output(EmployeeRolePresetSchema),
     assignment: oc.input(z.object({ assignmentId: Id })).output(AssignmentManifestSchema),
+    assignments: oc.output(z.array(AssignmentManifestSchema)),
+    createAssignment: oc.input(z.object({ projectIds: z.array(Id).min(1), taskId: Id, botId: Id, foundationRevisionId: Id.nullable().optional(), rolePresetId: Id.nullable().optional(), reviewerUserId: Id.nullable().optional(), manifest: z.record(z.string(), z.unknown()).default({}) })).output(AssignmentManifestSchema),
     acceptAssignment: oc.input(z.object({ assignmentId: Id })).output(AssignmentManifestSchema),
   },
   bootstrap: oc.input(z.object({ botId: Id.optional() })).output(AppBootstrapSchema),

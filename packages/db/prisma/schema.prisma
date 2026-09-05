@@ -618,6 +618,7 @@ model ProjectSourceBinding {
 model AssignmentManifest {
   id                   String              @id @default(cuid())
   projectId            String
+  projectIds           Json                @default("[]")
   project              StudioProject       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   taskId               String              @unique
   task                 Task                @relation(fields: [taskId], references: [id], onDelete: Cascade)
@@ -628,6 +629,8 @@ model AssignmentManifest {
   rolePresetId         String?
   rolePreset           EmployeeRolePreset? @relation(fields: [rolePresetId], references: [id], onDelete: SetNull)
   manifest             Json
+  createdByUserId      String
+  reviewerUserId       String?
   status               String              @default("draft")
   acceptedAt           DateTime?
   acceptedByUserId     String?
