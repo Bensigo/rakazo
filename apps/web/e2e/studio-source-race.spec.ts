@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { completeOnboarding, signup } from "./helpers";
+import { signup } from "./helpers";
 
 const projects = [
   {
@@ -37,7 +37,7 @@ function jsonResponse(value: unknown) {
 test("ignores out-of-order source and wiki responses and de-duplicates connects", async ({ page }) => {
   const stamp = Date.now();
   await signup(page, `studio-source-race-${stamp}@rakazo.test`, "password12", "Source Race");
-  await completeOnboarding(page);
+  await page.waitForURL(/\/(onboarding|app)/);
 
   let releaseProjectA!: () => void;
   const projectAReady = new Promise<void>((resolve) => {
@@ -134,7 +134,7 @@ test("ignores out-of-order source and wiki responses and de-duplicates connects"
     route.fulfill(jsonResponse(sourceB)),
   );
 
-  await page.getByRole("button", { name: "Studio" }).click();
+  await page.goto("/studio");
   await expect(page.getByTestId("studio-page")).toBeVisible();
   const sourceProject = page.getByRole("combobox", { name: "Source project" });
   await sourceProject.selectOption("project-a");
