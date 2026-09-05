@@ -15,6 +15,9 @@ export function StudioPage() {
   const [projects, setProjects] = useState<StudioProject[]>([]);
   const [roles, setRoles] = useState<EmployeeRolePreset[]>([]);
   const [jobRoles, setJobRoles] = useState<EmployeeJobRole[]>([]);
+  const [permissions, setPermissions] = useState<Awaited<
+    ReturnType<typeof rpc.studio.permissions>
+  > | null>(null);
   const [selectedJobRole, setSelectedJobRole] =
     useState<Awaited<ReturnType<typeof rpc.studio.jobRoleSelection>>>(null);
   const [jobRoleSelectionId, setJobRoleSelectionId] = useState("");
@@ -22,6 +25,7 @@ export function StudioPage() {
   const [jobRoleName, setJobRoleName] = useState("");
   const [jobRoleDescription, setJobRoleDescription] = useState("");
   const [jobRolePresetIds, setJobRolePresetIds] = useState<string[]>([]);
+  const [jobRoleApplyPending, setJobRoleApplyPending] = useState(false);
   const [bots, setBots] = useState<Awaited<ReturnType<typeof rpc.bots.list>>>([]);
   const [assignments, setAssignments] = useState<AssignmentManifest[]>([]);
   const [repositories, setRepositories] = useState<
@@ -60,8 +64,9 @@ export function StudioPage() {
   const wikiPageRequest = useRef(0);
   const load = async () => {
     try {
-      const [p, r, jr, selection, f, a, b, rr] = await Promise.all([
+      const [p, perms, r, jr, selection, f, a, b, rr] = await Promise.all([
         rpc.studio.projects(),
+        rpc.studio.permissions(),
         rpc.studio.roles(),
         rpc.studio.jobRoles(),
         rpc.studio.jobRoleSelection(),
@@ -71,6 +76,7 @@ export function StudioPage() {
         rpc.studio.registeredRepositories(),
       ]);
       setProjects(p);
+      setPermissions(perms);
       setRoles(r);
       setFoundation(f);
       setJobRoles(jr);
@@ -147,10 +153,26 @@ export function StudioPage() {
     setJobRolePresetIds([]);
   }
   async function selectJobRole() {
-    if (!jobRoleSelectionId) return;
-    const selection = await rpc.studio.selectJobRole({ jobRoleId: jobRoleSelectionId });
-    setSelectedJobRole(selection);
-    setBots(await rpc.bots.list());
+    if (!jobRoleSelectionId || jobRoleApplyPending) return;
+    setJobRoleApplyPending(true);
+    try {
+      const selection = await rpc.studio.selectJobRole({ jobRoleId: jobRoleSelectionId });
+      const refreshedBots = await rpc.bots.list();
+      setSelectedJobRole(selection);
+      setBots(refreshedBots);
+    } finally {
+      setJobRoleApplyPending(false);
+    }
+  }
+  function moveJobRolePreset(roleId: string, direction: -1 | 1) {
+    setJobRolePresetIds((ids) => {
+      const index = ids.indexOf(roleId);
+      const nextIndex = index + direction;
+      if (index < 0 || nextIndex < 0 || nextIndex >= ids.length) return ids;
+      const next = [...ids];
+      [next[index], next[nextIndex]] = [next[nextIndex]!, next[index]!];
+      return next;
+    });
   }
   async function createProject() {
     const name = projectName.trim();
@@ -304,6 +326,7 @@ export function StudioPage() {
                   aria-label={`Studio ${key}`}
                   className="min-h-14 rounded-xl border border-border bg-muted/20 p-3 text-sm"
                   placeholder={key[0]!.toUpperCase() + key.slice(1)}
+                  disabled={!permissions?.canManageFoundation}
                   value={foundationFields[key]}
                   onChange={(e) =>
                     setFoundationFields({ ...foundationFields, [key]: e.target.value })
@@ -311,7 +334,11 @@ export function StudioPage() {
                 />
               ))}
             </div>
-            <Button className="mt-3" onClick={() => void run(publishFoundation)}>
+            <Button
+              className="mt-3"
+              disabled={!permissions?.canManageFoundation}
+              onClick={() => void run(publishFoundation)}
+            >
               Publish revision
             </Button>
           </div>
@@ -326,12 +353,14 @@ export function StudioPage() {
                 aria-label="Role key"
                 placeholder="Role key"
                 value={roleKey}
+                disabled={!permissions?.canManageJobRoles}
                 onChange={(e) => setRoleKey(e.target.value)}
               />
               <Input
                 aria-label="Role name"
                 placeholder="Role name"
                 value={roleName}
+                disabled={!permissions?.canManageJobRoles}
                 onChange={(e) => setRoleName(e.target.value)}
               />
               <textarea
@@ -339,10 +368,15 @@ export function StudioPage() {
                 className="min-h-14 rounded-xl border border-border bg-muted/20 p-3 text-sm"
                 placeholder="Role instructions"
                 value={roleInstructions}
+                disabled={!permissions?.canManageJobRoles}
                 onChange={(e) => setRoleInstructions(e.target.value)}
               />
               <Button
-                disabled={!roleName.trim() || (!editingRole && !roleKey.trim())}
+                disabled={
+                  !permissions?.canManageJobRoles ||
+                  !roleName.trim() ||
+                  (!editingRole && !roleKey.trim())
+                }
                 onClick={() => void run(editingRole ? updateRole : createRole)}
               >
                 {editingRole ? "Save role" : "Create role"}
@@ -355,6 +389,7 @@ export function StudioPage() {
                   <button
                     type="button"
                     className="ml-2 text-xs underline"
+                    disabled={!permissions?.canManageJobRoles}
                     onClick={() => {
                       setEditingRole(role);
                       setRoleName(role.name);
@@ -382,18 +417,21 @@ export function StudioPage() {
               aria-label="Job role key"
               placeholder="Job role key"
               value={jobRoleKey}
+              disabled={!permissions?.canManageJobRoles}
               onChange={(e) => setJobRoleKey(e.target.value)}
             />
             <Input
               aria-label="Job role name"
               placeholder="Job role name"
               value={jobRoleName}
+              disabled={!permissions?.canManageJobRoles}
               onChange={(e) => setJobRoleName(e.target.value)}
             />
             <Input
               aria-label="Job role description"
               placeholder="Description"
               value={jobRoleDescription}
+              disabled={!permissions?.canManageJobRoles}
               onChange={(e) => setJobRoleDescription(e.target.value)}
             />
           </div>
@@ -406,12 +444,15 @@ export function StudioPage() {
                 <input
                   type="checkbox"
                   aria-label={`Default specialist ${role.name}`}
+                  disabled={!permissions?.canManageJobRoles}
                   checked={jobRolePresetIds.includes(role.id)}
-                  onChange={(e) =>
+                  aria-disabled={!permissions?.canManageJobRoles}
+                  onChange={(e) => {
+                    if (!permissions?.canManageJobRoles) return;
                     setJobRolePresetIds((ids) =>
                       e.target.checked ? [...ids, role.id] : ids.filter((id) => id !== role.id),
-                    )
-                  }
+                    );
+                  }}
                 />
                 <span>
                   <span className="font-medium">{role.name}</span>
@@ -422,9 +463,45 @@ export function StudioPage() {
               </label>
             ))}
           </div>
+          {jobRolePresetIds.length ? (
+            <div className="mt-3 rounded-xl border border-border p-3 text-sm">
+              <p className="font-medium">Default specialist order</p>
+              <div className="mt-2 space-y-2">
+                {jobRolePresetIds.map((roleId, index) => (
+                  <div key={roleId} className="flex items-center justify-between gap-2">
+                    <span>
+                      {index + 1}. {roles.find((role) => role.id === roleId)?.name ?? "Specialist"}
+                    </span>
+                    <span className="flex gap-1">
+                      <button
+                        type="button"
+                        className="rounded border border-border px-2 py-1 text-xs disabled:opacity-40"
+                        aria-label={`Move ${roles.find((role) => role.id === roleId)?.name ?? "specialist"} up`}
+                        disabled={!permissions?.canManageJobRoles || index === 0}
+                        onClick={() => moveJobRolePreset(roleId, -1)}
+                      >
+                        Up
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded border border-border px-2 py-1 text-xs disabled:opacity-40"
+                        aria-label={`Move ${roles.find((role) => role.id === roleId)?.name ?? "specialist"} down`}
+                        disabled={
+                          !permissions?.canManageJobRoles || index === jobRolePresetIds.length - 1
+                        }
+                        onClick={() => moveJobRolePreset(roleId, 1)}
+                      >
+                        Down
+                      </button>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <Button
             className="mt-3"
-            disabled={!jobRoleKey.trim() || !jobRoleName.trim()}
+            disabled={!permissions?.canManageJobRoles || !jobRoleKey.trim() || !jobRoleName.trim()}
             onClick={() => void run(createJobRole)}
           >
             Create employee role
@@ -456,8 +533,11 @@ export function StudioPage() {
                   </option>
                 ))}
               </select>
-              <Button disabled={!jobRoleSelectionId} onClick={() => void run(selectJobRole)}>
-                Apply and provision specialists
+              <Button
+                disabled={!jobRoleSelectionId || jobRoleApplyPending}
+                onClick={() => void run(selectJobRole)}
+              >
+                {jobRoleApplyPending ? "Provisioning…" : "Apply and provision specialists"}
               </Button>
             </div>
             {selectedJobRole ? (

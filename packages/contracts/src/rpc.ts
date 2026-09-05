@@ -61,6 +61,7 @@ import {
   SpaceNavigationSchema,
   SpaceSchema,
   StudioFoundationSchema,
+  StudioPermissionsSchema,
   StudioProjectSchema,
   StudioWikiPageReadSchema,
   StudioWikiPageSummarySchema,
@@ -144,6 +145,7 @@ export const appContract = {
     create: oc.input(z.object({ name: z.string().trim().min(1).max(60) })).output(SpaceSchema),
   },
   studio: {
+    permissions: oc.output(StudioPermissionsSchema),
     foundation: oc.output(StudioFoundationSchema.nullable()),
     publishFoundation: oc
       .input(z.object({ content: z.record(z.string(), z.unknown()) }))

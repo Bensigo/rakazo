@@ -68,6 +68,13 @@ export const EmployeeJobRoleSelectionSchema = z.object({
 });
 export type EmployeeJobRoleSelection = z.infer<typeof EmployeeJobRoleSelectionSchema>;
 
+export const StudioPermissionsSchema = z.object({
+  memberRole: z.string().min(1),
+  canManageJobRoles: z.boolean(),
+  canManageFoundation: z.boolean(),
+});
+export type StudioPermissions = z.infer<typeof StudioPermissionsSchema>;
+
 export const StudioProjectSchema = z.object({
   id: Id,
   name: z.string().min(1),
