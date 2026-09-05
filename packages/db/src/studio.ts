@@ -128,13 +128,20 @@ export function createStudioDomain(prisma: PrismaClient) {
     async assignment(actor: Actor, id: string) {
       const organizationId = await organizationIdFor(prisma, actor);
       return prisma.assignmentManifest.findFirst({
-        where: { id, bot: { space: { organizationId } } },
+        where: {
+          id,
+          bot: { spaceId: actor.spaceId, space: { organizationId } },
+          OR: [{ createdByUserId: actor.userId }, { reviewerUserId: actor.userId }],
+        },
       });
     },
     async assignments(actor: Actor) {
       const organizationId = await organizationIdFor(prisma, actor);
       return prisma.assignmentManifest.findMany({
-        where: { bot: { space: { organizationId } } },
+        where: {
+          bot: { spaceId: actor.spaceId, space: { organizationId } },
+          OR: [{ createdByUserId: actor.userId }, { reviewerUserId: actor.userId }],
+        },
         orderBy: { createdAt: "desc" },
       });
     },
@@ -152,7 +159,7 @@ export function createStudioDomain(prisma: PrismaClient) {
         manifest: Record<string, unknown>;
       },
     ) {
-      const organizationId = await requireAdmin(prisma, actor);
+      const organizationId = await organizationIdFor(prisma, actor);
       const projectIds = [...new Set(input.projectIds)];
       if (input.scope === "studio" && projectIds.length !== 0)
         throw new IsolationError("Studio assignments do not name projects");
@@ -168,7 +175,7 @@ export function createStudioDomain(prisma: PrismaClient) {
           }),
           input.taskId
             ? tx.task.findFirst({
-                where: { id: input.taskId, spaceId: actor.spaceId },
+                where: { id: input.taskId, spaceId: actor.spaceId, userId: actor.userId },
                 select: { id: true, botId: true, assignment: { select: { id: true } } },
               })
             : Promise.resolve(null),
@@ -262,7 +269,11 @@ export function createStudioDomain(prisma: PrismaClient) {
     async acceptAssignment(actor: Actor, id: string) {
       const organizationId = await organizationIdFor(prisma, actor);
       const current = await prisma.assignmentManifest.findFirst({
-        where: { id, bot: { space: { organizationId } } },
+        where: {
+          id,
+          bot: { spaceId: actor.spaceId, space: { organizationId } },
+          OR: [{ createdByUserId: actor.userId }, { reviewerUserId: actor.userId }],
+        },
         select: {
           id: true,
           status: true,
@@ -272,8 +283,6 @@ export function createStudioDomain(prisma: PrismaClient) {
         },
       });
       if (!current) throw new IsolationError();
-      if (current.createdByUserId !== actor.userId && current.reviewerUserId !== actor.userId)
-        throw new IsolationError("Only the assignment creator or reviewer can accept it");
       if (current.status !== "draft")
         return prisma.assignmentManifest.findUniqueOrThrow({ where: { id: current.id } });
       if (current.task.status !== "completed")
