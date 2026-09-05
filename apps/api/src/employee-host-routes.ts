@@ -53,7 +53,8 @@ export function mountEmployeeHostRoutes(
   app.post("/employee-hosts/:hostId/poll", async (c) => {
     const authenticated = await host(c);
     if (!authenticated) return c.json({ error: "Unauthorized" }, 401);
-    const operation = await deps.prisma.employeeHostOperation.findFirst({ where: { hostId: c.req.param("hostId"), status: "accepted", spaceId: authenticated.record.spaceId }, orderBy: { createdAt: "asc" } });
+    const candidate = await deps.prisma.employeeHostOperation.findFirst({ where: { hostId: c.req.param("hostId"), status: "accepted", spaceId: authenticated.record.spaceId }, orderBy: { createdAt: "asc" } });
+    const operation = candidate && (await deps.prisma.employeeHostOperation.updateMany({ where: { id: candidate.id, status: "accepted" }, data: { status: "dispatched" } })).count === 1 ? { ...candidate, status: "dispatched" } : null;
     if (!operation) return c.json({});
     return c.json({ operation: { operationId: operation.operationId, hostId: operation.hostId, spaceId: operation.spaceId, botId: operation.botId, lease: { hostId: operation.hostId, spaceId: operation.spaceId, botId: operation.botId, runId: operation.runId, fence: operation.fence, expiresAt: operation.acceptedAt.getTime() + TTL_MS }, kind: "exec", request: operation.request } });
   });
@@ -63,7 +64,7 @@ export function mountEmployeeHostRoutes(
     if (!authenticated) return c.json({ error: "Unauthorized" }, 401);
     const operation = await deps.prisma.employeeHostOperation.findFirst({ where: { hostId: c.req.param("hostId"), operationId: c.req.param("operationId"), spaceId: authenticated.record.spaceId } });
     if (!operation) return c.json({ error: "Not found" }, 404);
-    if (operation.status !== "accepted") return c.json({ ok: true, status: operation.status });
+    if (operation.status !== "accepted" && operation.status !== "dispatched") return c.json({ ok: true, status: operation.status });
     const input = (await c.req.json().catch(() => null)) as { result?: { stdout?: string; stderr?: string; code?: number } } | null;
     const result = input?.result ?? {};
     await deps.prisma.employeeHostOperation.update({ where: { id: operation.id }, data: { status: result.code === 0 ? "completed" : "failed", stdout: result.stdout ?? "", stderr: result.stderr ?? "", exitCode: result.code ?? 1, completedAt: new Date() } });
