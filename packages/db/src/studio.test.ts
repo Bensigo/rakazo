@@ -36,6 +36,25 @@ function fakePrisma() {
 }
 
 describe("studio domain", () => {
+  it("projects organization membership permissions for Studio administration", async () => {
+    const findUnique = vi.fn(async () => ({
+      organizationId: "org-1",
+      member: { role: "member" },
+    }));
+    const domain = createStudioDomain({ spaceMember: { findUnique } } as any);
+    await expect(domain.permissions({ ...actor, isDeploymentOwner: false })).resolves.toEqual({
+      memberRole: "member",
+      canManageJobRoles: false,
+      canManageFoundation: false,
+    });
+    findUnique.mockResolvedValue({ organizationId: "org-1", member: { role: "admin" } });
+    await expect(domain.permissions({ ...actor, isDeploymentOwner: false })).resolves.toEqual({
+      memberRole: "admin",
+      canManageJobRoles: true,
+      canManageFoundation: true,
+    });
+  });
+
   it("scopes project source reads to the actor organization", async () => {
     const findMany = vi.fn(async () => [{ id: "source-1", projectId: "project-1" }]);
     const prisma = {
