@@ -495,23 +495,17 @@ export function createRouter(deps: RouterDeps) {
     });
   };
   const authorizedWikiSource = async (actor: Actor, projectId: string, bindingId: string) => {
-    const organizationId = await studio.organizationId(actor);
     const binding = await studio.projectSource(actor, projectId, bindingId);
-    const metadata = jsonRecord(binding.metadata);
-    const repositoryId = stringValue(metadata?.registeredRepositoryId);
-    if (!repositoryId) throw new IsolationError();
-    const repository = registeredRepository(organizationId, repositoryId);
-    if (
-      binding.kind !== "repository" ||
-      binding.repository !== repository.sourceId ||
-      binding.ref !== repository.refKey
-    ) {
+    // The persisted binding is the read grant. The registry is needed only when
+    // a write must resolve a server checkout, so unmounting it does not erase
+    // an already indexed canonical wiki.
+    if (binding.kind !== "repository" || !binding.repository || !binding.ref) {
       throw new IsolationError();
     }
     return {
       studioProjectId: binding.projectId,
-      sourceId: repository.sourceId,
-      refKey: repository.refKey,
+      sourceId: binding.repository,
+      refKey: binding.ref,
       access: { allowedScopes: ["project"] },
     };
   };

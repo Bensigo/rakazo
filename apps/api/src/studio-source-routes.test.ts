@@ -22,7 +22,14 @@ const repository: RegisteredStudioRepository = {
   refKey: "workspace",
 };
 
-function fixture(role: "admin" | "member" = "admin", initialBinding?: any) {
+function fixture(
+  role: "admin" | "member" = "admin",
+  initialBinding?: any,
+  repositories: RegisteredStudioRepository[] = [
+    repository,
+    { ...repository, id: "foreign", organizationId: "org-2" },
+  ],
+) {
   let binding: any = initialBinding;
   const prisma = {
     spaceMember: {
@@ -120,7 +127,7 @@ function fixture(role: "admin" | "member" = "admin", initialBinding?: any) {
   const deps = {
     prisma,
     studioKnowledge: bridge,
-    studioRepositories: [repository, { ...repository, id: "foreign", organizationId: "org-2" }],
+    studioRepositories: repositories,
     env: {},
     dataDir: "/tmp/rakazo-studio-source-test",
   } as unknown as RouterDeps;
@@ -210,7 +217,7 @@ describe("Studio source routes", () => {
       repositoryId: "game",
     });
     const body = (await added.json()) as { json: Record<string, unknown> & { id: string } };
-    const member = fixture("member", body.json);
+    const member = fixture("member", body.json, []);
     const response = await call(member.handler, "studio/projectWikiPage", {
       projectId: "project-1",
       bindingId: body.json.id,
