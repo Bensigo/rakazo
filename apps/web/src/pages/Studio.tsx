@@ -251,6 +251,7 @@ export function StudioPage() {
     const pageRequest = ++wikiPageRequest.current;
     const projectId = sourceProjectId;
     const bindingId = sourceBindingId;
+    setError(null);
     try {
       const page = await rpc.studio.projectWikiPage({ projectId, bindingId, pageId });
       if (
@@ -633,7 +634,7 @@ export function StudioPage() {
                       type="button"
                       key={page.pageId}
                       className="block text-left text-sm underline"
-                      onClick={() => void run(() => readWiki(page.pageId))}
+                      onClick={() => void readWiki(page.pageId)}
                     >
                       {page.title} · {page.commit} ·{" "}
                       {page.localOverlay ? "local overlay" : "canonical"}
