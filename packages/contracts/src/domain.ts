@@ -69,7 +69,8 @@ export type ProjectSourceBinding = z.infer<typeof ProjectSourceBindingSchema>;
 
 export const AssignmentManifestSchema = z.object({
   id: Id,
-  projectId: Id,
+  scope: ProjectScopeSchema,
+  projectId: Id.nullable(),
   projectIds: z.array(Id),
   taskId: Id,
   botId: Id,

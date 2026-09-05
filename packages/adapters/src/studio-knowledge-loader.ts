@@ -14,9 +14,7 @@ export async function loadStudioKnowledgeBridge(input: {
   }
   const specifier = moduleSpecifier(input.modulePath);
   const loaded = (await import(specifier)) as {
-    createStudioKnowledgeBridge?: (options: {
-      databaseUrl: string;
-    }) => Promise<unknown> | unknown;
+    createStudioKnowledgeBridge?: (options: { databaseUrl: string }) => Promise<unknown> | unknown;
   };
   if (typeof loaded.createStudioKnowledgeBridge !== "function") {
     throw new Error("The Sunrise knowledge module must export createStudioKnowledgeBridge().");

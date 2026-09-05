@@ -394,6 +394,7 @@ export function createRouter(deps: RouterDeps) {
   });
   const assignmentDto = (row: NonNullable<Awaited<ReturnType<typeof studio.assignment>>>) => ({
     ...row,
+    scope: row.scope as "studio" | "one" | "multi",
     projectIds: row.projectIds as string[],
     manifest: row.manifest as Record<string, unknown>,
     status: row.status as "draft" | "accepted" | "blocked" | "completed",
@@ -455,27 +456,63 @@ export function createRouter(deps: RouterDeps) {
           id: row.id,
           organizationId: row.organizationId,
           currentRevision: row.currentRevision
-            ? { ...row.currentRevision, content: row.currentRevision.content as Record<string, unknown>, createdAt: row.currentRevision.createdAt.toISOString() }
+            ? {
+                ...row.currentRevision,
+                content: row.currentRevision.content as Record<string, unknown>,
+                createdAt: row.currentRevision.createdAt.toISOString(),
+              }
             : null,
         };
       }),
       publishFoundation: authed.studio.publishFoundation.handler(async ({ context, input }) => {
         const row = await studio.publishFoundation(context.actor, input.content);
-        return { id: row.id, organizationId: row.organizationId, currentRevision: row.currentRevision ? { ...row.currentRevision, content: row.currentRevision.content as Record<string, unknown>, createdAt: row.currentRevision.createdAt.toISOString() } : null };
+        return {
+          id: row.id,
+          organizationId: row.organizationId,
+          currentRevision: row.currentRevision
+            ? {
+                ...row.currentRevision,
+                content: row.currentRevision.content as Record<string, unknown>,
+                createdAt: row.currentRevision.createdAt.toISOString(),
+              }
+            : null,
+        };
       }),
-      projects: authed.studio.projects.handler(async ({ context }) => (await studio.projects(context.actor)).map(studioProjectDto)),
-      createProject: authed.studio.createProject.handler(async ({ context, input }) => studioProjectDto(await studio.createProject(context.actor, input))),
-      roles: authed.studio.roles.handler(async ({ context }) => (await studio.roles(context.actor)).map(roleDto)),
-      createRole: authed.studio.createRole.handler(async ({ context, input }) => roleDto(await studio.createRole(context.actor, input))),
-      updateRole: authed.studio.updateRole.handler(async ({ context, input }) => roleDto(await studio.updateRole(context.actor, input.roleId, input))),
+      projects: authed.studio.projects.handler(async ({ context }) =>
+        (await studio.projects(context.actor)).map(studioProjectDto),
+      ),
+      createProject: authed.studio.createProject.handler(async ({ context, input }) =>
+        studioProjectDto(await studio.createProject(context.actor, input)),
+      ),
+      roles: authed.studio.roles.handler(async ({ context }) =>
+        (await studio.roles(context.actor)).map(roleDto),
+      ),
+      createRole: authed.studio.createRole.handler(async ({ context, input }) =>
+        roleDto(await studio.createRole(context.actor, input)),
+      ),
+      updateRole: authed.studio.updateRole.handler(async ({ context, input }) =>
+        roleDto(await studio.updateRole(context.actor, input.roleId, input)),
+      ),
       assignment: authed.studio.assignment.handler(async ({ context, input }) => {
         const row = await studio.assignment(context.actor, input.assignmentId);
         if (!row) throw new IsolationError();
         return assignmentDto(row);
       }),
-      assignments: authed.studio.assignments.handler(async ({ context }) => (await studio.assignments(context.actor)).map(assignmentDto)),
-      createAssignment: authed.studio.createAssignment.handler(async ({ context, input }) => assignmentDto(await studio.createAssignment(context.actor, input))),
-      acceptAssignment: authed.studio.acceptAssignment.handler(async ({ context, input }) => assignmentDto(await studio.acceptAssignment(context.actor, input.assignmentId))),
+      assignments: authed.studio.assignments.handler(async ({ context }) =>
+        (await studio.assignments(context.actor)).map(assignmentDto),
+      ),
+      createAssignment: authed.studio.createAssignment.handler(async ({ context, input }) => {
+        const created = await studio.createAssignment(context.actor, input);
+        if (created.runId) {
+          await deps.jobs.enqueue(runContinueJob(created.runId)).catch((error) => {
+            getLogger().error("assignment run enqueue failed", error);
+          });
+        }
+        return assignmentDto(created.assignment);
+      }),
+      acceptAssignment: authed.studio.acceptAssignment.handler(async ({ context, input }) =>
+        assignmentDto(await studio.acceptAssignment(context.actor, input.assignmentId)),
+      ),
     },
     bootstrap: authed.bootstrap.handler(async ({ context, input }) => {
       const actor = context.actor;

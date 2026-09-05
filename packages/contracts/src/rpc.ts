@@ -9,6 +9,7 @@ import {
   AppBootstrapSchema,
   ArtifactSchema,
   ArtifactWithContentSchema,
+  AssignmentManifestSchema,
   AvatarStyleSchema,
   BotMcpServerSchema,
   BotSchema,
@@ -25,6 +26,7 @@ import {
   CreateRoutineInput,
   CreateScratchpadItemInput,
   DeploymentSettingsSchema,
+  EmployeeRolePresetSchema,
   ExportManifestSchema,
   GroupDetailSchema,
   GroupSchema,
@@ -41,6 +43,7 @@ import {
   ModelConnectInputSchema,
   ModelCredentialSchema,
   ModelOAuthBeginSchema,
+  ProjectScopeSchema,
   ReorderBotsInput,
   RoutineSchema,
   ScratchpadItemSchema,
@@ -53,9 +56,6 @@ import {
   SpaceMemoryConfigSchema,
   SpaceNavigationSchema,
   SpaceSchema,
-  AssignmentManifestSchema,
-  EmployeeRolePresetSchema,
-  ProjectScopeSchema,
   StudioFoundationSchema,
   StudioProjectSchema,
   TaughtSkillSchema,
@@ -139,17 +139,78 @@ export const appContract = {
   },
   studio: {
     foundation: oc.output(StudioFoundationSchema.nullable()),
-    publishFoundation: oc.input(z.object({ content: z.record(z.string(), z.unknown()) })).output(StudioFoundationSchema),
+    publishFoundation: oc
+      .input(z.object({ content: z.record(z.string(), z.unknown()) }))
+      .output(StudioFoundationSchema),
     projects: oc.output(z.array(StudioProjectSchema)),
     createProject: oc
-      .input(z.object({ name: z.string().trim().min(1).max(160), slug: z.string().trim().min(1).max(120), scope: ProjectScopeSchema }))
+      .input(
+        z.object({
+          name: z.string().trim().min(1).max(160),
+          slug: z.string().trim().min(1).max(120),
+          scope: ProjectScopeSchema,
+        }),
+      )
       .output(StudioProjectSchema),
     roles: oc.output(z.array(EmployeeRolePresetSchema)),
-    createRole: oc.input(z.object({ key: z.string().trim().min(1).max(80), name: z.string().trim().min(1).max(160), description: z.string().max(4000).default(""), instructions: z.string().max(20000).default(""), isDefault: z.boolean().default(false), foundationRevisionId: Id.nullable().optional() })).output(EmployeeRolePresetSchema),
-    updateRole: oc.input(z.object({ roleId: Id, name: z.string().trim().min(1).max(160).optional(), description: z.string().max(4000).optional(), instructions: z.string().max(20000).optional(), isDefault: z.boolean().optional() })).output(EmployeeRolePresetSchema),
+    createRole: oc
+      .input(
+        z.object({
+          key: z.string().trim().min(1).max(80),
+          name: z.string().trim().min(1).max(160),
+          description: z.string().max(4000).default(""),
+          instructions: z.string().max(20000).default(""),
+          isDefault: z.boolean().default(false),
+          foundationRevisionId: Id.nullable().optional(),
+        }),
+      )
+      .output(EmployeeRolePresetSchema),
+    updateRole: oc
+      .input(
+        z.object({
+          roleId: Id,
+          name: z.string().trim().min(1).max(160).optional(),
+          description: z.string().max(4000).optional(),
+          instructions: z.string().max(20000).optional(),
+          isDefault: z.boolean().optional(),
+        }),
+      )
+      .output(EmployeeRolePresetSchema),
     assignment: oc.input(z.object({ assignmentId: Id })).output(AssignmentManifestSchema),
     assignments: oc.output(z.array(AssignmentManifestSchema)),
-    createAssignment: oc.input(z.object({ projectIds: z.array(Id).min(1), taskId: Id, botId: Id, foundationRevisionId: Id.nullable().optional(), rolePresetId: Id.nullable().optional(), reviewerUserId: Id.nullable().optional(), manifest: z.record(z.string(), z.unknown()).default({}) })).output(AssignmentManifestSchema),
+    createAssignment: oc
+      .input(
+        z
+          .object({
+            scope: ProjectScopeSchema.default("one"),
+            projectIds: z.array(Id).default([]),
+            taskId: Id.optional(),
+            objective: z.string().trim().min(1).max(20000).optional(),
+            botId: Id,
+            foundationRevisionId: Id.nullable().optional(),
+            rolePresetId: Id.nullable().optional(),
+            reviewerUserId: Id.nullable().optional(),
+            manifest: z.record(z.string(), z.unknown()).default({}),
+          })
+          .superRefine((value, context) => {
+            if (!value.taskId && !value.objective) {
+              context.addIssue({ code: "custom", message: "objective is required" });
+            }
+            if (value.scope === "studio" && value.projectIds.length !== 0) {
+              context.addIssue({
+                code: "custom",
+                message: "studio scope does not accept projects",
+              });
+            }
+            if (value.scope === "one" && value.projectIds.length !== 1) {
+              context.addIssue({ code: "custom", message: "one scope requires one project" });
+            }
+            if (value.scope === "multi" && value.projectIds.length < 2) {
+              context.addIssue({ code: "custom", message: "multi scope requires two projects" });
+            }
+          }),
+      )
+      .output(AssignmentManifestSchema),
     acceptAssignment: oc.input(z.object({ assignmentId: Id })).output(AssignmentManifestSchema),
   },
   bootstrap: oc.input(z.object({ botId: Id.optional() })).output(AppBootstrapSchema),

@@ -1,9 +1,10 @@
 import type { PrismaClient } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
 import {
+  type AuthorizedStudioSource,
   type EffectiveStudioContext,
   resolveStudioRunContext,
-  StudioContextUnavailableError,
+  type StudioContextUnavailableError,
   type StudioKnowledgeBridge,
 } from "./studio-context.js";
 
@@ -77,7 +78,7 @@ describe("studio run context", () => {
 
   it("pins an explicit multi-project source set and renders cited context as data", async () => {
     const bridge = emptyBridge();
-    bridge.pin = vi.fn(async ({ sources }) => ({
+    bridge.pin = vi.fn(async ({ sources }: { sources: AuthorizedStudioSource[] }) => ({
       sources: sources.map((source, index) => ({
         ...source,
         knowledgeProjectId: `knowledge-${index + 1}`,
@@ -90,31 +91,46 @@ describe("studio run context", () => {
     const projectFindMany = vi.fn(async () => [{ id: "project-1" }, { id: "project-2" }]);
     const bindingFindMany = vi.fn(async (args: { select?: { id?: boolean } }) =>
       args.select
-        ? [{ id: "binding-1" }, { id: "binding-2" }]
+        ? [
+            {
+              id: "binding-1",
+              projectId: "project-1",
+              repository: "github-gameplay",
+              ref: "main@abc123",
+            },
+            {
+              id: "binding-2",
+              projectId: "project-2",
+              repository: "notion-art",
+              ref: "page-version-7",
+            },
+          ]
         : [
             {
               id: "binding-1",
               projectId: "project-1",
-              repository: null,
-              ref: null,
+              repository: "github-gameplay",
+              ref: "main@abc123",
+              path: null,
               createdAt: new Date(0),
               metadata: {
-                sourceId: "github-gameplay",
-                refKey: "main@abc123",
-                access: { allowedScopes: ["project:project-1"] },
+                sourceId: "client-selected-source",
+                refKey: "client-selected-ref",
+                access: { allowedScopes: ["admin"] },
                 requiredSourcePaths: ["README.md"],
               },
             },
             {
               id: "binding-2",
               projectId: "project-2",
-              repository: null,
-              ref: null,
+              repository: "notion-art",
+              ref: "page-version-7",
+              path: null,
               createdAt: new Date(0),
               metadata: {
-                sourceId: "notion-art",
-                refKey: "page-version-7",
-                access: { allowedScopes: ["project:project-2"] },
+                sourceId: "client-selected-source-2",
+                refKey: "client-selected-ref-2",
+                access: { allowedScopes: ["admin"] },
               },
             },
           ],
@@ -135,6 +151,7 @@ describe("studio run context", () => {
         findUnique: vi.fn(async () => ({
           id: "assignment-1",
           botId: "bot-1",
+          scope: "multi",
           projectId: "project-1",
           projectIds: ["project-1", "project-2"],
           foundationRevisionId: null,

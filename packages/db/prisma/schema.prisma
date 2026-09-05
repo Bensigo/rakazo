@@ -618,9 +618,10 @@ model ProjectSourceBinding {
 
 model AssignmentManifest {
   id                   String              @id @default(cuid())
-  projectId            String
+  scope                String              @default("one")
+  projectId            String?
   projectIds           Json                @default("[]")
-  project              StudioProject       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project              StudioProject?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
   taskId               String              @unique
   task                 Task                @relation(fields: [taskId], references: [id], onDelete: Cascade)
   botId                String

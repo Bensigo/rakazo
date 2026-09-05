@@ -226,7 +226,6 @@ import {
 } from "./scratchpad-tools.js";
 import { inferScript } from "./scripted-runtime.js";
 import type { EncryptedSecretStore } from "./secrets.js";
-import { resolveStudioRunContext, type StudioKnowledgeBridge } from "./studio-context.js";
 import {
   listAgentSkillRecords,
   skillCreateFromTool,
@@ -234,6 +233,7 @@ import {
   skillReadFromTool,
   skillUpdateFromTool,
 } from "./skill-tools.js";
+import { resolveStudioRunContext, type StudioKnowledgeBridge } from "./studio-context.js";
 import { type TakeoverResumeCheckpoint, takeoverResumeFromRelease } from "./takeover-resume.js";
 import { getActiveTeachingSession, parsePlaybook } from "./teaching-session.js";
 import {

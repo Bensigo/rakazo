@@ -74,13 +74,12 @@ export async function resolveStudioRunContext(
 ): Promise<{ manifest: EffectiveStudioContext; instructions: string }> {
   const organizationId = await activeOrganizationId(prisma, input);
   const stored = await loadStoredManifest(prisma, input.runId, input.taskId);
-  const manifest =
-    stored.manifest ?? (await createManifest(prisma, bridge, input, organizationId));
+  const manifest = stored.manifest ?? (await createManifest(prisma, bridge, input, organizationId));
 
   if (manifest.organizationId !== organizationId) {
     throw new StudioContextUnavailableError("The run no longer belongs to this studio.");
   }
-  await assertManifestAccess(prisma, manifest);
+  const authorizedSources = await assertManifestAccess(prisma, manifest);
   if (!stored.runManifest) await persistManifest(prisma, input.runId, input.taskId, manifest);
 
   let knowledgeInstructions: string | undefined;
@@ -91,7 +90,7 @@ export async function resolveStudioRunContext(
       );
     }
     knowledgeInstructions = (
-      await bridge.read({ sources: manifest.sources, question: input.prompt })
+      await bridge.read({ sources: authorizedSources, question: input.prompt })
     ).instructions;
   }
 
@@ -153,15 +152,16 @@ async function createManifest(
     throw new StudioContextUnavailableError("The run target is no longer available.");
   }
 
-  const role = bot.rolePresetId
+  const rolePresetId = assignment?.rolePresetId ?? bot.rolePresetId;
+  const role = rolePresetId
     ? await prisma.employeeRolePreset.findFirst({
-        where: { id: bot.rolePresetId, organizationId },
+        where: { id: rolePresetId, organizationId },
       })
     : await prisma.employeeRolePreset.findFirst({
         where: { organizationId, isDefault: true },
         orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
       });
-  if (bot.rolePresetId && !role) {
+  if (rolePresetId && !role) {
     throw new StudioContextUnavailableError("The specialist role is no longer available.");
   }
   if (assignment && assignment.botId !== input.botId) {
@@ -187,7 +187,9 @@ async function createManifest(
       ? (await bridge.pin({ sources: authorizedSources })).sources
       : [];
   if (pinned.length !== sourceBindings.length) {
-    throw new StudioContextUnavailableError("The knowledge bridge did not pin every configured source.");
+    throw new StudioContextUnavailableError(
+      "The knowledge bridge did not pin every configured source.",
+    );
   }
 
   const selectedFoundation = assignment?.foundationRevisionId
@@ -196,7 +198,9 @@ async function createManifest(
       })
     : foundation?.currentRevision;
   if (assignment?.foundationRevisionId && !selectedFoundation) {
-    throw new StudioContextUnavailableError("The assigned studio foundation is no longer available.");
+    throw new StudioContextUnavailableError(
+      "The assigned studio foundation is no longer available.",
+    );
   }
 
   return {
@@ -235,31 +239,40 @@ async function assignedProjectIds(
   prisma: PrismaClient,
   organizationId: string,
   taskProjectId: string | null,
-  assignment: { projectId: string; manifest: Prisma.JsonValue } | null,
+  assignment: { projectId: string | null; projectIds: Prisma.JsonValue; scope: string } | null,
 ): Promise<string[]> {
   if (!assignment) {
     if (!taskProjectId) return [];
     return validateProjects(prisma, organizationId, [taskProjectId]);
   }
-  const storedProjectIds = arrayOfStrings(
-    (assignment as unknown as { projectIds?: unknown }).projectIds,
+  const storedProjectIds = arrayOfStrings(assignment.projectIds);
+  const explicit = unique(
+    storedProjectIds.length > 0
+      ? storedProjectIds
+      : assignment.projectId
+        ? [assignment.projectId]
+        : [],
   );
-  const explicit = unique(storedProjectIds.length > 0 ? storedProjectIds : [assignment.projectId]);
+  if (assignment.scope === "studio") {
+    return [];
+  }
+  if (!assignment.projectId) {
+    throw new StudioContextUnavailableError("The assignment has no project scope.");
+  }
   const primary = await prisma.studioProject.findFirst({
     where: { id: assignment.projectId, organizationId },
     select: { scope: true },
   });
   if (!primary) throw new StudioContextUnavailableError("The assigned project is unavailable.");
-  if (primary.scope === "studio") {
-    const projects = await prisma.studioProject.findMany({
-      where: { organizationId },
-      select: { id: true },
-      orderBy: { id: "asc" },
-    });
-    return projects.map((project) => project.id);
+  if (assignment.scope === "one" && explicit.length !== 1) {
+    throw new StudioContextUnavailableError(
+      "A one-project assignment must name exactly one project.",
+    );
   }
-  if (primary.scope === "one" && explicit.length !== 1) {
-    throw new StudioContextUnavailableError("A one-project assignment must name exactly one project.");
+  if (assignment.scope === "multi" && explicit.length < 2) {
+    throw new StudioContextUnavailableError(
+      "A multi-project assignment must name at least two projects.",
+    );
   }
   return validateProjects(prisma, organizationId, explicit);
 }
@@ -307,9 +320,7 @@ function sourceFromBinding(binding: {
     // Membership and project ownership were checked immediately before this fixed
     // server policy is derived. Assignment JSON never supplies access scopes.
     access: { allowedScopes: ["project"] },
-    ...(requiredSourcePaths.length > 0
-      ? { requiredSourcePaths }
-      : {}),
+    ...(requiredSourcePaths.length > 0 ? { requiredSourcePaths } : {}),
     ...(arrayOfStrings(metadata.relevantSourcePaths).length > 0
       ? { relevantSourcePaths: arrayOfStrings(metadata.relevantSourcePaths) }
       : {}),
@@ -319,21 +330,34 @@ function sourceFromBinding(binding: {
 async function assertManifestAccess(
   prisma: PrismaClient,
   manifest: EffectiveStudioContext,
-): Promise<void> {
+): Promise<PinnedStudioSource[]> {
   const projectIds = manifest.assignment?.projectIds ?? [];
   if (projectIds.length > 0) await validateProjects(prisma, manifest.organizationId, projectIds);
-  if (manifest.sources.length === 0) return;
+  if (manifest.sources.length === 0) return [];
   const bindings = await prisma.projectSourceBinding.findMany({
     where: {
       id: { in: manifest.sources.map((source) => source.bindingId) },
       projectId: { in: projectIds },
       project: { organizationId: manifest.organizationId },
     },
-    select: { id: true },
+    select: { id: true, projectId: true, repository: true, ref: true },
   });
   if (bindings.length !== manifest.sources.length) {
     throw new StudioContextUnavailableError("A pinned studio source is no longer authorized.");
   }
+  const currentById = new Map(bindings.map((binding) => [binding.id, binding]));
+  return manifest.sources.map(({ bindingId, ...source }) => {
+    const current = currentById.get(bindingId);
+    if (
+      !current ||
+      current.projectId !== source.studioProjectId ||
+      current.repository !== source.sourceId ||
+      current.ref !== source.refKey
+    ) {
+      throw new StudioContextUnavailableError("A pinned studio source binding has changed.");
+    }
+    return { ...source, access: { allowedScopes: ["project"] } };
+  });
 }
 
 async function persistManifest(
