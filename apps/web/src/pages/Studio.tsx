@@ -42,6 +42,8 @@ export function StudioPage() {
   > | null>(null);
   const [sourceProjectId, setSourceProjectId] = useState("");
   const [sourceBindingId, setSourceBindingId] = useState("");
+  const [sourceMutationPending, setSourceMutationPending] = useState(false);
+  const sourceMutation = useRef(false);
   const [foundation, setFoundation] =
     useState<Awaited<ReturnType<typeof rpc.studio.foundation>>>(null);
   const [foundationFields, setFoundationFields] = useState({
@@ -123,6 +125,17 @@ export function StudioPage() {
   };
   async function publishFoundation() {
     setFoundation(await rpc.studio.publishFoundation({ content: foundationFields }));
+  }
+  async function runSourceMutation(action: () => Promise<void>) {
+    if (sourceMutation.current) return;
+    sourceMutation.current = true;
+    setSourceMutationPending(true);
+    try {
+      await run(action);
+    } finally {
+      sourceMutation.current = false;
+      setSourceMutationPending(false);
+    }
   }
   async function createRole() {
     const r = await rpc.studio.createRole({
@@ -231,6 +244,11 @@ export function StudioPage() {
   async function refreshSource(bindingId: string) {
     const request = sourceRequest.current;
     const projectId = sourceProjectId;
+    if (bindingId === sourceBindingId) {
+      ++wikiPageRequest.current;
+      setWikiPage(null);
+      setWikiPages([]);
+    }
     const synced = await rpc.studio.syncProjectSource({ bindingId });
     if (request !== sourceRequest.current || projectId !== sourceProjectId) return;
     setSources((all) => all.map((s) => (s.id === bindingId ? synced : s)));
@@ -738,7 +756,11 @@ export function StudioPage() {
                     className="flex items-center justify-between rounded-xl bg-muted/40 px-3 py-2 text-sm"
                   >
                     <span>{repo.label}</span>
-                    <Button variant="secondary" onClick={() => void run(() => addSource(repo.id))}>
+                    <Button
+                      variant="secondary"
+                      disabled={sourceMutationPending}
+                      onClick={() => void runSourceMutation(() => addSource(repo.id))}
+                    >
                       Connect
                     </Button>
                   </div>
@@ -760,11 +782,16 @@ export function StudioPage() {
                   <span className="flex gap-2">
                     <Button
                       variant="secondary"
-                      onClick={() => void run(() => refreshSource(source.id))}
+                      disabled={sourceMutationPending}
+                      onClick={() => void runSourceMutation(() => refreshSource(source.id))}
                     >
                       Refresh
                     </Button>
-                    <Button variant="secondary" onClick={() => void loadWiki(source.id)}>
+                    <Button
+                      variant="secondary"
+                      disabled={sourceMutationPending}
+                      onClick={() => void loadWiki(source.id)}
+                    >
                       Wiki
                     </Button>
                   </span>
