@@ -490,12 +490,12 @@ export class LocalEmployeeHostCompanion implements EmployeeHostCompanion {
     }
     const env = {
       PATH: process.env.PATH ?? "",
-      HOME: process.env.HOME ?? root,
+      HOME: root,
       LANG: process.env.LANG ?? "C",
       TMPDIR: process.env.TMPDIR ?? "/tmp",
       ...Object.fromEntries(
         Object.entries(request.env ?? {}).filter(([key]) =>
-          /^(PATH|HOME|LANG|TMPDIR|LC_[A-Z_]+)$/u.test(key),
+          /^(PATH|LANG|TMPDIR|LC_[A-Z_]+)$/u.test(key),
         ),
       ),
     };

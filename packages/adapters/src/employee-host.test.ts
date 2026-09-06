@@ -179,7 +179,8 @@ describe("employee host protocol", () => {
   });
 
   it("executes only inside the bound workspace", async () => {
-    const companion = new LocalEmployeeHostCompanion(process.cwd());
+    const root = process.cwd();
+    const companion = new LocalEmployeeHostCompanion(root);
     const events = [];
     for await (const event of companion.execute({
       argv: ["node", "-e", "process.stdout.write('ok')"],
@@ -188,6 +189,19 @@ describe("employee host protocol", () => {
       events.push(event);
     expect(events).toContainEqual({ type: "stdout", data: "ok" });
     expect(events.at(-1)).toEqual({ type: "exit", code: 0 });
+    const environment = [];
+    for await (const event of companion.execute({
+      argv: [
+        "node",
+        "-e",
+        "process.stdout.write(JSON.stringify({ home: process.env.HOME, privateValue: process.env.RAKAZO_PRIVATE_SECRET }))",
+      ],
+      cwd: ".",
+      env: { HOME: "/private/host-home", RAKAZO_PRIVATE_SECRET: "must-not-cross" },
+    }))
+      environment.push(event);
+    expect(environment).toContainEqual({ type: "stdout", data: JSON.stringify({ home: root }) });
+    expect(environment).toContainEqual({ type: "exit", code: 0 });
     const blocked = [];
     for await (const event of companion.execute({ argv: ["true"], cwd: ".." })) blocked.push(event);
     expect(blocked).toContainEqual({ type: "exit", code: 1 });
