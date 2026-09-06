@@ -39,7 +39,12 @@ test.describe("Studio UI fixture", () => {
     await scope.selectOption("studio");
     await expect(assign).toBeEnabled();
     await expect(garden).not.toBeChecked();
-    await expect(page.getByRole("button", { name: "Edit" })).toBeVisible();
+    const engineerPreset = page
+      .locator("span.font-medium")
+      .filter({ hasText: /^Engineer$/ })
+      .first()
+      .locator("..");
+    await expect(engineerPreset.getByRole("button", { name: "Edit" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Register" })).toBeDisabled();
   });
 
