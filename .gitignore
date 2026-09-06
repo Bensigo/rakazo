@@ -28,6 +28,7 @@ apps/mobile/ios
 packages/db/src/generated
 infra/sandboxes/supervisor/dist
 *.log
+.env.providers
 .vercel
 .cache
 artifacts

@@ -7,7 +7,7 @@ import {
   type SpaceBot,
 } from "@rakazo/contracts";
 import { userVisibleMessages } from "@rakazo/core";
-import type { PrismaClient } from "./client.js";
+import type { Prisma, PrismaClient } from "./client.js";
 import { type ComputerMode, ensureComputerRecord, parseComputerMode } from "./computers.js";
 import { createThreadMessageInTransaction } from "./messages.js";
 import { IsolationError } from "./scope.js";
@@ -15,6 +15,27 @@ import { activeRunSelection, previewFromBlocks } from "./thread-listing.js";
 
 /** Newest messages loaded for sidebar preview; enough to skip a short peer-run tail. */
 const SIDEBAR_PREVIEW_MESSAGE_WINDOW = 16;
+
+export interface CreateBotInput {
+  name: string;
+  title: string;
+  description: string;
+  instructions: string;
+  notifyOnFinish: boolean;
+  color?: string;
+  parentBotId?: string | null;
+  computerMode?: ComputerMode;
+  spawnKey?: string;
+  modelProvider?: string | null;
+  modelId?: string | null;
+  thinkingLevel?: string | null;
+  rolePresetId?: string | null;
+  initialMessage?: {
+    role: "user" | "bot" | "system";
+    blocks: MessageBlock[];
+    runId?: string;
+  };
+}
 
 function mapBot(
   bot: {
@@ -76,6 +97,130 @@ function mapBot(
     thinkingLevel: (bot.thinkingLevel as Bot["thinkingLevel"]) ?? null,
     webhookConfigured: Boolean(bot.webhookSecretId),
   };
+}
+
+export async function createBotInTransaction(
+  prisma: Prisma.TransactionClient,
+  actor: Actor,
+  input: CreateBotInput,
+): Promise<Bot> {
+  let color = input.color;
+  if (color === undefined) {
+    const count = await prisma.bot.count({
+      where: { spaceId: actor.spaceId, userId: actor.userId },
+    });
+    color = BOT_COLORS[count % BOT_COLORS.length] ?? BOT_COLORS[0];
+  }
+  let modelProvider = input.modelProvider ?? null;
+  let modelId = input.modelId ?? null;
+  let thinkingLevel = input.thinkingLevel ?? null;
+  const membership = await prisma.spaceMember.findUnique({
+    where: { spaceId_userId: { spaceId: actor.spaceId, userId: actor.userId } },
+    select: { organizationId: true },
+  });
+  if (!membership) throw new IsolationError();
+  let rolePresetId = input.rolePresetId ?? null;
+  if (input.parentBotId) {
+    const parent = await prisma.bot.findFirst({
+      where: {
+        id: input.parentBotId,
+        spaceId: actor.spaceId,
+        userId: actor.userId,
+      },
+    });
+    if (!parent) throw new IsolationError();
+    if (!modelId) {
+      modelProvider = parent.modelProvider ?? null;
+      modelId = parent.modelId ?? null;
+    }
+    if (thinkingLevel == null) thinkingLevel = parent.thinkingLevel ?? null;
+    if (!rolePresetId) rolePresetId = parent.rolePresetId ?? null;
+  }
+  if (rolePresetId) {
+    const role = await prisma.employeeRolePreset.findFirst({
+      where: { id: rolePresetId, organizationId: membership.organizationId },
+      select: { id: true },
+    });
+    if (!role) throw new IsolationError();
+  }
+  const settings = await prisma.deploymentSettings.findUnique({ where: { id: "default" } });
+  const envKind = process.env.SANDBOX_PROVIDER ?? "docker";
+  const kind = envKind === "docker" && settings?.computerHost === "this-mac" ? "desktop" : envKind;
+  const positions = await prisma.bot.aggregate({
+    where: { spaceId: actor.spaceId, userId: actor.userId },
+    _max: { position: true },
+  });
+  const teamComputer = await ensureComputerRecord(prisma, {
+    mode: "team",
+    spaceId: actor.spaceId,
+    userId: actor.userId,
+    kind,
+  });
+  const created = await prisma.bot.create({
+    data: {
+      spaceId: actor.spaceId,
+      userId: actor.userId,
+      name: input.name,
+      title: input.title,
+      description: input.description,
+      instructions: input.instructions,
+      notifyOnFinish: input.notifyOnFinish,
+      color,
+      position: (positions._max.position ?? -1) + 1,
+      parentBotId: input.parentBotId ?? null,
+      computerId: teamComputer.id,
+      spawnKey: input.spawnKey,
+      modelProvider,
+      modelId,
+      thinkingLevel,
+      rolePresetId,
+    },
+  });
+  const thread = await prisma.thread.create({
+    data: {
+      spaceId: actor.spaceId,
+      botId: created.id,
+      userId: actor.userId,
+    },
+  });
+  if (input.initialMessage) {
+    await createThreadMessageInTransaction(prisma, {
+      threadId: thread.id,
+      ...input.initialMessage,
+    });
+  }
+  if (input.computerMode === "dedicated") {
+    const dedicated = await ensureComputerRecord(prisma, {
+      mode: "dedicated",
+      spaceId: actor.spaceId,
+      userId: actor.userId,
+      botId: created.id,
+      kind,
+    });
+    await prisma.bot.update({ where: { id: created.id }, data: { computerId: dedicated.id } });
+  }
+  await prisma.browserProfile.create({
+    data: {
+      spaceId: actor.spaceId,
+      botId: created.id,
+      userId: actor.userId,
+    },
+  });
+  await prisma.memoryDocument.create({
+    data: {
+      spaceId: actor.spaceId,
+      userId: actor.userId,
+      botId: created.id,
+      scope: "bot",
+      path: "MEMORY.md",
+      content: `# ${input.name}\n\n`,
+    },
+  });
+  const bot = await prisma.bot.findFirstOrThrow({
+    where: { id: created.id },
+    include: { thread: true, computer: true },
+  });
+  return mapBot(bot);
 }
 
 export function createRepos(prisma: PrismaClient) {
@@ -312,133 +457,8 @@ export function createRepos(prisma: PrismaClient) {
       return bot;
     },
 
-    async createBot(
-      actor: Actor,
-      input: {
-        name: string;
-        title: string;
-        description: string;
-        instructions: string;
-        notifyOnFinish: boolean;
-        color?: string;
-        parentBotId?: string | null;
-        computerMode?: ComputerMode;
-        spawnKey?: string;
-        modelProvider?: string | null;
-        modelId?: string | null;
-        thinkingLevel?: string | null;
-        initialMessage?: {
-          role: "user" | "bot" | "system";
-          blocks: MessageBlock[];
-          runId?: string;
-        };
-      },
-    ): Promise<Bot> {
-      let color = input.color;
-      if (color === undefined) {
-        const count = await prisma.bot.count({
-          where: { spaceId: actor.spaceId, userId: actor.userId },
-        });
-        color = BOT_COLORS[count % BOT_COLORS.length] ?? BOT_COLORS[0];
-      }
-      let modelProvider = input.modelProvider ?? null;
-      let modelId = input.modelId ?? null;
-      let thinkingLevel = input.thinkingLevel ?? null;
-      if (input.parentBotId) {
-        const parent = await prisma.bot.findFirst({
-          where: {
-            id: input.parentBotId,
-            spaceId: actor.spaceId,
-            userId: actor.userId,
-          },
-        });
-        if (!parent) throw new IsolationError();
-        if (!modelId) {
-          modelProvider = parent.modelProvider ?? null;
-          modelId = parent.modelId ?? null;
-        }
-        if (thinkingLevel == null) thinkingLevel = parent.thinkingLevel ?? null;
-      }
-      const settings = await prisma.deploymentSettings.findUnique({ where: { id: "default" } });
-      const envKind = process.env.SANDBOX_PROVIDER ?? "docker";
-      const kind =
-        envKind === "docker" && settings?.computerHost === "this-mac" ? "desktop" : envKind;
-      const bot = await prisma.$transaction(async (tx) => {
-        const positions = await tx.bot.aggregate({
-          where: { spaceId: actor.spaceId, userId: actor.userId },
-          _max: { position: true },
-        });
-        const teamComputer = await ensureComputerRecord(tx, {
-          mode: "team",
-          spaceId: actor.spaceId,
-          userId: actor.userId,
-          kind,
-        });
-        const created = await tx.bot.create({
-          data: {
-            spaceId: actor.spaceId,
-            userId: actor.userId,
-            name: input.name,
-            title: input.title,
-            description: input.description,
-            instructions: input.instructions,
-            notifyOnFinish: input.notifyOnFinish,
-            color,
-            position: (positions._max.position ?? -1) + 1,
-            parentBotId: input.parentBotId ?? null,
-            computerId: teamComputer.id,
-            spawnKey: input.spawnKey,
-            modelProvider,
-            modelId,
-            thinkingLevel,
-          },
-        });
-        const thread = await tx.thread.create({
-          data: {
-            spaceId: actor.spaceId,
-            botId: created.id,
-            userId: actor.userId,
-          },
-        });
-        if (input.initialMessage) {
-          await createThreadMessageInTransaction(tx, {
-            threadId: thread.id,
-            ...input.initialMessage,
-          });
-        }
-        if (input.computerMode === "dedicated") {
-          const dedicated = await ensureComputerRecord(tx, {
-            mode: "dedicated",
-            spaceId: actor.spaceId,
-            userId: actor.userId,
-            botId: created.id,
-            kind,
-          });
-          await tx.bot.update({ where: { id: created.id }, data: { computerId: dedicated.id } });
-        }
-        await tx.browserProfile.create({
-          data: {
-            spaceId: actor.spaceId,
-            botId: created.id,
-            userId: actor.userId,
-          },
-        });
-        await tx.memoryDocument.create({
-          data: {
-            spaceId: actor.spaceId,
-            userId: actor.userId,
-            botId: created.id,
-            scope: "bot",
-            path: "MEMORY.md",
-            content: `# ${input.name}\n\n`,
-          },
-        });
-        return tx.bot.findFirstOrThrow({
-          where: { id: created.id },
-          include: { thread: true, computer: true },
-        });
-      });
-      return mapBot(bot);
+    async createBot(actor: Actor, input: CreateBotInput): Promise<Bot> {
+      return prisma.$transaction((tx) => createBotInTransaction(tx, actor, input));
     },
 
     async reorderBots(actor: Actor, botIds: string[]): Promise<void> {

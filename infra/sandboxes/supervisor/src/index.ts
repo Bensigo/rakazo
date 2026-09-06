@@ -32,7 +32,11 @@ import {
   screenUrlFor,
   xdotoolCommand,
 } from "./computer-spec.js";
-import { assertComputerHomeWritable } from "./home-ownership.js";
+import { probeContainerHomeAccess } from "./container-home-access.js";
+import {
+  assertComputerHomeWritableAfterVisibilityDelay,
+  assertComputerHomeWritableInContainer,
+} from "./home-ownership.js";
 import {
   assertRequestIdentity,
   attemptComputerControl,
@@ -169,7 +173,25 @@ app.post("/computers", async (c) => {
         runtimeInfo || hostUid === undefined || hostGid === undefined || hostUid === 0
           ? COMPUTER_GID
           : hostGid;
-      await assertComputerHomeWritable(serviceHomePath, effectiveUid, effectiveGid);
+      if (runtimeInfo) {
+        await assertComputerHomeWritableInContainer(
+          serviceHomePath,
+          effectiveUid,
+          effectiveGid,
+          () =>
+            probeContainerHomeAccess(docker, {
+              homePath,
+              image: COMPUTER_IMAGE,
+              user: computerUser,
+            }),
+        );
+      } else {
+        await assertComputerHomeWritableAfterVisibilityDelay(
+          serviceHomePath,
+          effectiveUid,
+          effectiveGid,
+        );
+      }
       if (existing) {
         await existing.remove({ force: true }).catch(() => undefined);
       }
@@ -743,10 +765,14 @@ function assertBotHomePath(homePath: string, botId: string) {
   }
 }
 
-function hostHomePath(serviceHomePath: string, info: Docker.ContainerInspectInfo | undefined) {
-  const dataMount = info?.Mounts.find((mount) => mount.Destination === dataDir);
+export function hostHomePath(
+  serviceHomePath: string,
+  info: Docker.ContainerInspectInfo | undefined,
+  serviceDataDir = dataDir,
+) {
+  const dataMount = info?.Mounts.find((mount) => mount.Destination === serviceDataDir);
   if (!dataMount?.Source) return serviceHomePath;
-  return path.join(dataMount.Source, path.relative(dataDir, serviceHomePath));
+  return path.join(dataMount.Source, path.relative(serviceDataDir, serviceHomePath));
 }
 
 function computerControlEndpoint(info: Docker.ContainerInspectInfo) {

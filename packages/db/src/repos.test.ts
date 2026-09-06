@@ -1,7 +1,7 @@
 import type { Actor } from "@rakazo/contracts";
 import { describe, expect, it, vi } from "vitest";
 import type { PrismaClient } from "./client.js";
-import { createRepos } from "./repos.js";
+import { createBotInTransaction, createRepos } from "./repos.js";
 import { IsolationError } from "./scope.js";
 
 const actor: Actor = {
@@ -220,6 +220,48 @@ describe("createRepos.listBots", () => {
       expect.objectContaining({ preview: "Fourth-window answer" }),
     ]);
     expect(messageFindMany).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe("createBotInTransaction", () => {
+  it("leaves a custom bot unassigned when the studio has a default specialist preset", async () => {
+    const roleFindFirst = vi.fn(async () => ({ id: "default-role" }));
+    const created = {
+      ...baseBot,
+      computer: { id: "computer-1", scope: "team" },
+      rolePresetId: null,
+    };
+    const prisma = {
+      bot: {
+        count: vi.fn(async () => 0),
+        aggregate: vi.fn(async () => ({ _max: { position: null } })),
+        create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
+          ...created,
+          ...data,
+        })),
+        findFirstOrThrow: vi.fn(async () => created),
+      },
+      spaceMember: { findUnique: vi.fn(async () => ({ organizationId: "org-1" })) },
+      employeeRolePreset: { findFirst: roleFindFirst },
+      deploymentSettings: { findUnique: vi.fn(async () => null) },
+      computer: { upsert: vi.fn(async () => ({ id: "computer-1" })) },
+      thread: { create: vi.fn(async () => ({ id: "thread-1" })) },
+      browserProfile: { create: vi.fn(async () => ({})) },
+      memoryDocument: { create: vi.fn(async () => ({})) },
+    };
+
+    await createBotInTransaction(prisma as never, actor, {
+      name: "Custom",
+      title: "",
+      description: "",
+      instructions: "",
+      notifyOnFinish: true,
+    });
+
+    expect(prisma.bot.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ rolePresetId: null }),
+    });
+    expect(roleFindFirst).not.toHaveBeenCalled();
   });
 });
 

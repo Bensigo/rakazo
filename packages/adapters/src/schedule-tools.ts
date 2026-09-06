@@ -7,7 +7,7 @@ import {
   nextCronDate,
   ONCE_ROUTINE_CRON,
 } from "@rakazo/core";
-import type { PrismaClient, ThreadEvents } from "@rakazo/db";
+import type { Prisma, PrismaClient, ThreadEvents } from "@rakazo/db";
 
 export { isOneShotRoutineCron, ONCE_ROUTINE_CRON };
 
@@ -184,6 +184,7 @@ export async function createScheduleFromTool(
     prompt: string;
     timezone?: string;
     schedule: Record<string, unknown>;
+    studioContext?: Prisma.InputJsonValue;
   },
 ) {
   const name = input.name.trim();
@@ -208,6 +209,7 @@ export async function createScheduleFromTool(
       notify: true,
       active: true,
       nextRunAt: resolved.nextRunAt,
+      studioContext: input.studioContext,
     },
   });
 

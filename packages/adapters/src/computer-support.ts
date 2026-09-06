@@ -4,13 +4,14 @@ import type { ComputerAction, ComputerObservation, ComputerRef } from "@rakazo/a
 import type { ComputerMode } from "@rakazo/contracts";
 
 export function toComputerRef(computer: {
+  id?: string;
   homeKey: string;
   kind: string;
   providerRef: string | null;
 }): ComputerRef {
   if (!computer.providerRef) throw new Error("computer provider reference is missing");
   return {
-    id: computer.providerRef,
+    id: computer.kind === "employee-host" && computer.id ? computer.id : computer.providerRef,
     botId: computer.homeKey,
     kind: computer.kind as ComputerRef["kind"],
     providerRef: computer.providerRef,
@@ -100,6 +101,25 @@ export function resolveBotWorkspaceCwd(
   if (!requestedCwd || requestedCwd === ".") return teamBotWorkspaceDirectory(botId);
   if (requestedCwd.startsWith("/")) return requestedCwd;
   return resolveBotWorkspacePath(scope, botId, requestedCwd);
+}
+
+/**
+ * State the run's workspace authority explicitly so a model cannot carry an
+ * absolute path from a previous computer into the current run's shell calls.
+ * Absolute paths remain valid when they belong to the current provider's
+ * virtual home; host-specific paths from another run are never portable.
+ */
+export function computerWorkspaceInstruction(input: {
+  computerId: string;
+  kind: string;
+  scope: ComputerMode;
+  botId: string;
+}): string {
+  const home =
+    input.scope === "team"
+      ? teamBotWorkspaceDirectory(input.botId)
+      : "this computer's private home";
+  return `This run is pinned to computer ${input.computerId} (${input.kind}). Its current workspace root is ${home}. Use relative paths by default. An absolute path from an earlier turn may be stale after switching computers; reuse it only after confirming it is inside this computer's current virtual home. Never reuse a path from a different computer.`;
 }
 
 export function displayBotWorkspacePath(

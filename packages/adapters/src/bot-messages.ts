@@ -16,6 +16,7 @@ import {
   withTransactionRetry,
 } from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
+import { revalidateDelegatedComputer } from "./delegated-computer.js";
 import type { ExecutorDeps } from "./executor.js";
 
 /**
@@ -183,10 +184,15 @@ export async function messageBot(
             userId: run.userId,
             status: options?.allowTerminalSource ? { in: ["completed", "failed"] } : "running",
           },
-          select: { id: true },
+          select: { id: true, computerId: true },
         });
         if (!senderStillRunning)
           return { ok: false as const, error: "source run is no longer active" };
+        const computerId = await revalidateDelegatedComputer(tx, {
+          computerId: senderStillRunning.computerId,
+          spaceId: run.spaceId,
+          userId: run.userId,
+        });
 
         // Re-read the target inside the transaction: it can be archived between
         // resolving it above and committing here.
@@ -246,6 +252,7 @@ export async function messageBot(
           data: {
             spaceId: run.spaceId,
             botId: target.id,
+            computerId,
             threadId: targetThreadId,
             taskId: task.id,
             userId: run.userId,

@@ -21,6 +21,7 @@ import {
 import { getLogger } from "@rakazo/logging";
 import { toComputerRef } from "./computer-support.js";
 import { checkpointAndRecordComputerWorkspace } from "./computer-workspace.js";
+import { revalidateDelegatedComputer } from "./delegated-computer.js";
 import { resolveAgentHomePath } from "./home.js";
 
 export function confirmSpawnedBotName(confirmName: string, botName: string) {
@@ -108,6 +109,7 @@ export async function spawnBot(
       botId: created.id,
       threadId: created.threadId,
       sourceRunId: input.runId,
+      sourceBotId: input.spawnedBy.id,
       spawnKey: input.spawnKey,
       prompt,
     });
@@ -126,7 +128,7 @@ export async function spawnBot(
   };
 }
 
-async function ensureSpawnRun(
+export async function ensureSpawnRun(
   prisma: PrismaClient,
   input: {
     spaceId: string;
@@ -134,6 +136,7 @@ async function ensureSpawnRun(
     botId: string;
     threadId: string;
     sourceRunId: string;
+    sourceBotId: string;
     spawnKey: string;
     prompt: string;
   },
@@ -148,8 +151,29 @@ async function ensureSpawnRun(
   const existing = await prisma.run.findUnique({ where });
   if (existing) return existing;
 
+  const source = await prisma.run.findFirst({
+    where: {
+      id: input.sourceRunId,
+      spaceId: input.spaceId,
+      userId: input.userId,
+      botId: input.sourceBotId,
+    },
+    select: {
+      computerId: true,
+      studioContext: true,
+      task: { select: { projectId: true, studioContext: true } },
+    },
+  });
+  if (!source) throw new Error("The source run for this delegation is unavailable");
+  const studioContext = source.studioContext ?? source.task.studioContext;
+
   try {
     return await prisma.$transaction(async (tx) => {
+      const computerId = await revalidateDelegatedComputer(tx, {
+        computerId: source.computerId,
+        spaceId: input.spaceId,
+        userId: input.userId,
+      });
       await createThreadMessageInTransaction(tx, {
         threadId: input.threadId,
         role: "user",
@@ -164,18 +188,22 @@ async function ensureSpawnRun(
           userId: input.userId,
           prompt: input.prompt,
           status: "queued",
+          projectId: source.task.projectId,
+          studioContext: studioContext ?? undefined,
         },
       });
       return tx.run.create({
         data: {
           spaceId: input.spaceId,
           botId: input.botId,
+          computerId,
           threadId: input.threadId,
           taskId: task.id,
           userId: input.userId,
           status: "queued",
           trigger: "spawn",
           clientNonce,
+          studioContext: studioContext ?? undefined,
         },
       });
     });

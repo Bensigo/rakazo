@@ -3,6 +3,7 @@ import { ONCE_ROUTINE_CRON } from "@rakazo/core";
 import type { PrismaClient } from "@rakazo/db";
 import { describe, expect, it, vi } from "vitest";
 import {
+  buildRunWorkspaceInstruction,
   createRunExecutor,
   createRunWorkspaceCheckpoint,
   loadCurrentTurnImages,
@@ -14,6 +15,27 @@ import {
 } from "./executor.js";
 
 describe("run workspace checkpoint", () => {
+  it("binds workspace guidance to the computer selected for this run", () => {
+    const host = buildRunWorkspaceInstruction({
+      computerId: "employee-computer",
+      kind: "employee-host",
+      scope: "dedicated",
+      botId: "bot-1",
+    });
+    const docker = buildRunWorkspaceInstruction({
+      computerId: "docker-computer",
+      kind: "docker",
+      scope: "dedicated",
+      botId: "bot-1",
+    });
+    expect(host).toContain("employee-computer");
+    expect(docker).toContain("docker-computer");
+    expect(docker).toContain(
+      "An absolute path from an earlier turn may be stale after switching computers",
+    );
+    expect(docker).not.toContain("employee-computer");
+  });
+
   it("skips clean turns and flushes once after a mutation", async () => {
     const persist = vi.fn(async () => undefined);
     const checkpoint = createRunWorkspaceCheckpoint(persist);
@@ -350,6 +372,27 @@ describe("createRunExecutor", () => {
 
   it("deactivates one-shot routines after wake without scheduling another wakeup", async () => {
     const scheduledAt = new Date(Date.now() - 1_000);
+    const studioContext = {
+      version: 1,
+      organizationId: "org-1",
+      foundation: { id: "foundation-1", revision: 1, content: {} },
+      role: { id: "role-1", key: "writer", name: "Writer", instructions: "Write." },
+      assignment: {
+        id: "assignment-1",
+        scope: "multi",
+        projectIds: ["project-1", "project-2"],
+        brief: { deliverable: "Report" },
+      },
+      sourceProjectIds: ["project-1", "project-2"],
+      sources: [],
+    };
+    const routineSelection = {
+      kind: "studio-routine-selection",
+      version: 1,
+      organizationId: "org-1",
+      rolePresetId: "role-1",
+      assignment: studioContext.assignment,
+    };
     const enqueue = vi.fn(async () => undefined);
     const cancel = vi.fn(async () => undefined);
     const append = vi.fn(async () => undefined);
@@ -369,6 +412,7 @@ describe("createRunExecutor", () => {
           active: true,
           nextRunAt: scheduledAt,
           threadId: "group-thread-1",
+          studioContext: routineSelection,
         })),
       },
       bot: {
@@ -408,10 +452,21 @@ describe("createRunExecutor", () => {
     expect(enqueue).toHaveBeenCalledTimes(1);
     expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ name: "run.continue" }));
     expect(taskCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ threadId: "group-thread-1" }) }),
+      expect.objectContaining({
+        data: expect.objectContaining({
+          threadId: "group-thread-1",
+          projectId: "project-1",
+          studioContext: routineSelection,
+        }),
+      }),
     );
     expect(runCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ threadId: "group-thread-1" }) }),
+      expect.objectContaining({
+        data: expect.objectContaining({
+          threadId: "group-thread-1",
+          studioContext: routineSelection,
+        }),
+      }),
     );
     expect(append).toHaveBeenCalledWith(
       expect.objectContaining({

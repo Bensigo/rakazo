@@ -1179,9 +1179,9 @@ msgstr ""
 msgid "Create your first bot"
 msgstr "İlk botunu oluştur"
 
-#: src/pages/Auth.tsx:31
-msgid "Create your Rakazo"
-msgstr "Rakazo hesabını oluştur"
+#: src/pages/Auth.tsx:35
+msgid "Create your Sunrise Studio account"
+msgstr "Create your Sunrise Studio account"
 
 #: src/components/AskCard.tsx:21
 msgid "Created"
@@ -2697,9 +2697,9 @@ msgstr "Ayarları göster"
 msgid "Sign in"
 msgstr "Oturum aç"
 
-#: src/pages/Auth.tsx:29
-msgid "Sign in to Rakazo"
-msgstr "Rakazo'da oturum aç"
+#: src/pages/Auth.tsx:33
+msgid "Sign in to Sunrise Studio"
+msgstr "Sign in to Sunrise Studio"
 
 #: src/pages/Auth.tsx:199
 #: src/pages/Welcome.tsx:32
@@ -3168,3 +3168,43 @@ msgstr "Botların {hostLabel} üzerinde çalışmasına izin verirsen işletim s
 #: src/pages/Welcome.tsx:21
 msgid "Your team of always-on agents<0/>that you can give real work to."
 msgstr "Gerçek işler verebileceğin,<0/>her zaman açık agent takımın."
+
+#: src/pages/shell/message-cards.tsx:48
+msgid "Could not dismiss"
+msgstr "Could not dismiss"
+
+#: src/pages/shell/bot-picker.tsx:70
+msgid "Create new Bot"
+msgstr "Create new Bot"
+
+#: src/pages/Shell.tsx:3045
+msgid "Hide bots"
+msgstr "Hide bots"
+
+#: src/pages/Shell.tsx:2560
+msgid "Minimize bots"
+msgstr "Minimize bots"
+
+#: src/pages/shell/bot-picker.tsx:59
+msgid "No bots match"
+msgstr "No bots match"
+
+#: src/pages/Shell.tsx:3129
+msgid "Open Studio"
+msgstr "Open Studio"
+
+#: src/pages/shell/bot-picker.tsx:52
+msgid "Search or create Bots"
+msgstr "Search or create Bots"
+
+#: src/pages/Shell.tsx:3045
+msgid "Show bots"
+msgstr "Show bots"
+
+#: src/pages/shell/bot-picker.tsx:46
+msgid "To:"
+msgstr "To:"
+
+#: src/pages/Shell.tsx:3129
+msgid "Studio"
+msgstr "Studio"

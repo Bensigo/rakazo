@@ -76,54 +76,60 @@ describe("finalizeRun", () => {
     expect(completedRunBlocks(blocks, null, new Date())).toBe(blocks);
   });
 
-  it("retries a transaction conflict without duplicating the terminal event or notification", async () => {
-    const conflict = Object.assign(new Error("serialization conflict"), { code: "P2034" });
-    const createEvent = vi.fn(async () => ({ threadId: "thread-1", seq: 0 }));
-    const tx = {
-      $queryRaw: vi.fn(async () => []),
-      run: {
-        findUnique: vi.fn(async () => ({ status: "running" })),
-        findFirst: vi.fn(async () => null),
-        updateMany: vi.fn(async () => ({ count: 1 })),
-      },
-      attempt: { updateMany: vi.fn(async () => ({ count: 1 })) },
-      task: { updateMany: vi.fn(async () => ({ count: 1 })) },
-      thread: { update: vi.fn(async () => ({ nextEventSeq: 1 })) },
-      event: { create: createEvent, deleteMany: vi.fn(async () => ({ count: 0 })) },
-      steeringMessage: {
-        findMany: vi.fn(async () => []),
-        updateMany: vi.fn(async () => ({ count: 0 })),
-      },
-      bot: { update: vi.fn(async () => ({})) },
-    };
-    const transaction = vi
-      .fn()
-      .mockRejectedValueOnce(conflict)
-      .mockImplementation(async (operation: (client: typeof tx) => unknown) => operation(tx));
-    const publish = vi.fn(async () => undefined);
-
-    await expect(
-      finalizeRun(
-        { $transaction: transaction } as unknown as PrismaClient,
-        {
-          spaceId: "space-1",
-          threadId: "thread-1",
-          botId: "bot-1",
-          runId: "run-1",
-          taskId: "task-1",
-          attemptId: "attempt-1",
-          leaseOwner: "worker-1",
-          leaseFence: 1,
-          outcome: "failed",
-          error: "failed",
+  it.each([
+    ["serialization conflict", "P2034"],
+    ["A commit cannot be executed on an expired transaction", "P2028"],
+  ])(
+    "retries a database-only finalization failure (%s) without duplicate history",
+    async (message, code) => {
+      const conflict = Object.assign(new Error(message), { code });
+      const createEvent = vi.fn(async () => ({ threadId: "thread-1", seq: 0 }));
+      const tx = {
+        $queryRaw: vi.fn(async () => []),
+        run: {
+          findUnique: vi.fn(async () => ({ status: "running" })),
+          findFirst: vi.fn(async () => null),
+          updateMany: vi.fn(async () => ({ count: 1 })),
         },
-        { publish } as never,
-      ),
-    ).resolves.toEqual({ continuationRunId: null });
-    expect(transaction).toHaveBeenCalledTimes(2);
-    expect(createEvent).toHaveBeenCalledOnce();
-    expect(publish).toHaveBeenCalledOnce();
-  });
+        attempt: { updateMany: vi.fn(async () => ({ count: 1 })) },
+        task: { updateMany: vi.fn(async () => ({ count: 1 })) },
+        thread: { update: vi.fn(async () => ({ nextEventSeq: 1 })) },
+        event: { create: createEvent, deleteMany: vi.fn(async () => ({ count: 0 })) },
+        steeringMessage: {
+          findMany: vi.fn(async () => []),
+          updateMany: vi.fn(async () => ({ count: 0 })),
+        },
+        bot: { update: vi.fn(async () => ({})) },
+      };
+      const transaction = vi
+        .fn()
+        .mockRejectedValueOnce(conflict)
+        .mockImplementation(async (operation: (client: typeof tx) => unknown) => operation(tx));
+      const publish = vi.fn(async () => undefined);
+
+      await expect(
+        finalizeRun(
+          { $transaction: transaction } as unknown as PrismaClient,
+          {
+            spaceId: "space-1",
+            threadId: "thread-1",
+            botId: "bot-1",
+            runId: "run-1",
+            taskId: "task-1",
+            attemptId: "attempt-1",
+            leaseOwner: "worker-1",
+            leaseFence: 1,
+            outcome: "failed",
+            error: "failed",
+          },
+          { publish } as never,
+        ),
+      ).resolves.toEqual({ continuationRunId: null });
+      expect(transaction).toHaveBeenCalledTimes(2);
+      expect(createEvent).toHaveBeenCalledOnce();
+      expect(publish).toHaveBeenCalledOnce();
+    },
+  );
 });
 
 describe("followThreadEvents", () => {

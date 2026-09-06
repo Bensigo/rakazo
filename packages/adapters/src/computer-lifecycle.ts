@@ -9,6 +9,7 @@ import type {
 import { ACTIVE_RUN_STATUSES, screenLeaseId } from "@rakazo/core";
 import {
   expireComputerExecutionLeases,
+  type Prisma,
   type PrismaClient,
   parseComputerMode,
   type ThreadEvents,
@@ -41,6 +42,35 @@ export class ComputerBusyError extends Error {
 
 export { toComputerRef } from "./computer-support.js";
 
+function computerUseAuthority(context: AdapterContext): Prisma.ComputerWhereInput {
+  if (!context.botId) return {};
+  const botComputer = { bots: { some: { id: context.botId, archivedAt: null } } };
+  if (!context.runId || context.computerLeaseFence === undefined) return botComputer;
+  return {
+    executionLeases: {
+      some: {
+        botId: context.botId,
+        runId: context.runId,
+        fence: context.computerLeaseFence,
+        expiresAt: { gt: new Date() },
+      },
+    },
+  };
+}
+
+async function assertComputerUseAuthorized(
+  prisma: PrismaClient,
+  computerId: string,
+  context: AdapterContext,
+) {
+  if (!context.botId || !context.runId || context.computerLeaseFence === undefined) return;
+  const authorized = await prisma.computer.findFirst({
+    where: { id: computerId, ...computerUseAuthority(context) },
+    select: { id: true },
+  });
+  if (!authorized) throw new ComputerBusyError();
+}
+
 export async function provisionComputer(
   deps: {
     prisma: PrismaClient;
@@ -55,6 +85,7 @@ export async function provisionComputer(
   controlHolder: "bot" | "none" = "none",
 ): Promise<ComputerRef> {
   let existing = await deps.prisma.computer.findUniqueOrThrow({ where: { id: computerId } });
+  await assertComputerUseAuthorized(deps.prisma, computerId, context);
   if (existing.controlLeaseId && !hasActiveComputerControl(existing)) {
     await expireComputerControl(deps, existing.id, existing.controlLeaseId);
     existing = await deps.prisma.computer.findUniqueOrThrow({ where: { id: computerId } });
@@ -80,7 +111,7 @@ export async function provisionComputer(
     where: {
       id: computerId,
       state: { in: ["stopped", "suspended", "error"] },
-      ...(context.botId ? { bots: { some: { id: context.botId, archivedAt: null } } } : {}),
+      ...computerUseAuthority(context),
     },
     data: { state: "booting" },
   });
@@ -90,6 +121,7 @@ export async function provisionComputer(
     const ref = await deps.sandbox.provision(
       {
         botId: existing.homeKey,
+        computerId: existing.id,
         homePath,
         providerRef: existing.providerRef ?? undefined,
         providerKind: existing.kind as ComputerRef["kind"],
@@ -118,7 +150,7 @@ export async function provisionComputer(
       where: {
         id: computerId,
         state: "booting",
-        ...(context.botId ? { bots: { some: { id: context.botId, archivedAt: null } } } : {}),
+        ...computerUseAuthority(context),
       },
       data: {
         state: "running",
@@ -189,6 +221,7 @@ async function reconnectComputer(
   const ref = await deps.sandbox.provision(
     {
       botId: computer.homeKey,
+      computerId: computer.id,
       homePath,
       providerRef: computer.providerRef ?? undefined,
       providerKind: computer.kind as ComputerRef["kind"],
@@ -300,10 +333,11 @@ export async function acquireComputerExecutionLease(
     runId: string;
     botId: string;
     resumeHeldLease?: boolean;
+    force?: boolean;
   },
 ): Promise<ComputerExecutionLease | null> {
   const computer = await prisma.computer.findUniqueOrThrow({ where: { id: input.computerId } });
-  if (computer.scope !== "team") return null;
+  if (computer.scope !== "team" && !input.force) return null;
   if (computer.state === "suspending") throw new ComputerBusyError();
   const now = new Date();
   const expiresAt = new Date(now.getTime() + EXECUTION_LEASE_MS);

@@ -12,7 +12,6 @@ import type {
 } from "@rakazo/adapter-kit";
 import {
   applyMessagingOutboundStatus,
-  ChatSdkMessagingSurface,
   type ComposioProvider,
   type ConnectorRegistry,
   createBackgroundJobHandlers,
@@ -27,29 +26,30 @@ import {
   destroyBot,
   EmailEmulator,
   EncryptedSecretStore,
-  ExpoPushProvider,
   GraphileJobPublisher,
   InMemoryJobQueue,
   InMemoryRealtimeFanout,
   InstalledConnectorProvider,
-  isComposioEnabled,
-  isMessagingSurfaceEnabled,
-  isPipedreamEnabled,
   LocalAgentHomeStore,
   LocalArtifactStore,
+  loadPushToken,
+  loadStudioKnowledgeBridge,
+  ManagedEmailMcpClient,
+  ManagedMessagingMcpClient,
+  ManagedNotificationMcpClient,
+  ManagedProviderMcpClient,
   McpConnector,
   McpOAuthBroker,
-  messagingPlatformsFromEnv,
   PiAgentRuntime,
   PiOAuthLogins,
-  PipedreamConnector,
   PostgresRealtimeFanout,
-  pipedreamConfigFromEnv,
+  parseRegisteredStudioRepositories,
   pushTokenPath,
+  type RegisteredStudioRepository,
   type RemoteConnectorDependencies,
   ScriptedAgentRuntime,
-  SmtpEmailProvider,
   SpaceMemoryProviderResolver,
+  type StudioKnowledgeBridge,
 } from "@rakazo/adapters";
 import { blockedAuthPaths, createAuth } from "@rakazo/auth";
 import { signupPolicyFromEnv } from "@rakazo/core";
@@ -72,10 +72,12 @@ import { requestLogging } from "@rakazo/logging/hono";
 import { MarkdownMemoryStore } from "@rakazo/memory";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { mountEmployeeHostRoutes } from "./employee-host-routes.js";
 import { type AppEnv, loadEnv } from "./env.js";
 import { createMessagingInboundHandler } from "./messaging-inbound.js";
 import { mountMessagingWebhookRoutes } from "./messaging-webhook.js";
 import { createRouter } from "./router.js";
+import { mountStudioInvitationRoutes } from "./studio-invitations.js";
 import { mountVoiceHttpRoutes } from "./voice.js";
 import { mountWebhookHttpRoutes } from "./webhook.js";
 
@@ -103,6 +105,8 @@ export async function createApp(
     email?: TransactionalEmailProvider;
     remoteConnectors?: RemoteConnectorDependencies;
     logger?: Logger;
+    studioKnowledge?: StudioKnowledgeBridge;
+    studioRepositories?: RegisteredStudioRepository[];
   } = {},
 ): Promise<AppHandles> {
   const {
@@ -114,9 +118,19 @@ export async function createApp(
     email: emailOverride,
     remoteConnectors,
     logger: loggerOverride,
+    studioKnowledge: studioKnowledgeOverride,
+    studioRepositories: studioRepositoriesOverride,
     ...envOverrides
   } = overrides;
   const env = { ...loadEnv(process.env), ...envOverrides };
+  const studioRepositories =
+    studioRepositoriesOverride ?? parseRegisteredStudioRepositories(env.sunriseStudioRepositories);
+  const studioKnowledge =
+    studioKnowledgeOverride ??
+    (await loadStudioKnowledgeBridge({
+      modulePath: env.sunriseKnowledgeModule,
+      databaseUrl: env.sunriseKnowledgeDatabaseUrl,
+    }));
   const logger = loggerOverride ?? createServiceLogger({ service: SERVICE_NAMES.api });
   installLogger(logger);
   const created = prismaOverride
@@ -192,21 +206,37 @@ export async function createApp(
     },
     mcpOAuth,
   );
-  const pipedreamConfig = pipedreamConfigFromEnv(env);
-  const pipedream =
-    pipedreamOverride ??
-    (isPipedreamEnabled(pipedreamConfig) ? new PipedreamConnector(pipedreamConfig) : undefined);
-  const messagingPlatforms = messagingPlatformsFromEnv(env);
-  const messaging =
-    messagingOverride ??
-    (isMessagingSurfaceEnabled(messagingPlatforms, {
-      deploymentModelKey: env.deploymentModelKey,
-      openSignup: env.messagingOpenSignup,
-    })
-      ? new ChatSdkMessagingSurface(messagingPlatforms)
-      : undefined);
+  const managedProviderMcp =
+    env.managedProviderMcpUrl && env.managedProviderMcpToken
+      ? (providerId: "composio" | "pipedream") =>
+          new ManagedProviderMcpClient({
+            providerId,
+            endpoint: env.managedProviderMcpUrl!,
+            token: env.managedProviderMcpToken!,
+            allowInternalHttp: env.managedProviderMcpAllowInternalHttp,
+          })
+      : undefined;
+  const managedProviderRpc =
+    env.managedProviderMcpUrl && env.managedProviderMcpToken
+      ? new ManagedProviderMcpClient({
+          providerId: "composio",
+          endpoint: env.managedProviderMcpUrl,
+          token: env.managedProviderMcpToken,
+          allowInternalHttp: env.managedProviderMcpAllowInternalHttp,
+        })
+      : undefined;
+  const managedCapabilities = managedProviderRpc
+    ? await managedProviderRpc.capabilities()
+    : undefined;
+  const pipedream = pipedreamOverride ?? managedProviderMcp?.("pipedream");
+  const managedMessaging =
+    managedProviderRpc && managedCapabilities?.messaging
+      ? new ManagedMessagingMcpClient(managedProviderRpc)
+      : undefined;
+  if (managedMessaging) await managedMessaging.refreshPlatforms();
+  const messaging = messagingOverride ?? managedMessaging;
   const localEmailEmulator =
-    !emailOverride && !env.smtpUrl && env.emailEmulator
+    !emailOverride && !managedCapabilities?.email && env.emailEmulator
       ? new EmailEmulator((message) => {
           getLogger().info("email emulator captured message", {
             "email.subject": message.subject,
@@ -218,22 +248,26 @@ export async function createApp(
   }
   const email: TransactionalEmailProvider | undefined =
     emailOverride ??
-    (env.smtpUrl
-      ? new SmtpEmailProvider({ url: env.smtpUrl, from: env.emailFrom ?? "" })
+    (managedProviderRpc && managedCapabilities?.email
+      ? new ManagedEmailMcpClient(managedProviderRpc)
       : localEmailEmulator);
   const installed = new InstalledConnectorProvider(prisma, secrets, remoteConnectors);
-  const stack = createConnectorStack(isComposioEnabled(env.composioApiKey), composioOverride, [
-    installed,
-    ...(pipedream ? [pipedream] : []),
-    mcp,
-  ]);
+  const stack = createConnectorStack(
+    Boolean(managedProviderMcp),
+    composioOverride ?? managedProviderMcp?.("composio"),
+    [installed, ...(pipedream ? [pipedream] : []), mcp],
+  );
   const connector = stack.destination;
   await connector.start();
   void stack.composio?.warmDirectory().catch(() => undefined);
   void pipedream?.warmDirectory?.().catch(() => undefined);
   const runtime =
     env.agentRuntime === "scripted" ? new ScriptedAgentRuntime() : new PiAgentRuntime();
-  const notifications = new ExpoPushProvider(env.dataDir);
+  const notifications = managedProviderRpc
+    ? new ManagedNotificationMcpClient(managedProviderRpc, (userId) =>
+        loadPushToken(env.dataDir, userId),
+      )
+    : undefined;
   const auth = createAuth(prisma, {
     secret: env.authSecret,
     baseURL: env.authUrl,
@@ -287,7 +321,7 @@ export async function createApp(
     connector: stack.connector,
     connectors: stack.connector,
     listConnectedPluginSlugs: stack.composio?.listConnectedSlugs.bind(stack.composio),
-    secrets: [env.deploymentModelKey ?? "", env.composioApiKey ?? ""].filter(Boolean),
+    secrets: [env.deploymentModelKey ?? ""].filter(Boolean),
     secretStore: secrets,
     deploymentModelKey: env.deploymentModelKey,
     dataDir: env.dataDir,
@@ -296,6 +330,7 @@ export async function createApp(
     events,
     messaging: messaging ? createMessagingContextLoader(prisma) : undefined,
     web: createWebProvider(),
+    studioKnowledge,
   });
 
   const jobHandlers = createBackgroundJobHandlers({
@@ -335,6 +370,8 @@ export async function createApp(
     remoteConnectors,
     artifacts,
     dataDir: env.dataDir,
+    studioKnowledge,
+    studioRepositories,
     messaging: {
       enabled: Boolean(messaging),
       providers: messaging?.platforms().map((platform) => platform.provider) ?? [],
@@ -345,6 +382,7 @@ export async function createApp(
       defaultProvider: env.defaultProvider,
       defaultModel: env.defaultModel,
       deploymentModelKey: env.deploymentModelKey,
+      apiUrl: env.apiUrl,
       webOrigin: env.webOrigin,
       screenProxySecret: env.screenProxySecret,
       sandboxProvider: env.sandboxProvider,
@@ -384,6 +422,12 @@ export async function createApp(
         }),
     );
   }
+  mountStudioInvitationRoutes(app, {
+    prisma,
+    auth,
+    authBaseUrl: env.authUrl,
+    webOrigin: env.webOrigin,
+  });
   app.on(["GET", "POST"], "/api/auth/*", async (c) => {
     const path = new URL(c.req.url).pathname.replace("/api/auth", "");
     if (blockedAuthPaths.some((blocked) => path.startsWith(blocked))) {
@@ -395,7 +439,12 @@ export async function createApp(
     const session = await auth.api.getSession({ headers: sessionHeaders(c.req.raw) });
     const requestedSpaceId = c.req.header("x-rakazo-space-id");
     const actor = session?.user
-      ? await requireMembership(prisma, session.user.id, requestedSpaceId).catch(() => null)
+      ? await requireMembership(
+          prisma,
+          session.user.id,
+          requestedSpaceId,
+          session.session.activeOrganizationId,
+        ).catch(() => null)
       : null;
     if (actor) {
       enrichLogContext({ "user.id": actor.userId, "space.id": actor.spaceId });
@@ -414,6 +463,7 @@ export async function createApp(
       prisma,
       session.user.id,
       c.req.header("x-rakazo-space-id"),
+      session.session.activeOrganizationId,
     ).catch(() => null);
     if (actor) enrichLogContext({ "user.id": actor.userId, "space.id": actor.spaceId });
     return actor;
@@ -454,6 +504,21 @@ export async function createApp(
     mountMessagingWebhookRoutes(app, { messaging });
   }
 
+  mountEmployeeHostRoutes(app, {
+    prisma,
+    actor: async (request) => {
+      const session = await auth.api.getSession({ headers: sessionHeaders(request) });
+      if (!session?.user) return null;
+      const actor = await requireMembership(
+        prisma,
+        session.user.id,
+        request.headers.get("x-rakazo-space-id"),
+        session.session.activeOrganizationId,
+      ).catch(() => null);
+      return actor ? { userId: actor.userId, spaceId: actor.spaceId } : null;
+    },
+  });
+
   app.get("/health", (c) =>
     c.json({
       ok: true,
@@ -488,6 +553,7 @@ export async function createApp(
       await realtime.close();
       await connector.stop();
       await mcp.close();
+      await studioKnowledge?.close();
       await prisma.$disconnect().catch(() => undefined);
       await created.pool?.end().catch(() => undefined);
       await logger.flush({ timeoutMs: 2_000 });

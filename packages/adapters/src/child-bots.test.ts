@@ -12,6 +12,7 @@ import {
   archiveSpawnedBot,
   confirmSpawnedBotName,
   destroyBot,
+  ensureSpawnRun,
   spawnBot,
 } from "./child-bots.js";
 
@@ -93,6 +94,101 @@ describe("spawned bot creation", () => {
       threadId: "thread-1",
     });
     expect(enqueue).toHaveBeenCalledOnce();
+  });
+
+  it("carries the parent run's pinned studio context into delegated work", async () => {
+    const studioContext = {
+      version: 1,
+      organizationId: "org-1",
+      foundation: { id: "foundation-2", revision: 2, content: { goal: "Ship" } },
+      role: null,
+      assignment: {
+        id: "assignment-1",
+        scope: "one",
+        projectIds: ["project-1"],
+        brief: {},
+      },
+      sourceProjectIds: ["project-1"],
+      sources: [],
+    };
+    const taskCreate = vi.fn(async () => ({ id: "child-task" }));
+    const runCreate = vi.fn(async () => ({ id: "child-run" }));
+    const findUnique = vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
+      if ("spaceId_clientNonce" in where) return null;
+      if (where.id === "parent-run") {
+        return {
+          studioContext,
+          task: { projectId: "project-1", studioContext },
+          status: "running",
+          startedAt: new Date(),
+        };
+      }
+      return null;
+    });
+    const prisma = {
+      run: {
+        findUnique,
+        findFirst: vi.fn(async () => ({
+          computerId: "employee-computer",
+          studioContext,
+          task: { projectId: "project-1", studioContext },
+        })),
+      },
+      $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
+        callback({
+          computer: {
+            findFirst: vi.fn(async () => ({
+              kind: "employee-host",
+              providerRef: "host-1",
+            })),
+          },
+          employeeHost: {
+            findFirst: vi.fn(async () => ({ computerId: "employee-computer" })),
+          },
+          thread: {
+            update: vi.fn(async () => ({ nextMessageSeq: 1 })),
+          },
+          message: { create: vi.fn(async () => ({ id: "message-1" })) },
+          task: { create: taskCreate },
+          run: { findUnique, create: runCreate },
+        }),
+      ),
+    } as unknown as PrismaClient;
+
+    await ensureSpawnRun(prisma, {
+      spaceId: "workspace-1",
+      userId: "user-1",
+      botId: "child-bot",
+      threadId: "child-thread",
+      sourceRunId: "parent-run",
+      sourceBotId: "parent-bot",
+      spawnKey: "tool-call-1",
+      prompt: "Inspect the release",
+    });
+
+    expect(taskCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ projectId: "project-1", studioContext }),
+    });
+    expect(runCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        computerId: "employee-computer",
+        studioContext,
+        trigger: "spawn",
+      }),
+    });
+    expect(prisma.run.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: "parent-run",
+        spaceId: "workspace-1",
+        userId: "user-1",
+        botId: "parent-bot",
+      },
+      select: {
+        computerId: true,
+        studioContext: true,
+        task: { select: { projectId: true, studioContext: true } },
+      },
+    });
   });
 });
 describe("spawned bot archival", () => {

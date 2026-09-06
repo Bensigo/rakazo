@@ -28,6 +28,7 @@ model User {
   actionApprovalRules         ActionApprovalRule[]
   actionAutoReviewPreferences ActionAutoReviewPreference[]
   createdSpaces               Space[]                      @relation("SpaceCreator")
+  employeeHosts               EmployeeHost[]
 
   @@unique([email])
   @@map("user")
@@ -83,7 +84,7 @@ model Verification {
 }
 
 model Organization {
-  id          String       @id
+  id          String               @id
   name        String
   slug        String
   logo        String?
@@ -92,6 +93,10 @@ model Organization {
   members     Member[]
   invitations Invitation[]
   spaces      Space[]
+  foundation  StudioFoundation?
+  projects    StudioProject[]
+  rolePresets EmployeeRolePreset[]
+  jobRoles    EmployeeJobRole[]
 
   @@unique([slug])
   @@map("organization")
@@ -173,6 +178,7 @@ model Space {
   usageRecords                UsageRecord[]
   notificationPreferences     NotificationPreference[]
   computers                   Computer[]
+  employeeHosts               EmployeeHost[]
   externalEffects             ExternalEffect[]
   mcpServers                  McpServer[]
   mcpOAuthSessions            McpOAuthSession[]
@@ -198,14 +204,49 @@ model SpaceMember {
   userId           String
   member           Member                 @relation(fields: [organizationId, userId], references: [organizationId, userId], onDelete: Cascade)
   role             String                 @default("member")
+  jobRoleId        String?
+  jobRole          EmployeeJobRole?       @relation(fields: [jobRoleId], references: [id], onDelete: SetNull)
   createdAt        DateTime
   modelPreferences SpaceModelPreference[]
   voicePreferences SpaceVoicePreference[]
+  specialistBindings EmployeeJobRoleSpecialist[]
 
   @@unique([spaceId, userId])
+  @@index([jobRoleId])
   @@index([organizationId, userId])
   @@index([userId, createdAt])
   @@map("space_members")
+}
+
+model EmployeeJobRole {
+  id                   String        @id @default(cuid())
+  organizationId       String
+  organization         Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  key                  String
+  name                 String
+  description          String        @default("")
+  defaultRolePresetIds Json
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  spaceMembers         SpaceMember[]
+  @@unique([organizationId, key])
+  @@index([organizationId, name])
+  @@map("employee_job_roles")
+}
+
+model EmployeeJobRoleSpecialist {
+  id            String            @id @default(cuid())
+  spaceMemberId String
+  rolePresetId  String
+  botId         String            @unique
+  spaceMember   SpaceMember       @relation(fields: [spaceMemberId], references: [id], onDelete: Cascade)
+  rolePreset    EmployeeRolePreset @relation(fields: [rolePresetId], references: [id], onDelete: Cascade)
+  bot           Bot               @relation(fields: [botId], references: [id], onDelete: Cascade)
+  createdAt     DateTime          @default(now())
+
+  @@unique([spaceMemberId, rolePresetId])
+  @@index([spaceMemberId])
+  @@map("employee_job_role_specialists")
 }
 
 model Invitation {
@@ -218,6 +259,7 @@ model Invitation {
   expiresAt      DateTime
   inviterId      String
   user           User         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
 
   @@index([organizationId])
   @@index([email])
@@ -310,34 +352,37 @@ model SpaceVoicePreference {
 }
 
 model Bot {
-  id                String            @id @default(cuid())
+  id                String               @id @default(cuid())
   spaceId           String
-  space             Space             @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  space             Space                @relation(fields: [spaceId], references: [id], onDelete: Cascade)
   userId            String
   name              String
-  title             String            @default("")
-  description       String            @default("")
-  instructions      String            @default("")
+  title             String               @default("")
+  description       String               @default("")
+  instructions      String               @default("")
   color             String
-  notifyOnFinish    Boolean           @default(true)
-  pinned            Boolean           @default(false)
-  position          Int               @default(0)
+  notifyOnFinish    Boolean              @default(true)
+  pinned            Boolean              @default(false)
+  position          Int                  @default(0)
   sectionId         String?
-  section           BotSection?       @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  section           BotSection?          @relation(fields: [sectionId], references: [id], onDelete: SetNull)
   archivedAt        DateTime?
   parentBotId       String?
   spawnKey          String?
   memoryScope       String?
-  parent            Bot?              @relation("BotChildren", fields: [parentBotId], references: [id], onDelete: SetNull)
-  children          Bot[]             @relation("BotChildren")
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  rolePresetId      String?
+  rolePreset        EmployeeRolePreset?  @relation(fields: [rolePresetId], references: [id], onDelete: SetNull)
+  parent            Bot?                 @relation("BotChildren", fields: [parentBotId], references: [id], onDelete: SetNull)
+  children          Bot[]                @relation("BotChildren")
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  jobRoleSpecialist  EmployeeJobRoleSpecialist?
   thread            Thread?
   computerId        String?
-  computer          Computer?         @relation(fields: [computerId], references: [id], onDelete: SetNull)
-  computerSwitching Boolean           @default(false)
+  computer          Computer?            @relation(fields: [computerId], references: [id], onDelete: SetNull)
+  computerSwitching Boolean              @default(false)
   voiceId           String?
-  autoSpeak         Boolean           @default(false)
+  autoSpeak         Boolean              @default(false)
   modelProvider     String?
   modelId           String?
   thinkingLevel     String?
@@ -355,6 +400,7 @@ model Bot {
   steeringMessages  SteeringMessage[]
   mcpServers        BotMcpServer[]
   groupMembers      ChatGroupMember[]
+  assignments       AssignmentManifest[]
 
   @@unique([spaceId, spawnKey])
   @@index([spaceId, userId, archivedAt, pinned, updatedAt])
@@ -456,22 +502,22 @@ model Thread {
 }
 
 model Message {
-  id               String    @id @default(cuid())
+  id               String            @id @default(cuid())
   threadId         String
-  thread           Thread    @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  thread           Thread            @relation(fields: [threadId], references: [id], onDelete: Cascade)
   seq              Int
   role             String
   blocks           Json
   botId            String?
   replyToMessageId String?
-  replyTo          Message?  @relation("MessageReplies", fields: [replyToMessageId], references: [id], onDelete: SetNull)
-  replies          Message[] @relation("MessageReplies")
+  replyTo          Message?          @relation("MessageReplies", fields: [replyToMessageId], references: [id], onDelete: SetNull)
+  replies          Message[]         @relation("MessageReplies")
   runId            String?
   clientNonce      String?
-  thumbsUp         Boolean   @default(false)
-  sourceRuns       Run[]     @relation("RunSourceMessage")
+  thumbsUp         Boolean           @default(false)
+  sourceRuns       Run[]             @relation("RunSourceMessage")
   steeringMessages SteeringMessage[]
-  createdAt        DateTime  @default(now())
+  createdAt        DateTime          @default(now())
 
   @@unique([threadId, seq])
   @@unique([threadId, clientNonce])
@@ -501,34 +547,159 @@ model Event {
 }
 
 model Task {
-  id        String   @id @default(cuid())
-  spaceId   String
-  space     Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
-  botId     String
-  bot       Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
-  threadId  String
-  thread    Thread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  userId    String
-  prompt    String
-  status    String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  runs      Run[]
+  id            String              @id @default(cuid())
+  spaceId       String
+  space         Space               @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  botId         String
+  bot           Bot                 @relation(fields: [botId], references: [id], onDelete: Cascade)
+  threadId      String
+  thread        Thread              @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  userId        String
+  prompt        String
+  status        String
+  projectId     String?
+  project       StudioProject?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  studioContext Json?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  runs          Run[]
+  assignment    AssignmentManifest?
 
   @@index([spaceId, botId])
   @@map("tasks")
 }
 
-model Run {
-  id                   String           @id @default(cuid())
-  spaceId              String
-  space                Space            @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+model StudioFoundation {
+  id                String               @id @default(cuid())
+  organizationId    String               @unique
+  organization      Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  currentRevisionId String?              @unique
+  currentRevision   FoundationRevision?  @relation("CurrentFoundationRevision", fields: [currentRevisionId], references: [id], onDelete: SetNull)
+  revisions         FoundationRevision[] @relation("FoundationRevisions")
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  @@map("studio_foundations")
+}
+
+model FoundationRevision {
+  id              String               @id @default(cuid())
+  foundationId    String
+  foundation      StudioFoundation     @relation("FoundationRevisions", fields: [foundationId], references: [id], onDelete: Cascade)
+  revision        Int
+  content         Json
+  createdByUserId String
+  createdAt       DateTime             @default(now())
+  currentFor      StudioFoundation?    @relation("CurrentFoundationRevision")
+  roles           EmployeeRolePreset[]
+  assignments     AssignmentManifest[]
+
+  @@unique([foundationId, revision])
+  @@index([foundationId, createdAt])
+  @@map("foundation_revisions")
+}
+
+model EmployeeRolePreset {
+  id                   String               @id @default(cuid())
+  organizationId       String
+  organization         Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  foundationRevisionId String?
+  foundationRevision   FoundationRevision?  @relation(fields: [foundationRevisionId], references: [id], onDelete: SetNull)
+  key                  String
+  name                 String
+  description          String               @default("")
+  instructions         String               @default("")
+  isDefault            Boolean              @default(false)
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  bots                 Bot[]
+  assignments          AssignmentManifest[]
+  jobRoleSpecialists   EmployeeJobRoleSpecialist[]
+
+  @@unique([organizationId, key])
+  @@index([organizationId, isDefault])
+  @@map("employee_role_presets")
+}
+
+model StudioProject {
+  id              String                 @id @default(cuid())
+  organizationId  String
+  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name            String
+  slug            String
+  scope           String                 @default("studio")
+  createdByUserId String
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  tasks           Task[]
+  sources         ProjectSourceBinding[]
+  assignments     AssignmentManifest[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, scope])
+  @@map("studio_projects")
+}
+
+model ProjectSourceBinding {
+  id              String        @id @default(cuid())
+  projectId       String
+  project         StudioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  kind            String
+  repository      String?
+  ref             String?
+  path            String?
+  metadata        Json?
+  createdByUserId String
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([projectId, kind])
+  @@map("project_source_bindings")
+}
+
+model AssignmentManifest {
+  id                   String              @id @default(cuid())
+  scope                String              @default("one")
+  projectId            String?
+  projectIds           Json                @default("[]")
+  project              StudioProject?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  taskId               String              @unique
+  task                 Task                @relation(fields: [taskId], references: [id], onDelete: Cascade)
   botId                String
-  bot                  Bot              @relation(fields: [botId], references: [id], onDelete: Cascade)
+  bot                  Bot                 @relation(fields: [botId], references: [id], onDelete: Cascade)
+  computerId           String?
+  computer             Computer?            @relation("AssignmentComputer", fields: [computerId], references: [id], onDelete: Restrict)
+  foundationRevisionId String?
+  foundationRevision   FoundationRevision? @relation(fields: [foundationRevisionId], references: [id], onDelete: SetNull)
+  rolePresetId         String?
+  rolePreset           EmployeeRolePreset? @relation(fields: [rolePresetId], references: [id], onDelete: SetNull)
+  manifest             Json
+  createdByUserId      String
+  reviewerUserId       String?
+  status               String              @default("draft")
+  acceptedAt           DateTime?
+  acceptedByUserId     String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@index([projectId, status])
+  @@index([botId, status])
+  @@index([computerId])
+  @@map("assignment_manifests")
+}
+
+model Run {
+  id                   String            @id @default(cuid())
+  spaceId              String
+  space                Space             @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  botId                String
+  bot                  Bot               @relation(fields: [botId], references: [id], onDelete: Cascade)
+  computerId           String?
+  computer             Computer?         @relation("RunComputer", fields: [computerId], references: [id], onDelete: Restrict)
   threadId             String
-  thread               Thread           @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  thread               Thread            @relation(fields: [threadId], references: [id], onDelete: Cascade)
   taskId               String
-  task                 Task             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task                 Task              @relation(fields: [taskId], references: [id], onDelete: Cascade)
   userId               String
   status               String
   trigger              String
@@ -536,20 +707,21 @@ model Run {
   modelId              String?
   error                String?
   leaseOwner           String?
-  leaseFence           Int              @default(0)
+  leaseFence           Int               @default(0)
   leaseExpiresAt       DateTime?
   checkpoint           String?
+  studioContext        Json?
   clientNonce          String?
   sourceMessageId      String?
-  sourceMessage        Message?         @relation("RunSourceMessage", fields: [sourceMessageId], references: [id], onDelete: SetNull)
+  sourceMessage        Message?          @relation("RunSourceMessage", fields: [sourceMessageId], references: [id], onDelete: SetNull)
   routineId            String?
-  routine              Routine?         @relation(fields: [routineId], references: [id], onDelete: SetNull)
+  routine              Routine?          @relation(fields: [routineId], references: [id], onDelete: SetNull)
   startedAt            DateTime?
   completedAt          DateTime?
   botOutcomeReturnedAt DateTime?
   messagingMirroredAt  DateTime?
-  createdAt            DateTime         @default(now())
-  updatedAt            DateTime         @updatedAt
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
   attempts             Attempt[]
   effects              ExternalEffect[]
   usageRecords         UsageRecord[]
@@ -561,6 +733,7 @@ model Run {
   @@index([botOutcomeReturnedAt, status])
   @@index([trigger, status, messagingMirroredAt, updatedAt])
   @@index([spaceId, botId])
+  @@index([computerId])
   @@index([sourceMessageId])
   @@index([threadId, status, createdAt])
   @@index([routineId])
@@ -568,16 +741,16 @@ model Run {
 }
 
 model SteeringMessage {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   messageId String
-  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  message   Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
   botId     String
-  bot       Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
+  bot       Bot       @relation(fields: [botId], references: [id], onDelete: Cascade)
   userId    String
   runId     String?
-  run       Run?     @relation(fields: [runId], references: [id], onDelete: SetNull)
+  run       Run?      @relation(fields: [runId], references: [id], onDelete: SetNull)
   claimedAt DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@unique([messageId, botId])
   @@index([botId, runId, createdAt])
@@ -639,6 +812,7 @@ model Routine {
   webhookEnabled Boolean   @default(false)
   lastRunAt      DateTime?
   nextRunAt      DateTime?
+  studioContext  Json?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   runs           Run[]
@@ -838,6 +1012,10 @@ model Computer {
   updatedAt               DateTime                 @updatedAt
   bots                    Bot[]
   executionLeases         ComputerExecutionLease[]
+  employeeHostOperations  EmployeeHostOperation[]
+  assignmentManifests     AssignmentManifest[]       @relation("AssignmentComputer")
+  runs                    Run[]                      @relation("RunComputer")
+  employeeHost            EmployeeHost?
 
   @@index([spaceId, scope])
   @@map("computers")
@@ -858,6 +1036,58 @@ model ComputerExecutionLease {
   @@index([runId])
   @@index([computerId, expiresAt])
   @@map("computer_execution_leases")
+}
+
+model EmployeeHost {
+  id            String                  @id @default(cuid())
+  hostId        String                  @unique
+  spaceId       String
+  space         Space                   @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  ownerUserId   String
+  owner         User                    @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  computerId    String                  @unique
+  computer      Computer                @relation(fields: [computerId], references: [id], onDelete: Cascade)
+  name          String
+  platform      String
+  capabilities  Json
+  workspaceRoot String
+  tokenHash     String
+  lastSeenAt    DateTime
+  expiresAt     DateTime
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+  operations    EmployeeHostOperation[]
+
+  @@index([spaceId, ownerUserId])
+  @@index([expiresAt])
+  @@map("employee_hosts")
+}
+
+model EmployeeHostOperation {
+  id          String       @id @default(cuid())
+  operationId String       @unique
+  hostId      String
+  host        EmployeeHost @relation(fields: [hostId], references: [hostId], onDelete: Cascade)
+  computerId  String
+  computer    Computer     @relation(fields: [computerId], references: [id], onDelete: Cascade)
+  spaceId     String
+  botId       String
+  runId       String
+  fence       Int
+  request     Json
+  status      String       @default("accepted")
+  stdout      String       @default("")
+  stderr      String       @default("")
+  exitCode    Int?
+  acceptedAt  DateTime     @default(now())
+  completedAt DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([hostId, status, createdAt])
+  @@index([spaceId, botId, fence])
+  @@index([computerId, runId, fence])
+  @@map("employee_host_operations")
 }
 
 model Artifact {
@@ -1033,28 +1263,28 @@ model MessagingIdentity {
 }
 
 model MessagingChannel {
-  id            String              @id @default(cuid())
+  id            String                   @id @default(cuid())
   provider      String
   /// Opaque provider thread id of the group conversation.
-  threadId      String              @unique
+  threadId      String                   @unique
   name          String?
   introPostedAt DateTime?
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
   members       MessagingChannelMember[]
 
   @@map("messaging_channels")
 }
 
 model MessagingChannelMember {
-  id         String      @id @default(cuid())
+  id         String           @id @default(cuid())
   channelId  String
   channel    MessagingChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
   address    String
   identityId String?
   status     String
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
 
   @@unique([channelId, address])
   @@index([identityId])

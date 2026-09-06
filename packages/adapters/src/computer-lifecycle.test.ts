@@ -33,6 +33,92 @@ const context = {
 } satisfies AdapterContext;
 
 describe("computer provisioning", () => {
+  it("uses an exact run lease to authorize a selected computer that is not attached to the bot", async () => {
+    const dataDir = await mkdtemp(path.join(tmpdir(), "rakazo-selected-computer-"));
+    const record = {
+      id: "computer-1",
+      homeKey: "employee-home",
+      providerRef: "host-1",
+      kind: "employee-host",
+      scope: "dedicated",
+      state: "running",
+      controlLeaseId: null,
+    };
+    const findFirst = vi.fn().mockResolvedValueOnce({ id: record.id }).mockResolvedValueOnce(null);
+    const prisma = {
+      computer: { findUniqueOrThrow: vi.fn(async () => record), findFirst },
+    } as unknown as PrismaClient;
+    const provision = vi.fn(async () => ({
+      id: record.id,
+      botId: record.homeKey,
+      kind: "employee-host" as const,
+      providerRef: record.providerRef,
+      fresh: false,
+    }));
+    const sandbox = {
+      provision,
+      prepare: vi.fn(async () => undefined),
+    } as unknown as SandboxProvider;
+    const selectedContext = {
+      ...context,
+      runId: "run-1",
+      computerLeaseFence: 4,
+    } satisfies AdapterContext;
+
+    try {
+      await expect(
+        provisionComputer(
+          {
+            prisma,
+            sandbox,
+            home: {} as AgentHomeStore,
+            jobs: {} as JobPublisher,
+            events: {} as ThreadEvents,
+            dataDir,
+          },
+          record.id,
+          selectedContext,
+        ),
+      ).resolves.toMatchObject({ id: record.id, kind: "employee-host" });
+      expect(findFirst).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          where: expect.objectContaining({
+            id: record.id,
+            executionLeases: {
+              some: expect.objectContaining({
+                botId: "bot-1",
+                runId: "run-1",
+                fence: 4,
+              }),
+            },
+          }),
+        }),
+      );
+      expect(provision).toHaveBeenCalledWith(
+        expect.objectContaining({ computerId: record.id, providerRef: "host-1" }),
+        selectedContext,
+      );
+
+      await expect(
+        provisionComputer(
+          {
+            prisma,
+            sandbox,
+            home: {} as AgentHomeStore,
+            jobs: {} as JobPublisher,
+            events: {} as ThreadEvents,
+            dataDir,
+          },
+          record.id,
+          { ...selectedContext, computerLeaseFence: 5 },
+        ),
+      ).rejects.toThrow("Computer is busy");
+    } finally {
+      await rm(dataDir, { recursive: true, force: true });
+    }
+  });
+
   it("stops a provider when archive invalidates its boot claim", async () => {
     const dataDir = await mkdtemp(path.join(tmpdir(), "rakazo-provision-race-"));
     const stop = vi.fn().mockResolvedValue(undefined);
@@ -575,6 +661,25 @@ describe("computer execution leases", () => {
     ).resolves.toBeNull();
     expect(prisma.updateManyAndReturn).not.toHaveBeenCalled();
     expect(prisma.create).not.toHaveBeenCalled();
+  });
+
+  it("fences a dedicated computer when a run selected it explicitly", async () => {
+    const prisma = leasePrisma({ scope: "dedicated" });
+
+    await expect(
+      acquireComputerExecutionLease(prisma.client, {
+        computerId: "computer-1",
+        runId: "assignment-run",
+        botId: "bot-1",
+        force: true,
+      }),
+    ).resolves.toMatchObject({
+      computerId: "computer-1",
+      runId: "assignment-run",
+      botId: "bot-1",
+      fence: 1,
+    });
+    expect(prisma.create).toHaveBeenCalledOnce();
   });
 
   it("fences one Team bot's screen and expires only the matching lease", async () => {

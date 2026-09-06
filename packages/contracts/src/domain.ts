@@ -23,6 +23,186 @@ export const ThinkingLevelSchema = z.enum([
 ]);
 export type ThinkingLevel = z.infer<typeof ThinkingLevelSchema>;
 
+export const ProjectScopeSchema = z.enum(["studio", "one", "multi"]);
+export type ProjectScope = z.infer<typeof ProjectScopeSchema>;
+
+export const FoundationRevisionSchema = z.object({
+  id: Id,
+  revision: z.number().int().positive(),
+  content: z.record(z.string(), z.unknown()),
+  createdByUserId: Id,
+  createdAt: z.string(),
+});
+export type FoundationRevision = z.infer<typeof FoundationRevisionSchema>;
+
+export const EmployeeRolePresetSchema = z.object({
+  id: Id,
+  key: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string(),
+  instructions: z.string(),
+  isDefault: z.boolean(),
+  foundationRevisionId: Id.nullable(),
+});
+export type EmployeeRolePreset = z.infer<typeof EmployeeRolePresetSchema>;
+
+export const EmployeeJobRoleSchema = z.object({
+  id: Id,
+  key: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string(),
+  defaultRolePresetIds: z.array(Id),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type EmployeeJobRole = z.infer<typeof EmployeeJobRoleSchema>;
+
+export const EmployeeJobRoleSelectionSchema = z.object({
+  jobRole: EmployeeJobRoleSchema,
+  specialists: z.array(
+    z.object({
+      rolePresetId: Id,
+      botId: Id,
+    }),
+  ),
+});
+export type EmployeeJobRoleSelection = z.infer<typeof EmployeeJobRoleSelectionSchema>;
+
+export const StudioPermissionsSchema = z.object({
+  memberRole: z.string().min(1),
+  canManageJobRoles: z.boolean(),
+  canManageFoundation: z.boolean(),
+});
+export type StudioPermissions = z.infer<typeof StudioPermissionsSchema>;
+
+export const StudioProjectSchema = z.object({
+  id: Id,
+  name: z.string().min(1),
+  slug: z.string().min(1),
+  scope: ProjectScopeSchema,
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type StudioProject = z.infer<typeof StudioProjectSchema>;
+
+export const ProjectSourceBindingSchema = z.object({
+  id: Id,
+  projectId: Id,
+  kind: z.string().min(1),
+  repository: z.string().nullable(),
+  ref: z.string().nullable(),
+  path: z.string().nullable(),
+  metadata: z.record(z.string(), z.unknown()).nullable(),
+});
+export type ProjectSourceBinding = z.infer<typeof ProjectSourceBindingSchema>;
+
+export const RegisteredStudioRepositorySchema = z.object({
+  id: Id,
+  label: z.string().min(1),
+});
+export type RegisteredStudioRepository = z.infer<typeof RegisteredStudioRepositorySchema>;
+
+const StudioWikiFreshnessSchema = z.object({
+  status: z.enum(["current", "stale"]),
+  reasons: z.array(z.string()),
+});
+
+export const StudioWikiPageSummarySchema = z.object({
+  pageId: z.string().min(1),
+  title: z.string().min(1),
+  snapshotId: z.string().min(1),
+  commit: z.string(),
+  generatedAt: z.string(),
+  generatorVersion: z.string().min(1),
+  localOverlay: z.boolean(),
+  freshness: StudioWikiFreshnessSchema,
+});
+export type StudioWikiPageSummary = z.infer<typeof StudioWikiPageSummarySchema>;
+
+export const StudioWikiPageReadSchema = z.object({
+  pageId: z.string().min(1),
+  page: z.object({
+    slug: z.string().min(1),
+    title: z.string().min(1),
+    content: z.string(),
+    citations: z.array(
+      z.object({
+        relativePath: z.string().min(1),
+        startLine: z.number().int().positive(),
+        endLine: z.number().int().positive(),
+      }),
+    ),
+    inputsHash: z.string().optional(),
+    links: z.array(z.string()).optional(),
+    kind: z.enum(["navigation", "module"]).optional(),
+    omitted: z.number().int().nonnegative().optional(),
+  }),
+  manifest: z.object({
+    snapshotId: z.string().min(1),
+    inputsHash: z.string().min(1),
+    projectId: z.string().min(1),
+    commit: z.string(),
+    indexerVersion: z.string().min(1),
+    parserVersion: z.string().min(1),
+    generatorVersion: z.string().min(1),
+    generatedAt: z.string(),
+    sourceAuthority: z.literal("generated"),
+    localOverlay: z.boolean(),
+  }),
+  freshness: StudioWikiFreshnessSchema,
+  activeSnapshot: z.object({
+    id: z.string().min(1),
+    projectId: z.string().min(1),
+    commit: z.string(),
+    overlay: z.enum(["temporary-local-overlay", "shared-commit"]),
+  }),
+});
+export type StudioWikiPageRead = z.infer<typeof StudioWikiPageReadSchema>;
+
+export const AssignmentManifestSchema = z.object({
+  id: Id,
+  scope: ProjectScopeSchema,
+  projectId: Id.nullable(),
+  projectIds: z.array(Id),
+  taskId: Id,
+  botId: Id,
+  computerId: Id.nullable(),
+  foundationRevisionId: Id.nullable(),
+  rolePresetId: Id.nullable(),
+  manifest: z.record(z.string(), z.unknown()),
+  createdByUserId: Id,
+  reviewerUserId: Id.nullable(),
+  status: z.enum(["draft", "accepted", "blocked", "completed"]),
+  acceptedAt: z.string().nullable(),
+  acceptedByUserId: Id.nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type AssignmentManifest = z.infer<typeof AssignmentManifestSchema>;
+
+export const AssignmentComputerSchema = z.object({
+  id: Id,
+  name: z.string().min(1),
+  kind: SandboxKind,
+  state: z.enum(["stopped", "booting", "running", "suspended", "error"]),
+  isDefault: z.boolean(),
+});
+export type AssignmentComputer = z.infer<typeof AssignmentComputerSchema>;
+
+export const EmployeeHostEnrollmentSchema = z.object({
+  hostId: Id,
+  enrollmentToken: z.string().min(1),
+  controlPlaneUrl: z.string().url(),
+});
+export type EmployeeHostEnrollment = z.infer<typeof EmployeeHostEnrollmentSchema>;
+
+export const StudioFoundationSchema = z.object({
+  id: Id,
+  organizationId: Id,
+  currentRevision: FoundationRevisionSchema.nullable(),
+});
+export type StudioFoundation = z.infer<typeof StudioFoundationSchema>;
+
 export const BotSchema = z.object({
   id: Id,
   spaceId: Id,
@@ -656,6 +836,7 @@ export type MessagingAgentConnection = z.infer<typeof MessagingAgentConnectionSc
 export const RunSchema = z.object({
   id: Id,
   botId: Id,
+  computerId: Id.nullable(),
   threadId: Id,
   taskId: Id,
   status: RunStatus,
@@ -670,6 +851,7 @@ export const RunSchema = z.object({
     "bot_message",
     "webhook",
     "messaging",
+    "assignment",
   ]),
   routineId: Id.nullable(),
   modelProvider: z.string().nullable(),

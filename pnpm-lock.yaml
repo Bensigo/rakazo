@@ -74,6 +74,9 @@ importers:
       hono:
         specifier: ^4.9.6
         version: 4.13.1
+      zod:
+        specifier: ^4.1.5
+        version: 4.4.3
     devDependencies:
       typescript:
         specifier: ^5.9.2
@@ -109,6 +112,19 @@ importers:
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0))
+
+  apps/employee-host:
+    dependencies:
+      '@rakazo/adapters':
+        specifier: workspace:*
+        version: link:../../packages/adapters
+    devDependencies:
+      tsx:
+        specifier: ^4.19.0
+        version: 4.23.12
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
 
   apps/mobile:
     dependencies:
@@ -236,6 +252,34 @@ importers:
       typescript:
         specifier: ~6.0.3
         version: 6.0.3
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0))
+
+  apps/provider-mcp:
+    dependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: 1.30.0
+        version: 1.30.0(zod@4.4.3)
+      '@rakazo/adapter-kit':
+        specifier: workspace:*
+        version: link:../../packages/adapter-kit
+      '@rakazo/adapters':
+        specifier: workspace:*
+        version: link:../../packages/adapters
+      hono:
+        specifier: ^4.9.6
+        version: 4.13.1
+      zod:
+        specifier: ^4.1.5
+        version: 4.4.3
+    devDependencies:
+      tsx:
+        specifier: ^4.20.5
+        version: 4.23.12
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.12)(yaml@2.9.0))

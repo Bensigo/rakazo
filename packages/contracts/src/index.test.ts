@@ -183,6 +183,7 @@ describe("contracts", () => {
     const run = {
       id: "run-1",
       botId: "bot-1",
+      computerId: null,
       threadId: "thread-1",
       taskId: "task-1",
       status: "running",
@@ -213,6 +214,7 @@ describe("contracts", () => {
       }).success,
     ).toBe(true);
     expect(RunSchema.safeParse({ ...run, trigger: "webhook" }).success).toBe(true);
+    expect(RunSchema.safeParse({ ...run, trigger: "assignment" }).success).toBe(true);
   });
 
   it("caps remote MCP headers", () => {

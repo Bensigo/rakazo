@@ -28,6 +28,7 @@ function deps(
     /** Simulate a unique (threadId, clientNonce) race after both retries miss. */
     uniqueConflictOnCommit?: boolean;
     transactionConflictOnce?: boolean;
+    computerId?: string;
   } = {},
 ) {
   const enqueue = vi.fn().mockResolvedValue(undefined);
@@ -44,9 +45,25 @@ function deps(
     run: {
       findFirst: vi
         .fn()
-        .mockResolvedValue(options.senderRunning === false ? null : { id: "run-1" }),
+        .mockResolvedValue(
+          options.senderRunning === false
+            ? null
+            : { id: "run-1", computerId: options.computerId ?? null },
+        ),
       findUnique: vi.fn().mockResolvedValue({ status: "running" }),
       create: vi.fn().mockResolvedValue({ id: "run-2" }),
+    },
+    computer: {
+      findFirst: vi.fn(async () =>
+        options.computerId
+          ? { id: options.computerId, kind: "employee-host", providerRef: "host-1" }
+          : null,
+      ),
+    },
+    employeeHost: {
+      findFirst: vi.fn(async () =>
+        options.computerId ? { computerId: options.computerId } : null,
+      ),
     },
     bot: {
       findFirst: vi.fn().mockResolvedValue(options.targetArchived ? null : { id: "bot-target" }),
@@ -132,6 +149,21 @@ describe("messaging another bot", () => {
       ),
     ).toHaveLength(2);
     expect(harness.enqueue).toHaveBeenCalledTimes(1);
+  });
+
+  it("inherits a revalidated selected computer for same-owner delegated work", async () => {
+    const harness = deps({ computerId: "employee-computer" });
+
+    await messageBot(harness.deps, run, sender, {
+      bot_id: "bot-target",
+      message: "Build this locally",
+    });
+
+    expect(harness.tx.run.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ computerId: "employee-computer" }),
+      }),
+    );
   });
 
   it("tells the sender to continue independent work", async () => {

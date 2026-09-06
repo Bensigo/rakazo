@@ -54,11 +54,15 @@ import {
   prepareMemoryProviderConnection,
   probeOpenAiCompatibleModels,
   provisionComputer,
+  type RegisteredStudioRepository,
   type RemoteConnectorDependencies,
+  registeredRepositoryForOrganization,
   releaseComputerExecutionLease,
   replaceComputer,
+  repositoriesForOrganization,
   resolveAutoReviewChecker,
   resolveBotWorkspacePath,
+  type StudioKnowledgeBridge,
   sanitizeComposioError,
   savePushToken,
   scheduleComputerControlExpiry,
@@ -92,10 +96,12 @@ import {
   nextCronDateAcrossStrict,
 } from "@rakazo/core";
 import {
+  AssignmentNotCompleteError,
   appendEventInTransaction,
   createGroupRepos,
   createRepos,
   createSpaceForMember,
+  createStudioDomain,
   createThreadMessageInTransaction,
   deleteUnreferencedCredentialSecret,
   findDefaultModelCredential,
@@ -126,6 +132,7 @@ import {
   resolveBusyBotName,
   toComputerStatus,
 } from "./computer-status.js";
+import { EmployeeHostEnrollmentConflictError, enrollEmployeeHost } from "./employee-host-routes.js";
 import { buildMcpUpdateMaterial } from "./mcp-material.js";
 import {
   chooseFocus,
@@ -324,6 +331,25 @@ function mcpAssignmentDto(row: {
   };
 }
 
+function jsonRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function sourceBindingConflict(error: unknown): boolean {
+  return (
+    error !== null &&
+    typeof error === "object" &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "source-binding-stale"
+  );
+}
+
 export interface RouterDeps {
   prisma: PrismaClient;
   events: ThreadEvents;
@@ -341,6 +367,8 @@ export interface RouterDeps {
   remoteConnectors?: RemoteConnectorDependencies;
   artifacts: ArtifactStore;
   dataDir: string;
+  studioKnowledge?: StudioKnowledgeBridge;
+  studioRepositories?: readonly RegisteredStudioRepository[];
   /** Present when the external messaging surface is enabled. */
   messaging?: { enabled: boolean; providers: string[]; openSignup: boolean };
   env: {
@@ -348,6 +376,7 @@ export interface RouterDeps {
     defaultProvider: string;
     defaultModel: string;
     deploymentModelKey?: string;
+    apiUrl?: string;
     webOrigin: string;
     screenProxySecret: string;
     sandboxProvider: string;
@@ -372,6 +401,141 @@ export function createRouter(deps: RouterDeps) {
     dataDir: deps.dataDir,
   });
   const agentSkills = createAgentSkillsService(deps.prisma);
+  const studio = createStudioDomain(deps.prisma);
+
+  const studioProjectDto = (row: Awaited<ReturnType<typeof studio.projects>>[number]) => ({
+    id: row.id,
+    name: row.name,
+    slug: row.slug,
+    scope: row.scope as "studio" | "one" | "multi",
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  });
+  const roleDto = (row: Awaited<ReturnType<typeof studio.roles>>[number]) => ({
+    id: row.id,
+    key: row.key,
+    name: row.name,
+    description: row.description,
+    instructions: row.instructions,
+    isDefault: row.isDefault,
+    foundationRevisionId: row.foundationRevisionId,
+  });
+  const jobRoleDto = (row: Awaited<ReturnType<typeof studio.jobRoles>>[number]) => {
+    if (
+      !Array.isArray(row.defaultRolePresetIds) ||
+      row.defaultRolePresetIds.some((id) => typeof id !== "string")
+    ) {
+      throw new IsolationError("Job role has invalid specialist presets");
+    }
+    const defaultRolePresetIds = row.defaultRolePresetIds as string[];
+    return {
+      id: row.id,
+      key: row.key,
+      name: row.name,
+      description: row.description,
+      defaultRolePresetIds,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  };
+  const jobRoleSelectionDto = (
+    row: NonNullable<Awaited<ReturnType<typeof studio.jobRoleSelection>>>,
+  ) => ({
+    jobRole: jobRoleDto(row.jobRole),
+    specialists: row.specialists,
+  });
+  const assignmentDto = (row: NonNullable<Awaited<ReturnType<typeof studio.assignment>>>) => ({
+    ...row,
+    scope: row.scope as "studio" | "one" | "multi",
+    projectIds: row.projectIds as string[],
+    manifest: row.manifest as Record<string, unknown>,
+    status: row.status as "draft" | "accepted" | "blocked" | "completed",
+    acceptedAt: row.acceptedAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  });
+  const projectSourceDto = (row: Awaited<ReturnType<typeof studio.projectSources>>[number]) => ({
+    id: row.id,
+    projectId: row.projectId,
+    kind: row.kind,
+    repository: row.repository,
+    ref: row.ref,
+    path: row.path,
+    metadata: jsonRecord(row.metadata),
+  });
+  const knowledgeBridge = () => {
+    if (!deps.studioKnowledge) {
+      throw new ORPCError("CONFLICT", { message: "Studio knowledge is not configured." });
+    }
+    return deps.studioKnowledge;
+  };
+  const registeredRepository = (organizationId: string, repositoryId: string) => {
+    const repository = registeredRepositoryForOrganization(
+      deps.studioRepositories ?? [],
+      organizationId,
+      repositoryId,
+    );
+    if (!repository) throw new IsolationError();
+    return repository;
+  };
+  const syncRepository = async (input: {
+    actor: Actor;
+    projectId: string;
+    repository: RegisteredStudioRepository;
+    existing?: Awaited<ReturnType<typeof studio.projectSources>>[number];
+  }) => {
+    const previous = jsonRecord(input.existing?.metadata);
+    const expectedSnapshotId = stringValue(previous?.snapshotId);
+    let result: Awaited<ReturnType<StudioKnowledgeBridge["sync"]>>;
+    try {
+      result = await knowledgeBridge().sync({
+        studioProjectId: input.projectId,
+        sourceId: input.repository.sourceId,
+        refKey: input.repository.refKey,
+        access: { allowedScopes: ["project"] },
+        checkoutPath: input.repository.checkoutPath,
+        ...(expectedSnapshotId ? { expectedSnapshotId } : {}),
+      });
+    } catch (error) {
+      if (sourceBindingConflict(error)) {
+        throw new ORPCError("CONFLICT", {
+          message: "The project source changed during sync. Refresh and try again.",
+        });
+      }
+      throw error;
+    }
+    return studio.saveProjectSource(input.actor, {
+      projectId: input.projectId,
+      sourceId: input.repository.sourceId,
+      refKey: input.repository.refKey,
+      metadata: {
+        ...(previous ?? {}),
+        registeredRepositoryId: input.repository.id,
+        knowledgeProjectId: result.knowledgeProjectId,
+        snapshotId: result.snapshotId,
+        commit: result.commit,
+        localOverlay: result.localOverlay,
+        freshness: result.freshness,
+        skipped: result.skipped,
+        syncedAt: new Date().toISOString(),
+      },
+    });
+  };
+  const authorizedWikiSource = async (actor: Actor, projectId: string, bindingId: string) => {
+    const binding = await studio.projectSource(actor, projectId, bindingId);
+    // The persisted binding is the read grant. The registry is needed only when
+    // a write must resolve a server checkout, so unmounting it does not erase
+    // an already indexed canonical wiki.
+    if (binding.kind !== "repository" || !binding.repository || !binding.ref) {
+      throw new IsolationError();
+    }
+    return {
+      studioProjectId: binding.projectId,
+      sourceId: binding.repository,
+      refKey: binding.ref,
+      access: { allowedScopes: ["project"] },
+    };
+  };
 
   const authed = os.use(async ({ context, next }) => {
     if (!context.actor) throw new ORPCError("UNAUTHORIZED");
@@ -416,6 +580,171 @@ export function createRouter(deps: RouterDeps) {
           groups: [],
           botSections: [],
         };
+      }),
+    },
+    studio: {
+      foundation: authed.studio.foundation.handler(async ({ context }) => {
+        const row = await studio.foundation(context.actor);
+        if (!row) return null;
+        return {
+          id: row.id,
+          organizationId: row.organizationId,
+          currentRevision: row.currentRevision
+            ? {
+                ...row.currentRevision,
+                content: row.currentRevision.content as Record<string, unknown>,
+                createdAt: row.currentRevision.createdAt.toISOString(),
+              }
+            : null,
+        };
+      }),
+      publishFoundation: authed.studio.publishFoundation.handler(async ({ context, input }) => {
+        const row = await studio.publishFoundation(context.actor, input.content);
+        return {
+          id: row.id,
+          organizationId: row.organizationId,
+          currentRevision: row.currentRevision
+            ? {
+                ...row.currentRevision,
+                content: row.currentRevision.content as Record<string, unknown>,
+                createdAt: row.currentRevision.createdAt.toISOString(),
+              }
+            : null,
+        };
+      }),
+      projects: authed.studio.projects.handler(async ({ context }) =>
+        (await studio.projects(context.actor)).map(studioProjectDto),
+      ),
+      createProject: authed.studio.createProject.handler(async ({ context, input }) =>
+        studioProjectDto(await studio.createProject(context.actor, input)),
+      ),
+      registeredRepositories: authed.studio.registeredRepositories.handler(async ({ context }) => {
+        const organizationId = await studio.organizationId(context.actor);
+        return repositoriesForOrganization(deps.studioRepositories ?? [], organizationId);
+      }),
+      projectSources: authed.studio.projectSources.handler(async ({ context, input }) =>
+        (await studio.projectSources(context.actor, input.projectId)).map(projectSourceDto),
+      ),
+      addProjectSource: authed.studio.addProjectSource.handler(async ({ context, input }) => {
+        const target = await studio.projectForSourceWrite(context.actor, input.projectId);
+        const repository = registeredRepository(target.organizationId, input.repositoryId);
+        const existing = (await studio.projectSources(context.actor, input.projectId)).find(
+          (binding) =>
+            binding.kind === "repository" &&
+            binding.repository === repository.sourceId &&
+            binding.ref === repository.refKey,
+        );
+        return projectSourceDto(
+          await syncRepository({
+            actor: context.actor,
+            projectId: target.projectId,
+            repository,
+            ...(existing ? { existing } : {}),
+          }),
+        );
+      }),
+      syncProjectSource: authed.studio.syncProjectSource.handler(async ({ context, input }) => {
+        const target = await studio.projectSourceForWrite(context.actor, input.bindingId);
+        const metadata = jsonRecord(target.binding.metadata);
+        const repositoryId = stringValue(metadata?.registeredRepositoryId);
+        if (!repositoryId) throw new IsolationError("Project source is not registered");
+        const repository = registeredRepository(target.organizationId, repositoryId);
+        if (
+          target.binding.kind !== "repository" ||
+          target.binding.repository !== repository.sourceId ||
+          target.binding.ref !== repository.refKey
+        ) {
+          throw new IsolationError("Project source identity does not match its registration");
+        }
+        return projectSourceDto(
+          await syncRepository({
+            actor: context.actor,
+            projectId: target.binding.projectId,
+            repository,
+            existing: target.binding,
+          }),
+        );
+      }),
+      projectWikiPages: authed.studio.projectWikiPages.handler(async ({ context, input }) => {
+        const source = await authorizedWikiSource(context.actor, input.projectId, input.bindingId);
+        return (await knowledgeBridge().listWiki(source)).pages;
+      }),
+      projectWikiPage: authed.studio.projectWikiPage.handler(async ({ context, input }) => {
+        const source = await authorizedWikiSource(context.actor, input.projectId, input.bindingId);
+        return knowledgeBridge().getWikiPage({ ...source, pageId: input.pageId });
+      }),
+      permissions: authed.studio.permissions.handler(async ({ context }) =>
+        studio.permissions(context.actor),
+      ),
+      roles: authed.studio.roles.handler(async ({ context }) =>
+        (await studio.roles(context.actor)).map(roleDto),
+      ),
+      createRole: authed.studio.createRole.handler(async ({ context, input }) =>
+        roleDto(await studio.createRole(context.actor, input)),
+      ),
+      updateRole: authed.studio.updateRole.handler(async ({ context, input }) =>
+        roleDto(await studio.updateRole(context.actor, input.roleId, input)),
+      ),
+      jobRoles: authed.studio.jobRoles.handler(async ({ context }) =>
+        (await studio.jobRoles(context.actor)).map(jobRoleDto),
+      ),
+      jobRoleSelection: authed.studio.jobRoleSelection.handler(async ({ context }) => {
+        const selected = await studio.jobRoleSelection(context.actor);
+        return selected ? jobRoleSelectionDto(selected) : null;
+      }),
+      createJobRole: authed.studio.createJobRole.handler(async ({ context, input }) =>
+        jobRoleDto(await studio.createJobRole(context.actor, input)),
+      ),
+      updateJobRole: authed.studio.updateJobRole.handler(async ({ context, input }) =>
+        jobRoleDto(await studio.updateJobRole(context.actor, input.jobRoleId, input)),
+      ),
+      selectJobRole: authed.studio.selectJobRole.handler(async ({ context, input }) =>
+        jobRoleSelectionDto(await studio.selectJobRole(context.actor, input.jobRoleId)),
+      ),
+      assignment: authed.studio.assignment.handler(async ({ context, input }) => {
+        const row = await studio.assignment(context.actor, input.assignmentId);
+        if (!row) throw new IsolationError();
+        return assignmentDto(row);
+      }),
+      assignments: authed.studio.assignments.handler(async ({ context }) =>
+        (await studio.assignments(context.actor)).map(assignmentDto),
+      ),
+      assignmentComputers: authed.studio.assignmentComputers.handler(async ({ context, input }) =>
+        studio.assignmentComputers(context.actor, input.botId),
+      ),
+      enrollEmployeeHost: authed.studio.enrollEmployeeHost.handler(async ({ context, input }) => {
+        try {
+          const enrollment = await enrollEmployeeHost(deps.prisma, context.actor, {
+            ...input,
+            capabilities: { exec: true },
+          });
+          return {
+            ...enrollment,
+            controlPlaneUrl: deps.env.apiUrl ?? deps.env.webOrigin,
+          };
+        } catch (error) {
+          if (error instanceof EmployeeHostEnrollmentConflictError)
+            throw new ORPCError("CONFLICT", { message: error.message });
+          throw error;
+        }
+      }),
+      createAssignment: authed.studio.createAssignment.handler(async ({ context, input }) => {
+        const created = await studio.createAssignment(context.actor, input);
+        if (created.runId) {
+          await deps.jobs.enqueue(runContinueJob(created.runId)).catch((error) => {
+            getLogger().error("assignment run enqueue failed", error);
+          });
+        }
+        return assignmentDto(created.assignment);
+      }),
+      acceptAssignment: authed.studio.acceptAssignment.handler(async ({ context, input }) => {
+        try {
+          return assignmentDto(await studio.acceptAssignment(context.actor, input.assignmentId));
+        } catch (error) {
+          if (error instanceof AssignmentNotCompleteError)
+            throw new ORPCError("CONFLICT", { message: error.message });
+          throw error;
+        }
       }),
     },
     bootstrap: authed.bootstrap.handler(async ({ context, input }) => {
@@ -668,6 +997,7 @@ export function createRouter(deps: RouterDeps) {
           modelProvider: source.modelProvider,
           modelId: source.modelId,
           thinkingLevel: source.thinkingLevel,
+          rolePresetId: source.rolePresetId,
         });
         const assignments = await deps.prisma.botMcpServer.findMany({
           where: {

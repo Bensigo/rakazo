@@ -7,6 +7,7 @@ import { DesktopSandboxProvider } from "./desktop-sandbox.js";
 import { DockerSandboxProvider } from "./docker-sandbox.js";
 import { ManagedSandboxEmulator } from "./e2b-emulator.js";
 import { E2BSandboxProvider } from "./e2b-sandbox.js";
+import { EmployeeHostSandboxProvider } from "./employee-host.js";
 import { FakeSandboxProvider } from "./fake-sandbox.js";
 import { NoneSandboxProvider } from "./none-sandbox.js";
 
@@ -20,6 +21,7 @@ export interface SandboxProviderOptions {
   boxApiKey?: string;
   boxApiUrl?: string;
   dataDir?: string;
+  employeeHostTransport?: ConstructorParameters<typeof EmployeeHostSandboxProvider>[0];
 }
 
 function missingRemoteKey(provider: "e2b" | "daytona" | "box", envName: string): SandboxProvider {
@@ -61,6 +63,10 @@ export function createSandboxProvider(kind: string, opts: SandboxProviderOptions
       return new DesktopSandboxProvider({
         root: opts.dataDir,
       });
+    case "employee-host":
+      if (!opts.employeeHostTransport)
+        return new NoneSandboxProvider("Employee host transport is not configured.");
+      return new EmployeeHostSandboxProvider(opts.employeeHostTransport);
     case "fake":
       return new FakeSandboxProvider();
     default:

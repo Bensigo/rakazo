@@ -4,7 +4,6 @@ import { loadRootEnv } from "@rakazo/core/node/load-root-env";
 loadRootEnv();
 
 import {
-  ChatSdkMessagingSurface,
   createBackgroundJobHandlers,
   createConnectorStack,
   createJobReconciler,
@@ -15,24 +14,21 @@ import {
   createRunSecretWriter,
   createWebProvider,
   EncryptedSecretStore,
-  ExpoPushProvider,
   GraphileJobPublisher,
   GraphileJobWorkerHost,
   InMemoryJobQueue,
   InstalledConnectorProvider,
-  isComposioEnabled,
-  isMessagingSurfaceEnabled,
-  isPipedreamEnabled,
   LocalAgentHomeStore,
   LocalArtifactStore,
+  loadPushToken,
+  loadStudioKnowledgeBridge,
+  ManagedMessagingMcpClient,
+  ManagedNotificationMcpClient,
+  ManagedProviderMcpClient,
   McpConnector,
   McpOAuthBroker,
-  messagingEnvFromProcess,
-  messagingPlatformsFromEnv,
   PiAgentRuntime,
-  PipedreamConnector,
   PostgresRealtimeFanout,
-  pipedreamConfigFromEnv,
   resolveDeploymentModel,
   resolveSandboxProvider,
   ScriptedAgentRuntime,
@@ -89,33 +85,49 @@ async function main() {
     },
     mcpOAuth,
   );
-  const pipedreamConfig = pipedreamConfigFromEnv({
-    pipedreamClientId: process.env.PIPEDREAM_CLIENT_ID,
-    pipedreamClientSecret: process.env.PIPEDREAM_CLIENT_SECRET,
-    pipedreamProjectId: process.env.PIPEDREAM_PROJECT_ID,
-    pipedreamEnvironment: process.env.PIPEDREAM_ENVIRONMENT,
-    encryptionKey: resolveEncryptionKey(process.env),
-  });
-  const pipedream = isPipedreamEnabled(pipedreamConfig)
-    ? new PipedreamConnector(pipedreamConfig)
+  const managedProviderMcp =
+    process.env.MANAGED_PROVIDER_MCP_URL && process.env.MANAGED_PROVIDER_MCP_TOKEN
+      ? (providerId: "composio" | "pipedream") =>
+          new ManagedProviderMcpClient({
+            providerId,
+            endpoint: process.env.MANAGED_PROVIDER_MCP_URL!,
+            token: process.env.MANAGED_PROVIDER_MCP_TOKEN!,
+            allowInternalHttp: process.env.MANAGED_PROVIDER_MCP_ALLOW_INTERNAL_HTTP === "true",
+          })
+      : undefined;
+  const managedProviderRpc =
+    process.env.MANAGED_PROVIDER_MCP_URL && process.env.MANAGED_PROVIDER_MCP_TOKEN
+      ? new ManagedProviderMcpClient({
+          providerId: "composio",
+          endpoint: process.env.MANAGED_PROVIDER_MCP_URL,
+          token: process.env.MANAGED_PROVIDER_MCP_TOKEN,
+          allowInternalHttp: process.env.MANAGED_PROVIDER_MCP_ALLOW_INTERNAL_HTTP === "true",
+        })
+      : undefined;
+  const managedCapabilities = managedProviderRpc
+    ? await managedProviderRpc.capabilities()
     : undefined;
-  const messagingPlatforms = messagingPlatformsFromEnv(messagingEnvFromProcess(process.env));
-  const messaging = isMessagingSurfaceEnabled(messagingPlatforms, {
-    deploymentModelKey,
-    openSignup: process.env.MESSAGING_OPEN_SIGNUP === "true",
-  })
-    ? new ChatSdkMessagingSurface(messagingPlatforms)
-    : undefined;
-  const stack = createConnectorStack(isComposioEnabled(process.env.COMPOSIO_API_KEY), undefined, [
-    new InstalledConnectorProvider(prisma, secrets),
-    ...(pipedream ? [pipedream] : []),
-    mcp,
-  ]);
+  const pipedream = managedProviderMcp?.("pipedream");
+  const managedMessaging =
+    managedProviderRpc && managedCapabilities?.messaging
+      ? new ManagedMessagingMcpClient(managedProviderRpc)
+      : undefined;
+  if (managedMessaging) await managedMessaging.refreshPlatforms();
+  const messaging = managedMessaging;
+  const stack = createConnectorStack(
+    Boolean(managedProviderMcp),
+    managedProviderMcp?.("composio"),
+    [new InstalledConnectorProvider(prisma, secrets), ...(pipedream ? [pipedream] : []), mcp],
+  );
   const connector = stack.destination;
   await connector.start();
   const memoryProviders = new SpaceMemoryProviderResolver(prisma, secrets);
   const home = new LocalAgentHomeStore(dataDir);
   const artifacts = new LocalArtifactStore(dataDir);
+  const studioKnowledge = await loadStudioKnowledgeBridge({
+    modulePath: process.env.SUNRISE_KNOWLEDGE_MODULE,
+    databaseUrl: process.env.SUNRISE_KNOWLEDGE_DATABASE_URL,
+  });
   const inMemoryJobs = process.env.WAKEUP_DRIVER === "memory" ? new InMemoryJobQueue() : undefined;
   const jobs: JobPublisher = inMemoryJobs ?? new GraphileJobPublisher(databaseUrl);
   const jobHost: JobWorkerHost = inMemoryJobs ?? new GraphileJobWorkerHost(databaseUrl);
@@ -130,15 +142,20 @@ async function main() {
     connector: stack.connector,
     connectors: stack.connector,
     listConnectedPluginSlugs: stack.composio?.listConnectedSlugs.bind(stack.composio),
-    secrets: [deploymentModelKey ?? "", process.env.COMPOSIO_API_KEY ?? ""].filter(Boolean),
+    secrets: [deploymentModelKey ?? ""].filter(Boolean),
     secretStore: secrets,
     deploymentModelKey,
     dataDir,
-    notifications: new ExpoPushProvider(dataDir),
+    notifications: managedProviderRpc
+      ? new ManagedNotificationMcpClient(managedProviderRpc, (userId) =>
+          loadPushToken(dataDir, userId),
+        )
+      : undefined,
     jobs,
     events,
     messaging: messaging ? createMessagingContextLoader(prisma) : undefined,
     web: createWebProvider(),
+    studioKnowledge,
   });
 
   const jobHandlers = createBackgroundJobHandlers({
@@ -175,6 +192,7 @@ async function main() {
       await realtime.close();
       await connector.stop();
       await mcp.close();
+      await studioKnowledge?.close();
       await prisma.$disconnect().catch(() => undefined);
       await pool.end().catch(() => undefined);
     } finally {

@@ -102,35 +102,43 @@ export class ExpoPushProvider implements NotificationProvider {
   async send(message: NotificationMessage, context: AdapterContext): Promise<void> {
     const token = await loadPushToken(this.dataDir, context.userId);
     if (!token) return;
-    const signal = combineSignals(context.signal, AbortSignal.timeout(EXPO_PUSH_TIMEOUT_MS));
-    let response: Response;
-    try {
-      response = await fetch("https://exp.host/--/api/v2/push/send", {
-        method: "POST",
-        headers: { "content-type": "application/json", accept: "application/json" },
-        body: JSON.stringify({
-          to: token,
-          title: message.title,
-          body: message.body,
-          collapseId: message.threadId,
-          tag: message.threadId,
-          data: { kind: message.kind, botId: message.botId, threadId: message.threadId },
-        }),
-        signal,
-      });
-    } catch (error) {
-      getLogger().error("expo push request failed", error);
-      throw error;
-    }
-    const body = await readExpoPushBody(response, signal);
-    if (response.ok && body === undefined) {
-      throw new Error("Expo push returned an invalid response.");
-    }
-    const failure = expoPushErrorMessage(body, response.status);
-    if (!failure) return;
-    getLogger().error(failure);
-    throw new Error(failure);
+    await sendExpoPushToken(token, message, context.signal);
   }
+}
+
+export async function sendExpoPushToken(
+  token: string,
+  message: NotificationMessage,
+  requestSignal?: AbortSignal,
+): Promise<void> {
+  const signal = combineSignals(requestSignal, AbortSignal.timeout(EXPO_PUSH_TIMEOUT_MS));
+  let response: Response;
+  try {
+    response = await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({
+        to: token,
+        title: message.title,
+        body: message.body,
+        collapseId: message.threadId,
+        tag: message.threadId,
+        data: { kind: message.kind, botId: message.botId, threadId: message.threadId },
+      }),
+      signal,
+    });
+  } catch (error) {
+    getLogger().error("expo push request failed", error);
+    throw error;
+  }
+  const body = await readExpoPushBody(response, signal);
+  if (response.ok && body === undefined) {
+    throw new Error("Expo push returned an invalid response.");
+  }
+  const failure = expoPushErrorMessage(body, response.status);
+  if (!failure) return;
+  getLogger().error(failure);
+  throw new Error(failure);
 }
 
 async function readExpoPushBody(response: Response, signal: AbortSignal): Promise<unknown> {
