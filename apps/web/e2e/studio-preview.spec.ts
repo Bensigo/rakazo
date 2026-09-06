@@ -8,7 +8,7 @@ test.describe("Studio UI fixture", () => {
     await expect(page.getByText("UI fixture · synthetic data · execution disabled")).toBeVisible();
 
     const objective = page.getByLabel("Assignment objective");
-    const specialist = page.getByLabel("Specialist");
+    const specialist = page.getByRole("combobox", { name: "Specialist" });
     const scope = page.getByLabel("Assignment scope");
     const assign = page.getByRole("button", { name: "Assign work" });
     await expect(assign).toBeDisabled();
@@ -51,8 +51,9 @@ test.describe("Studio UI fixture", () => {
     await jobRole.selectOption("fixture-job-role");
     await page.getByRole("button", { name: "Apply and provision specialists" }).click();
 
-    await expect(page.getByText("1 specialists provisioned for you")).toBeVisible();
-    await expect(page.getByText("Engineer", { exact: false }).last()).toBeVisible();
+    const provisioned = page.getByText("1 specialists provisioned for you");
+    await expect(provisioned).toBeVisible();
+    await expect(provisioned.locator("..").getByText("Engineer", { exact: true })).toBeVisible();
     const specialist = page.getByRole("combobox", { name: "Specialist" });
     await expect(specialist.locator("option", { hasText: "Engineer (yours)" })).toHaveCount(1);
 
