@@ -212,8 +212,7 @@ async function loadStoredContext(
   const taskContext = parseStoredContext(task?.studioContext);
   const runManifest = runContext?.kind === "manifest" ? runContext.value : null;
   return {
-    manifest:
-      runManifest ?? (taskContext?.kind === "manifest" ? taskContext.value : null),
+    manifest: runManifest ?? (taskContext?.kind === "manifest" ? taskContext.value : null),
     selection:
       runContext?.kind === "selection"
         ? runContext.value
@@ -315,11 +314,12 @@ async function createManifest(
     }
   });
 
-  const selectedFoundation = !selection && assignment?.foundationRevisionId
-    ? await prisma.foundationRevision.findFirst({
-        where: { id: assignment.foundationRevisionId, foundation: { organizationId } },
-      })
-    : foundation?.currentRevision;
+  const selectedFoundation =
+    !selection && assignment?.foundationRevisionId
+      ? await prisma.foundationRevision.findFirst({
+          where: { id: assignment.foundationRevisionId, foundation: { organizationId } },
+        })
+      : foundation?.currentRevision;
   if (assignment?.foundationRevisionId && !selectedFoundation) {
     throw new StudioContextUnavailableError(
       "The assigned studio foundation is no longer available.",
@@ -348,13 +348,13 @@ async function createManifest(
     assignment: selection?.assignment
       ? selection.assignment
       : assignment
-      ? {
-          id: assignment.id,
-          scope: assignment.scope as "studio" | "one" | "multi",
-          projectIds,
-          brief: recordValue(assignment.manifest, "Assignment manifest"),
-        }
-      : null,
+        ? {
+            id: assignment.id,
+            scope: assignment.scope as "studio" | "one" | "multi",
+            projectIds,
+            brief: recordValue(assignment.manifest, "Assignment manifest"),
+          }
+        : null,
     sources: pinned.map((source, index) => ({
       ...source,
       bindingId: sourceBindings[index]!.id,
@@ -688,9 +688,7 @@ const studioRoutineSelectionSchema = z
     }
   });
 
-export function studioRoutineSelection(
-  manifest: EffectiveStudioContext,
-): StudioRoutineSelection {
+export function studioRoutineSelection(manifest: EffectiveStudioContext): StudioRoutineSelection {
   const validated = validateManifest(manifest);
   return studioRoutineSelectionSchema.parse({
     kind: "studio-routine-selection",
@@ -711,9 +709,7 @@ export function refreshableRoutineStudioContext(
     : studioRoutineSelection(stored.value)) as unknown as Prisma.InputJsonValue;
 }
 
-export function routineStudioProjectId(
-  value: Prisma.JsonValue | null | undefined,
-): string | null {
+export function routineStudioProjectId(value: Prisma.JsonValue | null | undefined): string | null {
   const stored = parseStoredContext(value);
   if (!stored) return null;
   return stored.value.assignment?.projectIds[0] ?? null;

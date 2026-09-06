@@ -69,14 +69,45 @@ describe("studio run context", () => {
     const prisma = {
       spaceMember: { findUnique: vi.fn(async () => ({ organizationId: "org-1" })) },
       run: { findUnique: vi.fn(async () => ({ studioContext: selection })), update: runUpdate },
-      task: { findUnique: vi.fn(async () => ({ studioContext: selection, projectId: null })), update: taskUpdate },
-      studioFoundation: { findUnique: vi.fn(async () => ({ currentRevision: { id: "foundation-current", revision: 4, content: { policy: "Current" } } })) },
+      task: {
+        findUnique: vi.fn(async () => ({ studioContext: selection, projectId: null })),
+        update: taskUpdate,
+      },
+      studioFoundation: {
+        findUnique: vi.fn(async () => ({
+          currentRevision: {
+            id: "foundation-current",
+            revision: 4,
+            content: { policy: "Current" },
+          },
+        })),
+      },
       foundationRevision: { findFirst: vi.fn(async () => null) },
       bot: { findFirst: vi.fn(async () => ({ rolePresetId: "role-on-bot" })) },
       assignmentManifest: { findUnique: assignmentLookup },
-      employeeRolePreset: { findFirst: vi.fn(async () => ({ id: "role-writer", key: "writer", name: "Writer", instructions: "Use the current evidence." })) },
+      employeeRolePreset: {
+        findFirst: vi.fn(async () => ({
+          id: "role-writer",
+          key: "writer",
+          name: "Writer",
+          instructions: "Use the current evidence.",
+        })),
+      },
       studioProject: { findMany: vi.fn(async () => [{ id: "project-1" }, { id: "project-2" }]) },
-      projectSourceBinding: { findMany: vi.fn(async (args: { select?: unknown }) => args.select ? [{ id: binding.id, projectId: binding.projectId, repository: binding.repository, ref: binding.ref }] : [binding]) },
+      projectSourceBinding: {
+        findMany: vi.fn(async (args: { select?: unknown }) =>
+          args.select
+            ? [
+                {
+                  id: binding.id,
+                  projectId: binding.projectId,
+                  repository: binding.repository,
+                  ref: binding.ref,
+                },
+              ]
+            : [binding],
+        ),
+      },
       $transaction: vi.fn(async (operations: Array<Promise<unknown>>) => Promise.all(operations)),
     } as unknown as PrismaClient;
 
@@ -91,10 +122,20 @@ describe("studio run context", () => {
       sources: [{ bindingId: "binding-current", snapshotId: "snapshot-current" }],
     });
     expect(bridge.pin).toHaveBeenCalledWith({
-      sources: [expect.objectContaining({ sourceId: "repository-1", refKey: "main@current", requiredSourcePaths: ["docs/current.md"] })],
+      sources: [
+        expect.objectContaining({
+          sourceId: "repository-1",
+          refKey: "main@current",
+          requiredSourcePaths: ["docs/current.md"],
+        }),
+      ],
     });
-    expect(taskUpdate).toHaveBeenCalledWith(expect.objectContaining({ data: { studioContext: resolved.manifest } }));
-    expect(runUpdate).toHaveBeenCalledWith(expect.objectContaining({ data: { studioContext: resolved.manifest } }));
+    expect(taskUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { studioContext: resolved.manifest } }),
+    );
+    expect(runUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { studioContext: resolved.manifest } }),
+    );
   });
 
   it("pins the current foundation and explicit role as instructions without granting rights", async () => {
@@ -157,8 +198,14 @@ describe("studio run context", () => {
     }));
     const prisma = {
       spaceMember: { findUnique: vi.fn(async () => ({ organizationId: "org-1" })) },
-      run: { findUnique: vi.fn(async () => ({ studioContext: null })), update: vi.fn(async () => ({})) },
-      task: { findUnique: vi.fn(async () => ({ studioContext: null, projectId: null })), update: vi.fn(async () => ({})) },
+      run: {
+        findUnique: vi.fn(async () => ({ studioContext: null })),
+        update: vi.fn(async () => ({})),
+      },
+      task: {
+        findUnique: vi.fn(async () => ({ studioContext: null, projectId: null })),
+        update: vi.fn(async () => ({})),
+      },
       studioFoundation: { findUnique: vi.fn(async () => null) },
       bot: { findFirst: vi.fn(async () => ({ rolePresetId: null })) },
       assignmentManifest: { findUnique: vi.fn(async () => null) },

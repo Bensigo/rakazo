@@ -1,5 +1,11 @@
+import {
+  ChatSdkMessagingSurface,
+  messagingPlatformsFromEnv,
+  SmtpEmailProvider,
+  sendExpoPushToken,
+} from "@rakazo/adapters";
 import { createProviderMcpHttpServer } from "./server.js";
-import { ChatSdkMessagingSurface, messagingPlatformsFromEnv, SmtpEmailProvider, sendExpoPushToken } from "@rakazo/adapters";
+
 const service = createProviderMcpHttpServer({
   token: process.env.MANAGED_PROVIDER_MCP_TOKEN ?? "",
   host: process.env.MANAGED_PROVIDER_MCP_HOST ?? "127.0.0.1",
@@ -22,7 +28,10 @@ const service = createProviderMcpHttpServer({
       });
       return platforms.length ? () => new ChatSdkMessagingSurface(platforms) : undefined;
     })(),
-    email: process.env.SMTP_URL && process.env.EMAIL_FROM ? new SmtpEmailProvider({ url: process.env.SMTP_URL, from: process.env.EMAIL_FROM }) : undefined,
+    email:
+      process.env.SMTP_URL && process.env.EMAIL_FROM
+        ? new SmtpEmailProvider({ url: process.env.SMTP_URL, from: process.env.EMAIL_FROM })
+        : undefined,
     push: (token, message) => sendExpoPushToken(token, message),
   },
 });

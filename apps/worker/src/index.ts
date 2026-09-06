@@ -14,20 +14,20 @@ import {
   createRunSecretWriter,
   createWebProvider,
   EncryptedSecretStore,
-  ManagedMessagingMcpClient,
-  ManagedNotificationMcpClient,
   GraphileJobPublisher,
   GraphileJobWorkerHost,
   InMemoryJobQueue,
   InstalledConnectorProvider,
   LocalAgentHomeStore,
   LocalArtifactStore,
+  loadPushToken,
   loadStudioKnowledgeBridge,
+  ManagedMessagingMcpClient,
+  ManagedNotificationMcpClient,
+  ManagedProviderMcpClient,
   McpConnector,
   McpOAuthBroker,
-  loadPushToken,
   PiAgentRuntime,
-  ManagedProviderMcpClient,
   PostgresRealtimeFanout,
   resolveDeploymentModel,
   resolveSandboxProvider,
@@ -85,22 +85,40 @@ async function main() {
     },
     mcpOAuth,
   );
-  const managedProviderMcp = process.env.MANAGED_PROVIDER_MCP_URL && process.env.MANAGED_PROVIDER_MCP_TOKEN
-    ? (providerId: "composio" | "pipedream") => new ManagedProviderMcpClient({ providerId, endpoint: process.env.MANAGED_PROVIDER_MCP_URL!, token: process.env.MANAGED_PROVIDER_MCP_TOKEN!, allowInternalHttp: process.env.MANAGED_PROVIDER_MCP_ALLOW_INTERNAL_HTTP === "true" })
+  const managedProviderMcp =
+    process.env.MANAGED_PROVIDER_MCP_URL && process.env.MANAGED_PROVIDER_MCP_TOKEN
+      ? (providerId: "composio" | "pipedream") =>
+          new ManagedProviderMcpClient({
+            providerId,
+            endpoint: process.env.MANAGED_PROVIDER_MCP_URL!,
+            token: process.env.MANAGED_PROVIDER_MCP_TOKEN!,
+            allowInternalHttp: process.env.MANAGED_PROVIDER_MCP_ALLOW_INTERNAL_HTTP === "true",
+          })
+      : undefined;
+  const managedProviderRpc =
+    process.env.MANAGED_PROVIDER_MCP_URL && process.env.MANAGED_PROVIDER_MCP_TOKEN
+      ? new ManagedProviderMcpClient({
+          providerId: "composio",
+          endpoint: process.env.MANAGED_PROVIDER_MCP_URL,
+          token: process.env.MANAGED_PROVIDER_MCP_TOKEN,
+          allowInternalHttp: process.env.MANAGED_PROVIDER_MCP_ALLOW_INTERNAL_HTTP === "true",
+        })
+      : undefined;
+  const managedCapabilities = managedProviderRpc
+    ? await managedProviderRpc.capabilities()
     : undefined;
-  const managedProviderRpc = process.env.MANAGED_PROVIDER_MCP_URL && process.env.MANAGED_PROVIDER_MCP_TOKEN
-    ? new ManagedProviderMcpClient({ providerId: "composio", endpoint: process.env.MANAGED_PROVIDER_MCP_URL, token: process.env.MANAGED_PROVIDER_MCP_TOKEN, allowInternalHttp: process.env.MANAGED_PROVIDER_MCP_ALLOW_INTERNAL_HTTP === "true" })
-    : undefined;
-  const managedCapabilities = managedProviderRpc ? await managedProviderRpc.capabilities() : undefined;
   const pipedream = managedProviderMcp?.("pipedream");
-  const managedMessaging = managedProviderRpc && managedCapabilities?.messaging ? new ManagedMessagingMcpClient(managedProviderRpc) : undefined;
+  const managedMessaging =
+    managedProviderRpc && managedCapabilities?.messaging
+      ? new ManagedMessagingMcpClient(managedProviderRpc)
+      : undefined;
   if (managedMessaging) await managedMessaging.refreshPlatforms();
   const messaging = managedMessaging;
-  const stack = createConnectorStack(Boolean(managedProviderMcp), managedProviderMcp?.("composio"), [
-    new InstalledConnectorProvider(prisma, secrets),
-    ...(pipedream ? [pipedream] : []),
-    mcp,
-  ]);
+  const stack = createConnectorStack(
+    Boolean(managedProviderMcp),
+    managedProviderMcp?.("composio"),
+    [new InstalledConnectorProvider(prisma, secrets), ...(pipedream ? [pipedream] : []), mcp],
+  );
   const connector = stack.destination;
   await connector.start();
   const memoryProviders = new SpaceMemoryProviderResolver(prisma, secrets);
@@ -128,7 +146,11 @@ async function main() {
     secretStore: secrets,
     deploymentModelKey,
     dataDir,
-    notifications: managedProviderRpc ? new ManagedNotificationMcpClient(managedProviderRpc, (userId) => loadPushToken(dataDir, userId)) : undefined,
+    notifications: managedProviderRpc
+      ? new ManagedNotificationMcpClient(managedProviderRpc, (userId) =>
+          loadPushToken(dataDir, userId),
+        )
+      : undefined,
     jobs,
     events,
     messaging: messaging ? createMessagingContextLoader(prisma) : undefined,

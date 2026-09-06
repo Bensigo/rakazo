@@ -64,7 +64,8 @@ export function createSandboxProvider(kind: string, opts: SandboxProviderOptions
         root: opts.dataDir,
       });
     case "employee-host":
-      if (!opts.employeeHostTransport) return new NoneSandboxProvider("Employee host transport is not configured.");
+      if (!opts.employeeHostTransport)
+        return new NoneSandboxProvider("Employee host transport is not configured.");
       return new EmployeeHostSandboxProvider(opts.employeeHostTransport);
     case "fake":
       return new FakeSandboxProvider();

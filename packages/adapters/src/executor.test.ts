@@ -377,7 +377,12 @@ describe("createRunExecutor", () => {
       organizationId: "org-1",
       foundation: { id: "foundation-1", revision: 1, content: {} },
       role: { id: "role-1", key: "writer", name: "Writer", instructions: "Write." },
-      assignment: { id: "assignment-1", scope: "multi", projectIds: ["project-1", "project-2"], brief: { deliverable: "Report" } },
+      assignment: {
+        id: "assignment-1",
+        scope: "multi",
+        projectIds: ["project-1", "project-2"],
+        brief: { deliverable: "Report" },
+      },
       sourceProjectIds: ["project-1", "project-2"],
       sources: [],
     };

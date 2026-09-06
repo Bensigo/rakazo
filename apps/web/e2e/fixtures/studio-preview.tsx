@@ -48,7 +48,6 @@ const routes: Record<string, unknown> = {
   "/rpc/bots/list": bots,
   "/rpc/studio/jobRoles": jobRoles,
   "/rpc/studio/jobRoleSelection": null,
-  "/rpc/studio/registeredRepositories": [],
   "/rpc/studio/assignments": [],
   "/rpc/studio/registeredRepositories": [],
   "/rpc/studio/assignmentComputers": [

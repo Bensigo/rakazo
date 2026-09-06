@@ -237,8 +237,8 @@ import {
   refreshableRoutineStudioContext,
   resolveStudioRunContext,
   routineStudioProjectId,
-  studioRoutineSelection,
   type StudioKnowledgeBridge,
+  studioRoutineSelection,
 } from "./studio-context.js";
 import { type TakeoverResumeCheckpoint, takeoverResumeFromRelease } from "./takeover-resume.js";
 import { getActiveTeachingSession, parsePlaybook } from "./teaching-session.js";
@@ -2323,7 +2323,9 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 delaySeconds: args.delaySeconds,
               },
               studioContext: studioContext
-                ? (studioRoutineSelection(studioContext.manifest) as unknown as Prisma.InputJsonValue)
+                ? (studioRoutineSelection(
+                    studioContext.manifest,
+                  ) as unknown as Prisma.InputJsonValue)
                 : undefined,
             });
             return finish(created);

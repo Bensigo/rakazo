@@ -32,11 +32,12 @@ import {
   InstalledConnectorProvider,
   LocalAgentHomeStore,
   LocalArtifactStore,
+  loadPushToken,
   loadStudioKnowledgeBridge,
-  ManagedProviderMcpClient,
-  ManagedMessagingMcpClient,
   ManagedEmailMcpClient,
+  ManagedMessagingMcpClient,
   ManagedNotificationMcpClient,
+  ManagedProviderMcpClient,
   McpConnector,
   McpOAuthBroker,
   PiAgentRuntime,
@@ -44,7 +45,6 @@ import {
   PostgresRealtimeFanout,
   parseRegisteredStudioRepositories,
   pushTokenPath,
-  loadPushToken,
   type RegisteredStudioRepository,
   type RemoteConnectorDependencies,
   ScriptedAgentRuntime,
@@ -206,23 +206,35 @@ export async function createApp(
     },
     mcpOAuth,
   );
-  const managedProviderMcp = env.managedProviderMcpUrl && env.managedProviderMcpToken
-    ? (providerId: "composio" | "pipedream") => new ManagedProviderMcpClient({ providerId, endpoint: env.managedProviderMcpUrl!, token: env.managedProviderMcpToken!, allowInternalHttp: env.managedProviderMcpAllowInternalHttp })
+  const managedProviderMcp =
+    env.managedProviderMcpUrl && env.managedProviderMcpToken
+      ? (providerId: "composio" | "pipedream") =>
+          new ManagedProviderMcpClient({
+            providerId,
+            endpoint: env.managedProviderMcpUrl!,
+            token: env.managedProviderMcpToken!,
+            allowInternalHttp: env.managedProviderMcpAllowInternalHttp,
+          })
+      : undefined;
+  const managedProviderRpc =
+    env.managedProviderMcpUrl && env.managedProviderMcpToken
+      ? new ManagedProviderMcpClient({
+          providerId: "composio",
+          endpoint: env.managedProviderMcpUrl,
+          token: env.managedProviderMcpToken,
+          allowInternalHttp: env.managedProviderMcpAllowInternalHttp,
+        })
+      : undefined;
+  const managedCapabilities = managedProviderRpc
+    ? await managedProviderRpc.capabilities()
     : undefined;
-  const managedProviderRpc = env.managedProviderMcpUrl && env.managedProviderMcpToken
-    ? new ManagedProviderMcpClient({ providerId: "composio", endpoint: env.managedProviderMcpUrl, token: env.managedProviderMcpToken, allowInternalHttp: env.managedProviderMcpAllowInternalHttp })
-    : undefined;
-  const managedCapabilities = managedProviderRpc ? await managedProviderRpc.capabilities() : undefined;
-  const pipedream =
-    pipedreamOverride ??
-    managedProviderMcp?.("pipedream");
-  const managedMessaging = managedProviderRpc && managedCapabilities?.messaging
-    ? new ManagedMessagingMcpClient(managedProviderRpc)
-    : undefined;
+  const pipedream = pipedreamOverride ?? managedProviderMcp?.("pipedream");
+  const managedMessaging =
+    managedProviderRpc && managedCapabilities?.messaging
+      ? new ManagedMessagingMcpClient(managedProviderRpc)
+      : undefined;
   if (managedMessaging) await managedMessaging.refreshPlatforms();
-  const messaging =
-    messagingOverride ??
-    managedMessaging;
+  const messaging = messagingOverride ?? managedMessaging;
   const localEmailEmulator =
     !emailOverride && !managedCapabilities?.email && env.emailEmulator
       ? new EmailEmulator((message) => {
@@ -240,11 +252,11 @@ export async function createApp(
       ? new ManagedEmailMcpClient(managedProviderRpc)
       : localEmailEmulator);
   const installed = new InstalledConnectorProvider(prisma, secrets, remoteConnectors);
-  const stack = createConnectorStack(Boolean(managedProviderMcp), composioOverride ?? managedProviderMcp?.("composio"), [
-    installed,
-    ...(pipedream ? [pipedream] : []),
-    mcp,
-  ]);
+  const stack = createConnectorStack(
+    Boolean(managedProviderMcp),
+    composioOverride ?? managedProviderMcp?.("composio"),
+    [installed, ...(pipedream ? [pipedream] : []), mcp],
+  );
   const connector = stack.destination;
   await connector.start();
   void stack.composio?.warmDirectory().catch(() => undefined);
@@ -252,7 +264,9 @@ export async function createApp(
   const runtime =
     env.agentRuntime === "scripted" ? new ScriptedAgentRuntime() : new PiAgentRuntime();
   const notifications = managedProviderRpc
-    ? new ManagedNotificationMcpClient(managedProviderRpc, (userId) => loadPushToken(env.dataDir, userId))
+    ? new ManagedNotificationMcpClient(managedProviderRpc, (userId) =>
+        loadPushToken(env.dataDir, userId),
+      )
     : undefined;
   const auth = createAuth(prisma, {
     secret: env.authSecret,

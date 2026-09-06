@@ -3126,7 +3126,15 @@ export function ShellPage() {
             </button>
           </div>
           <div className="flex items-center gap-1">
-            <button type="button" aria-label={t`Open Studio`} title={t`Studio`} onClick={() => navigate("/studio")} className="app-no-drag rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground">Studio</button>
+            <button
+              type="button"
+              aria-label={t`Open Studio`}
+              title={t`Studio`}
+              onClick={() => navigate("/studio")}
+              className="app-no-drag rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              Studio
+            </button>
             {!inGroup && active ? (
               <button
                 type="button"

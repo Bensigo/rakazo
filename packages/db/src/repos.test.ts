@@ -226,12 +226,19 @@ describe("createRepos.listBots", () => {
 describe("createBotInTransaction", () => {
   it("leaves a custom bot unassigned when the studio has a default specialist preset", async () => {
     const roleFindFirst = vi.fn(async () => ({ id: "default-role" }));
-    const created = { ...baseBot, computer: { id: "computer-1", scope: "team" }, rolePresetId: null };
+    const created = {
+      ...baseBot,
+      computer: { id: "computer-1", scope: "team" },
+      rolePresetId: null,
+    };
     const prisma = {
       bot: {
         count: vi.fn(async () => 0),
         aggregate: vi.fn(async () => ({ _max: { position: null } })),
-        create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({ ...created, ...data })),
+        create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
+          ...created,
+          ...data,
+        })),
         findFirstOrThrow: vi.fn(async () => created),
       },
       spaceMember: { findUnique: vi.fn(async () => ({ organizationId: "org-1" })) },
